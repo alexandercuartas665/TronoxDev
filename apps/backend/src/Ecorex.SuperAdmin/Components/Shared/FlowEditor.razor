@@ -1,0 +1,1307 @@
+@using System.Globalization
+@using Ecorex.Application.Forms
+@using Ecorex.Application.Organization
+@using Ecorex.Application.Workflows
+@using Ecorex.Domain.Enums
+@implements IAsyncDisposable
+@inject IWorkflowDesignService DesignSvc
+@inject IWorkflowEngine Engine
+@inject IFormDefinitionService FormsSvc
+@inject IWorkflowNodePolicyService NodePolicySvc
+@inject INodeAssigneeResolver AssigneeResolver
+@inject IJSRuntime JS
+
+@* ============================================================
+   EDITOR DE FLUJOS (modal grande del prototipo ECOREX.dc.html).
+   ADR-0034: el CANVAS es bpmn-js embebido (v8.8.2 self-hosted,
+   interop ecorex-bpmn.js) con paleta ACOTADA al subconjunto que
+   ejecuta el motor. SE CONSERVAN el header, el panel derecho con
+   6 acordeones y "Saltar a otro flujo", y todos los modales; solo
+   se reemplazo el canvas SVG propio (ADR-0022).
+   La parametrizacion por nodo (formularios/reglas/condiciones/
+   config) sigue en tablas por BpmnElementId (NO en el XML): el
+   panel opera sobre el ULTIMO grafo GUARDADO. Guardar exporta el
+   XML de bpmn-js y lo re-sincroniza (SaveBpmnAsync); una publicada
+   deriva su version borrador (EnsureDraft).
+   Limitacion documentada: bpmn-js no conmuta a modo oscuro; el
+   canvas queda con fondo claro aunque html.dark este activo.
+   ============================================================ *@
+
+@if (_canvas is null)
+{
+    <div class="fe-overlay"><div class="fe-loading">Cargando editor...</div></div>
+}
+else
+{
+    <div class="fe-overlay">
+        <div class="fe-shell" @onclick:stopPropagation>
+            <div class="fe-left">
+                @* ---- Header del editor ---- *@
+                <div class="fe-head">
+                    <button class="fe-back" title="Volver a la lista" @onclick="CloseAsync">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
+                    </button>
+                    <span class="fe-flow-id">FLUJO @_canvas.ProcessCode v@(_canvas.Version)</span>
+                    <input class="fe-name" placeholder="Nombre del flujo" @bind="_name" @bind:event="oninput" />
+                    <div class="fe-cat-wrap">
+                        <select class="fe-cat" @bind="_categoryValue">
+                            @foreach (var option in CategoryOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="fe-cat-chev"><path d="m6 9 6 6 6-6"/></svg>
+                    </div>
+                    <div class="fe-head-actions">
+                        <button class="fe-btn" title="Propiedades del flujo" @onclick="OpenProps">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 15H2.5a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4 9.4l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 11 3V2.9a2 2 0 1 1 4 0V3a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8Z"/></svg>
+                            Propiedades
+                        </button>
+                        <button class="fe-btn" title="Importar BPMN (.bpmn / .xml)" @onclick="@(() => OpenIo(export: false))">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                            Importar
+                        </button>
+                        <button class="fe-btn" title="Exportar BPMN (XML)" @onclick="@(() => OpenIo(export: true))">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>
+                            Exportar
+                        </button>
+                        @if (!_canvas.IsPublished)
+                        {
+                            <button class="fe-btn" title="Publicar esta version (despublica la anterior)" @onclick="PublishAsync" disabled="@_busy">Publicar</button>
+                        }
+                        <button class="fe-btn-brand" @onclick="SaveAsync" disabled="@_busy">Guardar cambios</button>
+                        <button class="fe-btn" @onclick="CloseAsync">Cerrar</button>
+                    </div>
+                </div>
+
+                @if (_error is not null)
+                {
+                    <div class="fe-error">@_error</div>
+                }
+                @if (_notice is not null)
+                {
+                    <div class="fe-notice">@_notice</div>
+                }
+                @if (!_canvas.IsEditable)
+                {
+                    <div class="fe-readonly">
+                        Esta version esta @_canvas.Estado.ToLowerInvariant(): el grafo publicado no se edita.
+                        <button class="fe-readonly-btn" @onclick="EnsureDraftAsync" disabled="@_busy">Editar (crear version borrador)</button>
+                    </div>
+                }
+
+                @* ---- Canvas bpmn-js (ADR-0034) + barra de estado ---- *@
+                <div class="fe-canvas-zone">
+                    <div class="fe-stats">
+                        <span>@_canvas.Nodes.Count nodos - @_canvas.Edges.Count conexiones (ultimo guardado)</span>
+                        <span class="fe-stats-sep"></span>
+                        <span class="fe-hint">@CanvasHint</span>
+                    </div>
+                    @* bpmn-js pinta aqui (fondo claro; no conmuta a dark, limitacion documentada). *@
+                    <div id="bpmn-canvas" class="fe-bpmn-canvas"></div>
+                </div>
+            </div>
+
+            @* ---- Panel derecho: detalle de actividad + acordeones ---- *@
+            <aside class="fe-panel">
+                <div class="fe-panel-head">
+                    <div class="fe-panel-eyebrow">DETALLE DE ACTIVIDAD</div>
+                    <div class="fe-panel-name">@PanelHeading</div>
+                    <input class="fe-panel-input" placeholder="Nombre del nodo"
+                           value="@(Selected?.Name ?? "")"
+                           disabled="@(Selected is null || !_canvas.IsEditable)"
+                           @oninput="OnPanelNameInput" @onchange="OnPanelNameChangeAsync" />
+                    @if (_selectedElementId is not null && Selected is null)
+                    {
+                        <div class="fe-panel-warn">Guarda el flujo para parametrizar este nodo recien dibujado.</div>
+                    }
+                </div>
+                <div class="fe-panel-body">
+                    @foreach (var acc in AccordionDefs)
+                    {
+                        var open = _openAcc == acc.Index;
+                        <button class="fe-acc @(open ? "open" : "")" @onclick="@(() => _openAcc = open ? -1 : acc.Index)">
+                            <span class="fe-acc-ic" style="background:@acc.IconBg;color:@acc.IconFg">@((MarkupString)acc.Svg)</span>
+                            <span class="fe-acc-name">@acc.Name</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(@(open ? 180 : 0)deg)"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        @if (open)
+                        {
+                            <div class="fe-acc-body">
+                                @switch (acc.Index)
+                                {
+                                    case 0:
+                                        @ConfigBody
+                                        break;
+                                    case 1:
+                                        @UsersBody
+                                        break;
+                                    case 2:
+                                        @ResourcesBody
+                                        break;
+                                    case 3:
+                                        @RulesBody
+                                        break;
+                                    case 4:
+                                        @NotifBody
+                                        break;
+                                    default:
+                                        @ExitBody
+                                        break;
+                                }
+                            </div>
+                        }
+                    }
+                    <button class="fe-jump" @onclick="OpenJumpAsync">
+                        <span class="fe-acc-ic" style="background:var(--brand-soft);color:var(--brand)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/><path d="M5 5v4"/></svg>
+                        </span>
+                        <span class="fe-acc-name">Saltar a otro flujo</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+                    </button>
+                </div>
+            </aside>
+        </div>
+    </div>
+}
+
+@* ---- Modal: propiedades del flujo ---- *@
+@if (_propsOpen && _canvas is not null)
+{
+    <div class="fe-modal-overlay" @onclick="@(() => _propsOpen = false)">
+        <div class="fe-modal" style="width:min(520px,95vw)" @onclick:stopPropagation>
+            <div class="fe-modal-head">
+                <div>
+                    <div class="fe-modal-title">Propiedades del flujo</div>
+                    <div class="fe-modal-sub">Nombre, categoria, estado y descripcion - @_canvas.ProcessCode</div>
+                </div>
+                <button class="fe-modal-x" @onclick="@(() => _propsOpen = false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="fe-modal-body">
+                <div>
+                    <label class="fe-label">NOMBRE DEL FLUJO</label>
+                    <input class="fe-input" @bind="_name" placeholder="Nombre del flujo" />
+                </div>
+                <div class="fe-grid-2">
+                    <div>
+                        <label class="fe-label">CATEGORIA</label>
+                        <select class="fe-input" @bind="_categoryValue">
+                            @foreach (var option in CategoryOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="fe-label">ESTADO</label>
+                        <select class="fe-input" @bind="_estadoValue">
+                            @foreach (var option in EstadoOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="fe-label">DESCRIPCION</label>
+                    <textarea class="fe-textarea" @bind="_description" placeholder="Describe el proposito del flujo..."></textarea>
+                </div>
+            </div>
+            <div class="fe-modal-foot">
+                <button class="fe-btn-ghost" @onclick="@(() => _propsOpen = false)">Cancelar</button>
+                <button class="fe-btn-save" @onclick="SavePropsAsync" disabled="@_busy">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ---- Modal: exportar / importar BPMN (XML del modeler) ---- *@
+@if (_ioOpen)
+{
+    <div class="fe-modal-overlay" @onclick="@(() => _ioOpen = false)">
+        <div class="fe-modal" style="width:min(620px,95vw)" @onclick:stopPropagation>
+            <div class="fe-modal-head">
+                <div>
+                    <div class="fe-modal-title">@(_ioExport ? "Exportar flujo (BPMN 2.0)" : "Importar flujo (BPMN 2.0)")</div>
+                    <div class="fe-modal-sub">XML BPMN estandar (portabilidad bpmn.io): topologia + layout del diagrama</div>
+                </div>
+                <button class="fe-modal-x" @onclick="@(() => _ioOpen = false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="fe-modal-body">
+                @if (_ioExport)
+                {
+                    <pre class="fe-json">@_exportXml</pre>
+                }
+                else
+                {
+                    <label class="fe-label">Pega el XML BPMN del flujo</label>
+                    <textarea class="fe-json-input" spellcheck="false" @bind="_importXml"
+                              placeholder='<?xml version="1.0"?><bpmn:definitions ...>'></textarea>
+                    @if (_ioError is not null)
+                    {
+                        <div class="fe-error">@_ioError</div>
+                    }
+                }
+            </div>
+            <div class="fe-modal-foot">
+                <button class="fe-btn-ghost" @onclick="@(() => _ioOpen = false)">Cerrar</button>
+                @if (_ioExport)
+                {
+                    <button class="fe-btn-save with-ic" @onclick="CopyXmlAsync">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                        Copiar XML
+                    </button>
+                }
+                else
+                {
+                    <button class="fe-btn-save" @onclick="ImportXmlAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_importXml))">Importar flujo</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ---- Modal: agregar formulario (acordeon Recursos) ---- *@
+@if (_formPickerOpen)
+{
+    <div class="fe-modal-overlay" @onclick="@(() => _formPickerOpen = false)">
+        <div class="fe-modal" style="width:min(640px,95vw)" @onclick:stopPropagation>
+            <div class="fe-modal-head">
+                <div>
+                    <div class="fe-modal-title">Agregar formulario</div>
+                    <div class="fe-modal-sub">Elige el formulario que se adjunta a esta actividad</div>
+                </div>
+                <button class="fe-modal-x" @onclick="@(() => _formPickerOpen = false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="fe-modal-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input value="@_formPickerQuery" @oninput="@(e => _formPickerQuery = e.Value?.ToString() ?? "")" placeholder="Buscar formulario..." />
+            </div>
+            <div class="fe-form-grid">
+                @foreach (var form in FilteredForms)
+                {
+                    <button class="fe-form-card" @onclick="@(() => LinkFormAsync(form.Id))">
+                        <span class="fe-form-ic">
+                            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+                        </span>
+                        <span class="fe-form-name">@form.Title</span>
+                        <span class="fe-form-code">FORX-@form.Code</span>
+                    </button>
+                }
+                @if (!FilteredForms.Any())
+                {
+                    <div class="fe-empty">No hay formularios publicados para vincular.</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ---- Modal: agregar regla (acordeon Reglas) ---- *@
+@if (_rulePickerOpen)
+{
+    <div class="fe-modal-overlay" @onclick="@(() => _rulePickerOpen = false)">
+        <div class="fe-modal" style="width:min(520px,95vw)" @onclick:stopPropagation>
+            <div class="fe-modal-head">
+                <div>
+                    <div class="fe-modal-title">Agregar regla</div>
+                    <div class="fe-modal-sub">Catalogo de reglas del tenant (modulo 000802)</div>
+                </div>
+                <button class="fe-modal-x" @onclick="@(() => _rulePickerOpen = false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="fe-rule-list">
+                @foreach (var rule in AvailableRules)
+                {
+                    <button class="fe-rule-option" @onclick="@(() => LinkRuleAsync(rule.RuleId))">
+                        <span class="fe-rule-verb">@rule.VerbName</span>
+                        <span class="fe-rule-name">@rule.Name</span>
+                        <span class="fe-rule-doc">@rule.DocumentName</span>
+                    </button>
+                }
+                @if (!AvailableRules.Any())
+                {
+                    <div class="fe-empty">No hay reglas disponibles (todas vinculadas o catalogo vacio).</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ---- Modal: saltar a otro flujo ---- *@
+@if (_jumpOpen && _canvas is not null)
+{
+    <div class="fe-modal-overlay" @onclick="@(() => _jumpOpen = false)">
+        <div class="fe-modal" style="width:min(500px,95vw)" @onclick:stopPropagation>
+            <div class="fe-modal-head">
+                <div>
+                    <div class="fe-modal-title">Saltar a otro flujo</div>
+                    <div class="fe-modal-sub">Desde "@_canvas.Name" - elige el flujo destino de la conexion</div>
+                </div>
+                <button class="fe-modal-x" @onclick="@(() => _jumpOpen = false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="fe-modal-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input value="@_jumpQuery" @oninput="@(e => _jumpQuery = e.Value?.ToString() ?? "")" placeholder="Buscar flujo..." />
+            </div>
+            <div class="fe-jump-list">
+                @foreach (var option in JumpOptions)
+                {
+                    <button class="fe-jump-option @(_jumpSelected == option.DefinitionId ? "sel" : "")"
+                            @onclick="@(() => _jumpSelected = option.DefinitionId)">
+                        <span class="fe-jump-ic">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="6" rx="1.4"/><rect x="16" y="15" width="6" height="6" rx="1.4"/><path d="M5 9v3a4 4 0 0 0 4 4h7"/></svg>
+                        </span>
+                        <span class="fe-jump-tx">
+                            <span class="fe-jump-name">@option.Name</span>
+                            <span class="fe-jump-meta">@option.ProcessCode - @(option.Category ?? "General")</span>
+                        </span>
+                        @if (_jumpSelected == option.DefinitionId)
+                        {
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg>
+                        }
+                    </button>
+                }
+            </div>
+            <div class="fe-modal-foot">
+                <button class="fe-btn-ghost" @onclick="@(() => _jumpOpen = false)">Cancelar</button>
+                @if (_jumpSelected is not null)
+                {
+                    <button class="fe-btn-save" @onclick="ConfirmJump">Conectar flujo</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ---- Parametros ----
+    [Parameter] public Guid DefinitionId { get; set; }
+    [Parameter] public IReadOnlyList<string> Categories { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Guid> OnDefinitionSwitched { get; set; }
+
+    private const string CanvasId = "bpmn-canvas";
+
+    private FlowCanvasDto? _canvas;
+    private Guid _loadedId;
+
+    // Modulo interop + referencia .NET para los callbacks JS.
+    private IJSObjectReference? _bpmn;
+    private DotNetObjectReference<FlowEditor>? _selfRef;
+    private bool _bpmnReady;
+    private bool _pendingInit;
+
+    private string _name = "";
+    private string _categoryValue = "General";
+    private string _estadoValue = "";
+    private string? _description;
+
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    // El EcorexDbContext es scoped al circuito Blazor (una sola instancia compartida). Los
+    // callbacks [JSInvokable] de bpmn-js (OnElementSelected) pueden dispararse en medio de un
+    // handler que ya esta usando el contexto (ej. SaveAsync) -> "A second operation was started
+    // on this context instance". Este gate serializa TODO el acceso a BD del editor. No es
+    // reentrante: solo se toma en los handlers de nivel superior, nunca en helpers internos
+    // (RefreshAndReimportAsync / LoadNodePoliciesAsync) que se llaman desde metodos ya gateados.
+    private readonly SemaphoreSlim _dbGate = new(1, 1);
+
+    private async Task GuardAsync(Func<Task> op)
+    {
+        await _dbGate.WaitAsync();
+        try { await op(); }
+        finally { _dbGate.Release(); }
+    }
+
+    // Seleccion actual del canvas (por BpmnElementId; el DB node se resuelve en _canvas).
+    private string? _selectedElementId;
+    private string? _selectedType;
+    private string? _selectedRawName;
+
+    private int _openAcc;
+
+    // Modales.
+    private bool _propsOpen;
+    private bool _ioOpen;
+    private bool _ioExport = true;
+    private string? _exportXml;
+    private string _importXml = "";
+    private string? _ioError;
+    private bool _formPickerOpen;
+    private string _formPickerQuery = "";
+    private List<FormDefinitionListItemDto> _forms = [];
+    private bool _rulePickerOpen;
+    private IReadOnlyList<FlowRuleCatalogItemDto> _ruleCatalog = [];
+
+    // Asignacion por nodo (acordeon "Asignar usuarios", ADR-0035).
+    private IReadOnlyList<NodePolicyDto> _nodePolicies = [];
+    private IReadOnlyList<AssignableOrgUnitDto> _assignableUnits = [];
+    private string _assignUnitId = "";
+    private int _resolvedCandidates;
+    private bool _jumpOpen;
+    private string _jumpQuery = "";
+    private Guid? _jumpSelected;
+    private IReadOnlyList<FlowCardDto> _jumpFlows = [];
+
+    /// <summary>Nodo GUARDADO correspondiente a la seleccion del canvas (por BpmnElementId).</summary>
+    private FlowCanvasNodeDto? Selected
+        => _selectedElementId is null || _canvas is null
+            ? null
+            : _canvas.Nodes.FirstOrDefault(n => n.BpmnElementId == _selectedElementId);
+
+    private string PanelHeading
+    {
+        get
+        {
+            if (Selected is FlowCanvasNodeDto node) { return NodeLabel(node); }
+            if (_selectedRawName is not null && _selectedRawName.Length > 0) { return _selectedRawName; }
+            if (_selectedElementId is not null) { return "Nodo sin guardar"; }
+            return "Ningun nodo seleccionado";
+        }
+    }
+
+    private string CanvasHint => _canvas is { IsEditable: true }
+        ? "Arrastra desde la paleta, conecta con la flecha y Guarda para persistir."
+        : "Solo lectura: usa 'Editar' para crear una version borrador.";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedId != DefinitionId)
+        {
+            _loadedId = DefinitionId;
+            _bpmnReady = false;
+            _selectedElementId = null;
+            _selectedType = null;
+            _selectedRawName = null;
+            await LoadAsync();
+            _pendingInit = true;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        await GuardAsync(async () => _canvas = await DesignSvc.GetCanvasAsync(DefinitionId));
+        if (_canvas is null)
+        {
+            _error = "El flujo no existe.";
+            return;
+        }
+        _name = _canvas.Name;
+        _categoryValue = _canvas.Category ?? "General";
+        _estadoValue = _canvas.Estado;
+        _description = _canvas.Description;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_pendingInit || _canvas is null)
+        {
+            return;
+        }
+        _pendingInit = false;
+        await InitCanvasAsync();
+    }
+
+    /// <summary>Carga el modulo interop y arranca bpmn-js con el XML actual de la definicion.</summary>
+    private async Task InitCanvasAsync()
+    {
+        try
+        {
+            _bpmn ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/ecorex-bpmn.js?v=3");
+            _selfRef ??= DotNetObjectReference.Create(this);
+            var xml = "";
+            await GuardAsync(async () => xml = await DesignSvc.GetBpmnXmlAsync(DefinitionId) ?? "");
+            _bpmnReady = await _bpmn.InvokeAsync<bool>("init", CanvasId, _selfRef, xml);
+            await ApplyNodeAppearanceAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"No se pudo iniciar el editor BPMN: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Repinta el COLOR de los nodos y muestra las NOTAS como post-it en el lienzo. Se llama tras cada
+    /// import (init/re-import) y cuando el usuario cambia el color o la nota de un nodo. Color y nota son
+    /// metadatos de la BD (no viajan en el XML), asi que bpmn-js los pierde al importar y hay que re-aplicar.
+    /// </summary>
+    private async Task ApplyNodeAppearanceAsync()
+    {
+        if (!_bpmnReady || _bpmn is null || _canvas is null) { return; }
+        var colors = _canvas.Nodes.Select(n => new { id = n.BpmnElementId, color = n.Color }).ToList();
+        var notes = _canvas.Nodes.Select(n => new { id = n.BpmnElementId, note = n.Note }).ToList();
+        try
+        {
+            await _bpmn.InvokeVoidAsync("applyNodeColors", CanvasId, colors);
+            await _bpmn.InvokeVoidAsync("applyNodeNotes", CanvasId, notes);
+        }
+        catch (JSException) { /* el editor puede estar re-montandose */ }
+    }
+
+    // ---- Callbacks desde bpmn-js ----
+
+    [JSInvokable]
+    public async Task OnElementSelected(string? id, string? type, string? name)
+    {
+        _selectedElementId = id;
+        _selectedType = type;
+        _selectedRawName = name;
+        _assignUnitId = "";
+        await GuardAsync(LoadNodePoliciesAsync);
+        StateHasChanged();
+    }
+
+    /// <summary>Carga las asignaciones por nodo (policies + selector + conteo de candidatos).</summary>
+    private async Task LoadNodePoliciesAsync()
+    {
+        if (Selected is not FlowCanvasNodeDto node)
+        {
+            _nodePolicies = [];
+            _resolvedCandidates = 0;
+            return;
+        }
+        _nodePolicies = await NodePolicySvc.ListNodePoliciesAsync(node.Id);
+        _assignableUnits = await NodePolicySvc.ListAssignableUnitsAsync();
+        _resolvedCandidates = (await AssigneeResolver.ResolveCandidatesAsync(node.Id)).Count;
+    }
+
+    private async Task AddNodePolicyAsync()
+    {
+        if (Selected is not FlowCanvasNodeDto node || !Guid.TryParse(_assignUnitId, out var unitId)) { return; }
+        await GuardAsync(async () =>
+        {
+            var result = await NodePolicySvc.AddNodePolicyAsync(node.Id, unitId);
+            if (!result.IsOk) { _error = result.Error; }
+            _assignUnitId = "";
+            await LoadNodePoliciesAsync();
+        });
+    }
+
+    private async Task RemoveNodePolicyAsync(NodePolicyDto policy)
+    {
+        await GuardAsync(async () =>
+        {
+            var result = await NodePolicySvc.RemoveNodePolicyAsync(policy.PolicyId);
+            if (!result.IsOk) { _error = result.Error; }
+            await LoadNodePoliciesAsync();
+        });
+    }
+
+    [JSInvokable]
+    public Task OnGraphChanged()
+    {
+        // El grafo del canvas cambio (dirty). El guardado es explicito (boton Guardar);
+        // aqui solo refrescamos la pista. Deuda opcional: autosave con debounce.
+        return Task.CompletedTask;
+    }
+
+    private IReadOnlyList<string> CategoryOptions
+        => Categories.Concat([_categoryValue]).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    private IReadOnlyList<string> EstadoOptions => _canvas switch
+    {
+        { IsPublished: false } => ["Borrador", "En marcha"],
+        { IsPaused: true } => ["Pausado", "En marcha"],
+        _ => ["En marcha", "Pausado"]
+    };
+
+    // ---- Render de etiquetas del panel ----
+
+    private static string NodeLabel(FlowCanvasNodeDto node) => node.Name ?? node.NodeType switch
+    {
+        WorkflowNodeType.StartEvent => "Inicio",
+        WorkflowNodeType.EndEvent => "Fin",
+        WorkflowNodeType.ExclusiveGateway => "?",
+        _ => "Tarea"
+    };
+
+    private static string NodeTypeLabel(WorkflowNodeType type) => type switch
+    {
+        WorkflowNodeType.StartEvent => "Evento de inicio",
+        WorkflowNodeType.EndEvent => "Evento de fin",
+        WorkflowNodeType.ExclusiveGateway => "Compuerta exclusiva",
+        _ => "Tarea - usuario"
+    };
+
+    // ---- Panel derecho ----
+
+    private void OnPanelNameInput(ChangeEventArgs e) => _selectedRawName = e.Value?.ToString();
+
+    private async Task OnPanelNameChangeAsync(ChangeEventArgs e)
+    {
+        if (Selected is not FlowCanvasNodeDto node || !RequireEditable()) { return; }
+        await GuardAsync(async () =>
+        {
+            var result = await DesignSvc.RenameNodeAsync(node.Id, e.Value?.ToString());
+            if (!result.IsOk)
+            {
+                _error = result.Error ?? "No se pudo renombrar el nodo.";
+            }
+            await RefreshAndReimportAsync();
+        });
+    }
+
+    private sealed record AccDef(int Index, string Name, string Svg, string IconBg, string IconFg);
+
+    private static readonly AccDef[] AccordionDefs =
+    [
+        new(0, "Configuracion basica",
+            "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3.2\"/><path d=\"M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 15H2.5a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4 9.4l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 11 3V2.9a2 2 0 1 1 4 0V3a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8Z\"/></svg>",
+            "var(--surface-3)", "var(--ink)"),
+        new(1, "Asignar usuarios",
+            "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"3.2\"/><path d=\"M22 21v-2a4 4 0 0 0-3-3.85\"/></svg>",
+            "var(--t-green-bg)", "var(--t-green)"),
+        new(2, "Recursos y componentes",
+            "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7.5 4.3 9 5.2v9L12 21l-4.5-2.5v-9Z\"/></svg>",
+            "var(--t-amber-bg)", "var(--t-amber)"),
+        new(3, "Reglas",
+            "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M13 2 4 14h7l-1 8 9-12h-7l1-8Z\"/></svg>",
+            "var(--t-blue-bg)", "var(--t-blue)"),
+        new(4, "Reglas de notificacion",
+            "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"/><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"/></svg>",
+            "var(--t-violet-bg)", "var(--t-violet)"),
+        new(5, "Reglas de salida",
+            "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"6\" height=\"6\" rx=\"1.4\"/><rect x=\"16\" y=\"15\" width=\"6\" height=\"6\" rx=\"1.4\"/><path d=\"M5 9v3a4 4 0 0 0 4 4h7\"/></svg>",
+            "var(--surface-3)", "var(--ink)")
+    ];
+
+    // Acordeon 0: Configuracion basica (tipo + reinicio + permite asignacion).
+    private RenderFragment ConfigBody => __builder =>
+    {
+        if (Selected is not FlowCanvasNodeDto node)
+        {
+            <div class="fe-acc-empty">Selecciona un nodo guardado del canvas.</div>
+            return;
+        }
+        <div class="fe-field">
+            <label>Tipo de actividad</label>
+            <div class="fe-field-ro">@NodeTypeLabel(node.NodeType)</div>
+        </div>
+        <div class="fe-field">
+            <label>Reinicio (abre un ciclo nuevo en...)</label>
+            <select class="fe-input sm" value="@(node.RestartNodeId?.ToString() ?? "")"
+                    disabled="@(!_canvas!.IsEditable)"
+                    @onchange="@(e => OnRestartChangedAsync(node, e))">
+                <option value="">Sin reinicio</option>
+                @foreach (var other in _canvas!.Nodes.Where(n => n.Id != node.Id))
+                {
+                    <option value="@other.Id">@NodeLabel(other)</option>
+                }
+            </select>
+        </div>
+        <label class="fe-check">
+            <input type="checkbox" checked="@node.AllowsAssignment"
+                   disabled="@(!_canvas!.IsEditable)"
+                   @onchange="@(e => OnAllowsAssignmentChangedAsync(node, e))" />
+            Permite asignacion manual del paso
+        </label>
+
+        @* Apariencia del nodo (restaurado del canvas propio): color de paleta + nota post-it. Son
+           metadatos (no viajan en el XML), asi que se pueden editar tambien sobre una publicada. *@
+        <div class="fe-field" style="margin-top:10px;">
+            <label>Color del nodo</label>
+            <div class="fe-swatches">
+                <button type="button" class="fe-swatch fe-swatch-none @(string.IsNullOrEmpty(node.Color) ? "on" : "")"
+                        title="Sin color" @onclick="@(() => OnNodeColorAsync(node, null))">&times;</button>
+                @foreach (var key in NodeColorKeys)
+                {
+                    var k = key;
+                    <button type="button" class="fe-swatch @(string.Equals(node.Color, k, StringComparison.OrdinalIgnoreCase) ? "on" : "")"
+                            style="background:@SwatchFill(k);border-color:@SwatchStroke(k)"
+                            title="@k" @onclick="@(() => OnNodeColorAsync(node, k))"></button>
+                }
+            </div>
+        </div>
+        <div class="fe-field">
+            <label>Nota (se muestra en el lienzo)</label>
+            <textarea class="fe-input" rows="3" placeholder="Nota del paso..."
+                      value="@node.Note" @onchange="@(e => OnNodeNoteAsync(node, e.Value?.ToString()))"></textarea>
+        </div>
+    };
+
+    // Paleta de colores del nodo (misma que el JS del editor); el valor guardado es la CLAVE.
+    private static readonly string[] NodeColorKeys = { "violet", "blue", "green", "amber", "rose", "slate" };
+    private static readonly Dictionary<string, (string Fill, string Stroke)> SwatchColors = new(StringComparer.Ordinal)
+    {
+        ["violet"] = ("#ede9ff", "#7c5cff"),
+        ["blue"] = ("#e6f0ff", "#2f6bff"),
+        ["green"] = ("#e3f6ec", "#16a34a"),
+        ["amber"] = ("#fdf1d6", "#d98a00"),
+        ["rose"] = ("#fde7ec", "#e11d48"),
+        ["slate"] = ("#eef1f5", "#64748b"),
+    };
+    private static string SwatchFill(string k) => SwatchColors.TryGetValue(k, out var c) ? c.Fill : "transparent";
+    private static string SwatchStroke(string k) => SwatchColors.TryGetValue(k, out var c) ? c.Stroke : "var(--line-2)";
+
+    // Acordeon 1: Asignar usuarios (asignacion por nodo REAL, ADR-0035). Dependencias/Cargos
+    // del organigrama atienden el paso; el resolver expande a los funcionarios candidatos.
+    // Vinculo por nodo (no viaja en el XML): permitido tambien sobre publicadas (como formulario/regla).
+    private RenderFragment UsersBody => __builder =>
+    {
+        if (Selected is not FlowCanvasNodeDto node)
+        {
+            <div class="fe-acc-empty">Selecciona un nodo guardado del canvas.</div>
+            return;
+        }
+        if (node.NodeType != WorkflowNodeType.Task || !node.AllowsAssignment)
+        {
+            <div class="fe-acc-empty">Este nodo no admite asignacion (solo tareas con "Permite asignacion manual").</div>
+            return;
+        }
+        <div class="fe-rows">
+            @foreach (var policy in _nodePolicies)
+            {
+                <div class="fe-row">
+                    <span class="fe-row-dot" style="background:@ClassifierTone(policy.Classifier)"></span>
+                    <span class="fe-row-verb">@policy.OrgUnitName</span>
+                    <span class="fe-row-badge" style="color:@ClassifierTone(policy.Classifier)">@ClassifierLabel(policy.Classifier)</span>
+                    <span class="fe-row-auto" title="Funcionarios que resolveria esta unidad">@policy.CandidateCount cand.</span>
+                    <span class="fe-row-x" @onclick="@(() => RemoveNodePolicyAsync(policy))">x</span>
+                </div>
+            }
+            @if (_nodePolicies.Count == 0)
+            {
+                <div class="fe-acc-empty">Sin dependencias ni cargos asignados.</div>
+            }
+        </div>
+        <div class="fe-field" style="margin-top:8px;">
+            <select class="fe-input sm" @bind="_assignUnitId">
+                <option value="">-- Dependencia / Cargo --</option>
+                @foreach (var u in _assignableUnits)
+                {
+                    <option value="@u.Id">@(new string(' ', u.Depth * 2))@u.Name (@ClassifierLabel(u.Classifier))</option>
+                }
+            </select>
+        </div>
+        <button class="fe-add-dashed" @onclick="AddNodePolicyAsync"
+                disabled="@(string.IsNullOrEmpty(_assignUnitId))">+ Asignar</button>
+        <div class="fe-acc-note">@_resolvedCandidates funcionarios atenderan este paso (asignacion por dependencia/cargo, ADR-0035).</div>
+    };
+
+    private static string ClassifierTone(OrgUnitClassifier classifier) => classifier switch
+    {
+        OrgUnitClassifier.Dependencia => "var(--t-violet)",
+        OrgUnitClassifier.Cargo => "var(--t-blue)",
+        _ => "var(--ink-3)"
+    };
+
+    private static string ClassifierLabel(OrgUnitClassifier classifier) => classifier switch
+    {
+        OrgUnitClassifier.Dependencia => "Dependencia",
+        OrgUnitClassifier.Cargo => "Cargo",
+        _ => "Funcionario"
+    };
+
+    // Acordeon 2: Recursos y componentes (formulario del nodo, WorkflowNodeForm real).
+    private RenderFragment ResourcesBody => __builder =>
+    {
+        if (Selected is not FlowCanvasNodeDto node)
+        {
+            <div class="fe-acc-empty">Selecciona un nodo guardado del canvas.</div>
+            return;
+        }
+        <div class="fe-chips">
+            @if (node.FormDefinitionId is not null)
+            {
+                <span class="fe-chip">
+                    Formulario @node.FormCode - @node.FormTitle
+                    <span class="fe-chip-x" @onclick="@(() => UnlinkFormAsync(node))">x</span>
+                </span>
+            }
+            <button class="fe-chip-add" @onclick="OpenFormPickerAsync">+ Agregar</button>
+        </div>
+        @if (node.FormDefinitionId is null)
+        {
+            <div class="fe-acc-note">El paso no exige formulario. Un nodo admite a lo sumo un formulario (ADR-0015).</div>
+        }
+    };
+
+    // Acordeon 3: Reglas (WorkflowNodeRule real contra el catalogo, toggle autonoma).
+    private RenderFragment RulesBody => __builder =>
+    {
+        if (Selected is not FlowCanvasNodeDto node)
+        {
+            <div class="fe-acc-empty">Selecciona un nodo guardado del canvas.</div>
+            return;
+        }
+        <div class="fe-rows">
+            @foreach (var rule in node.Rules)
+            {
+                <div class="fe-row">
+                    <span class="fe-row-dot" style="background:@RuleTone(rule.Status)"></span>
+                    <span class="fe-row-verb">@rule.VerbName</span>
+                    <span class="fe-row-badge" style="color:@RuleTone(rule.Status)">@RuleStatusLabel(rule.Status)</span>
+                    <label class="fe-row-auto" title="Se ejecuta sola al activarse el nodo">
+                        <input type="checkbox" checked="@rule.IsAutonomous"
+                               @onchange="@(e => ToggleRuleAutonomousAsync(rule, e))" /> auto
+                    </label>
+                    <span class="fe-row-x" @onclick="@(() => UnlinkRuleAsync(rule))">x</span>
+                </div>
+            }
+            <button class="fe-add-dashed" @onclick="OpenRulePickerAsync">+ Agregar Regla</button>
+        </div>
+    };
+
+    // Acordeon 4: Reglas de notificacion (placeholder, motor de notificaciones pendiente).
+    private RenderFragment NotifBody => __builder =>
+    {
+        <div class="fe-chips">
+            <span class="fe-chip static">Correo al aprobador</span>
+            <span class="fe-chip static">Push SignalR</span>
+        </div>
+        <div class="fe-todo">TODO: motor de notificaciones por nodo pendiente (los chips son ilustrativos del prototipo).</div>
+    };
+
+    // Acordeon 5: Reglas de salida (ConditionExpression de las aristas salientes).
+    private RenderFragment ExitBody => __builder =>
+    {
+        if (Selected is not FlowCanvasNodeDto node)
+        {
+            <div class="fe-acc-empty">Selecciona un nodo guardado del canvas.</div>
+            return;
+        }
+        var outgoing = _canvas!.Edges.Where(e => e.SourceNodeId == node.Id).ToList();
+        if (outgoing.Count == 0)
+        {
+            <div class="fe-acc-empty">El nodo no tiene conexiones de salida.</div>
+            return;
+        }
+        <div class="fe-rows">
+            @foreach (var edge in outgoing)
+            {
+                var target = _canvas!.Nodes.FirstOrDefault(n => n.Id == edge.TargetNodeId);
+                <div class="fe-exit-row">
+                    <input class="fe-input sm mono" placeholder="Sin condicion (rama default)"
+                           value="@(edge.ConditionExpression ?? "")"
+                           disabled="@(!_canvas!.IsEditable)"
+                           @onchange="@(e => SetEdgeConditionAsync(edge, e))" />
+                    <span class="fe-exit-arrow">-&gt;</span>
+                    <span class="fe-exit-target">@(target is null ? "?" : NodeLabel(target))</span>
+                    @if (_canvas!.IsEditable)
+                    {
+                        <span class="fe-row-x" @onclick="@(() => DeleteEdgeAsync(edge))">x</span>
+                    }
+                </div>
+            }
+        </div>
+        <div class="fe-acc-note">Formato del motor: approval == 'Approved' (vacio = rama por defecto).</div>
+    };
+
+    private static string RuleTone(RuleStatus status) => status switch
+    {
+        RuleStatus.Active => "var(--t-green)",
+        RuleStatus.Development => "var(--t-amber)",
+        _ => "var(--ink-3)"
+    };
+
+    private static string RuleStatusLabel(RuleStatus status) => status switch
+    {
+        RuleStatus.Active => "Activa",
+        RuleStatus.Development => "Desarrollo",
+        _ => "Inactiva"
+    };
+
+    private bool RequireEditable()
+    {
+        if (_canvas is null) { return false; }
+        if (_canvas.IsEditable) { return true; }
+        _error = "El grafo publicado no se edita: usa 'Editar (crear version borrador)'.";
+        return false;
+    }
+
+    /// <summary>Refresca el canvas GUARDADO desde la BD y re-importa el XML en bpmn-js.</summary>
+    private async Task RefreshAndReimportAsync()
+    {
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+        if (_bpmnReady && _bpmn is not null)
+        {
+            var xml = await DesignSvc.GetBpmnXmlAsync(DefinitionId) ?? "";
+            await _bpmn.InvokeVoidAsync("importXml", CanvasId, xml);
+            await ApplyNodeAppearanceAsync();
+        }
+    }
+
+    // ---- Acciones de acordeones ----
+
+    private async Task OnRestartChangedAsync(FlowCanvasNodeDto node, ChangeEventArgs e)
+    {
+        Guid? restartId = Guid.TryParse(e.Value?.ToString(), out var parsed) ? parsed : null;
+        await GuardAsync(async () =>
+        {
+            var result = await DesignSvc.SetNodeConfigAsync(node.Id, node.AllowsAssignment, restartId);
+            if (!result.IsOk) { _error = result.Error; }
+            _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+        });
+    }
+
+    private async Task OnAllowsAssignmentChangedAsync(FlowCanvasNodeDto node, ChangeEventArgs e)
+    {
+        var allows = e.Value is bool b && b;
+        var result = await DesignSvc.SetNodeConfigAsync(node.Id, allows, node.RestartNodeId);
+        if (!result.IsOk) { _error = result.Error; }
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+    }
+
+    private async Task OnNodeColorAsync(FlowCanvasNodeDto node, string? key)
+        => await SetAppearanceAsync(node, key, node.Note);
+
+    private async Task OnNodeNoteAsync(FlowCanvasNodeDto node, string? note)
+        => await SetAppearanceAsync(node, node.Color, note);
+
+    private async Task SetAppearanceAsync(FlowCanvasNodeDto node, string? color, string? note)
+    {
+        _error = null;
+        var result = await DesignSvc.SetNodeAppearanceAsync(node.Id, color, note);
+        if (!result.IsOk) { _error = result.Error; return; }
+        // Refresca el canvas (para que el swatch/nota activos reflejen lo guardado) y repinta el lienzo.
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+        await ApplyNodeAppearanceAsync();
+    }
+
+    private async Task OpenFormPickerAsync()
+    {
+        _formPickerQuery = "";
+        _forms = (await FormsSvc.ListAsync(includeArchived: false))
+            .Where(f => f.Status == FormStatus.Active)
+            .ToList();
+        _formPickerOpen = true;
+    }
+
+    private IEnumerable<FormDefinitionListItemDto> FilteredForms
+        => string.IsNullOrWhiteSpace(_formPickerQuery)
+            ? _forms
+            : _forms.Where(f => f.Title.Contains(_formPickerQuery.Trim(), StringComparison.OrdinalIgnoreCase)
+                || f.Code.Contains(_formPickerQuery.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private async Task LinkFormAsync(Guid formDefinitionId)
+    {
+        if (Selected is not FlowCanvasNodeDto node) { return; }
+        var result = await DesignSvc.SetNodeFormAsync(node.Id, formDefinitionId);
+        if (!result.IsOk) { _error = result.Error; }
+        _formPickerOpen = false;
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+    }
+
+    private async Task UnlinkFormAsync(FlowCanvasNodeDto node)
+    {
+        var result = await DesignSvc.RemoveNodeFormAsync(node.Id);
+        if (!result.IsOk) { _error = result.Error; }
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+    }
+
+    private async Task OpenRulePickerAsync()
+    {
+        _ruleCatalog = await DesignSvc.ListRuleCatalogAsync();
+        _rulePickerOpen = true;
+    }
+
+    private IEnumerable<FlowRuleCatalogItemDto> AvailableRules
+        => Selected is FlowCanvasNodeDto node
+            ? _ruleCatalog.Where(r => node.Rules.All(l => l.RuleId != r.RuleId))
+            : [];
+
+    private async Task LinkRuleAsync(Guid ruleId)
+    {
+        if (Selected is not FlowCanvasNodeDto node) { return; }
+        var result = await DesignSvc.AddNodeRuleAsync(node.Id, ruleId);
+        if (!result.IsOk) { _error = result.Error; }
+        _rulePickerOpen = false;
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+    }
+
+    private async Task UnlinkRuleAsync(FlowNodeRuleDto rule)
+    {
+        var result = await DesignSvc.RemoveNodeRuleAsync(rule.LinkId);
+        if (!result.IsOk) { _error = result.Error; }
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+    }
+
+    private async Task SetEdgeConditionAsync(FlowCanvasEdgeDto edge, ChangeEventArgs e)
+    {
+        if (!RequireEditable()) { return; }
+        var result = await DesignSvc.SetEdgeConditionAsync(edge.Id, e.Value?.ToString());
+        if (!result.IsOk) { _error = result.Error; }
+        await RefreshAndReimportAsync();
+    }
+
+    private async Task DeleteEdgeAsync(FlowCanvasEdgeDto edge)
+    {
+        if (!RequireEditable()) { return; }
+        var result = await DesignSvc.DeleteEdgeAsync(edge.Id);
+        if (!result.IsOk) { _error = result.Error; }
+        await RefreshAndReimportAsync();
+    }
+
+    private async Task ToggleRuleAutonomousAsync(FlowNodeRuleDto rule, ChangeEventArgs e)
+    {
+        var isAutonomous = e.Value is bool b && b;
+        var result = await DesignSvc.SetNodeRuleAutonomousAsync(rule.LinkId, isAutonomous);
+        if (!result.IsOk) { _error = result.Error; }
+        _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+    }
+
+    // ---- Header: guardar / publicar / props / io / draft ----
+
+    /// <summary>
+    /// Guarda el grafo dibujado: exporta el XML de bpmn-js y lo re-sincroniza
+    /// (SaveBpmnAsync = EnsureDraft + resync de nodos/aristas/layout). Guarda tambien las
+    /// props (nombre/categoria/descripcion). Si se derivo un borrador nuevo, cambia a el.
+    /// </summary>
+    private async Task SaveAsync()
+    {
+        if (_canvas is null || _bpmn is null) { return; }
+        _busy = true;
+        _error = null;
+        _notice = null;
+        await _dbGate.WaitAsync();
+        try
+        {
+            var xml = _bpmnReady ? await _bpmn.InvokeAsync<string?>("exportXml", CanvasId) : null;
+            if (string.IsNullOrWhiteSpace(xml))
+            {
+                _error = "No se pudo leer el diagrama del editor.";
+                return;
+            }
+
+            var saved = await DesignSvc.SaveBpmnAsync(_canvas.DefinitionId, xml);
+            if (!saved.IsOk || saved.Value is null)
+            {
+                _error = saved.Error ?? "No se pudo guardar el diagrama.";
+                return;
+            }
+
+            // Props (nombre/categoria/descripcion) sobre la definicion resultante.
+            var props = await DesignSvc.UpdateDefinitionPropsAsync(
+                saved.Value.DefinitionId, _name, _categoryValue, _description);
+            if (!props.IsOk)
+            {
+                _error = props.Error ?? "No se pudieron guardar las propiedades.";
+            }
+
+            if (saved.Value.DefinitionId != _canvas.DefinitionId)
+            {
+                // Se derivo un borrador (la definicion abierta estaba publicada): cambiar a el.
+                _notice = "Cambios guardados en la nueva version borrador.";
+                await OnDefinitionSwitched.InvokeAsync(saved.Value.DefinitionId);
+                return;
+            }
+
+            await RefreshAndReimportAsync();
+            _notice = "Cambios guardados.";
+        }
+        finally
+        {
+            _dbGate.Release();
+            _busy = false;
+        }
+    }
+
+    private async Task PublishAsync()
+    {
+        if (_canvas is null) { return; }
+        _busy = true;
+        _error = null;
+        await _dbGate.WaitAsync();
+        try
+        {
+            var result = await Engine.PublishAsync(_canvas.DefinitionId);
+            if (!result.IsOk)
+            {
+                _error = result.Error ?? "No se pudo publicar.";
+                return;
+            }
+            _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+            _notice = $"Version {_canvas!.Version} publicada.";
+        }
+        finally
+        {
+            _dbGate.Release();
+            _busy = false;
+        }
+    }
+
+    private async Task EnsureDraftAsync()
+    {
+        if (_canvas is null) { return; }
+        _busy = true;
+        _error = null;
+        await _dbGate.WaitAsync();
+        try
+        {
+            var result = await DesignSvc.EnsureDraftAsync(_canvas.DefinitionId);
+            if (!result.IsOk || result.Value is null)
+            {
+                _error = result.Error ?? "No se pudo crear la version borrador.";
+                return;
+            }
+            _notice = $"Editando la version borrador v{result.Value.Version}.";
+            await OnDefinitionSwitched.InvokeAsync(result.Value.DefinitionId);
+        }
+        finally
+        {
+            _dbGate.Release();
+            _busy = false;
+        }
+    }
+
+    private void OpenProps()
+    {
+        _estadoValue = _canvas?.Estado ?? "Borrador";
+        _propsOpen = true;
+    }
+
+    private async Task SavePropsAsync()
+    {
+        if (_canvas is null) { return; }
+        _busy = true;
+        _error = null;
+        await _dbGate.WaitAsync();
+        try
+        {
+            var props = await DesignSvc.UpdateDefinitionPropsAsync(
+                _canvas.DefinitionId, _name, _categoryValue, _description);
+            if (!props.IsOk)
+            {
+                _error = props.Error ?? "No se pudo guardar.";
+                return;
+            }
+            if (_estadoValue != _canvas.Estado)
+            {
+                if (_estadoValue == "En marcha" && !_canvas.IsPublished)
+                {
+                    var publish = await Engine.PublishAsync(_canvas.DefinitionId);
+                    if (!publish.IsOk) { _error = publish.Error; }
+                }
+                else if (_estadoValue == "En marcha" && _canvas.IsPaused)
+                {
+                    var resume = await DesignSvc.ResumeAsync(_canvas.DefinitionId);
+                    if (!resume.IsOk) { _error = resume.Error; }
+                }
+                else if (_estadoValue == "Pausado")
+                {
+                    var pause = await DesignSvc.PauseAsync(_canvas.DefinitionId);
+                    if (!pause.IsOk) { _error = pause.Error; }
+                }
+            }
+            _propsOpen = false;
+            _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+            _notice = "Propiedades guardadas.";
+        }
+        finally
+        {
+            _dbGate.Release();
+            _busy = false;
+        }
+    }
+
+    private async Task OpenIo(bool export)
+    {
+        _ioExport = export;
+        _ioError = null;
+        _importXml = "";
+        if (export && _bpmnReady && _bpmn is not null)
+        {
+            _exportXml = await _bpmn.InvokeAsync<string?>("exportXml", CanvasId);
+        }
+        _ioOpen = true;
+    }
+
+    private async Task CopyXmlAsync()
+    {
+        if (_exportXml is not null)
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _exportXml);
+            _notice = "XML copiado al portapapeles.";
+            _ioOpen = false;
+        }
+    }
+
+    /// <summary>Importar BPMN: crea una definicion nueva en Borrador via el motor (ImportBpmn).</summary>
+    private async Task ImportXmlAsync()
+    {
+        _busy = true;
+        _ioError = null;
+        await _dbGate.WaitAsync();
+        try
+        {
+            var result = await DesignSvc.ImportBpmnAsync(_importXml);
+            if (!result.IsOk || result.Value is null)
+            {
+                _ioError = result.Error ?? "No se pudo importar.";
+                return;
+            }
+            _ioOpen = false;
+            _notice = $"Flujo importado como {result.Value.ProcessCode} v{result.Value.Version} (Borrador).";
+            await OnDefinitionSwitched.InvokeAsync(result.Value.DefinitionId);
+        }
+        finally
+        {
+            _dbGate.Release();
+            _busy = false;
+        }
+    }
+
+    // ---- Saltar a otro flujo (visual; el vinculo real es deuda) ----
+
+    private async Task OpenJumpAsync()
+    {
+        _jumpQuery = "";
+        _jumpSelected = null;
+        _jumpFlows = (await DesignSvc.ListForIndexAsync()).Cards
+            .Where(c => c.ProcessCode != _canvas?.ProcessCode)
+            .ToList();
+        _jumpOpen = true;
+    }
+
+    private IEnumerable<FlowCardDto> JumpOptions
+        => string.IsNullOrWhiteSpace(_jumpQuery)
+            ? _jumpFlows
+            : _jumpFlows.Where(f => f.Name.Contains(_jumpQuery.Trim(), StringComparison.OrdinalIgnoreCase)
+                || f.ProcessCode.Contains(_jumpQuery.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private void ConfirmJump()
+    {
+        _jumpOpen = false;
+        _notice = "TODO: el vinculo real entre flujos (call activity) esta pendiente en el motor.";
+    }
+
+    private async Task CloseAsync()
+    {
+        await DestroyCanvasAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task DestroyCanvasAsync()
+    {
+        if (_bpmn is not null)
+        {
+            try { await _bpmn.InvokeVoidAsync("destroy", CanvasId); }
+            catch { /* circuito ya cerrado */ }
+        }
+        _bpmnReady = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DestroyCanvasAsync();
+        if (_bpmn is not null)
+        {
+            try { await _bpmn.DisposeAsync(); }
+            catch { /* circuito ya cerrado */ }
+        }
+        _selfRef?.Dispose();
+        _dbGate.Dispose();
+    }
+}

@@ -1,0 +1,525 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+@inject ITenantAdminService TenantsSvc
+@inject ISubscriptionAdminService SubsSvc
+@inject IPlanAdminService PlansSvc
+@inject IServiceScopeFactory ScopeFactory
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.EntityFrameworkCore
+@using Ecorex.Application.MenuConfig
+@using Ecorex.Domain.Enums
+
+@if (_showAdmin)
+{
+    @* Consola de plataforma: marca configurable (Super Admin -> Marca) con icono de tablero. *@
+    <div class="ecorex-brand">
+        <div class="ecorex-logo">
+            @if (!string.IsNullOrWhiteSpace(_brandLogoUrl))
+            {
+                <img src="@_brandLogoUrl" alt="@(_brandName ?? "Logo")" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" />
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="3"/><path d="m7.5 12 2 2 4-4.5"/><path d="M16.5 16h.01"/></svg>
+            }
+        </div>
+        <div>
+            @if (string.IsNullOrWhiteSpace(_brandName) || _brandName == "ECOREX.tareas")
+            {
+                <div class="ecorex-brand-name">ECOREX<span>.tareas</span></div>
+            }
+            else
+            {
+                <div class="ecorex-brand-name">@_brandName</div>
+            }
+            <div class="ecorex-brand-sub">@(_brandTagline ?? "Sistema de Tareas")</div>
+        </div>
+    </div>
+}
+else
+{
+    @* Cabecera del workspace (fuente ECOREX.dc.html): tile 36px radio 11 con fondo
+       var(--ink) + inicial, nombre 14.5/700 y "{plan} (punto medio) ECOREX" (el nombre del plan
+       ya trae la palabra "Plan"; separador punto medio como el prototipo). *@
+    <div class="ecorex-ws-head">
+        <div class="ecorex-ws-row" title="@(_tenantName ?? "Mi empresa")">
+            <div class="ecorex-tenant-tile">@TenantInitial</div>
+            <div style="flex:1;min-width:0;">
+                <div class="ecorex-tenant-name">@(_tenantName ?? "Mi empresa")</div>
+                <div class="ecorex-tenant-sub">@(_planName is null ? "ECOREX Sistema de Tareas" : $"{_planName} \u00b7 ECOREX")</div>
+            </div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+        </div>
+    </div>
+}
+
+@* Buscador global del prototipo (Cmd/Ctrl+K). Placeholder: se activa junto con el contenido real. *@
+<div class="ecorex-search" title="Busqueda global (proximamente)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input type="search" placeholder="Buscar" disabled />
+    <span class="kbd">Ctrl K</span>
+</div>
+
+@if (_showAdmin)
+{
+    <div class="ecorex-agency">
+        <div class="lbl">Plataforma</div>
+        <div class="name">ECOREX.tareas</div>
+        <div class="meta">Consola de gobierno</div>
+    </div>
+}
+
+<nav class="ecorex-nav">
+    @if (_showTenant && _menu is not null)
+    {
+        @* ===== Menu DATA-DRIVEN (Ola 1 del menu por perfil): el arbol resuelto viene de
+               IMenuConfigService.GetMenuForTenantUserAsync segun la vista del usuario (o la
+               IsDefault). El LOOK es identico al del prototipo: quick-links, label "Modulos",
+               secciones acordeon con icono/contador/chevron, items con codigo legacy y el
+               subgrupo anidado. data-acc = slug del nodo (Route) para persistir apertura. ===== *@
+        @foreach (var quick in _menu.Roots.Where(n => n.Kind == MenuNodeKind.QuickLink))
+        {
+            <NavLink class="ecorex-nav-link" href="@quick.Route">
+                @MenuIcons.Render(quick.IconKey)
+                <span>@quick.Name</span>
+                @if (string.Equals(quick.Route, "anuncios", StringComparison.Ordinal))
+                {
+                    @* Placeholder del contador de no leidos: se conecta cuando exista el modulo. *@
+                    <span class="ecorex-nav-badge" title="Anuncios sin leer (placeholder)">0</span>
+                }
+            </NavLink>
+        }
+
+        <div class="ecorex-nav-label">Modulos</div>
+
+        @foreach (var section in _menu.Roots.Where(n => n.Kind == MenuNodeKind.Section))
+        {
+            var slug = section.Route ?? section.Id.ToString();
+            <details class="ecorex-acc @SectionTone(slug)" data-acc="@slug" open="@IsGroupOpen(slug)">
+                <summary>
+                    <span class="ecorex-acc-ico">@MenuIcons.Render(section.IconKey)</span>
+                    <span class="ecorex-acc-name">@section.Name</span>
+                    @if (section.IsProcessGroup)
+                    {
+                        <span title="Este grupo despliega los procesos (actividades tipo proceso)" style="margin-left:6px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:1px 6px;border-radius:999px;background:rgba(124,92,255,.16);color:#7c5cff;">procesos</span>
+                    }
+                    <span class="ecorex-acc-count">@section.VisibleChildCount</span>
+                    <svg class="ecorex-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </summary>
+                <div class="ecorex-acc-body">
+                    @* Ola 4: grupo dinamico "Mis Procesos" -> categoria -> subcategoria (proceso,
+                       con flujo) desde el catalogo de Conceptos. Click abre el wizard con la
+                       categoria/subcategoria fijadas (crear-actividad?sub=). *@
+                    @if (section.IsProcessGroup)
+                    {
+                        @* Las categorias-proceso dinamicas van agrupadas bajo un nodo "Procesos". *@
+                        <details class="ecorex-acc-sub" data-acc="grp-procesos" open="@IsGroupOpen("grp-procesos")">
+                            <summary>
+                                <span class="ecorex-acc-name">Procesos</span>
+                                <span class="ecorex-acc-count">@_procesoCats.Count</span>
+                                <svg class="ecorex-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </summary>
+                            <div class="ecorex-acc-sub-body">
+                                @foreach (var pc in _procesoCats)
+                                {
+                                    <details class="ecorex-acc-sub" data-acc="@pc.Slug" open="@IsGroupOpen(pc.Slug)">
+                                        <summary>
+                                            <span class="ecorex-acc-name">@pc.Nombre</span>
+                                            <span class="ecorex-acc-count">@pc.Subs.Count</span>
+                                            <svg class="ecorex-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                        </summary>
+                                        <div class="ecorex-acc-sub-body">
+                                            @foreach (var s in pc.Subs)
+                                            {
+                                                <NavLink class="ecorex-acc-item" href="@($"actividades?sub={s.Id}")">
+                                                    <span class="lbl">@s.Nombre</span>
+                                                    @if (!s.Publicado)
+                                                    {
+                                                        @* Ola C1 (D3): el flujo del concepto aun esta en borrador. Se
+                                                           muestra igual (se avisa, no se oculta); el chip lo advierte. *@
+                                                        <span class="code" title="El flujo de este proceso aun no esta publicado" style="background:var(--t-amber-bg, rgba(245,158,11,.16));color:var(--t-amber, #f59e0b)">borrador</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="code" title="Actividad tipo proceso">proc</span>
+                                                    }
+                                                </NavLink>
+                                            }
+                                        </div>
+                                    </details>
+                                }
+                                @if (_procesoCats.Count == 0)
+                                {
+                                    <div style="padding:8px 12px;font-size:11.5px;color:var(--ink-3)">Sin actividades tipo proceso. Vincula un flujo a una subcategoria en Conceptos.</div>
+                                }
+                            </div>
+                        </details>
+                    }
+                    @foreach (var child in section.Children)
+                    {
+                        if (child.Kind == MenuNodeKind.Subgroup)
+                        {
+                            var subSlug = child.Route ?? child.Id.ToString();
+                            <details class="ecorex-acc-sub" data-acc="@subSlug" open="@IsGroupOpen(subSlug)">
+                                <summary>
+                                    <span class="ecorex-acc-name">@child.Name</span>
+                                    <span class="ecorex-acc-count">@child.VisibleChildCount</span>
+                                    <svg class="ecorex-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                </summary>
+                                <div class="ecorex-acc-sub-body">
+                                    @foreach (var leaf in child.Children.Where(n => n.Kind == MenuNodeKind.Item))
+                                    {
+                                        <NavLink class="ecorex-acc-item" href="@leaf.Route">
+                                            <span class="lbl">@leaf.Name</span>
+                                        </NavLink>
+                                    }
+                                </div>
+                            </details>
+                        }
+                        else
+                        {
+                            <NavLink class="ecorex-acc-item" href="@child.Route">
+                                <span class="lbl">@child.Name</span>
+                            </NavLink>
+                        }
+                    }
+                </div>
+            </details>
+        }
+    }
+
+    @if (_showAdmin)
+    {
+        <div class="ecorex-nav-label">Super Admin SaaS</div>
+
+        <NavLink class="ecorex-nav-link" href="" Match="NavLinkMatch.All">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            <span>Dashboard</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="tenants">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/></svg>
+            <span>Empresas</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="admin/empresas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01"/><path d="M9 12v.01"/><path d="M9 15v.01"/><path d="M9 18v.01"/></svg>
+            <span>Ficha de empresa</span>
+        </NavLink>
+
+        @if (_isSuperAdmin)
+        {
+            <NavLink class="ecorex-nav-link" href="equipo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>Equipo plataforma</span>
+            </NavLink>
+        }
+
+        <NavLink class="ecorex-nav-link" href="plans">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            <span>Planes</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="facturacion">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>
+            <span>Facturacion</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="auditoria">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>
+            <span>Auditoria</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="servidor-evolution">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+            <span>Servidor Evolution</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="servidores-ia">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+            <span>Servidores de IA</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="marca">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+            <span>Marca</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="servidor-correo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            <span>Servidor de correo</span>
+        </NavLink>
+
+        <NavLink class="ecorex-nav-link" href="login-google">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><path d="M21 5v4h-4"/></svg>
+            <span>Login con Google</span>
+        </NavLink>
+    }
+</nav>
+
+<div class="ecorex-user">
+    @* El color AVPAL del prototipo solo aplica al workspace; el admin conserva su avatar dorado. *@
+    <div class="ecorex-avatar" style="@(_showAdmin ? null : $"background:{AvatarBg}")">@_avatar</div>
+    <div style="min-width:0;">
+        <div class="nm">@(_userName ?? "Usuario")</div>
+        <div class="rl">@_roleLabel</div>
+    </div>
+    @* Toggle de modo oscuro (icono luna, prototipo). JS plano: funciona en SSR e interactivo. *@
+    <button type="button" class="ecorex-theme-btn" title="Cambiar modo claro/oscuro"
+            onclick="window.ecorexTheme && window.ecorexTheme.toggle()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+    </button>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    // El menu se arma por rol: el operador de plataforma (platform_role) ve el grupo
+    // Super Admin SaaS y previsualiza el workspace del tenant; el usuario de empresa
+    // (tenant_id) ve las secciones Principal / Modulos / Sistema y el CRM heredado.
+    private bool _showAdmin;
+    private bool _showTenant;
+    private bool _isSuperAdmin;
+    private string? _userName;
+    private string? _tenantName;
+    private string? _planName;
+    // Marca de la plataforma (Super Admin -> Marca): logo, nombre y bajada del sidebar.
+    private string? _brandName;
+    private string? _brandTagline;
+    private string? _brandLogoUrl;
+    private string _roleLabel = "Operador de plataforma";
+    private string _avatar = "SA";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+
+        // Marca de la plataforma configurada en Super Admin -> Marca (logo + nombre + bajada). Scope
+        // aislado para no compartir el DbContext del circuito. Si falla, el markup usa los valores por defecto.
+        try
+        {
+            await using var brandScope = ScopeFactory.CreateAsyncScope();
+            var branding = brandScope.ServiceProvider.GetRequiredService<Ecorex.Application.Admin.IPlatformBrandingService>();
+            var b = await branding.GetAsync();
+            _brandName = b.PlatformName;
+            _brandTagline = b.Tagline;
+            _brandLogoUrl = b.LoginLogoUrl;
+        }
+        catch { /* sin branding: se usa el logo/nombre por defecto */ }
+
+        if (AuthState is null)
+        {
+            return;
+        }
+
+        var state = await AuthState;
+        var isPlatformOperator = state.User.FindFirst("platform_role") is not null;
+        var tenantClaim = state.User.FindFirst("tenant_id")?.Value;
+        var isTenantUser = tenantClaim is not null;
+
+        _showAdmin = isPlatformOperator;
+        _showTenant = isPlatformOperator || isTenantUser;
+        _isSuperAdmin = state.User.FindFirst("platform_role")?.Value == "SuperAdmin";
+
+        _userName = state.User.Identity?.Name;
+        _avatar = Initials(_userName);
+
+        if (isPlatformOperator)
+        {
+            _roleLabel = "Operador de plataforma";
+        }
+        else if (isTenantUser)
+        {
+            _roleLabel = state.User.FindFirst("tenant_role")?.Value ?? "Miembro";
+            if (Guid.TryParse(tenantClaim, out var tenantId))
+            {
+                var tenant = await TenantsSvc.GetAsync(tenantId);
+                _tenantName = tenant?.Name;
+
+                // Plan activo para la cabecera del workspace ("Plan Empresa - ECOREX").
+                // Si no hay suscripcion (o falla), se muestra la bajada generica.
+                try
+                {
+                    var sub = (await SubsSvc.ListByTenantAsync(tenantId)).FirstOrDefault();
+                    if (sub is not null)
+                    {
+                        _planName = (await PlansSvc.GetAsync(sub.PlanId))?.Name;
+                    }
+                }
+                catch { /* sin plan visible: bajada generica */ }
+
+                // Menu configurable (Ola 1): resuelve el arbol de la vista del usuario (o la
+                // IsDefault del tenant) en un scope aislado, como la marca. Si falla, _menu queda
+                // null y el bloque tenant simplemente no renderiza (fallback seguro).
+                await LoadMenuAsync(tenantId, state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
+            }
+        }
+    }
+
+    /// <summary>Arbol resuelto del menu del workspace (Ola 1). Null = no renderiza el bloque tenant.</summary>
+    private ResolvedMenuDto? _menu;
+
+    private async Task LoadMenuAsync(Guid tenantId, string? platformUserIdClaim)
+    {
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var menuSvc = scope.ServiceProvider.GetRequiredService<IMenuConfigService>();
+
+            // Vista asignada al usuario (o null -> el servicio cae a la IsDefault del tenant).
+            Guid? assignedViewId = null;
+            Ecorex.Application.Roles.EffectivePermissions? permissions = null;
+            if (Guid.TryParse(platformUserIdClaim, out var platformUserId))
+            {
+                var db = scope.ServiceProvider.GetRequiredService<Ecorex.Application.Common.IApplicationDbContext>();
+                assignedViewId = await db.TenantUsers
+                    .Where(u => u.PlatformUserId == platformUserId)
+                    .Select(u => u.MenuViewId)
+                    .FirstOrDefaultAsync();
+
+                // Permisos efectivos para FILTRAR el menu por "Ver" (Ola B2, ADR-0033). Owner/Admin y
+                // usuario sin rol -> Unrestricted -> el filtro devuelve el arbol intacto.
+                var roles = scope.ServiceProvider.GetRequiredService<Ecorex.Application.Roles.IRolService>();
+                permissions = await roles.ResolveEffectivePermissionsAsync(platformUserId);
+            }
+
+            var resolved = await menuSvc.GetMenuForTenantUserAsync(tenantId, assignedViewId);
+            // Poda los modulos (Item con Route) sin permiso de Ver; oculta secciones que quedan vacias.
+            _menu = Ecorex.Application.MenuConfig.MenuPermissionFilter.Filter(resolved, permissions);
+
+            // Ola 4: si alguna seccion es "grupo de procesos" (IsProcessGroup), cargar el catalogo
+            // de Conceptos y armar el arbol dinamico categoria -> subcategorias TIPO PROCESO
+            // (las que tienen un flujo vinculado). Mismo scope aislado.
+            if (_menu is not null && _menu.Roots.Any(n => n.Kind == MenuNodeKind.Section && n.IsProcessGroup))
+            {
+                var catalogo = scope.ServiceProvider.GetRequiredService<Ecorex.Application.Actividades.IActividadCatalogoService>();
+                var cats = await catalogo.ListCategoriasAsync(includeArchived: false);
+                var subs = await catalogo.ListSubcategoriasAsync(includeArchived: false);
+                // Ola C1 (D3): flujos PUBLICADOS de este tenant (el contexto ya esta tenant-scoped).
+                // Una hoja cuyo flujo no este aqui se muestra igual, pero con chip "borrador".
+                var procDb = scope.ServiceProvider.GetRequiredService<Ecorex.Application.Common.IApplicationDbContext>();
+                var publicados = (await procDb.WorkflowDefinitions
+                        .Where(w => w.IsPublished && !w.IsArchived)
+                        .Select(w => w.Id)
+                        .ToListAsync()).ToHashSet();
+                _procesoCats = cats
+                    .Select(c => new ProcesoCat(c.Nombre, "proc-" + c.Id.ToString("N")[..8],
+                        subs.Where(s => s.CategoriaId == c.Id && s.WorkflowDefinitionId != null && !s.IsArchived)
+                            .Select(s => new ProcesoSub(s.Id, s.Nombre,
+                                Publicado: s.WorkflowDefinitionId is Guid wf && publicados.Contains(wf))).ToList()))
+                    .Where(pc => pc.Subs.Count > 0)
+                    .ToList();
+            }
+        }
+        catch { /* sin menu configurado: el bloque tenant no renderiza (fallback seguro) */ }
+    }
+
+    /// <summary>Arbol dinamico de "Mis Procesos" (Ola 4): categorias con sus subcategorias tipo proceso.</summary>
+    private List<ProcesoCat> _procesoCats = new();
+    private sealed record ProcesoCat(string Nombre, string Slug, List<ProcesoSub> Subs);
+    private sealed record ProcesoSub(Guid Id, string Nombre, bool Publicado);
+
+    /// <summary>Inicial del tenant para el tile cuadrado del header (prototipo: "S" de SKY SYSTEM).</summary>
+    private string TenantInitial => string.IsNullOrWhiteSpace(_tenantName) ? "E" : _tenantName.Trim()[..1].ToUpperInvariant();
+
+    /// <summary>
+    /// Estado inicial (server-side) de cada acordeon de MODULOS: abierto SOLO si contiene la
+    /// ruta activa, para que el menu arranque cerrado y se vea donde esta uno parado. Antes
+    /// tres grupos (misproc/auto/sg-comercial) abrian siempre, replicando el estado en que el
+    /// prototipo quedo capturado; eso no era una regla, y al entrar llenaba el sidebar de items
+    /// que nadie pidio. Las rutas de cada grupo se derivan del arbol resuelto (Ola 1). El toggle
+    /// del usuario se persiste en localStorage y lo reaplica el script de MainLayout.
+    /// </summary>
+    private bool IsGroupOpen(string key)
+    {
+        var rel = Navigation.ToBaseRelativePath(Navigation.Uri)
+            .Split('?', '#')[0]
+            .TrimEnd('/')
+            .ToLowerInvariant();
+        var routes = RoutesForSlug(key);
+        return routes.Any(r => rel == r || rel.StartsWith(r + "/", StringComparison.Ordinal));
+    }
+
+    /// <summary>Rutas hoja bajo la seccion/subgrupo con ese slug (data-acc), derivadas del arbol resuelto.</summary>
+    private IEnumerable<string> RoutesForSlug(string slug)
+    {
+        if (_menu is null) { yield break; }
+        foreach (var section in _menu.Roots.Where(n => n.Kind == MenuNodeKind.Section || n.Kind == MenuNodeKind.Subgroup))
+        {
+            if (!string.Equals(section.Route, slug, StringComparison.Ordinal)) { continue; }
+            foreach (var route in LeafRoutes(section))
+            {
+                yield return route.ToLowerInvariant();
+            }
+        }
+        // Subgrupos: buscar tambien anidados dentro de secciones.
+        foreach (var section in _menu.Roots.Where(n => n.Kind == MenuNodeKind.Section))
+        {
+            foreach (var sub in section.Children.Where(c => c.Kind == MenuNodeKind.Subgroup
+                && string.Equals(c.Route, slug, StringComparison.Ordinal)))
+            {
+                foreach (var route in LeafRoutes(sub))
+                {
+                    yield return route.ToLowerInvariant();
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> LeafRoutes(MenuNodeDto node)
+    {
+        foreach (var child in node.Children)
+        {
+            if (child.Kind == MenuNodeKind.Item && !string.IsNullOrEmpty(child.Route))
+            {
+                yield return child.Route!;
+            }
+            foreach (var deeper in LeafRoutes(child))
+            {
+                yield return deeper;
+            }
+        }
+    }
+
+    // Tono cromatico del acordeon por slug (clases del prototipo: tv/tr/tb/ts). Mismo mapa que el
+    // fuente ECOREX.dc.html; los slugs desconocidos caen a "ts" (neutro).
+    private static string SectionTone(string slug) => slug switch
+    {
+        "misproc" => "tv",
+        "nego" => "tr",
+        "auto" or "ia" => "tb",
+        _ => "ts",
+    };
+
+    // Paleta AVPAL del prototipo (avatares con color solido mate): (char0 + char1) % 8.
+    private static readonly string[] AvatarPalette =
+    [
+        "#E0876B", "#7E78E6", "#3FA39B", "#5B8DEF", "#C77FD0", "#D9A441", "#5FAE6E", "#E07A9B"
+    ];
+
+    private string AvatarBg
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_avatar)) { return AvatarPalette[0]; }
+            var sum = _avatar[0] + (_avatar.Length > 1 ? _avatar[1] : 0);
+            return AvatarPalette[sum % AvatarPalette.Length];
+        }
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+            : $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => StateHasChanged();
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
+    // Los iconos por clave (IconKey -> SVG del prototipo) viven ahora en el componente
+    // compartido MenuIcons (Components/Shared/MenuIcons.razor): misma fuente para el sidebar,
+    // el arbol/selector del editor (Ola 2) y la vista previa, para que coincidan 1:1.
+}

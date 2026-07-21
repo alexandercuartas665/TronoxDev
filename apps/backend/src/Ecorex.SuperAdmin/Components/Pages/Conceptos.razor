@@ -1,0 +1,1088 @@
+@page "/conceptos"
+@attribute [Authorize(Policy = "Conceptos.Editar")]
+@* Policy por modulo (paso 1: mismo requisito que TenantMember, nombre estable). *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Ecorex.Application.Actividades
+@using Ecorex.Application.Workflows
+@using Ecorex.Application.Forms
+@inject IActividadCatalogoService Svc
+@inject IWorkflowStartService WorkflowStart
+@inject IFormDefinitionService Forms
+
+<PageTitle>Conceptos de actividades - ECOREX.tareas</PageTitle>
+
+<div class="cn-page">
+
+    @* ===== Topbar del modulo ===== *@
+    <div class="cn-topbar">
+        <nav class="cn-crumb" aria-label="Ruta de navegacion">
+            <span>Home</span>
+            <span class="sep">/</span>
+            <span>Tareas</span>
+            <span class="sep">/</span>
+            <span class="last">Conceptos de actividades</span>
+            <span class="cn-mod-code">MOD 000270</span>
+        </nav>
+        <div class="cn-top-actions">
+            <button class="cn-btn" disabled title="Pendiente: exportacion no implementada">Exportar</button>
+            <button class="cn-btn primary" @onclick="OpenNewCategoryModal">+ Nueva categoria</button>
+        </div>
+    </div>
+
+    <div class="cn-container">
+
+        <div class="cn-hero">
+            <div class="cn-eyebrow">MODULO 000270 &middot; TAREAS</div>
+            <h1 class="cn-hero-title">Conceptos de actividades</h1>
+            <p class="cn-hero-sub">Categorias y sub-categorias (conceptos) que clasifican las tareas y gobiernan su inicio.</p>
+        </div>
+
+        @if (_notice is not null)
+        {
+            <div class="@(_noticeOk ? "cn-ok" : "cn-error")">@_notice</div>
+        }
+
+        @* ===== KPIs ===== *@
+        <div class="cn-kpis cn-kpis-top">
+            <div class="cn-kpi">
+                <div class="cn-kpi-label">Categorias</div>
+                <div class="cn-kpi-value">@_kpis.Categorias</div>
+            </div>
+            <div class="cn-kpi">
+                <div class="cn-kpi-label">Sub-categorias</div>
+                <div class="cn-kpi-value">@_kpis.Subcategorias</div>
+            </div>
+            <div class="cn-kpi">
+                <div class="cn-kpi-label">Con cliente</div>
+                <div class="cn-kpi-value">@_kpis.ConCliente</div>
+            </div>
+            <div class="cn-kpi">
+                <div class="cn-kpi-label">Auto-inicio</div>
+                <div class="cn-kpi-value">@_kpis.AutoInicio</div>
+            </div>
+        </div>
+
+        @* ===== Tabs Actividades / Detalle ===== *@
+        <div class="cn-tabs">
+            <button class="cn-tab @(_tab == 0 ? "active" : "")" @onclick="@(() => _tab = 0)">Actividades</button>
+            <button class="cn-tab @(_tab == 1 ? "active" : "")" @onclick="@(() => _tab = 1)">Detalle</button>
+        </div>
+
+        @if (_tab == 0)
+        {
+            <div class="cn-split">
+
+                @* ---- Panel izquierdo: Categorias ---- *@
+                <div class="cn-card">
+                    <div class="cn-card-header">
+                        <div class="cn-card-title">Categorias <span class="count">@_cats.Count</span></div>
+                        <button class="cn-btn sm" @onclick="OpenNewCategoryModal">+ Nueva</button>
+                    </div>
+                    <div class="cn-search">
+                        <input placeholder="Buscar categoria..." value="@_catSearch"
+                               @oninput="@(e => _catSearch = e.Value?.ToString() ?? "")" />
+                    </div>
+                    <div class="cn-cat-list">
+                        @if (FilteredCategories.Count == 0)
+                        {
+                            <div class="cn-empty-list">
+                                @(_cats.Count == 0
+                                    ? "Sin categorias todavia. Crea la primera con + Nueva."
+                                    : "Ninguna categoria coincide con la busqueda.")
+                            </div>
+                        }
+                        @foreach (var cat in FilteredCategories)
+                        {
+                            <div class="cn-cat-item @(cat.Id == _selectedCatId ? "active" : "")"
+                                 @onclick="@(() => SelectCategory(cat.Id))">
+                                <div class="cn-icon @ToneClass(cat.Id)">@Initial(cat.Nombre)</div>
+                                <div class="cn-cat-body">
+                                    <div class="cn-cat-name">
+                                        @cat.Nombre <span class="cn-badge count">@cat.SubcategoriasActivas</span>
+                                    </div>
+                                    <div class="cn-cat-meta">
+                                        <code class="cn-code">@cat.Codigo</code>
+                                        @if (cat.IsArchived)
+                                        {
+                                            <span class="cn-badge off">Archivada</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* ---- Panel derecho: detalle de la categoria ---- *@
+                <div class="cn-card cn-detail">
+                    @if (SelectedCategory is null)
+                    {
+                        <div class="cn-empty-detail">
+                            <h3>Selecciona una categoria</h3>
+                            <p>Elige una categoria del panel izquierdo o crea una con <strong>+ Nueva</strong>.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        var cat = SelectedCategory;
+                        <div class="cn-detail-head">
+                            <div class="cn-detail-title-row">
+                                <div class="cn-icon lg @ToneClass(cat.Id)">@Initial(cat.Nombre)</div>
+                                <div>
+                                    <h1 class="cn-detail-title">@cat.Nombre</h1>
+                                    <div class="cn-detail-sub">
+                                        <code class="cn-code">@cat.Codigo</code>
+                                        &middot; @cat.SubcategoriasActivas concepto@(cat.SubcategoriasActivas == 1 ? "" : "s") activo@(cat.SubcategoriasActivas == 1 ? "" : "s")
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="cn-top-actions">
+                                <button class="cn-btn sm" @onclick="@(() => OpenEditCategoryModal(cat))">Editar categoria</button>
+                                <button class="cn-btn sm" @onclick="ToggleCategoryArchivedAsync" disabled="@_busy">
+                                    @(cat.IsArchived ? "Restaurar" : "Archivar")
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(cat.Descripcion))
+                        {
+                            <div class="cn-detail-desc">@cat.Descripcion</div>
+                        }
+
+                        <div class="cn-sub-head">
+                            <div class="cn-sub-head-title">Sub-categorias</div>
+                            <button class="cn-btn sm primary" @onclick="@(() => OpenSubModal(null))">+ Agregar sub-categoria</button>
+                        </div>
+
+                        <div class="cn-sub-grid">
+                            @if (SelectedSubs.Count == 0)
+                            {
+                                <div class="cn-empty-dashed">
+                                    Sin sub-categorias. Crea la primera con + Agregar sub-categoria.
+                                </div>
+                            }
+                            @foreach (var s in SelectedSubs)
+                            {
+                                <div class="cn-sub-card @(s.IsArchived ? "archived" : "")" @onclick="@(() => OpenSubModal(s))">
+                                    <div class="cn-sub-card-top">
+                                        <span class="cn-sub-name">@s.Nombre</span>
+                                        <code class="cn-code">@s.Codigo</code>
+                                    </div>
+                                    <div class="cn-sub-meta">@s.ChequeoCount item@(s.ChequeoCount == 1 ? "" : "s") de chequeo</div>
+                                    <div class="cn-chip-row">
+                                        @if (s.RequiereCliente)
+                                        {
+                                            <span class="cn-tag t-blue">Requiere cliente</span>
+                                        }
+                                        @if (s.IniciaModulo)
+                                        {
+                                            <span class="cn-tag t-violet">Inicia modulo</span>
+                                        }
+                                        @if (s.CierreManual)
+                                        {
+                                            <span class="cn-tag t-amber">Cierre manual</span>
+                                        }
+                                        @if (s.WorkflowDefinitionId is not null)
+                                        {
+                                            <span class="cn-tag t-green">Con flujo</span>
+                                        }
+                                        @if (s.IsArchived)
+                                        {
+                                            <span class="cn-tag t-rose">Archivada</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            @* ===== TAB Detalle: grid maestro Categoria x Sub-categoria ===== *@
+            <div class="cn-card">
+                <div class="cn-filter-bar">
+                    <span>Filtrar:</span>
+                    <select value="@_dCategoria" @onchange="@(e => _dCategoria = e.Value?.ToString() ?? "")">
+                        <option value="">Categoria: todas</option>
+                        @foreach (var c in _cats)
+                        {
+                            <option value="@c.Id">@c.Nombre</option>
+                        }
+                    </select>
+                    <select value="@_dEstado" @onchange="@(e => _dEstado = e.Value?.ToString() ?? "")">
+                        <option value="">Estado: todos</option>
+                        <option value="on">Activo</option>
+                        <option value="off">Archivado</option>
+                    </select>
+                    <input class="cn-filter-input" placeholder="Buscar sub-categoria..." value="@_dSearch"
+                           @oninput="@(e => _dSearch = e.Value?.ToString() ?? "")" />
+                </div>
+                <div class="cn-table-wrap">
+                    <table class="cn-grid">
+                        <thead>
+                            <tr>
+                                <th>Categoria</th>
+                                <th>Sub-categoria</th>
+                                <th>Codigo</th>
+                                <th>Flujo</th>
+                                <th>Formulario</th>
+                                <th>Tablero</th>
+                                <th>Estado</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (DetailRows.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="8">
+                                        <div class="cn-empty-dashed">Ninguna sub-categoria coincide con los filtros.</div>
+                                    </td>
+                                </tr>
+                            }
+                            @foreach (var s in DetailRows)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="cn-grid-name">
+                                            <div class="cn-icon sm @ToneClass(s.CategoriaId)">@Initial(CategoryName(s.CategoriaId))</div>
+                                            <span>@CategoryName(s.CategoriaId)</span>
+                                        </div>
+                                    </td>
+                                    <td>@s.Nombre</td>
+                                    <td><code class="cn-code">@s.Codigo</code></td>
+                                    <td>@(WorkflowLabel(s.WorkflowDefinitionId) ?? "-")</td>
+                                    <td>@(FormLabel(s.FormDefinitionId) ?? "-")</td>
+                                    <td>@(BoardLabel(s.TaskBoardId) ?? "-")</td>
+                                    <td><span class="cn-badge @(s.IsArchived ? "off" : "on")">@(s.IsArchived ? "Archivada" : "Activa")</span></td>
+                                    <td>
+                                        <div class="cn-row-actions">
+                                            <button class="cn-icon-btn" title="Editar" @onclick="@(() => OpenSubModal(s))">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                            </button>
+                                            <button class="cn-icon-btn" title="@(s.IsArchived ? "Restaurar" : "Archivar")" disabled="@_busy"
+                                                    @onclick="@(() => ToggleSubArchivedAsync(s))">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* ===== Modal editor de sub-categoria (acordeones) ===== *@
+@if (_mOpen)
+{
+    <div class="cn-modal-backdrop" @onclick="CloseSubModal">
+        <div class="cn-modal" @onclick:stopPropagation="true">
+            <div class="cn-modal-head">
+                <div class="cn-modal-title">
+                    @(_mId is null ? "Nueva sub-categoria" : $"Editar sub-categoria - {_mName}")
+                </div>
+                <button class="cn-btn sm" @onclick="CloseSubModal">Cerrar</button>
+            </div>
+            <div class="cn-modal-body">
+
+                @if (_mError is not null)
+                {
+                    <div class="cn-error">@_mError</div>
+                }
+
+                @* -- 1. Datos basicos -- *@
+                <div class="cn-acc @(_acc1 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc1 = !_acc1)">
+                        <div class="cn-acc-title">Datos basicos <span class="cn-chip">requerido</span></div>
+                        <span>@(_acc1 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <div class="cn-field">
+                            <label>Categoria</label>
+                            <select value="@_mCategoriaId" @onchange="@(e => _mCategoriaId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : _mCategoriaId)">
+                                @foreach (var c in _cats)
+                                {
+                                    <option value="@c.Id">@c.Codigo - @c.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="cn-field">
+                            <label>Nombre</label>
+                            <input maxlength="200" value="@_mName" @onchange="@(e => _mName = e.Value?.ToString() ?? "")" />
+                        </div>
+                        <div class="cn-field">
+                            <label>Lista de chequeo</label>
+                            <textarea rows="2" placeholder="paso 1; paso 2; paso 3" value="@_mChequeo"
+                                      @onchange="@(e => _mChequeo = e.Value?.ToString() ?? "")"></textarea>
+                        </div>
+                        <div class="cn-field-help">Separa cada item con punto y coma (;).</div>
+                        <div class="cn-field">
+                            <label>Descripcion</label>
+                            <textarea rows="2" value="@_mDescripcion" @onchange="@(e => _mDescripcion = e.Value?.ToString() ?? "")"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                @* -- 2. Gestion del inicio del proceso (RQ07) -- *@
+                <div class="cn-acc @(_acc2 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc2 = !_acc2)">
+                        <div class="cn-acc-title">Gestion del inicio del proceso</div>
+                        <span>@(_acc2 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <label class="cn-switch-row">
+                            <span class="cn-switch @(_mIniciaModulo ? "on" : "")" @onclick="@(() => _mIniciaModulo = !_mIniciaModulo)">
+                                <span class="cn-switch-knob"></span>
+                            </span>
+                            <span>Inicia modulo al crear la tarea</span>
+                        </label>
+                        @if (_mIniciaModulo)
+                        {
+                            @* Guardia (form-first vs form-por-nodo): si el formulario de ADMISION del
+                               concepto es el MISMO que el del PRIMER nodo del flujo, se pediria dos veces. *@
+                            @if (FormularioDuplicado)
+                            {
+                                <div style="background:var(--t-amber-bg, rgba(245,158,11,.12));border:1px solid var(--t-amber, #f59e0b);border-radius:12px;padding:12px 14px;margin:6px 0 12px;font-size:12.5px;color:var(--ink-2);display:flex;align-items:flex-start;gap:10px">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--t-amber, #f59e0b)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><path d="M12 9v4M12 17h.01"></path></svg>
+                                    <span>Este formulario de admision es <strong>el mismo</strong> que el del <strong>primer paso del flujo</strong>: se pediria <strong>dos veces</strong> (una al crear, otra al atender el primer paso). Usa formularios distintos, o deja el del proceso solo en uno de los dos lugares.</span>
+                                </div>
+                            }
+                            <div class="cn-field">
+                                <label>Titulo automatico</label>
+                                <input maxlength="300" placeholder="Ej. Requerimiento - @@cliente" value="@_mTituloAuto"
+                                       @onchange="@(e => _mTituloAuto = e.Value?.ToString() ?? "")" />
+                            </div>
+                            <div class="cn-field">
+                                <label>Detalle predeterminado</label>
+                                <textarea rows="2" value="@_mDetalleAuto" @onchange="@(e => _mDetalleAuto = e.Value?.ToString() ?? "")"></textarea>
+                            </div>
+                        }
+                        <div class="cn-flag-grid">
+                            <label class="cn-flag">
+                                <input type="checkbox" checked="@_mCierreManual" @onchange="@(e => _mCierreManual = (bool)e.Value!)" />
+                                Cierre manual
+                            </label>
+                            <label class="cn-flag">
+                                <input type="checkbox" checked="@_mRequiereCliente" @onchange="@(e => _mRequiereCliente = (bool)e.Value!)" />
+                                Requiere cliente
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                @* -- 3. Flujo de proceso asociado -- *@
+                <div class="cn-acc @(_acc3 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc3 = !_acc3)">
+                        <div class="cn-acc-title">Flujo de proceso asociado <span class="cn-chip">@(WorkflowLabel(_mWorkflowId) ?? "Sin flujo")</span></div>
+                        <span>@(_acc3 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <div class="cn-field">
+                            <label>Flujo publicado</label>
+                            <select value="@(_mWorkflowId?.ToString() ?? "")" @onchange="OnWorkflowChanged">
+                                <option value="">-- Sin flujo --</option>
+                                @foreach (var w in _combos.Workflows)
+                                {
+                                    <option value="@w.Id">@w.Nombre (@w.Codigo v@(w.Version))</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                @* -- 4. Formulario dinamico -- *@
+                <div class="cn-acc @(_acc4 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc4 = !_acc4)">
+                        <div class="cn-acc-title">Formulario dinamico <span class="cn-chip">@(FormLabel(_mFormId) ?? "Ninguno")</span></div>
+                        <span>@(_acc4 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <div class="cn-field">
+                            <label>Formulario (000131)</label>
+                            <select value="@(_mFormId?.ToString() ?? "")"
+                                    @onchange="@(e => _mFormId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null)">
+                                <option value="">-- Ninguno --</option>
+                                @foreach (var f in _combos.Forms)
+                                {
+                                    <option value="@f.Id">@f.Titulo (@f.Codigo)</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                @* -- 5. Tablero + estado terminado -- *@
+                <div class="cn-acc @(_acc5 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc5 = !_acc5)">
+                        <div class="cn-acc-title">Tablero y estado de cierre <span class="cn-chip">@(BoardLabel(_mBoardId) ?? "Ninguno")</span></div>
+                        <span>@(_acc5 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <div class="cn-field">
+                            <label>Tablero que aplica</label>
+                            <select value="@(_mBoardId?.ToString() ?? "")" @onchange="OnBoardChanged">
+                                <option value="">-- Ninguno --</option>
+                                @foreach (var b in _combos.Boards)
+                                {
+                                    <option value="@b.Id">@b.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        @if (_mBoardId is not null)
+                        {
+                            <div class="cn-field">
+                                <label>Estado que marca "terminado"</label>
+                                <select value="@(_mColumnId?.ToString() ?? "")"
+                                        @onchange="@(e => _mColumnId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null)">
+                                    <option value="">-- Sin estado terminal --</option>
+                                    @foreach (var col in BoardColumns(_mBoardId.Value))
+                                    {
+                                        <option value="@col.Id">@col.Nombre @(col.IsDone ? "(final)" : "")</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* -- 6. Permisos por cargo -- *@
+                <div class="cn-acc @(_acc6 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc6 = !_acc6)">
+                        <div class="cn-acc-title">Permisos por cargo <span class="cn-chip">@_mCargoIds.Count</span></div>
+                        <span>@(_acc6 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <div class="cn-chip-list">
+                            @foreach (var id in _mCargoIds)
+                            {
+                                <span class="cn-chip removable">@CargoLabel(id)
+                                    <button class="cn-chip-x" @onclick="@(() => _mCargoIds.Remove(id))">&times;</button>
+                                </span>
+                            }
+                            @if (_mCargoIds.Count == 0)
+                            {
+                                <span class="cn-chip dashed">Sin cargos asignados</span>
+                            }
+                        </div>
+                        <div class="cn-field cn-field-add">
+                            <label>Agregar cargo</label>
+                            <select value="" @onchange="AddCargo">
+                                <option value="">-- Selecciona un cargo --</option>
+                                @foreach (var c in _combos.Cargos.Where(c => !_mCargoIds.Contains(c.Id)))
+                                {
+                                    <option value="@c.Id">@c.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                @* -- 7. Clientes / terceros aplicables -- *@
+                <div class="cn-acc @(_acc7 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc7 = !_acc7)">
+                        <div class="cn-acc-title">Clientes / terceros aplicables <span class="cn-chip">@_mTerceroIds.Count</span></div>
+                        <span>@(_acc7 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <div class="cn-chip-list">
+                            @foreach (var id in _mTerceroIds)
+                            {
+                                <span class="cn-chip removable">@TerceroLabel(id)
+                                    <button class="cn-chip-x" @onclick="@(() => _mTerceroIds.Remove(id))">&times;</button>
+                                </span>
+                            }
+                            @if (_mTerceroIds.Count == 0)
+                            {
+                                <span class="cn-chip dashed">Aplica a todos los terceros</span>
+                            }
+                        </div>
+                        <div class="cn-field cn-field-add">
+                            <label>Agregar tercero</label>
+                            <select value="" @onchange="AddTercero">
+                                <option value="">-- Selecciona un tercero --</option>
+                                @foreach (var t in _combos.Terceros.Where(t => !_mTerceroIds.Contains(t.Id)))
+                                {
+                                    <option value="@t.Id">@t.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                @* -- 8. Notificaciones -- *@
+                <div class="cn-acc @(_acc8 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc8 = !_acc8)">
+                        <div class="cn-acc-title">Notificaciones <span class="cn-chip">@_mNotifUserIds.Count</span></div>
+                        <span>@(_acc8 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <p class="cn-hint">Usuarios que reciben aviso cuando se crea una tarea de este concepto.</p>
+                        <div class="cn-chip-list">
+                            @foreach (var id in _mNotifUserIds)
+                            {
+                                <span class="cn-chip removable">@UsuarioLabel(id)
+                                    <button class="cn-chip-x" @onclick="@(() => _mNotifUserIds.Remove(id))">&times;</button>
+                                </span>
+                            }
+                            @if (_mNotifUserIds.Count == 0)
+                            {
+                                <span class="cn-chip dashed">Sin notificaciones</span>
+                            }
+                        </div>
+                        <div class="cn-field cn-field-add">
+                            <label>Agregar usuario</label>
+                            <select value="" @onchange="AddNotifUser">
+                                <option value="">-- Selecciona un usuario --</option>
+                                @foreach (var u in _combos.Usuarios.Where(u => !_mNotifUserIds.Contains(u.Id)))
+                                {
+                                    <option value="@u.Id">@u.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                @* -- 9. Sedes que aplica -- *@
+                <div class="cn-acc @(_acc9 ? "open" : "")">
+                    <div class="cn-acc-head" @onclick="@(() => _acc9 = !_acc9)">
+                        <div class="cn-acc-title">Sedes que aplica <span class="cn-chip">@_mSedes.Count</span></div>
+                        <span>@(_acc9 ? "-" : "+")</span>
+                    </div>
+                    <div class="cn-acc-body">
+                        <p class="cn-hint">Sucursales / sedes donde aplica el concepto (texto libre).</p>
+                        <div class="cn-chip-list">
+                            @foreach (var sede in _mSedes)
+                            {
+                                <span class="cn-chip removable">@sede
+                                    <button class="cn-chip-x" @onclick="@(() => _mSedes.Remove(sede))">&times;</button>
+                                </span>
+                            }
+                            @if (_mSedes.Count == 0)
+                            {
+                                <span class="cn-chip dashed">Aplica a todas las sedes</span>
+                            }
+                        </div>
+                        <div class="cn-field cn-field-add cn-sede-add">
+                            <label>Agregar sede</label>
+                            <input placeholder="Ej. Sucursal Cali (Enter para agregar)" value="@_sedeDraft"
+                                   @oninput="@(e => _sedeDraft = e.Value?.ToString() ?? "")"
+                                   @onkeydown="OnSedeKeyDown" />
+                            <button class="cn-btn sm" @onclick="AddSede" disabled="@string.IsNullOrWhiteSpace(_sedeDraft)">Agregar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cn-modal-foot">
+                    @if (_mId is not null)
+                    {
+                        @if (_confirmDelete)
+                        {
+                            <span class="cn-confirm">
+                                Eliminar definitivamente?
+                                <button class="cn-btn sm danger" @onclick="DeleteSubAsync" disabled="@_busy">Si, eliminar</button>
+                                <button class="cn-btn sm" @onclick="@(() => _confirmDelete = false)">No</button>
+                            </span>
+                        }
+                        else
+                        {
+                            <button class="cn-btn danger" @onclick="@(() => _confirmDelete = true)" disabled="@_busy">Eliminar</button>
+                        }
+                    }
+                    <span class="cn-spacer"></span>
+                    <button class="cn-btn" @onclick="CloseSubModal" disabled="@_busy">Cancelar</button>
+                    <button class="cn-btn primary" @onclick="SaveSubAsync" disabled="@_busy">
+                        @(_mId is null ? "Crear" : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Mini modal: nueva / editar categoria ===== *@
+@if (_catModalOpen)
+{
+    <div class="cn-modal-backdrop" @onclick="@(() => _catModalOpen = false)">
+        <div class="cn-modal cn-cat-modal" @onclick:stopPropagation="true">
+            <div class="cn-modal-head">
+                <div class="cn-modal-title">@(_catModalId is null ? "Nueva categoria" : "Editar categoria")</div>
+                <button class="cn-btn sm" @onclick="@(() => _catModalOpen = false)">Cerrar</button>
+            </div>
+            <div class="cn-modal-body">
+                @if (_catModalError is not null)
+                {
+                    <div class="cn-error">@_catModalError</div>
+                }
+                <div class="cn-field">
+                    <label>Nombre</label>
+                    <input maxlength="150" value="@_catModalName" @onchange="@(e => _catModalName = e.Value?.ToString() ?? "")" />
+                </div>
+                <div class="cn-field">
+                    <label>Descripcion</label>
+                    <textarea rows="2" value="@_catModalDesc" @onchange="@(e => _catModalDesc = e.Value?.ToString() ?? "")"></textarea>
+                </div>
+                <div class="cn-modal-foot">
+                    <span class="cn-spacer"></span>
+                    <button class="cn-btn" @onclick="@(() => _catModalOpen = false)" disabled="@_busy">Cancelar</button>
+                    <button class="cn-btn primary" @onclick="SaveCategoryModalAsync" disabled="@_busy">
+                        @(_catModalId is null ? "Crear" : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _busy;
+    private int _tab;
+    private string? _notice;
+    private bool _noticeOk = true;
+
+    private List<ActividadCategoriaDto> _cats = new();
+    private List<ActividadSubcategoriaDto> _subs = new();
+    private ActividadKpisDto _kpis = new(0, 0, 0, 0);
+    private ActividadComboOptionsDto _combos = new([], [], [], [], [], []);
+
+    private Guid? _selectedCatId;
+    private string _catSearch = "";
+    private string _dCategoria = "";
+    private string _dEstado = "";
+    private string _dSearch = "";
+
+    // Modal sub-categoria
+    private bool _mOpen;
+    private Guid? _mId;
+    private Guid _mCategoriaId;
+    private string _mName = "";
+    private string _mChequeo = "";
+    private string _mDescripcion = "";
+    private bool _mRequiereCliente;
+    private bool _mIniciaModulo;
+    private bool _mCierreManual;
+    private string _mTituloAuto = "";
+    private string _mDetalleAuto = "";
+    private Guid? _mWorkflowId;
+    private Guid? _mFormId;
+    private Guid? _mFirstNodeFormId; // form del primer nodo del flujo GUARDADO (para la guardia form-first)
+    private Guid? _mBoardId;
+    private Guid? _mColumnId;
+    private readonly List<Guid> _mCargoIds = new();
+    private readonly List<Guid> _mTerceroIds = new();
+    private readonly List<Guid> _mNotifUserIds = new();
+    private readonly List<string> _mSedes = new();
+    private string _sedeDraft = "";
+    private string? _mError;
+    private bool _confirmDelete;
+    private bool _acc1 = true, _acc2 = true, _acc3, _acc4, _acc5, _acc6, _acc7, _acc8, _acc9;
+
+    // Mini modal categoria
+    private bool _catModalOpen;
+    private Guid? _catModalId;
+    private string _catModalName = "";
+    private string _catModalDesc = "";
+    private string? _catModalError;
+
+    // ---- Derivados ----
+
+    // Guardia form-first: el formulario de ADMISION del concepto coincide con el del PRIMER nodo del
+    // flujo -> se pediria dos veces. Se calcula sobre el flujo GUARDADO (caso principal: editar concepto).
+    private bool FormularioDuplicado
+        => _mIniciaModulo && _mFormId is not null && _mFirstNodeFormId is not null
+            && _mFirstNodeFormId == _mFormId;
+
+    private List<ActividadCategoriaDto> FilteredCategories
+        => string.IsNullOrWhiteSpace(_catSearch)
+            ? _cats
+            : _cats.Where(c => c.Nombre.Contains(_catSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+                || c.Codigo.Contains(_catSearch.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private ActividadCategoriaDto? SelectedCategory
+        => _selectedCatId is Guid id ? _cats.FirstOrDefault(c => c.Id == id) : null;
+
+    private List<ActividadSubcategoriaDto> SelectedSubs
+        => _selectedCatId is Guid id
+            ? _subs.Where(s => s.CategoriaId == id).OrderBy(s => s.SortOrder).ThenBy(s => s.Nombre).ToList()
+            : new();
+
+    private List<ActividadSubcategoriaDto> DetailRows
+    {
+        get
+        {
+            IEnumerable<ActividadSubcategoriaDto> q = _subs;
+            if (Guid.TryParse(_dCategoria, out var cid)) { q = q.Where(s => s.CategoriaId == cid); }
+            if (_dEstado == "on") { q = q.Where(s => !s.IsArchived); }
+            if (_dEstado == "off") { q = q.Where(s => s.IsArchived); }
+            if (!string.IsNullOrWhiteSpace(_dSearch))
+            {
+                var term = _dSearch.Trim();
+                q = q.Where(s => s.Nombre.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || s.Codigo.Contains(term, StringComparison.OrdinalIgnoreCase));
+            }
+            return q.OrderBy(s => CategoryName(s.CategoriaId), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(s => s.SortOrder).ThenBy(s => s.Nombre).ToList();
+        }
+    }
+
+    private string CategoryName(Guid categoriaId)
+        => _cats.FirstOrDefault(c => c.Id == categoriaId)?.Nombre ?? "?";
+
+    private string? WorkflowLabel(Guid? id)
+        => id is Guid g ? _combos.Workflows.FirstOrDefault(w => w.Id == g)?.Nombre ?? "Flujo no publicado" : null;
+
+    private string? FormLabel(Guid? id)
+        => id is Guid g ? _combos.Forms.FirstOrDefault(f => f.Id == g)?.Titulo ?? "Formulario no disponible" : null;
+
+    private string? BoardLabel(Guid? id)
+        => id is Guid g ? _combos.Boards.FirstOrDefault(b => b.Id == g)?.Nombre ?? "Tablero no disponible" : null;
+
+    private string CargoLabel(Guid id)
+        => _combos.Cargos.FirstOrDefault(c => c.Id == id)?.Nombre ?? "(cargo)";
+
+    private string TerceroLabel(Guid id)
+        => _combos.Terceros.FirstOrDefault(t => t.Id == id)?.Nombre ?? "(tercero)";
+
+    private string UsuarioLabel(Guid id)
+        => _combos.Usuarios.FirstOrDefault(u => u.Id == id)?.Nombre ?? "(usuario)";
+
+    private IReadOnlyList<BoardColumnOptionDto> BoardColumns(Guid boardId)
+        => _combos.Boards.FirstOrDefault(b => b.Id == boardId)?.Columnas ?? [];
+
+    private static string Initial(string name)
+        => string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpperInvariant();
+
+    private string ToneClass(Guid categoriaId)
+    {
+        string[] tones = ["cn-tv", "cn-tb", "cn-tg", "cn-ta", "cn-tr", "cn-ts"];
+        var index = _cats.FindIndex(c => c.Id == categoriaId);
+        return tones[(index < 0 ? 0 : index) % tones.Length];
+    }
+
+    // ---- Ciclo de vida ----
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _selectedCatId = _cats.FirstOrDefault()?.Id;
+    }
+
+    private async Task LoadAsync()
+    {
+        _cats = (await Svc.ListCategoriasAsync(includeArchived: true)).ToList();
+        _subs = (await Svc.ListSubcategoriasAsync(null, includeArchived: true)).ToList();
+        _combos = await Svc.GetComboOptionsAsync();
+        _kpis = await Svc.GetKpisAsync();
+    }
+
+    private void SelectCategory(Guid id)
+    {
+        _selectedCatId = id;
+    }
+
+    // ---- Modal sub-categoria ----
+
+    private async Task OpenSubModal(ActividadSubcategoriaDto? sub)
+    {
+        _mError = null;
+        _confirmDelete = false;
+        _mFirstNodeFormId = null;
+        _acc1 = true; _acc2 = true; _acc3 = false; _acc4 = false; _acc5 = false; _acc6 = false; _acc7 = false; _acc8 = false; _acc9 = false;
+        _mCargoIds.Clear();
+        _mTerceroIds.Clear();
+        _mNotifUserIds.Clear();
+        _mSedes.Clear();
+        _sedeDraft = "";
+        if (sub is null)
+        {
+            _mId = null;
+            _mCategoriaId = _selectedCatId ?? _cats.FirstOrDefault()?.Id ?? Guid.Empty;
+            _mName = "";
+            _mChequeo = "";
+            _mDescripcion = "";
+            _mRequiereCliente = false;
+            _mIniciaModulo = false;
+            _mCierreManual = false;
+            _mTituloAuto = "";
+            _mDetalleAuto = "";
+            _mWorkflowId = null;
+            _mFormId = null;
+            _mBoardId = null;
+            _mColumnId = null;
+        }
+        else
+        {
+            _mId = sub.Id;
+            _mCategoriaId = sub.CategoriaId;
+            _mName = sub.Nombre;
+            _mChequeo = sub.Chequeo ?? "";
+            _mDescripcion = sub.Descripcion ?? "";
+            _mRequiereCliente = sub.RequiereCliente;
+            _mIniciaModulo = sub.IniciaModulo;
+            _mCierreManual = sub.CierreManual;
+            _mTituloAuto = sub.TituloAuto ?? "";
+            _mDetalleAuto = sub.DetalleAuto ?? "";
+            _mWorkflowId = sub.WorkflowDefinitionId;
+            _mFormId = sub.FormDefinitionId;
+            _mBoardId = sub.TaskBoardId;
+            _mColumnId = sub.TaskBoardColumnId;
+            _mCargoIds.AddRange(sub.CargoIds);
+            _mTerceroIds.AddRange(sub.TerceroIds);
+            _mNotifUserIds.AddRange(sub.NotificacionUserIds);
+            _mSedes.AddRange(sub.Sedes);
+        }
+        _mOpen = true;
+
+        // Resolver el form del primer nodo del flujo GUARDADO (solo al editar un concepto con flujo).
+        if (_mId is Guid sid && _mWorkflowId is not null)
+        {
+            var first = await WorkflowStart.ResolveFirstStepAsync(sid);
+            if (first.NodeId is Guid nodeId)
+            {
+                _mFirstNodeFormId = await Forms.GetWorkflowNodeFormAsync(nodeId);
+            }
+        }
+    }
+
+    private void CloseSubModal()
+    {
+        if (_busy) { return; }
+        _mOpen = false;
+    }
+
+    private void OnWorkflowChanged(ChangeEventArgs e)
+    {
+        _mWorkflowId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        // El form del primer nodo se calculo sobre el flujo GUARDADO; al cambiar el flujo en vivo
+        // deja de ser confiable. Se limpia para no mostrar un aviso equivocado (se recalcula al reabrir).
+        _mFirstNodeFormId = null;
+    }
+
+    private void OnBoardChanged(ChangeEventArgs e)
+    {
+        _mBoardId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        _mColumnId = null; // el estado terminal pertenece al tablero elegido
+    }
+
+    private void AddCargo(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var g) && !_mCargoIds.Contains(g))
+        {
+            _mCargoIds.Add(g);
+        }
+    }
+
+    private void AddTercero(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var g) && !_mTerceroIds.Contains(g))
+        {
+            _mTerceroIds.Add(g);
+        }
+    }
+
+    private void AddNotifUser(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var g) && !_mNotifUserIds.Contains(g))
+        {
+            _mNotifUserIds.Add(g);
+        }
+    }
+
+    private void AddSede()
+    {
+        var sede = _sedeDraft.Trim();
+        if (sede.Length > 0 && !_mSedes.Contains(sede, StringComparer.OrdinalIgnoreCase))
+        {
+            _mSedes.Add(sede);
+        }
+        _sedeDraft = "";
+    }
+
+    private void OnSedeKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { AddSede(); }
+    }
+
+    private async Task SaveSubAsync()
+    {
+        _mError = null;
+        if (string.IsNullOrWhiteSpace(_mName))
+        {
+            _mError = "El nombre es obligatorio.";
+            return;
+        }
+        if (_mCategoriaId == Guid.Empty)
+        {
+            _mError = "Selecciona una categoria.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var request = new SaveSubcategoriaRequest(
+                _mCategoriaId,
+                _mName.Trim(),
+                string.IsNullOrWhiteSpace(_mChequeo) ? null : _mChequeo.Trim(),
+                string.IsNullOrWhiteSpace(_mDescripcion) ? null : _mDescripcion.Trim(),
+                null,
+                _mRequiereCliente,
+                _mIniciaModulo,
+                _mCierreManual,
+                string.IsNullOrWhiteSpace(_mTituloAuto) ? null : _mTituloAuto.Trim(),
+                string.IsNullOrWhiteSpace(_mDetalleAuto) ? null : _mDetalleAuto.Trim(),
+                _mWorkflowId,
+                _mFormId,
+                _mBoardId,
+                _mColumnId,
+                _mCargoIds.ToList(),
+                _mTerceroIds.ToList(),
+                _mSedes.ToList(),
+                _mNotifUserIds.ToList());
+
+            var result = _mId is Guid id
+                ? await Svc.UpdateSubcategoriaAsync(id, request)
+                : await Svc.CreateSubcategoriaAsync(request);
+            if (!result.IsOk)
+            {
+                _mError = result.Error;
+                return;
+            }
+            _mOpen = false;
+            _selectedCatId = _mCategoriaId;
+            await LoadAsync();
+            ShowNotice($"Sub-categoria '{result.Value!.Nombre}' guardada.", ok: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteSubAsync()
+    {
+        if (_mId is not Guid id) { return; }
+        _confirmDelete = false;
+        _busy = true;
+        try
+        {
+            var result = await Svc.DeleteSubcategoriaAsync(id);
+            if (!result.IsOk)
+            {
+                _mError = result.Error;
+                return;
+            }
+            _mOpen = false;
+            await LoadAsync();
+            ShowNotice($"Sub-categoria '{_mName}' eliminada.", ok: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleSubArchivedAsync(ActividadSubcategoriaDto sub)
+    {
+        _busy = true;
+        try
+        {
+            var result = await Svc.SetSubcategoriaArchivedAsync(sub.Id, !sub.IsArchived);
+            if (!result.IsOk)
+            {
+                ShowNotice(result.Error ?? "No se pudo cambiar el estado.", ok: false);
+                return;
+            }
+            await LoadAsync();
+            ShowNotice($"Sub-categoria '{sub.Nombre}' {(result.Value!.IsArchived ? "archivada" : "restaurada")}.", ok: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ---- Categorias ----
+
+    private void OpenNewCategoryModal()
+    {
+        _catModalId = null;
+        _catModalName = "";
+        _catModalDesc = "";
+        _catModalError = null;
+        _catModalOpen = true;
+    }
+
+    private void OpenEditCategoryModal(ActividadCategoriaDto cat)
+    {
+        _catModalId = cat.Id;
+        _catModalName = cat.Nombre;
+        _catModalDesc = cat.Descripcion ?? "";
+        _catModalError = null;
+        _catModalOpen = true;
+    }
+
+    private async Task SaveCategoryModalAsync()
+    {
+        _catModalError = null;
+        var name = _catModalName.Trim();
+        if (name.Length == 0)
+        {
+            _catModalError = "El nombre es obligatorio.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var request = new SaveCategoriaRequest(name,
+                string.IsNullOrWhiteSpace(_catModalDesc) ? null : _catModalDesc.Trim());
+            var result = _catModalId is Guid id
+                ? await Svc.UpdateCategoriaAsync(id, request)
+                : await Svc.CreateCategoriaAsync(request);
+            if (!result.IsOk)
+            {
+                _catModalError = result.Error;
+                return;
+            }
+            _catModalOpen = false;
+            await LoadAsync();
+            _selectedCatId = result.Value!.Id;
+            ShowNotice($"Categoria '{result.Value.Nombre}' guardada.", ok: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleCategoryArchivedAsync()
+    {
+        if (SelectedCategory is not ActividadCategoriaDto cat) { return; }
+        _busy = true;
+        try
+        {
+            var result = await Svc.SetCategoriaArchivedAsync(cat.Id, !cat.IsArchived);
+            if (!result.IsOk)
+            {
+                ShowNotice(result.Error ?? "No se pudo cambiar la categoria.", ok: false);
+                return;
+            }
+            await LoadAsync();
+            ShowNotice($"Categoria '{cat.Nombre}' {(result.Value!.IsArchived ? "archivada" : "restaurada")}.", ok: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ShowNotice(string message, bool ok)
+    {
+        _notice = message;
+        _noticeOk = ok;
+    }
+}

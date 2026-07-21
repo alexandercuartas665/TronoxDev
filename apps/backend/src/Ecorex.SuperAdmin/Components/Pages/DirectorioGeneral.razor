@@ -1,0 +1,1427 @@
+@page "/directorio-general"
+@attribute [Authorize(Policy = "TenantMember")]
+@* Directorio General (modulo 000232): terceros (empresas / personas) con perfiles de
+   negocio, contactos y fichas dinamicas por perfil. UI fiel al prototipo ECOREX.dc.html.
+   Los botones de crear se gatean por los sub-permisos nombrados (crear-empresa /
+   crear-cliente / crear-sospechoso); editar/eliminar por el modulo padre. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text.Json
+@using Ecorex.Application.Directorio
+@using Ecorex.Application.Roles
+@using Ecorex.Domain.Enums
+@using Ecorex.SuperAdmin.Auth
+@inject ITerceroService TerceroSvc
+@inject ITerceroFieldService FieldSvc
+@inject ITerceroFormService FormsSvc
+@inject ICurrentPermissions Perms
+@inject Ecorex.Application.DataLookups.IDataLookupService LookupSvc
+@using Ecorex.Application.DataLookups
+
+<PageTitle>Directorio General - ECOREX.tareas</PageTitle>
+
+<nav class="ecorex-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Workspace</a>
+    <span class="sep">/</span>
+    <span>Negocio</span>
+    <span class="sep">/</span>
+    <span class="cur">Directorio General</span>
+</nav>
+
+<div class="dg-wrap">
+    <div class="dg-head">
+        <div>
+            <div class="dg-eyebrow">CATALOGO 000232 &#183; NEGOCIO</div>
+            <h1 class="dg-title">Directorio General</h1>
+            <p class="dg-sub">Clientes tipo empresa o persona natural. Las empresas agrupan sus contactos asociados.</p>
+        </div>
+        <div class="dg-head-actions">
+            @if (_canEdit)
+            {
+                <button class="dg-btn-cfg" @onclick="OpenConfigAsync" disabled="@(_loading || _reloading)" title="Configurar los campos de cada ficha">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                    Configurar campos
+                </button>
+            }
+            @if (CanCreateAny)
+            {
+                <button class="dg-btn-new" @onclick="OpenCreateAsync" disabled="@(_loading || _reloading)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+                    Nuevo cliente
+                </button>
+            }
+        </div>
+    </div>
+
+    @* ===== KPIs ===== *@
+    <div class="dg-kpis">
+        <div class="dg-kpi">
+            <div class="dg-kpi-ic" style="background:var(--t-violet-bg);color:var(--t-violet)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+            </div>
+            <div style="min-width:0"><div class="dg-kpi-val">@_kpis.Clientes</div><div class="dg-kpi-lbl">Clientes</div></div>
+        </div>
+        <div class="dg-kpi">
+            <div class="dg-kpi-ic" style="background:var(--t-blue-bg);color:var(--t-blue)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V7l6-4 6 4v14M10 9h.01M14 9h.01M10 13h.01M14 13h.01" /></svg>
+            </div>
+            <div style="min-width:0"><div class="dg-kpi-val">@_kpis.Empresas</div><div class="dg-kpi-lbl">Empresas</div></div>
+        </div>
+        <div class="dg-kpi">
+            <div class="dg-kpi-ic" style="background:var(--t-amber-bg);color:var(--t-amber)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /></svg>
+            </div>
+            <div style="min-width:0"><div class="dg-kpi-val">@_kpis.Personas</div><div class="dg-kpi-lbl">Personas</div></div>
+        </div>
+        <div class="dg-kpi">
+            <div class="dg-kpi-ic" style="background:var(--t-green-bg);color:var(--t-green)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM23 11l-3 3-2-2" /></svg>
+            </div>
+            <div style="min-width:0"><div class="dg-kpi-val">@_kpis.ContactosAsociados</div><div class="dg-kpi-lbl">Contactos asociados</div></div>
+        </div>
+    </div>
+
+    @* ===== Tabs TIPO ===== *@
+    <div class="dg-tipo-row">
+        <span class="dg-tipo-lbl">TIPO:</span>
+        <button class="dg-pill @(_tipo == TerceroTabTipo.Todos ? "active" : "")" @onclick="() => SetTipo(TerceroTabTipo.Todos)">Todos los tipos</button>
+        <button class="dg-pill @(_tipo == TerceroTabTipo.Clientes ? "active" : "")" @onclick="() => SetTipo(TerceroTabTipo.Clientes)">Clientes</button>
+        <button class="dg-pill @(_tipo == TerceroTabTipo.Proveedores ? "active" : "")" @onclick="() => SetTipo(TerceroTabTipo.Proveedores)">Proveedores</button>
+        <button class="dg-pill @(_tipo == TerceroTabTipo.Empleados ? "active" : "")" @onclick="() => SetTipo(TerceroTabTipo.Empleados)">Empleados</button>
+
+        @* Filtros de los campos marcados "ofrecer como filtro" (ADR-0029). Antes la marca se
+           guardaba y nadie la usaba. Las opciones salen de los valores que existen de verdad, para
+           no ofrecer un filtro que no devuelve nada. *@
+        @foreach (var ff in FilterableFields())
+        {
+            var key = ff.FieldKey;
+            var opciones = FilterOptions(key);
+            if (opciones.Count == 0) { continue; }
+            <select class="dg-filter-sel" title="@ff.Label"
+                    value="@(_fieldFilters.GetValueOrDefault(key) ?? "")"
+                    @onchange="e => SetFieldFilter(key, e.Value?.ToString())">
+                <option value="">@ff.Label: todos</option>
+                @foreach (var o in opciones)
+                {
+                    <option value="@o">@o</option>
+                }
+            </select>
+        }
+        @if (_fieldFilters.Count > 0)
+        {
+            <button class="dg-pill" @onclick="ClearFieldFilters">Limpiar filtros</button>
+        }
+    </div>
+
+    @* ===== Tabs naturaleza + busqueda ===== *@
+    <div class="dg-filter-row">
+        <div class="dg-tabs">
+            <button class="dg-tab @(_naturaleza == TerceroTabNaturaleza.Todos ? "active" : "")" @onclick="() => _naturaleza = TerceroTabNaturaleza.Todos">Todos <span class="dg-tab-count">@CountTodos</span></button>
+            <button class="dg-tab @(_naturaleza == TerceroTabNaturaleza.Empresas ? "active" : "")" @onclick="() => _naturaleza = TerceroTabNaturaleza.Empresas">Empresas <span class="dg-tab-count">@CountEmpresas</span></button>
+            <button class="dg-tab @(_naturaleza == TerceroTabNaturaleza.Contactos ? "active" : "")" @onclick="() => _naturaleza = TerceroTabNaturaleza.Contactos">Contactos <span class="dg-tab-count">@CountContactos</span></button>
+        </div>
+        <div class="dg-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <input placeholder="Buscar cliente..." value="@_search" @oninput="OnSearch" />
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="dg-table"><div class="dg-loading">Cargando directorio...</div></div>
+    }
+    else
+    {
+        <div class="dg-table">
+            <div class="dg-grid dg-thead">
+                <div class="dg-th">CLIENTE</div>
+                <div class="dg-th pad12">IDENTIFICACION</div>
+                <div class="dg-th pad12">VENDEDOR</div>
+                <div class="dg-th pad12">ESTADO</div>
+                <div class="dg-th pad12"></div>
+            </div>
+
+            @if (!Displayed.Any())
+            {
+                <div class="dg-rowwrap"><div class="dg-empty-note" style="padding:24px 18px">No hay terceros que coincidan con los filtros.</div></div>
+            }
+
+            @foreach (var r in Displayed)
+            {
+                var est = EstadoInfo(r.Estado);
+                <div class="dg-rowwrap">
+                    <div class="dg-grid dg-row">
+                        <div class="dg-c-name">
+                            <button class="dg-expand" title="Ver contactos" @onclick="() => ToggleExpandAsync(r)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(@(_expanded.Contains(r.Id) ? "90deg" : "0deg"))"><path d="m9 6 6 6-6 6" /></svg>
+                            </button>
+                            <span class="dg-av @(r.EsEmpresa ? "emp" : "per")" style="background:@AvatarColor(r.Nombre)">@Initials(r.Nombre)</span>
+                            <div class="dg-name-main" @onclick="() => _terceroModal!.OpenEditAsync(r.Id)">
+                                <div class="dg-name-line">
+                                    <span class="dg-name-txt">@r.Nombre</span>
+                                    @if (r.EsEmpresa)
+                                    {
+                                        <span class="dg-badge" style="background:var(--t-blue-bg);color:var(--t-blue)">EMPRESA &#183; @r.ContadorContactos</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="dg-badge" style="background:var(--t-amber-bg);color:var(--t-amber)">PERSONA</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(r.Sub))
+                                {
+                                    <div class="dg-name-sub">@r.Sub</div>
+                                }
+                                @{
+                                    var tags = TipoTags(r.Perfiles);
+                                }
+                                @if (tags.Count > 0)
+                                {
+                                    <div class="dg-tags">
+                                        @foreach (var tg in tags)
+                                        {
+                                            <span class="dg-tag" style="background:var(@tg.Bg);color:var(@tg.Color)">@tg.Label</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="dg-c mono">@r.Identificacion</div>
+                        <div class="dg-c">@(string.IsNullOrWhiteSpace(r.Vendedor) ? "-" : r.Vendedor)</div>
+                        <div class="dg-c" style="padding:11px 12px"><span class="dg-estado" style="background:var(@est.Bg);color:var(@est.Color)">@est.Label</span></div>
+                        <div class="dg-c acts" style="padding:11px 12px">
+                            @if (_canEdit)
+                            {
+                                <button class="dg-act edit" title="Editar tercero" @onclick="() => _terceroModal!.OpenEditAsync(r.Id)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                                </button>
+                            }
+                            @if (r.EsPersona && _canEdit)
+                            {
+                                <button class="dg-act assign" title="Asignar a una empresa" @onclick="() => OpenAssign(r)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V7l6-4 6 4v14M12 12h.01" /><path d="M9 21v-4h6v4" /></svg>
+                                </button>
+                            }
+                            @if (_canDelete)
+                            {
+                                <button class="dg-act del" title="Eliminar" @onclick="() => DeleteAsync(r)" disabled="@_busy">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    @if (_expanded.Contains(r.Id))
+                    {
+                        <div class="dg-kids">
+                            @{
+                                var kids = _kids.TryGetValue(r.Id, out var kl) ? kl : Array.Empty<TerceroContactoDto>();
+                            }
+                            <div class="dg-kids-head">
+                                <div class="dg-kids-lbl">CONTACTOS ASOCIADOS</div>
+                                @if (_canEdit)
+                                {
+                                    <button class="dg-kids-add" @onclick="() => _terceroModal!.OpenContacto(r.Id, null)">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+                                        Agregar contacto
+                                    </button>
+                                }
+                            </div>
+                            @if (kids.Count > 0)
+                            {
+                                @foreach (var k in kids)
+                                {
+                                    <div class="dg-kid">
+                                        <span class="dg-kid-av" style="background:@AvatarColor(k.Nombre)">@Initials(k.Nombre)</span>
+                                        <div style="flex:1;min-width:0">
+                                            <div class="dg-kid-name">@k.Nombre</div>
+                                            <div class="dg-kid-cargo">@(string.IsNullOrWhiteSpace(k.Cargo) ? "Contacto" : k.Cargo)</div>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(k.Email))
+                                        {
+                                            <span class="dg-kid-meta">@k.Email</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(k.Telefono))
+                                        {
+                                            <span class="dg-kid-meta">@k.Telefono</span>
+                                        }
+                                        @if (_canEdit)
+                                        {
+                                            <div class="dg-kid-acts">
+                                                <button class="dg-act edit" title="Editar contacto" @onclick="() => _terceroModal!.OpenContacto(r.Id, k)">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                                                </button>
+                                                <button class="dg-act del" title="Eliminar contacto" @onclick="() => DeleteContactoAsync(r.Id, k.Id)" disabled="@_busy">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="dg-empty-note">Sin contactos asociados todavia.</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        @if (_pageError is not null)
+        {
+            <div class="dg-page-error">@_pageError</div>
+        }
+    }
+</div>
+
+@* ===================== MODAL ASIGNAR A EMPRESA ===================== *@
+@if (_assignOpen && _assignPersona is not null)
+{
+    <div class="dg-overlay sm" @onclick="CloseAssign">
+        <div class="dg-modal sm" @onclick:stopPropagation="true">
+            <div class="dg-as-head">
+                <div>
+                    <div class="dg-as-kicker">ASIGNAR A EMPRESA</div>
+                    <div class="dg-as-title">@_assignPersona.Nombre</div>
+                    <div class="dg-as-sub">Dejara de aparecer como cliente individual y pasara dentro de la empresa.</div>
+                </div>
+                <button class="dg-close" @onclick="CloseAssign">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="dg-as-list">
+                @{
+                    var empresas = _allRows.Where(x => x.EsEmpresa).ToList();
+                }
+                @if (empresas.Count == 0)
+                {
+                    <div class="dg-as-empty">No hay empresas registradas. Crea una empresa primero.</div>
+                }
+                @foreach (var e in empresas)
+                {
+                    <button class="dg-as-item" @onclick="() => AssignToAsync(e.Id)" disabled="@_busy">
+                        <span class="dg-as-av" style="background:@AvatarColor(e.Nombre)">@Initials(e.Nombre)</span>
+                        <span style="flex:1;min-width:0">
+                            <span class="dg-as-name">@e.Nombre</span>
+                            <span class="dg-as-isub">@(string.IsNullOrWhiteSpace(e.Sub) ? e.Identificacion : e.Sub)</span>
+                        </span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+
+@* Editor de tercero (crear / editar) compartido con el Cargador de contactos (000740): un
+   contacto ES un cliente y ambos modulos se alimentan de los MISMOS registros (Tercero). El
+   modal grande y el sub-modal de contacto viven en este componente; aqui se invoca por @@ref. *@
+<TerceroModal @ref="_terceroModal" OnChanged="OnModalChangedAsync" />
+
+@* ===================== MODAL CONFIGURAR CAMPOS ===================== *@
+@if (_cfgOpen)
+{
+    <div class="dg-overlay" @onclick="CloseConfig">
+        <div class="dg-modal dg-cfg-modal" @onclick:stopPropagation="true">
+            <div class="dg-m-head">
+                <span class="dg-m-av" style="background:var(--brand)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                </span>
+                <div style="flex:1;min-width:0">
+                    <div class="dg-m-kicker">DIRECTORIO GENERAL &#183; 000232</div>
+                    <div class="dg-m-title">Configurar campos de las fichas</div>
+                </div>
+                <button class="dg-close" @onclick="CloseConfig">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
+            </div>
+
+            <div class="dg-cfg-body">
+                @* --- Selector de ficha --- *@
+                <label class="dg-sec-lbl">FICHA</label>
+                <div class="dg-cfg-fichas">
+                    @foreach (var m in FichaCatalog)
+                    {
+                        <button class="dg-cfg-fchip @(_cfgFicha == m.Key ? "active" : "")" @onclick="() => SelectCfgFichaAsync(m.Key)" disabled="@_busy">@m.ConfigLabel</button>
+                    }
+                </div>
+
+                <div class="dg-cfg-cols">
+                <div class="dg-cfg-left">
+                @* --- Lista de campos --- *@
+                <label class="dg-sec-lbl">CAMPOS DE LA FICHA</label>
+                @if (_cfgFields.Count == 0)
+                {
+                    <div class="dg-empty-note" style="padding:14px 0">Esta ficha no tiene campos todavia. Agrega el primero abajo.</div>
+                }
+                @for (var i = 0; i < _cfgFields.Count; i++)
+                {
+                    var f = _cfgFields[i];
+                    var idx = i;
+                    <div class="dg-cfg-row">
+                        <div class="dg-cfg-move">
+                            <button class="dg-cfg-mbtn" disabled="@(idx == 0 || _busy)" @onclick="() => MoveCfgFieldAsync(idx, idx - 1)" title="Subir">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6" /></svg>
+                            </button>
+                            <button class="dg-cfg-mbtn" disabled="@(idx == _cfgFields.Count - 1 || _busy)" @onclick="() => MoveCfgFieldAsync(idx, idx + 1)" title="Bajar">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                            </button>
+                        </div>
+                        <div class="dg-cfg-info">
+                            <div class="dg-cfg-flabel">
+                                @f.Label
+                                @if (f.IsSystem) { <span class="dg-cfg-tag">sistema</span> }
+                            </div>
+                            <div class="dg-cfg-fmeta">@TypeLabel(f.FieldType) &#183; @f.FieldKey</div>
+                        </div>
+                        <button class="dg-cfg-wbtn" disabled="@_busy" @onclick="() => CycleCfgColumnAsync(f)" title="Ancho del campo. Clic para pasar de pequena a media a grande.">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4" /></svg>
+                            @ColumnLabel(f.Column)
+                        </button>
+                        @* Mover de ficha: hasta ahora un campo nacia atado a su ficha para siempre. *@
+                        <select class="dg-cfg-move-sel" disabled="@_busy" title="Mover el campo a otra ficha"
+                                value=""
+                                @onchange="e => MoveCfgFieldToFichaAsync(f, e.Value?.ToString())">
+                            <option value="">Mover a...</option>
+                            @foreach (var m in FichaCatalog.Where(x => x.Key != f.FichaKey))
+                            {
+                                <option value="@m.Key">@m.ConfigLabel</option>
+                            }
+                        </select>
+                        <button class="dg-cfg-ebtn" disabled="@_busy" @onclick="() => EditCfgFieldAsync(f)" title="Editar campo">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                        </button>
+                        <button class="dg-cfg-dbtn" disabled="@_busy" @onclick="() => DeleteCfgFieldAsync(f)" title="Eliminar campo">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                        </button>
+                    </div>
+                }
+                </div>
+
+                @* --- Form nuevo / editar (columna derecha) --- *@
+                <div class="dg-cfg-form dg-cfg-right">
+                    <div class="dg-cfg-form-title">@(_cfgEditingId is null ? "Nuevo campo" : "Editar campo")</div>
+                    <div class="dg-fields">
+                        <div style="min-width:0">
+                            <label class="dg-flabel">Etiqueta <span class="dg-req">*</span></label>
+                            <input class="dg-input" value="@_cfgLabel" @oninput="e => _cfgLabel = e.Value?.ToString() ?? string.Empty" />
+                        </div>
+                        <div style="min-width:0">
+                            <label class="dg-flabel">Tipo</label>
+                            <select class="dg-input" @bind="_cfgType">
+                                <option value="@TerceroFieldType.Text">Texto</option>
+                                <option value="@TerceroFieldType.Number">Numero</option>
+                                <option value="@TerceroFieldType.Currency">Moneda</option>
+                                <option value="@TerceroFieldType.TextArea">Texto largo</option>
+                                <option value="@TerceroFieldType.Select">Lista</option>
+                                <option value="@TerceroFieldType.Date">Fecha</option>
+                                <option value="@TerceroFieldType.Phone">Telefono</option>
+                                <option value="@TerceroFieldType.Separator">Separador</option>
+                                <option value="@TerceroFieldType.Calculated">Calculado</option>
+                                <option value="@TerceroFieldType.Lookup">Lista del Contenedor de datos</option>
+                            </select>
+                        </div>
+                        <div style="min-width:0">
+                            <label class="dg-flabel">Ancho</label>
+                            <select class="dg-input" @bind="_cfgColumn">
+                                <option value="1">Pequena (1/3)</option>
+                                <option value="2">Media (2/3)</option>
+                                <option value="3">Grande (completo)</option>
+                            </select>
+                        </div>
+                        <div style="min-width:0">
+                            <label class="dg-flabel">Descripcion <span style="color:var(--ink-3);font-weight:400">(opcional)</span></label>
+                            <input class="dg-input" value="@_cfgDescription" @oninput="e => _cfgDescription = e.Value?.ToString() ?? string.Empty" />
+                        </div>
+                        @if (_cfgType == TerceroFieldType.Select)
+                        {
+                            <div style="min-width:0" class="dg-fld-full">
+                                <label class="dg-flabel">Opciones <span style="color:var(--ink-3);font-weight:400">(una por linea)</span></label>
+                                <textarea class="dg-input dg-textarea" value="@_cfgOptions" @oninput="e => _cfgOptions = e.Value?.ToString() ?? string.Empty"></textarea>
+                            </div>
+                        }
+                        @if (_cfgType == TerceroFieldType.Lookup)
+                        {
+                            @* Modelo -> tabla -> columna a mostrar. Todo se guarda por ID: renombrar
+                               una columna en el Contenedor no debe romper esto en silencio. *@
+                            <div style="min-width:0" class="dg-fld-full">
+                                <div class="dg-lk-grid">
+                                    <div>
+                                        <label class="dg-flabel">Modelo de datos <span class="dg-req">*</span></label>
+                                        <select class="dg-input" value="@(_lkModelId?.ToString() ?? "")"
+                                                @onchange="OnLookupModelChangedAsync">
+                                            <option value="">-- Elige un modelo --</option>
+                                            @foreach (var m in _lkModels)
+                                            {
+                                                <option value="@m.Id" selected="@(_lkModelId == m.Id)">@m.Name (@m.TableCount)</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="dg-flabel">Tabla <span class="dg-req">*</span></label>
+                                        <select class="dg-input" value="@(_lkTableId?.ToString() ?? "")"
+                                                @onchange="OnLookupTableChangedAsync" disabled="@(_lkModelId is null)">
+                                            <option value="">-- Elige una tabla --</option>
+                                            @foreach (var t in _lkTables)
+                                            {
+                                                <option value="@t.Id" selected="@(_lkTableId == t.Id)">@t.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="dg-flabel">Columna que se muestra</label>
+                                        <select class="dg-input" value="@(_lkDisplayCol?.ToString() ?? "")"
+                                                @onchange="e => _lkDisplayCol = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null"
+                                                disabled="@(_lkColumns.Count == 0)">
+                                            <option value="">-- Automatica (primera de texto) --</option>
+                                            @foreach (var c in _lkColumns)
+                                            {
+                                                <option value="@c.Id" selected="@(_lkDisplayCol == c.Id)">@c.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+
+                                @if (_lkColumns.Count > 0)
+                                {
+                                    @* Autollenado: al elegir una fila, estas columnas se vuelcan en otros
+                                       campos de la ficha (por su llave, p.ej. "comercial/marca"). *@
+                                    <div class="dg-lk-sec">
+                                        <div class="dg-lk-sec-t">Al elegir una fila, llenar otros campos</div>
+                                        @foreach (var a in _lkAutofill)
+                                        {
+                                            var aa = a;
+                                            <div class="dg-lk-row">
+                                                <select class="dg-input" value="@aa.ColumnId.ToString()"
+                                                        @onchange="e => aa.ColumnId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : Guid.Empty">
+                                                    @foreach (var c in _lkColumns)
+                                                    {
+                                                        <option value="@c.Id" selected="@(aa.ColumnId == c.Id)">@c.Name</option>
+                                                    }
+                                                </select>
+                                                <span class="dg-lk-arrow">&#8594;</span>
+                                                <select class="dg-input" value="@aa.TargetKey"
+                                                        @onchange="e => aa.TargetKey = e.Value?.ToString() ?? string.Empty">
+                                                    <option value="">-- Campo destino --</option>
+                                                    @foreach (var f in OtrosCamposDeLaFicha())
+                                                    {
+                                                        <option value="@f.Key" selected="@(aa.TargetKey == f.Key)">@f.Label</option>
+                                                    }
+                                                </select>
+                                                <button type="button" class="dg-lk-del" @onclick="() => _lkAutofill.Remove(aa)">&times;</button>
+                                            </div>
+                                        }
+                                        <button type="button" class="dg-btn-line" @onclick="AddAutofill">+ Agregar autollenado</button>
+                                    </div>
+
+                                    @* Cascada: la lista se filtra por el valor de otro campo. *@
+                                    <div class="dg-lk-sec">
+                                        <div class="dg-lk-sec-t">Filtrar la lista</div>
+                                        @foreach (var f in _lkFilters)
+                                        {
+                                            var ff = f;
+                                            <div class="dg-lk-row">
+                                                <select class="dg-input" value="@ff.ColumnId.ToString()"
+                                                        @onchange="e => ff.ColumnId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : Guid.Empty">
+                                                    @foreach (var c in _lkColumns)
+                                                    {
+                                                        <option value="@c.Id" selected="@(ff.ColumnId == c.Id)">@c.Name</option>
+                                                    }
+                                                </select>
+                                                <span class="dg-lk-arrow">=</span>
+                                                <select class="dg-input" value="@ff.FromKey"
+                                                        @onchange="e => ff.FromKey = e.Value?.ToString() ?? string.Empty">
+                                                    <option value="">-- Valor fijo --</option>
+                                                    @foreach (var o in OtrosCamposDeLaFicha())
+                                                    {
+                                                        <option value="@o.Key" selected="@(ff.FromKey == o.Key)">Campo: @o.Label</option>
+                                                    }
+                                                </select>
+                                                @if (string.IsNullOrEmpty(ff.FromKey))
+                                                {
+                                                    <input class="dg-input" placeholder="Valor" value="@ff.Value"
+                                                           @oninput="e => ff.Value = e.Value?.ToString() ?? string.Empty" />
+                                                }
+                                                else
+                                                {
+                                                    <label class="dg-lk-chk" title="Obliga a elegir primero el campo origen">
+                                                        <input type="checkbox" checked="@ff.Require"
+                                                               @onchange="e => ff.Require = (bool)e.Value!" /> Obligatorio
+                                                    </label>
+                                                }
+                                                <button type="button" class="dg-lk-del" @onclick="() => _lkFilters.Remove(ff)">&times;</button>
+                                            </div>
+                                        }
+                                        <button type="button" class="dg-btn-line" @onclick="AddFilter">+ Agregar filtro</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (_cfgType == TerceroFieldType.Calculated)
+                        {
+                            @* La formula se valida MIENTRAS se escribe: enterarse al guardar de que una
+                               llave esta mal escrita o de que hay un ciclo es tarde y frustrante. *@
+                            <div style="min-width:0" class="dg-fld-full">
+                                <label class="dg-flabel">Formula <span class="dg-req">*</span></label>
+                                <input class="dg-input dg-mono @(_cfgFormulaError is not null ? "dg-input-bad" : "")"
+                                       value="@_cfgFormula" placeholder="ROUND(({valor_base} + {flete}) * 1.19, 2)"
+                                       @oninput="OnFormulaInputAsync" />
+                                @if (_cfgFormulaError is not null)
+                                {
+                                    <div class="dg-cfg-err" style="margin-top:6px">@_cfgFormulaError</div>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(_cfgFormula))
+                                {
+                                    <div class="dg-cfg-ok">Formula valida.</div>
+                                }
+                                <div class="dg-cfg-note" style="margin-top:6px">
+                                    Operadores + - * / y parentesis. Funciones: ROUND, MIN, MAX, ABS, SUM.
+                                    Referencia otros campos con llaves.
+                                </div>
+                                @{
+                                    var usables = NumericFieldsForFormula();
+                                    var ambiguas = AmbiguousKeys();
+                                }
+                                @if (usables.Count > 0)
+                                {
+                                    <div class="dg-cfg-keys">
+                                        @foreach (var nf in usables)
+                                        {
+                                            var nfv = nf;
+                                            var esAmbigua = ambiguas.Contains(nfv.FieldKey);
+                                            @* Una clave repetida en dos fichas no se puede usar: {clave} no dice a cual
+                                               apunta. Se muestra deshabilitada y diciendo por que, en vez de dejar que
+                                               se pinche y que el servidor la rechace despues. *@
+                                            <button type="button" class="dg-cfg-key @(esAmbigua ? "dg-cfg-key-bad" : "")"
+                                                    disabled="@esAmbigua"
+                                                    title="@(esAmbigua
+                                                        ? $"Clave repetida en varias fichas: no se puede usar en un calculo hasta renombrar una."
+                                                        : $"{nfv.Label} ({FichaLabel(nfv.FichaKey)})")"
+                                                    @onclick="() => InsertFormulaKeyAsync(nfv.FieldKey)">@($"{{{nfv.FieldKey}}}")</button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (_cfgType != TerceroFieldType.Separator && _cfgType != TerceroFieldType.Calculated)
+                        {
+                            <div style="min-width:0">
+                                <label class="dg-flabel">Repetir segun <span style="color:var(--ink-3);font-weight:400">(opcional)</span></label>
+                                <select class="dg-input" @bind="_cfgRepeatWith">
+                                    <option value="">No se repite</option>
+                                    @foreach (var nf in NumericFieldsForFormula().Where(x => x.FieldType == TerceroFieldType.Number))
+                                    {
+                                        <option value="@nf.FieldKey">@nf.Label</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                        @if (_cfgType != TerceroFieldType.Separator)
+                        {
+                            <div style="min-width:0" class="dg-fld-full">
+                                <label class="dg-req-chk">
+                                    <input type="checkbox" @bind="_cfgShowInFilter" />
+                                    Ofrecer como filtro en el listado
+                                </label>
+                            </div>
+                        }
+                    </div>
+                    @if (_cfgError is not null)
+                    {
+                        <div class="dg-cfg-err">@_cfgError</div>
+                    }
+                    <div class="dg-cfg-form-actions">
+                        <button class="dg-btn-save" disabled="@_busy" @onclick="SaveCfgFieldAsync">@(_cfgEditingId is null ? "Agregar campo" : "Guardar cambios")</button>
+                        @if (_cfgEditingId is not null)
+                        {
+                            <button class="dg-btn-ghost" disabled="@_busy" @onclick="CancelEditCfgField">Cancelar</button>
+                        }
+                    </div>
+                </div>
+                </div>
+
+                @* --- Formularios que se pueden llenar por tercero (3a columna del modal) --- *@
+                <label class="dg-sec-lbl" style="margin-top:18px">FORMULARIOS DEL TERCERO</label>
+                <p class="dg-cfg-note">Se ofrecen en la tercera columna del modal de tercero. Sus respuestas quedan asociadas a cada tercero.</p>
+                @if (_cfgForms.Count == 0)
+                {
+                    <div class="dg-empty-note" style="padding:10px 0">Ningun formulario asociado todavia.</div>
+                }
+                else
+                {
+                    <div class="dg-cfg-forms">
+                        @foreach (var lf in _cfgForms)
+                        {
+                            var lfv = lf;
+                            <div class="dg-cfg-form-row">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex:none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8" /></svg>
+                                <div style="flex:1;min-width:0">
+                                    <div class="dg-cfg-flabel">@lfv.Title</div>
+                                    @if (!string.IsNullOrWhiteSpace(lfv.Code))
+                                    {
+                                        <div class="dg-cfg-fmeta">@lfv.Code</div>
+                                    }
+                                </div>
+                                <button class="dg-cfg-dbtn" disabled="@_busy" @onclick="() => RemoveCfgFormAsync(lfv.Id)" title="Quitar del modal">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="dg-cfg-form-add">
+                    @if (_cfgFormCandidates.Count == 0)
+                    {
+                        <span class="dg-cfg-fmeta">No hay mas formularios activos para asociar.</span>
+                    }
+                    else
+                    {
+                        <select class="dg-input" value="@_cfgFormPick" @onchange="e => _cfgFormPick = e.Value?.ToString() ?? string.Empty">
+                            <option value="">Elige un formulario...</option>
+                            @foreach (var c in _cfgFormCandidates)
+                            {
+                                <option value="@c.FormDefinitionId">@c.Title</option>
+                            }
+                        </select>
+                        <button class="dg-btn-save" disabled="@(_busy || string.IsNullOrWhiteSpace(_cfgFormPick))" @onclick="AddCfgFormAsync">Asociar formulario</button>
+                    }
+                </div>
+            </div>
+
+            <div class="dg-m-foot">
+                <span class="dg-foot-note">Los cambios aplican a las fichas del modal de tercero.</span>
+                <div class="dg-foot-actions">
+                    <button class="dg-btn-ghost" @onclick="CloseConfig" disabled="@_busy">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ---- Estado de lista ----
+    private bool _loading = true;
+    // Recarga en curso (lista + KPIs). Bloquea las acciones que abren el editor mientras una
+    // consulta del DbContext scoped esta en vuelo: abrir el modal dispara EnsureDefaultsAsync sobre
+    // el MISMO contexto y "second operation on this context" tumba el circuito (se veia sobre todo
+    // con la BD remota por tunel, donde las queries tardan y la ventana de solape es amplia).
+    private bool _reloading;
+    private bool _busy;
+    private string? _pageError;
+    private TerceroKpisDto _kpis = new(0, 0, 0, 0);
+    private IReadOnlyList<TerceroListItemDto> _allRows = Array.Empty<TerceroListItemDto>();
+    private TerceroTabTipo _tipo = TerceroTabTipo.Todos;
+    private TerceroTabNaturaleza _naturaleza = TerceroTabNaturaleza.Todos;
+    private string _search = "";
+    private readonly HashSet<Guid> _expanded = new();
+    private readonly Dictionary<Guid, IReadOnlyList<TerceroContactoDto>> _kids = new();
+
+    // ---- Permisos (sub-permisos nombrados del Directorio General, ADR-0033) ----
+    private bool _canCrearEmpresa = true;
+    private bool _canCrearCliente = true;
+    private bool _canCrearSospechoso = true;
+    private bool _canEdit = true;
+    private bool _canDelete = true;
+    private bool CanCreateAny => _canCrearEmpresa || _canCrearCliente || _canCrearSospechoso;
+
+    // ---- Modal asignar ----
+    private bool _assignOpen;
+    private TerceroListItemDto? _assignPersona;
+
+    // ---- Editor de tercero compartido (crear/editar/contacto). Invocado por @ref. ----
+    private TerceroModal? _terceroModal;
+
+    /// <summary>Filtros activos por campo configurable: FieldKey -> valor exigido.</summary>
+    private readonly Dictionary<string, string> _fieldFilters = new(StringComparer.Ordinal);
+
+    private IEnumerable<TerceroListItemDto> Displayed
+    {
+        get
+        {
+            var rows = _naturaleza switch
+            {
+                TerceroTabNaturaleza.Empresas => _allRows.Where(r => r.EsEmpresa),
+                TerceroTabNaturaleza.Contactos => _allRows.Where(r => r.EsPersona),
+                _ => _allRows
+            };
+
+            // Los filtros de campo se aplican en memoria: el listado ya trae solo los valores
+            // filtrables (el servicio no carga la ficha entera) y son pocas filas.
+            foreach (var (key, value) in _fieldFilters)
+            {
+                rows = rows.Where(r => r.Filtrables is not null
+                    && r.Filtrables.TryGetValue(key, out var v)
+                    && string.Equals(v, value, StringComparison.OrdinalIgnoreCase));
+            }
+            return rows;
+        }
+    }
+
+    /// <summary>Campos marcados como filtrables, en el orden en que se configuraron.</summary>
+    private List<TerceroFieldDto> FilterableFields()
+        => _cfgAllFields.Where(f => f.ShowInFilter).OrderBy(f => f.FichaKey).ThenBy(f => f.SortOrder).ToList();
+
+    /// <summary>Valores que existen de verdad para esa clave: ofrecer opciones vacias solo estorba.</summary>
+    private List<string> FilterOptions(string fieldKey)
+        => _allRows
+            .Select(r => r.Filtrables is not null && r.Filtrables.TryGetValue(fieldKey, out var v) ? v : null)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(v => v, StringComparer.CurrentCulture)
+            .ToList();
+
+    private void SetFieldFilter(string fieldKey, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { _fieldFilters.Remove(fieldKey); }
+        else { _fieldFilters[fieldKey] = value; }
+    }
+
+    private void ClearFieldFilters() => _fieldFilters.Clear();
+
+    private int CountTodos => _allRows.Count;
+    private int CountEmpresas => _allRows.Count(r => r.EsEmpresa);
+    private int CountContactos => _allRows.Count(r => r.EsPersona);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCrearEmpresa = eff.Can(DirectorioSubPermisos.CrearEmpresa, PermissionAction.Create);
+        _canCrearCliente = eff.Can(DirectorioSubPermisos.CrearCliente, PermissionAction.Create);
+        _canCrearSospechoso = eff.Can(DirectorioSubPermisos.CrearSospechoso, PermissionAction.Create);
+        _canEdit = eff.Can(DirectorioSubPermisos.ModuleRoute, PermissionAction.Edit);
+        _canDelete = eff.Can(DirectorioSubPermisos.ModuleRoute, PermissionAction.Delete);
+        await FieldSvc.EnsureDefaultsAsync();
+        // Las definiciones se cargan de entrada (no solo al abrir el configurador): la barra de
+        // filtros necesita saber que campos estan marcados como filtrables.
+        _cfgAllFields = (await FieldSvc.ListFieldsAsync()).ToList();
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    // Abre el editor en modo crear. Guarda: si la pagina aun carga o recarga, NO abras el modal
+    // (abrirlo dispara EnsureDefaultsAsync sobre el DbContext scoped que la consulta en vuelo esta
+    // usando -> "second operation on this context"). Los botones ya salen deshabilitados; esto cubre
+    // cualquier disparo residual.
+    private async Task OpenCreateAsync()
+    {
+        if (_loading || _reloading || _terceroModal is null) { return; }
+        await _terceroModal.OpenCreate();
+    }
+
+    // Refresca lista + KPIs + contactos expandidos tras un cambio en el modal compartido.
+    private async Task OnModalChangedAsync()
+    {
+        await ReloadAsync();
+        foreach (var id in _expanded.ToList())
+        {
+            _kids[id] = await TerceroSvc.ListContactosAsync(id);
+        }
+    }
+
+
+    private static string TypeLabel(TerceroFieldType t) => t switch
+    {
+        TerceroFieldType.Text => "Texto",
+        TerceroFieldType.Number => "Numero",
+        TerceroFieldType.Currency => "Moneda",
+        TerceroFieldType.TextArea => "Texto largo",
+        TerceroFieldType.Select => "Lista",
+        TerceroFieldType.Date => "Fecha",
+        TerceroFieldType.Phone => "Telefono",
+        TerceroFieldType.Separator => "Separador",
+        TerceroFieldType.Calculated => "Calculado",
+        _ => t.ToString()
+    };
+
+    private async Task ReloadAsync()
+    {
+        _reloading = true;
+        try
+        {
+            // Se pide siempre naturaleza=Todos: los tabs de naturaleza filtran en cliente para
+            // que los contadores (Todos/Empresas/Contactos) queden siempre visibles.
+            _allRows = await TerceroSvc.ListAsync(new TerceroListFilter(_tipo, TerceroTabNaturaleza.Todos, _search));
+            _kpis = await TerceroSvc.GetKpisAsync();
+            // Purga expansiones/contactos de filas ya no visibles.
+            _expanded.RemoveWhere(id => _allRows.All(r => r.Id != id));
+        }
+        finally { _reloading = false; }
+    }
+
+    private async Task SetTipo(TerceroTabTipo tipo)
+    {
+        _tipo = tipo;
+        await ReloadAsync();
+    }
+
+    private async Task OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        await ReloadAsync();
+    }
+
+    private async Task ToggleExpandAsync(TerceroListItemDto row)
+    {
+        if (_expanded.Contains(row.Id))
+        {
+            _expanded.Remove(row.Id);
+            return;
+        }
+        _expanded.Add(row.Id);
+        if (!_kids.ContainsKey(row.Id))
+        {
+            _kids[row.Id] = await TerceroSvc.ListContactosAsync(row.Id);
+        }
+    }
+
+    // ---- Asignar ----
+    private void OpenAssign(TerceroListItemDto persona)
+    {
+        _assignPersona = persona;
+        _assignOpen = true;
+    }
+
+    private void CloseAssign()
+    {
+        _assignOpen = false;
+        _assignPersona = null;
+    }
+
+    private async Task AssignToAsync(Guid empresaId)
+    {
+        if (_assignPersona is null) { return; }
+        _busy = true;
+        var res = await TerceroSvc.AssignToEmpresaAsync(_assignPersona.Id, empresaId);
+        _busy = false;
+        if (!res.IsOk)
+        {
+            _pageError = res.Error;
+            return;
+        }
+        _kids.Remove(empresaId);
+        CloseAssign();
+        await ReloadAsync();
+    }
+
+    // ---- Eliminar ----
+    private async Task DeleteAsync(TerceroListItemDto row)
+    {
+        _busy = true;
+        _pageError = null;
+        var res = await TerceroSvc.DeleteAsync(row.Id);
+        _busy = false;
+        if (!res.IsOk)
+        {
+            _pageError = res.Error;
+            return;
+        }
+        await ReloadAsync();
+    }
+
+
+    private async Task DeleteContactoAsync(Guid parentId, Guid contactoId)
+    {
+        _busy = true;
+        var res = await TerceroSvc.DeleteContactoAsync(contactoId);
+        _busy = false;
+        if (!res.IsOk)
+        {
+            _pageError = res.Error;
+            return;
+        }
+        if (_expanded.Contains(parentId)) { _kids[parentId] = await TerceroSvc.ListContactosAsync(parentId); }
+        await ReloadAsync();
+    }
+
+
+    private sealed record FichaMeta(string Key, string Title, string Desc, string ConfigLabel, string Color, string Bg, string IconPath);
+
+    // Catalogo de fichas (mismas claves que ITerceroFieldService.FichaKeys). Solo metadatos
+    // de presentacion: los campos son 100% configurables via el servicio.
+    private static readonly FichaMeta[] FichaCatalog =
+    {
+        new("fiscal", "Ficha fiscal / tributaria", "Datos tributarios y de facturacion", "Datos fiscales", "--t-amber", "--t-amber-bg",
+            "M3 3h18v4H3zM3 7v14h18V7M8 12h8M8 16h5"),
+        new("comercial", "Ficha comercial", "Vendedor, origen y gestion de riesgo", "Datos comerciales", "--t-violet", "--t-violet-bg",
+            "m3 11 19-9-9 19-2-8-8-2z"),
+        new("cliente", "Ficha de cliente", "Condiciones comerciales de venta", "Ficha de cliente", "--t-green", "--t-green-bg",
+            "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"),
+        new("proveedor", "Ficha de proveedor", "Condiciones de compra y pago", "Ficha de proveedor", "--t-blue", "--t-blue-bg",
+            "M1 3h15v13H1zM16 8h4l3 3v5h-7V8ZM5.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM18.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"),
+        new("empleado", "Ficha de empleado", "Vinculacion laboral", "Ficha de empleado", "--t-rose", "--t-rose-bg",
+            "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM19 8v6M22 11h-6")
+    };
+
+    // ---- Configurador de campos ----
+    private bool _cfgOpen;
+    private string _cfgFicha = "fiscal";
+    private List<TerceroFieldDto> _cfgFields = new();
+    private Guid? _cfgEditingId;
+    private string _cfgLabel = "";
+    private TerceroFieldType _cfgType = TerceroFieldType.Text;
+    private int _cfgColumn = 1;
+    private string _cfgOptions = "";
+    private string _cfgDescription = "";
+    private string? _cfgError;
+
+    // Campos calculados y extras (ADR-0029).
+    private string _cfgFormula = "";
+    private string? _cfgFormulaError;
+    private bool _cfgShowInFilter;
+    private string _cfgRepeatWith = "";
+
+    /// <summary>Todos los campos del tenant: la formula puede referenciar cualquier ficha.</summary>
+    private List<TerceroFieldDto> _cfgAllFields = new();
+
+    // ---- Formularios ofrecidos en el modal de tercero (3a columna) ----
+    private IReadOnlyList<TerceroFormLinkDto> _cfgForms = Array.Empty<TerceroFormLinkDto>();
+    private IReadOnlyList<TerceroFormCandidateDto> _cfgFormCandidates = Array.Empty<TerceroFormCandidateDto>();
+    private string _cfgFormPick = "";
+
+    private async Task LoadCfgFormsAsync()
+    {
+        _cfgForms = await FormsSvc.ListAsync();
+        _cfgFormCandidates = await FormsSvc.ListCandidatesAsync();
+        _cfgFormPick = "";
+    }
+
+    private async Task AddCfgFormAsync()
+    {
+        if (!Guid.TryParse(_cfgFormPick, out var defId)) { return; }
+        _busy = true;
+        try
+        {
+            await FormsSvc.AddAsync(defId);
+            await LoadCfgFormsAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RemoveCfgFormAsync(Guid linkId)
+    {
+        _busy = true;
+        try
+        {
+            await FormsSvc.RemoveAsync(linkId);
+            await LoadCfgFormsAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenConfigAsync()
+    {
+        _cfgFicha = FichaCatalog[0].Key;
+        ResetCfgForm();
+        await FieldSvc.EnsureDefaultsAsync();
+        await LoadCfgFieldsAsync();
+        await LoadCfgFormsAsync();
+        _cfgOpen = true;
+    }
+
+    private void CloseConfig()
+    {
+        // El modal compartido de tercero recarga su propia cache de campos al abrirse,
+        // por lo que aqui basta con cerrar el configurador.
+        _cfgOpen = false;
+    }
+
+    private async Task LoadCfgFieldsAsync()
+    {
+        var list = await FieldSvc.ListByFichaAsync(_cfgFicha);
+        _cfgFields = list.OrderBy(f => f.SortOrder).ToList();
+        // Todas las fichas: una formula puede referenciar campos de cualquiera (los valores del
+        // tercero viven juntos), asi que el selector de claves los necesita todos.
+        _cfgAllFields = (await FieldSvc.ListFieldsAsync()).ToList();
+    }
+
+    private async Task SelectCfgFichaAsync(string ficha)
+    {
+        _cfgFicha = ficha;
+        ResetCfgForm();
+        await LoadCfgFieldsAsync();
+    }
+
+    // ---- Campo tipo lista del Contenedor de datos (TerceroFieldType.Lookup) ----
+    // La configuracion no vive en columnas nuevas: se serializa a JSON dentro de Options, en el
+    // mismo sitio donde un Select guarda sus opciones de texto.
+    private List<LookupModelDto> _lkModels = new();
+    private List<LookupTableDto> _lkTables = new();
+    private List<LookupColumnDto> _lkColumns = new();
+    private Guid? _lkModelId;
+    private Guid? _lkTableId;
+    private Guid? _lkDisplayCol;
+    private readonly List<AutofillRow> _lkAutofill = new();
+    private readonly List<FilterRow> _lkFilters = new();
+
+    private sealed class AutofillRow { public Guid ColumnId { get; set; } public string TargetKey { get; set; } = ""; }
+    private sealed class FilterRow
+    {
+        public Guid ColumnId { get; set; }
+        public string FromKey { get; set; } = "";
+        public string Value { get; set; } = "";
+        public bool Require { get; set; }
+    }
+
+    private void AddAutofill()
+        => _lkAutofill.Add(new AutofillRow { ColumnId = _lkColumns.Count > 0 ? _lkColumns[0].Id : Guid.Empty });
+
+    private void AddFilter()
+        => _lkFilters.Add(new FilterRow { ColumnId = _lkColumns.Count > 0 ? _lkColumns[0].Id : Guid.Empty });
+
+    /// <summary>
+    /// Campos de TODA la ficha (menos el que se edita) para elegir destino de autollenado u
+    /// origen de un filtro. La llave se cualifica con la ficha porque solo es unica dentro de
+    /// ella: sin eso, dos campos "ciudad" en fichas distintas serian indistinguibles.
+    /// </summary>
+    private List<(string Key, string Label)> OtrosCamposDeLaFicha()
+        => _cfgFields
+            .Where(f => f.Id != _cfgEditingId
+                && f.FieldType != TerceroFieldType.Separator
+                && f.FieldType != TerceroFieldType.Calculated)
+            .Select(f => ($"{f.FichaKey}/{f.FieldKey}", $"{f.Label}"))
+            .ToList();
+
+    private async Task LoadLookupCatalogAsync()
+    {
+        if (_lkModels.Count == 0) { _lkModels = (await LookupSvc.ListModelsAsync()).ToList(); }
+    }
+
+    private async Task OnLookupModelChangedAsync(ChangeEventArgs e)
+    {
+        _lkModelId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        _lkTableId = null;
+        _lkDisplayCol = null;
+        _lkColumns.Clear();
+        _lkAutofill.Clear();
+        _lkFilters.Clear();
+        _lkTables = _lkModelId is Guid mid ? (await LookupSvc.ListTablesAsync(mid)).ToList() : new();
+    }
+
+    private async Task OnLookupTableChangedAsync(ChangeEventArgs e)
+    {
+        _lkTableId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        // Cambiar de tabla invalida columnas: lo configurado apuntaba a otras.
+        _lkDisplayCol = null;
+        _lkAutofill.Clear();
+        _lkFilters.Clear();
+        _lkColumns = _lkTableId is Guid tid ? (await LookupSvc.ListColumnsAsync(tid)).ToList() : new();
+    }
+
+    private void ResetLookupCfg()
+    {
+        _lkModelId = null;
+        _lkTableId = null;
+        _lkDisplayCol = null;
+        _lkTables = new();
+        _lkColumns = new();
+        _lkAutofill.Clear();
+        _lkFilters.Clear();
+    }
+
+    /// <summary>Carga en el formulario la configuracion guardada de un campo Lookup.</summary>
+    private async Task LoadLookupCfgAsync(string? options)
+    {
+        ResetLookupCfg();
+        var cfg = DataLookupConfig.TryParse(options);
+        if (cfg is null) { return; }
+
+        await LoadLookupCatalogAsync();
+        _lkTableId = cfg.TableId;
+        _lkDisplayCol = cfg.DisplayColumnId;
+        _lkModelId = cfg.ModelId;
+        if (_lkModelId is Guid mid) { _lkTables = (await LookupSvc.ListTablesAsync(mid)).ToList(); }
+        _lkColumns = (await LookupSvc.ListColumnsAsync(cfg.TableId)).ToList();
+
+        foreach (var a in cfg.Autofill ?? [])
+        {
+            _lkAutofill.Add(new AutofillRow { ColumnId = a.ColumnId, TargetKey = a.TargetFieldKey });
+        }
+        foreach (var f in cfg.Filters ?? [])
+        {
+            _lkFilters.Add(new FilterRow
+            {
+                ColumnId = f.ColumnId,
+                FromKey = f.FromFieldKey ?? "",
+                Value = f.Value ?? "",
+                Require = f.RequireSource
+            });
+        }
+    }
+
+    /// <summary>Serializa lo configurado. Devuelve null si aun no hay tabla elegida.</summary>
+    private string? BuildLookupOptions()
+    {
+        if (_lkTableId is not Guid tid) { return null; }
+        var tabla = _lkTables.FirstOrDefault(t => t.Id == tid);
+        var cfg = new DataLookupConfig(
+            tid,
+            ModelId: _lkModelId,
+            DisplayColumnId: _lkDisplayCol,
+            // Se descartan las filas a medio llenar en vez de guardarlas rotas.
+            Filters: _lkFilters
+                .Where(f => f.ColumnId != Guid.Empty
+                    && (!string.IsNullOrWhiteSpace(f.FromKey) || !string.IsNullOrWhiteSpace(f.Value)))
+                .Select(f => new DataLookupFilterConfig(
+                    f.ColumnId,
+                    string.IsNullOrWhiteSpace(f.Value) ? null : f.Value.Trim(),
+                    string.IsNullOrWhiteSpace(f.FromKey) ? null : f.FromKey,
+                    f.Require))
+                .ToList(),
+            Autofill: _lkAutofill
+                .Where(a => a.ColumnId != Guid.Empty && !string.IsNullOrWhiteSpace(a.TargetKey))
+                .Select(a => new DataLookupAutofillConfig(a.ColumnId, a.TargetKey))
+                .ToList(),
+            TableName: tabla?.Name,
+            DisplayColumnName: _lkColumns.FirstOrDefault(c => c.Id == _lkDisplayCol)?.Name);
+        return cfg.ToJson();
+    }
+
+    private void ResetCfgForm()
+    {
+        _cfgEditingId = null;
+        _cfgLabel = "";
+        _cfgType = TerceroFieldType.Text;
+        _cfgColumn = 1;
+        _cfgOptions = "";
+        ResetLookupCfg();
+        _cfgDescription = "";
+        _cfgError = null;
+        _cfgFormula = "";
+        _cfgFormulaError = null;
+        _cfgShowInFilter = false;
+        _cfgRepeatWith = "";
+    }
+
+    private async Task EditCfgFieldAsync(TerceroFieldDto f)
+    {
+        _cfgEditingId = f.Id;
+        _cfgLabel = f.Label;
+        _cfgType = f.FieldType;
+        _cfgColumn = Math.Clamp(f.Column, 1, 3);
+        _cfgOptions = f.Options ?? "";
+        _cfgDescription = f.Description ?? "";
+        _cfgError = null;
+        _cfgFormula = f.Formula ?? "";
+        _cfgFormulaError = null;
+        _cfgShowInFilter = f.ShowInFilter;
+        _cfgRepeatWith = f.RepeatWithFieldKey ?? "";
+        if (f.FieldType == TerceroFieldType.Lookup) { await LoadLookupCfgAsync(f.Options); }
+        else { ResetLookupCfg(); }
+    }
+
+    private void CancelEditCfgField() => ResetCfgForm();
+
+    private async Task SaveCfgFieldAsync()
+    {
+        _cfgError = null;
+        var label = _cfgLabel.Trim();
+        if (label.Length == 0)
+        {
+            _cfgError = "La etiqueta es obligatoria.";
+            return;
+        }
+        var options = _cfgType switch
+        {
+            TerceroFieldType.Select => string.IsNullOrWhiteSpace(_cfgOptions) ? null : _cfgOptions.Trim(),
+            TerceroFieldType.Lookup => BuildLookupOptions(),
+            _ => null
+        };
+        if (_cfgType == TerceroFieldType.Lookup && options is null)
+        {
+            _cfgError = "Elige el modelo y la tabla que alimentan la lista.";
+            return;
+        }
+        var desc = string.IsNullOrWhiteSpace(_cfgDescription) ? null : _cfgDescription.Trim();
+
+        var formula = _cfgType == TerceroFieldType.Calculated ? _cfgFormula.Trim() : null;
+        if (_cfgType == TerceroFieldType.Calculated)
+        {
+            // Se revalida contra el servidor con la clave real: mientras se escribe se valida con la
+            // del campo en edicion, pero uno nuevo aun no tiene clave asignada.
+            _cfgFormulaError = await FieldSvc.ValidateFormulaAsync(formula, _cfgEditingId, _cfgEditingId is null ? null : CfgEditingKey());
+            if (_cfgFormulaError is not null) { return; }
+        }
+        var repeat = string.IsNullOrWhiteSpace(_cfgRepeatWith) ? null : _cfgRepeatWith;
+
+        _busy = true;
+        try
+        {
+            if (_cfgEditingId is Guid editId)
+            {
+                var upd = await FieldSvc.UpdateFieldAsync(editId, new UpdateTerceroFieldRequest(
+                    label, _cfgType, _cfgColumn, options, desc, false, formula, _cfgShowInFilter, repeat));
+                if (upd is null)
+                {
+                    _cfgError = "No se pudo guardar el campo.";
+                    return;
+                }
+            }
+            else
+            {
+                var created = await FieldSvc.CreateFieldAsync(new CreateTerceroFieldRequest(
+                    _cfgFicha, label, _cfgType, _cfgColumn, options, null, desc, false, formula, _cfgShowInFilter, repeat));
+                if (created is null)
+                {
+                    _cfgError = "No se pudo crear el campo. Revisa la ficha seleccionada.";
+                    return;
+                }
+            }
+            ResetCfgForm();
+            await LoadCfgFieldsAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>Clave del campo que se esta editando (para validar su formula sin autorreferencia).</summary>
+    private string? CfgEditingKey()
+        => _cfgFields.FirstOrDefault(f => f.Id == _cfgEditingId)?.FieldKey;
+
+    /// <summary>Valida la formula mientras se teclea, contra el servidor (que conoce los otros campos).</summary>
+    private async Task OnFormulaInputAsync(ChangeEventArgs e)
+    {
+        _cfgFormula = e.Value?.ToString() ?? string.Empty;
+        _cfgFormulaError = string.IsNullOrWhiteSpace(_cfgFormula)
+            ? null
+            : await FieldSvc.ValidateFormulaAsync(_cfgFormula, _cfgEditingId, CfgEditingKey());
+    }
+
+    /// <summary>Campos que una formula puede usar: los numericos y los ya calculados, de cualquier ficha.</summary>
+    private List<TerceroFieldDto> NumericFieldsForFormula()
+        => _cfgAllFields
+            .Where(f => f.Id != _cfgEditingId)
+            .Where(f => f.FieldType is TerceroFieldType.Number or TerceroFieldType.Currency or TerceroFieldType.Calculated)
+            .OrderBy(f => f.FichaKey).ThenBy(f => f.SortOrder)
+            .ToList();
+
+    /// <summary>
+    /// Claves que existen en mas de una ficha (la clave solo es unica DENTRO de la ficha). En una
+    /// formula {clave} no diria a cual apunta, asi que el servidor las rechaza; aqui se marcan para
+    /// no ofrecer algo que no se puede usar.
+    /// </summary>
+    private HashSet<string> AmbiguousKeys()
+        => _cfgAllFields
+            .GroupBy(f => f.FieldKey, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private async Task InsertFormulaKeyAsync(string key)
+    {
+        _cfgFormula = string.IsNullOrWhiteSpace(_cfgFormula) ? $"{{{key}}}" : $"{_cfgFormula} {{{key}}}";
+        _cfgFormulaError = await FieldSvc.ValidateFormulaAsync(_cfgFormula, _cfgEditingId, CfgEditingKey());
+    }
+
+    private static string ColumnLabel(int column) => column switch
+    {
+        >= 3 => "grande",
+        2 => "media",
+        _ => "pequena"
+    };
+
+    private static string FichaLabel(string fichaKey)
+        => FichaCatalog.FirstOrDefault(f => f.Key == fichaKey).ConfigLabel ?? fichaKey;
+
+    private async Task MoveCfgFieldToFichaAsync(TerceroFieldDto f, string? targetFicha)
+    {
+        if (string.IsNullOrWhiteSpace(targetFicha)) { return; }
+        _busy = true;
+        _cfgError = null;
+        try
+        {
+            _cfgError = await FieldSvc.MoveFieldToFichaAsync(f.Id, targetFicha);
+            if (_cfgError is null)
+            {
+                if (_cfgEditingId == f.Id) { ResetCfgForm(); }
+                await LoadCfgFieldsAsync();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteCfgFieldAsync(TerceroFieldDto f)
+    {
+        _busy = true;
+        try
+        {
+            await FieldSvc.DeleteFieldAsync(f.Id);
+            if (_cfgEditingId == f.Id) { ResetCfgForm(); }
+            await LoadCfgFieldsAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task MoveCfgFieldAsync(int from, int to)
+    {
+        if (to < 0 || to >= _cfgFields.Count) { return; }
+        var ordered = _cfgFields.Select(f => f.Id).ToList();
+        var moved = ordered[from];
+        ordered.RemoveAt(from);
+        ordered.Insert(to, moved);
+        _busy = true;
+        try
+        {
+            await FieldSvc.ReorderFieldsAsync(new ReorderFieldsRequest(ordered));
+            await LoadCfgFieldsAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// Cicla el ancho pequena -> media -> grande -> pequena, sin abrir el editor. Antes solo alternaba
+    /// entre dos porque solo habia dos.
+    /// </summary>
+    private async Task CycleCfgColumnAsync(TerceroFieldDto f)
+    {
+        var newCol = f.Column >= 3 ? 1 : f.Column + 1;
+        _busy = true;
+        try
+        {
+            await FieldSvc.UpdateFieldAsync(f.Id, new UpdateTerceroFieldRequest(
+                f.Label, f.FieldType, newCol, f.Options, f.Description, f.AllowMultiple,
+                f.Formula, f.ShowInFilter, f.RepeatWithFieldKey));
+            await LoadCfgFieldsAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Helpers de presentacion ----
+    private sealed record TagInfo(string Label, string Color, string Bg);
+
+    private static List<TagInfo> TipoTags(TerceroPerfil perfiles)
+    {
+        var tags = new List<TagInfo>();
+        if ((perfiles & TerceroPerfil.Cliente) == TerceroPerfil.Cliente) { tags.Add(new("Cliente", "--t-violet", "--t-violet-bg")); }
+        if ((perfiles & TerceroPerfil.Sospechoso) == TerceroPerfil.Sospechoso) { tags.Add(new("Sospechoso", "--t-rose", "--t-rose-bg")); }
+        if ((perfiles & TerceroPerfil.Proveedor) == TerceroPerfil.Proveedor) { tags.Add(new("Proveedor", "--t-amber", "--t-amber-bg")); }
+        if ((perfiles & TerceroPerfil.Empleado) == TerceroPerfil.Empleado) { tags.Add(new("Empleado", "--t-blue", "--t-blue-bg")); }
+        return tags;
+    }
+
+    private static TagInfo EstadoInfo(TerceroEstado estado) => estado switch
+    {
+        TerceroEstado.Activo => new("Activo", "--t-green", "--t-green-bg"),
+        TerceroEstado.Prospecto => new("Prospecto", "--t-amber", "--t-amber-bg"),
+        _ => new("Inactivo", "--t-slate", "--t-slate-bg")
+    };
+
+    private static readonly string[] AvatarPalette =
+        { "--t-violet", "--t-blue", "--t-amber", "--t-green", "--t-rose", "--t-slate" };
+
+    private static string AvatarColor(string name)
+    {
+        var hash = 0;
+        foreach (var ch in name) { hash = (hash * 31 + ch) & 0x7fffffff; }
+        return $"var({AvatarPalette[hash % AvatarPalette.Length]})";
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) { return "?"; }
+        return parts.Length == 1
+            ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+            : string.Concat(char.ToUpperInvariant(parts[0][0]), char.ToUpperInvariant(parts[1][0]));
+    }
+}
