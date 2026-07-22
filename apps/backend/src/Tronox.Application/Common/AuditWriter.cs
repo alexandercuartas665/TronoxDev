@@ -13,13 +13,13 @@ public sealed class AuditWriter : IAuditWriter
     public AuditWriter(IApplicationDbContext db) => _db = db;
 
     public void Write(
-        Guid actorUserId,
+        long actorUserId,
         string actionName,
         string entityName,
-        Guid? entityId,
+        long? entityId,
         object? previousValue,
         object? newValue,
-        Guid? tenantId = null,
+        long? tenantId = null,
         string? reason = null,
         AuditActorType actorType = AuditActorType.Human)
     {

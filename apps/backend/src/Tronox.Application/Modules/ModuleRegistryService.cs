@@ -73,9 +73,9 @@ public sealed class ModuleRegistryService : IModuleRegistryService
     // ---- Estado por tenant ----
 
     public async Task<OrgResult<ModuleCatalogRowDto>> SetModuleEnabledAsync(
-        Guid moduleDefinitionId, bool enabled, CancellationToken cancellationToken = default)
+        long moduleDefinitionId, bool enabled, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return OrgResult<ModuleCatalogRowDto>.Invalid("No hay tenant activo.");
         }
@@ -103,9 +103,9 @@ public sealed class ModuleRegistryService : IModuleRegistryService
     }
 
     public async Task<OrgResult<ModuleCatalogRowDto>> UpdateSettingsAsync(
-        Guid moduleDefinitionId, string? settingsJson, CancellationToken cancellationToken = default)
+        long moduleDefinitionId, string? settingsJson, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return OrgResult<ModuleCatalogRowDto>.Invalid("No hay tenant activo.");
         }
@@ -146,11 +146,11 @@ public sealed class ModuleRegistryService : IModuleRegistryService
     }
 
     public async Task<IReadOnlyList<EnabledModuleDto>> GetEnabledModulesAsync(
-        Guid tenantId, CancellationToken cancellationToken = default)
+        long tenantId, CancellationToken cancellationToken = default)
     {
         // Fail-closed: un usuario de tenant solo puede consultar SU tenant. Sin tenant
         // ambiente (PlatformAdmin / procesos de plataforma) se permite el tenant explicito.
-        if (_tenantContext.TenantId is Guid ambient && ambient != tenantId)
+        if (_tenantContext.TenantId is long ambient && ambient != tenantId)
         {
             return [];
         }

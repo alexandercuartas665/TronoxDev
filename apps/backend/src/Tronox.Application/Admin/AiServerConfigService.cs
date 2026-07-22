@@ -31,7 +31,7 @@ public sealed class AiServerConfigService : IAiServerConfigService
         return AllProviders.Select(p => Map(p, stored.FirstOrDefault(c => c.Provider == p))).ToList();
     }
 
-    public async Task<AiProviderDto> SaveAsync(SaveAiProviderRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<AiProviderDto> SaveAsync(SaveAiProviderRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var config = await _db.AiProviderConfigs.FirstOrDefaultAsync(c => c.Provider == request.Provider, cancellationToken);
         var isNew = config is null;

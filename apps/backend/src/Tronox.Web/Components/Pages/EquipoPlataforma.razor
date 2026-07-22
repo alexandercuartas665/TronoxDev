@@ -207,11 +207,11 @@ else
     private string? _error;
     private string? _formError;
     private List<PlatformOperatorDto> _operators = new();
-    private Guid _selfId;
+    private long _selfId;
 
     // Form (create / edit)
     private bool _modalOpen;
-    private Guid? _editingId;
+    private long? _editingId;
     private string _fEmail = "";
     private string _fDisplayName = "";
     private PlatformRole _fRole = PlatformRole.SupportOperator;
@@ -364,11 +364,11 @@ else
         _showPassword = true;
     }
 
-    private async Task<Guid> ResolveSelfIdAsync()
+    private async Task<long> ResolveSelfIdAsync()
     {
-        if (AuthState is null) { return Guid.Empty; }
+        if (AuthState is null) { return 0; }
         var st = await AuthState;
-        return Guid.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+        return long.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     }
 
     private static string RoleLabel(PlatformRole role) => role switch

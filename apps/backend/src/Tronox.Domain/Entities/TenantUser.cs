@@ -9,7 +9,7 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class TenantUser : TenantEntity
 {
-    public Guid PlatformUserId { get; set; }
+    public long PlatformUserId { get; set; }
     public PlatformUser? PlatformUser { get; set; }
 
     public string Email { get; set; } = null!;
@@ -29,7 +29,7 @@ public class TenantUser : TenantEntity
     /// Vista del menu configurable asignada a este usuario (Ola 1 del menu por perfil).
     /// Null = usa la vista IsDefault del tenant. FK NO ACTION (no arrastra al usuario por cascada).
     /// </summary>
-    public Guid? MenuViewId { get; set; }
+    public long? MenuViewId { get; set; }
     public MenuView? MenuView { get; set; }
 
     /// <summary>
@@ -38,7 +38,7 @@ public class TenantUser : TenantEntity
     /// (borrar un rol no arrastra al usuario; la app bloquea el borrado si tiene usuarios).
     /// Distinto de <see cref="TenantRole"/> (poder organico): ver ADR-0032.
     /// </summary>
-    public Guid? RolId { get; set; }
+    public long? RolId { get; set; }
     public Rol? Rol { get; set; }
 
     /// <summary>Token de invitacion para que el asesor complete su registro (clave + foto). Null si ya activo.</summary>

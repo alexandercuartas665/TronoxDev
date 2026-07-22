@@ -9,10 +9,10 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class TenantSubscription : BaseEntity
 {
-    public Guid TenantId { get; set; }
+    public long TenantId { get; set; }
     public Tenant? Tenant { get; set; }
 
-    public Guid PlanId { get; set; }
+    public long PlanId { get; set; }
     public SaasPlan? Plan { get; set; }
 
     public SubscriptionStatus Status { get; set; } = SubscriptionStatus.Trialing;

@@ -16,7 +16,7 @@ public sealed class PaymentAdminService : IPaymentAdminService
         _audit = audit;
     }
 
-    public async Task<PaymentDetail?> RegisterAsync(RegisterPaymentRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<PaymentDetail?> RegisterAsync(RegisterPaymentRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var subscription = await _db.TenantSubscriptions
             .FirstOrDefaultAsync(s => s.Id == request.SubscriptionId && s.TenantId == request.TenantId, cancellationToken);
@@ -49,11 +49,11 @@ public sealed class PaymentAdminService : IPaymentAdminService
         return Map(payment);
     }
 
-    public async Task<IReadOnlyList<PaymentDetail>> ListAsync(Guid? tenantId = null, PaymentStatus? status = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PaymentDetail>> ListAsync(long? tenantId = null, PaymentStatus? status = null, CancellationToken cancellationToken = default)
     {
         var query = _db.TenantPayments.AsNoTracking();
 
-        if (tenantId is Guid t)
+        if (tenantId is long t)
         {
             query = query.Where(p => p.TenantId == t);
         }

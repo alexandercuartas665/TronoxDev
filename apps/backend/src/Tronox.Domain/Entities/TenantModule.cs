@@ -10,7 +10,7 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class TenantModule : TenantEntity
 {
-    public Guid ModuleDefinitionId { get; set; }
+    public long ModuleDefinitionId { get; set; }
     public ModuleDefinition? ModuleDefinition { get; set; }
 
     public bool IsEnabled { get; set; } = true;

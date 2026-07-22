@@ -3,8 +3,8 @@ using Tronox.Domain.Enums;
 namespace Tronox.Application.Tenancy;
 
 public sealed record TenantUserDto(
-    Guid Id,
-    Guid PlatformUserId,
+    long Id,
+    long PlatformUserId,
     string Email,
     TenantRole TenantRole,
     PlatformUserStatus Status,

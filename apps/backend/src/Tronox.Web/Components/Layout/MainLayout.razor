@@ -193,8 +193,8 @@
     private int _unread;   // notificaciones no leidas del usuario (badge de la campana)
     // #4b: refresco en vivo del badge por SignalR.
     private HubConnection? _notifHub;
-    private Guid _platformUserId;
-    private Guid? _tenantUserId;
+    private long _platformUserId;
+    private long? _tenantUserId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -210,7 +210,7 @@
         _userName = state.User.Identity?.Name;
         _avatar = Initials(_userName);
 
-        if (_isTenantWorkspace && Guid.TryParse(tenantClaim, out var tenantId))
+        if (_isTenantWorkspace && long.TryParse(tenantClaim, out var tenantId))
         {
             // Scope aislado para no compartir el DbContext con NavMenu/paginas durante el render.
             try
@@ -220,7 +220,7 @@
                 _tenantName = (await tenants.GetAsync(tenantId))?.Name;
 
                 // Ola 7: conteo de notificaciones no leidas para el badge de la campana.
-                if (Guid.TryParse(state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var platformUserId))
+                if (long.TryParse(state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var platformUserId))
                 {
                     _platformUserId = platformUserId;
                     var notifs = scope.ServiceProvider.GetRequiredService<Tronox.Application.Notifications.INotificationService>();
@@ -238,7 +238,7 @@
     /// <summary>#4b: conecta al hub de notificaciones y refresca el badge al recibir "NotificationAdded".</summary>
     private async Task SetupNotificationHubAsync()
     {
-        if (_tenantUserId is not Guid tenantUserId) { return; }
+        if (_tenantUserId is not long tenantUserId) { return; }
         try
         {
             _notifHub = new HubConnectionBuilder()

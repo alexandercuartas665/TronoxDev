@@ -43,7 +43,7 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<(PlatformOperatorDto? Created, string? Error)> CreateAsync(CreatePlatformOperatorRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<(PlatformOperatorDto? Created, string? Error)> CreateAsync(CreatePlatformOperatorRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var email = (request.Email ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(email))
@@ -82,7 +82,7 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
             op.EmailVerified, op.AuthProvider, op.LastLoginAt, op.CreatedAt), null);
     }
 
-    public async Task<PlatformOperatorDto?> UpdateAsync(Guid operatorId, UpdatePlatformOperatorRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<PlatformOperatorDto?> UpdateAsync(long operatorId, UpdatePlatformOperatorRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var op = await _db.PlatformUsers.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == operatorId, cancellationToken);
         if (op is null || op.PlatformRole is null) { return null; }
@@ -103,7 +103,7 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
             op.EmailVerified, op.AuthProvider, op.LastLoginAt, op.CreatedAt);
     }
 
-    public async Task<bool> ChangePasswordAsync(ChangeOperatorPasswordRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<bool> ChangePasswordAsync(ChangeOperatorPasswordRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6) { return false; }
         var op = await _db.PlatformUsers.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == request.OperatorId, cancellationToken);
@@ -119,7 +119,7 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
         return true;
     }
 
-    public async Task<(bool Deleted, string? Error)> DeleteAsync(Guid operatorId, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<(bool Deleted, string? Error)> DeleteAsync(long operatorId, long actorUserId, CancellationToken cancellationToken = default)
     {
         if (operatorId == actorUserId)
         {

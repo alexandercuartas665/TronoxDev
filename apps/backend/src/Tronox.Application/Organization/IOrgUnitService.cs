@@ -16,7 +16,7 @@ public interface IOrgUnitService
     /// <summary>Lista plana (para combos de padre / administracion).</summary>
     Task<IReadOnlyList<OrgUnitDto>> ListAsync(bool includeArchived = false, CancellationToken cancellationToken = default);
 
-    Task<OrgUnitDto?> GetAsync(Guid unitId, CancellationToken cancellationToken = default);
+    Task<OrgUnitDto?> GetAsync(long unitId, CancellationToken cancellationToken = default);
 
     /// <summary>KPIs de cabecera: total dependencias activas, usuarios asignados (miembros + responsables distintos) y areas.</summary>
     Task<OrgKpisDto> GetKpisAsync(CancellationToken cancellationToken = default);
@@ -26,21 +26,21 @@ public interface IOrgUnitService
     Task<OrgResult<OrgUnitDto>> CreateAsync(SaveOrgUnitRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Actualiza la unidad. Invalid si el nuevo padre crea un ciclo en el arbol.</summary>
-    Task<OrgResult<OrgUnitDto>> UpdateAsync(Guid unitId, SaveOrgUnitRequest request, CancellationToken cancellationToken = default);
+    Task<OrgResult<OrgUnitDto>> UpdateAsync(long unitId, SaveOrgUnitRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Archiva/restaura la unidad (soft-delete; no hay DELETE fisico de unidades).</summary>
-    Task<OrgResult<bool>> SetArchivedAsync(Guid unitId, bool archived, CancellationToken cancellationToken = default);
+    Task<OrgResult<bool>> SetArchivedAsync(long unitId, bool archived, CancellationToken cancellationToken = default);
 
     // ---- Miembros ----
 
-    Task<IReadOnlyList<OrgUnitMemberDto>> ListMembersAsync(Guid unitId, CancellationToken cancellationToken = default);
-    Task<OrgResult<OrgUnitMemberDto>> AddMemberAsync(Guid unitId, Guid tenantUserId, string? role = null, CancellationToken cancellationToken = default);
-    Task<OrgResult<bool>> RemoveMemberAsync(Guid memberId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<OrgUnitMemberDto>> ListMembersAsync(long unitId, CancellationToken cancellationToken = default);
+    Task<OrgResult<OrgUnitMemberDto>> AddMemberAsync(long unitId, long tenantUserId, string? role = null, CancellationToken cancellationToken = default);
+    Task<OrgResult<bool>> RemoveMemberAsync(long memberId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marca/desmarca a un miembro como jefe/responsable de su unidad (a lo sumo uno por unidad).
     /// Al marcar, sincroniza <c>OrgUnit.ResponsibleTenantUserId</c> con el usuario del miembro; al
     /// desmarcar, lo limpia si apuntaba a ese usuario. Operacion multi-tabla en una transaccion.
     /// </summary>
-    Task<OrgResult<bool>> SetMemberResponsibleAsync(Guid memberId, bool isResponsible, CancellationToken cancellationToken = default);
+    Task<OrgResult<bool>> SetMemberResponsibleAsync(long memberId, bool isResponsible, CancellationToken cancellationToken = default);
 }

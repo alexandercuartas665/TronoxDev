@@ -12,8 +12,8 @@ public static class MenuTreeBuilder
 {
     /// <summary>Nodo plano de entrada (proyeccion minima desde la entidad MenuNode).</summary>
     public readonly record struct FlatNode(
-        Guid Id,
-        Guid? ParentId,
+        long Id,
+        long? ParentId,
         MenuNodeKind Kind,
         string Name,
         string? IconKey,
@@ -47,7 +47,7 @@ public static class MenuTreeBuilder
             .ToList();
     }
 
-    private static MenuNodeDto ToDto(FlatNode node, Dictionary<Guid, List<FlatNode>> childrenByParent)
+    private static MenuNodeDto ToDto(FlatNode node, Dictionary<long, List<FlatNode>> childrenByParent)
     {
         List<MenuNodeDto> children;
         if (childrenByParent.TryGetValue(node.Id, out var kids))

@@ -16,15 +16,15 @@ public static class OrgUnitTree
     /// <param name="unitId">Unidad que se mueve/edita.</param>
     /// <param name="newParentId">Padre propuesto (null = raiz, nunca hay ciclo).</param>
     /// <param name="parentByUnit">Mapa Id -&gt; ParentId de TODAS las unidades del tenant.</param>
-    public static bool WouldCreateCycle(Guid unitId, Guid? newParentId, IReadOnlyDictionary<Guid, Guid?> parentByUnit)
+    public static bool WouldCreateCycle(long unitId, long? newParentId, IReadOnlyDictionary<long, long?> parentByUnit)
     {
         if (newParentId is null)
         {
             return false;
         }
-        var visited = new HashSet<Guid>();
+        var visited = new HashSet<long>();
         var current = newParentId;
-        while (current is Guid currentId)
+        while (current is long currentId)
         {
             if (currentId == unitId)
             {

@@ -9,7 +9,7 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class PasswordResetToken : BaseEntity
 {
-    public Guid PlatformUserId { get; set; }
+    public long PlatformUserId { get; set; }
 
     /// <summary>SHA-256 (hex) del token enviado por correo. La busqueda se hace por este hash.</summary>
     public string TokenHash { get; set; } = null!;

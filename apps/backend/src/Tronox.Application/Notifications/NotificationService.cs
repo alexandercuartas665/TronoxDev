@@ -15,10 +15,10 @@ public sealed class NotificationService : INotificationService
 
     public NotificationService(IApplicationDbContext db) => _db = db;
 
-    public async Task<int> UnreadCountForPlatformUserAsync(Guid platformUserId, CancellationToken cancellationToken = default)
+    public async Task<int> UnreadCountForPlatformUserAsync(long platformUserId, CancellationToken cancellationToken = default)
     {
         var tenantUserId = await ResolveTenantUserIdAsync(platformUserId, cancellationToken);
-        if (tenantUserId is not Guid uid)
+        if (tenantUserId is not long uid)
         {
             return 0;
         }
@@ -28,10 +28,10 @@ public sealed class NotificationService : INotificationService
     }
 
     public async Task<IReadOnlyList<NotificationDto>> ListForPlatformUserAsync(
-        Guid platformUserId, int take = 30, CancellationToken cancellationToken = default)
+        long platformUserId, int take = 30, CancellationToken cancellationToken = default)
     {
         var tenantUserId = await ResolveTenantUserIdAsync(platformUserId, cancellationToken);
-        if (tenantUserId is not Guid uid)
+        if (tenantUserId is not long uid)
         {
             return Array.Empty<NotificationDto>();
         }
@@ -45,7 +45,7 @@ public sealed class NotificationService : INotificationService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<bool> MarkReadAsync(Guid notificationId, CancellationToken cancellationToken = default)
+    public async Task<bool> MarkReadAsync(long notificationId, CancellationToken cancellationToken = default)
     {
         var notification = await _db.Notifications.FirstOrDefaultAsync(n => n.Id == notificationId, cancellationToken);
         if (notification is null)
@@ -61,10 +61,10 @@ public sealed class NotificationService : INotificationService
         return true;
     }
 
-    public async Task<int> MarkAllReadForPlatformUserAsync(Guid platformUserId, CancellationToken cancellationToken = default)
+    public async Task<int> MarkAllReadForPlatformUserAsync(long platformUserId, CancellationToken cancellationToken = default)
     {
         var tenantUserId = await ResolveTenantUserIdAsync(platformUserId, cancellationToken);
-        if (tenantUserId is not Guid uid)
+        if (tenantUserId is not long uid)
         {
             return 0;
         }
@@ -86,17 +86,17 @@ public sealed class NotificationService : INotificationService
         return pending.Count;
     }
 
-    public async Task CreateAsync(Guid recipientTenantUserId, NotificationKind kind, string title, string body,
-        string? linkRoute = null, Guid? relatedTaskItemId = null, string? actorName = null,
+    public async Task CreateAsync(long recipientTenantUserId, NotificationKind kind, string title, string body,
+        string? linkRoute = null, long? relatedTaskItemId = null, string? actorName = null,
         CancellationToken cancellationToken = default)
     {
         // No hay stamping automatico de TenantId: se toma del destinatario (tenant-scoped, asi que
         // solo resuelve si el TenantUser pertenece al tenant actual). Si no existe, no se entrega.
         var recipientTenantId = await _db.TenantUsers.AsNoTracking()
             .Where(u => u.Id == recipientTenantUserId)
-            .Select(u => (Guid?)u.TenantId)
+            .Select(u => (long?)u.TenantId)
             .FirstOrDefaultAsync(cancellationToken);
-        if (recipientTenantId is not Guid tenantId)
+        if (recipientTenantId is not long tenantId)
         {
             return;
         }
@@ -115,12 +115,12 @@ public sealed class NotificationService : INotificationService
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<Guid?> ResolveTenantUserIdAsync(Guid platformUserId, CancellationToken cancellationToken = default)
+    public async Task<long?> ResolveTenantUserIdAsync(long platformUserId, CancellationToken cancellationToken = default)
     {
         // Tenant-scoped: dentro del tenant actual, el TenantUser cuyo PlatformUserId coincide.
         var id = await _db.TenantUsers.AsNoTracking()
             .Where(u => u.PlatformUserId == platformUserId)
-            .Select(u => (Guid?)u.Id)
+            .Select(u => (long?)u.Id)
             .FirstOrDefaultAsync(cancellationToken);
         return id;
     }

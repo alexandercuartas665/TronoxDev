@@ -130,7 +130,7 @@ else
 
     private List<PlanDetail>? _plans;
     private bool _modalOpen;
-    private Guid? _editingId;
+    private long? _editingId;
     private bool _busy;
     private string? _error;
     private readonly PlanForm _form = new();
@@ -181,7 +181,7 @@ else
             };
             var request = new CreatePlanRequest(_form.Name, _form.Description, _form.Monthly, _form.Yearly, _form.Currency, limits);
 
-            if (_editingId is Guid id)
+            if (_editingId is long id)
             {
                 await PlansSvc.UpdateAsync(id, request, actor);
             }
@@ -224,11 +224,11 @@ else
         _ => $"{l.LimitValue:N0} {l.LimitKey}"
     };
 
-    private async Task<Guid> ActorAsync()
+    private async Task<long> ActorAsync()
     {
-        if (AuthState is null) return Guid.Empty;
+        if (AuthState is null) return 0;
         var state = await AuthState;
-        return Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+        return long.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     }
 
     private sealed class PlanForm

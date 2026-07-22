@@ -6,7 +6,7 @@ namespace Tronox.Domain.Entities;
 /// <summary>Limite dinamico asociado a un plan (max_users, max_ai_tokens_monthly, etc.).</summary>
 public class SaasPlanLimit : BaseEntity
 {
-    public Guid PlanId { get; set; }
+    public long PlanId { get; set; }
     public SaasPlan? Plan { get; set; }
 
     public string LimitKey { get; set; } = null!;

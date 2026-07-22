@@ -2,10 +2,10 @@ namespace Tronox.Application.Common.Auth;
 
 /// <summary>Datos que se incrustan en el JWT propio.</summary>
 public sealed record TokenClaims(
-    Guid UserId,
+    long UserId,
     string Email,
     string? DisplayName,
-    Guid? TenantId,
+    long? TenantId,
     string? PlatformRole,
     string? TenantRole,
     IReadOnlyList<string> Permissions);

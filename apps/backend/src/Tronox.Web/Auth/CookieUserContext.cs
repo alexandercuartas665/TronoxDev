@@ -12,13 +12,13 @@ namespace Tronox.Web.Auth;
 /// </summary>
 public sealed class CookieUserContext(IHttpContextAccessor accessor) : ITenantContext
 {
-    public Guid? TenantId =>
-        Guid.TryParse(accessor.HttpContext?.User.FindFirst("tenant_id")?.Value, out var id)
+    public long? TenantId =>
+        long.TryParse(accessor.HttpContext?.User.FindFirst("tenant_id")?.Value, out var id)
             ? id
             : null;
 
-    public Guid? UserId =>
-        Guid.TryParse(accessor.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id)
+    public long? UserId =>
+        long.TryParse(accessor.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id)
             ? id
             : null;
 }

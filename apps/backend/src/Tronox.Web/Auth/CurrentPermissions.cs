@@ -77,7 +77,7 @@ public sealed class CurrentPermissions : ICurrentPermissions
         try
         {
             var (tenantId, platformUserId) = await ResolveIdentityAsync();
-            if (platformUserId is not Guid userId)
+            if (platformUserId is not long userId)
             {
                 // Sin usuario resoluble (o no autenticado): no restringir (fail-open).
                 return EffectivePermissions.UnrestrictedAccess();
@@ -90,7 +90,7 @@ public sealed class CurrentPermissions : ICurrentPermissions
             // encuentra y la resolucion caeria en "sin TenantUser -> Unrestricted". En una peticion
             // HTTP el tenant sale del claim; en un circuito Blazor no hay HttpContext, asi que se fija
             // aqui de forma ambiental para que el filtro vea al usuario. Ver ResolveIdentityAsync.
-            using var ambient = tenantId is Guid tid ? AmbientTenantContext.Begin(tid, userId) : null;
+            using var ambient = tenantId is long tid ? AmbientTenantContext.Begin(tid, userId) : null;
 
             var roles = scope.ServiceProvider.GetRequiredService<IRolService>();
             return await roles.ResolveEffectivePermissionsAsync(userId, cancellationToken);
@@ -117,16 +117,16 @@ public sealed class CurrentPermissions : ICurrentPermissions
     /// El proveedor de autenticacion se pide por IServiceProvider (no por constructor) para no
     /// exigirlo en scopes que no lo tengan (p. ej. trabajo de fondo).
     /// </summary>
-    private async Task<(Guid? TenantId, Guid? UserId)> ResolveIdentityAsync()
+    private async Task<(long? TenantId, long? UserId)> ResolveIdentityAsync()
     {
         var http = _accessor.HttpContext?.User;
         if (http is not null)
         {
             var httpUser = http.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (Guid.TryParse(httpUser, out var uid))
+            if (long.TryParse(httpUser, out var uid))
             {
-                Guid.TryParse(http.FindFirst("tenant_id")?.Value, out var htid);
-                return (htid == Guid.Empty ? null : htid, uid);
+                long.TryParse(http.FindFirst("tenant_id")?.Value, out var htid);
+                return (htid == 0 ? null : htid, uid);
             }
         }
 
@@ -135,12 +135,12 @@ public sealed class CurrentPermissions : ICurrentPermissions
 
         var state = await authProvider.GetAuthenticationStateAsync();
         var user = state.User;
-        if (!Guid.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var circuitUser))
+        if (!long.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var circuitUser))
         {
             return (null, null);
         }
-        Guid.TryParse(user.FindFirst("tenant_id")?.Value, out var ctid);
-        return (ctid == Guid.Empty ? null : ctid, circuitUser);
+        long.TryParse(user.FindFirst("tenant_id")?.Value, out var ctid);
+        return (ctid == 0 ? null : ctid, circuitUser);
     }
 
     public async Task<bool> IsUnrestrictedAsync(CancellationToken cancellationToken = default)

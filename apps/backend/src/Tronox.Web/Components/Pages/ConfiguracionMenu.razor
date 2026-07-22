@@ -372,11 +372,11 @@ else
 
     private IReadOnlyList<MenuViewDto> _views = Array.Empty<MenuViewDto>();
     // Conteos por vista para las tarjetas del index (secciones / ocultos): se calculan del arbol.
-    private readonly Dictionary<Guid, (int sections, int hidden)> _viewCounts = new();
+    private readonly Dictionary<long, (int sections, int hidden)> _viewCounts = new();
 
     // ---- Modal crear/renombrar vista ----
     private bool _showViewForm;
-    private Guid? _viewFormId;
+    private long? _viewFormId;
     private string _viewFormName = "";
     private string? _viewFormDesc;
     private string? _viewFormError;
@@ -386,7 +386,7 @@ else
     private MenuViewTreeDto? _tree;
     private EditorTab _tab = EditorTab.Structure;
     private string _search = "";
-    private readonly HashSet<Guid> _collapsed = new();
+    private readonly HashSet<long> _collapsed = new();
     private MenuEditorNodeDto? _selected;
 
     // Buffer de propiedades del nodo seleccionado.
@@ -425,8 +425,8 @@ else
         _loadingIndex = false;
     }
 
-    private int CountSections(Guid viewId) => _viewCounts.TryGetValue(viewId, out var c) ? c.sections : 0;
-    private int CountHidden(Guid viewId) => _viewCounts.TryGetValue(viewId, out var c) ? c.hidden : 0;
+    private int CountSections(long viewId) => _viewCounts.TryGetValue(viewId, out var c) ? c.sections : 0;
+    private int CountHidden(long viewId) => _viewCounts.TryGetValue(viewId, out var c) ? c.hidden : 0;
 
     // ================= Index: crear / duplicar / default / eliminar =================
 
@@ -444,7 +444,7 @@ else
         _busy = true; _viewFormError = null;
         try
         {
-            if (_viewFormId is Guid id)
+            if (_viewFormId is long id)
             {
                 var res = await MenuSvc.UpdateViewAsync(id, _viewFormName, _viewFormDesc);
                 if (!res.IsOk) { _viewFormError = res.Error; return; }
@@ -500,7 +500,7 @@ else
 
     // ================= Editor =================
 
-    private async Task OpenEditorAsync(Guid viewId)
+    private async Task OpenEditorAsync(long viewId)
     {
         await ReloadTreeAsync(viewId);
         _selected = null;
@@ -517,9 +517,9 @@ else
         _selected = null;
     }
 
-    private Guid _editingViewId;
+    private long _editingViewId;
 
-    private async Task ReloadTreeAsync(Guid? viewId = null)
+    private async Task ReloadTreeAsync(long? viewId = null)
     {
         _editingViewId = viewId ?? _editingViewId;
         var res = await MenuSvc.GetViewTreeAsync(_editingViewId);
@@ -673,8 +673,8 @@ else
     // para habilitar el drop; NO cambia estado (dispararia un round-trip por cada pixel). El
     // resaltado del objetivo se hace en 'dragenter' (infrecuente). El drop usa el nodo destino
     // real y delega en MoveNodeAsync, que ya valida ciclo y coherencia de Kind.
-    private Guid? _dragId;
-    private Guid? _dropId;
+    private long? _dragId;
+    private long? _dropId;
 
     private void OnDragStart(MenuEditorNodeDto node)
     {
@@ -694,10 +694,10 @@ else
         _dropId = null;
     }
 
-    private MenuEditorNodeDto? NodeById(Guid id)
+    private MenuEditorNodeDto? NodeById(long id)
         => _tree is null ? null : FlattenAll(_tree.Roots).FirstOrDefault(n => n.Id == id);
 
-    private static bool IsDescendant(MenuEditorNodeDto ancestor, Guid id)
+    private static bool IsDescendant(MenuEditorNodeDto ancestor, long id)
         => ancestor.Children.Any(c => c.Id == id || IsDescendant(c, id));
 
     // true si al soltar 'dragged' sobre 'target' quedaria como HIJO (contenedor compatible);
@@ -711,7 +711,7 @@ else
         var draggedId = _dragId;
         _dragId = null;
         _dropId = null;
-        if (draggedId is not Guid dragId || dragId == target.Id) { return; }
+        if (draggedId is not long dragId || dragId == target.Id) { return; }
         var dragged = NodeById(dragId);
         if (dragged is null) { return; }
         if (IsDescendant(dragged, target.Id))
@@ -720,7 +720,7 @@ else
             return;
         }
 
-        Guid? newParent;
+        long? newParent;
         int newOrder;
         if (WouldDropAsChild(dragged, target))
         {
@@ -802,9 +802,9 @@ else
         _showAssign = true;
     }
 
-    private async Task AssignAsync(Guid tenantUserId, string? viewValue)
+    private async Task AssignAsync(long tenantUserId, string? viewValue)
     {
-        Guid? viewId = Guid.TryParse(viewValue, out var vid) ? vid : null;
+        long? viewId = long.TryParse(viewValue, out var vid) ? vid : null;
         var res = await MenuSvc.AssignUserToViewAsync(tenantUserId, viewId);
         Flash(res.IsOk ? "Asignacion actualizada." : (res.Error ?? "No se pudo asignar."), res.IsOk);
         _assignUsers = await MenuSvc.ListTenantUsersWithViewAsync();
@@ -818,7 +818,7 @@ else
     private int KpiScreens => _tree is null ? 0 : SectionItems().Count(pair => !IsSectionChild(pair));
     private int KpiHidden => _tree is null ? 0 : FlattenAll(_tree.Roots).Count(n => !n.IsVisible);
 
-    private IEnumerable<(MenuEditorNodeDto node, Guid? parentKindOwner)> SectionItems()
+    private IEnumerable<(MenuEditorNodeDto node, long? parentKindOwner)> SectionItems()
     {
         if (_tree is null) { yield break; }
         foreach (var n in FlattenAll(_tree.Roots).Where(n => n.Kind == MenuNodeKind.Item))
@@ -827,7 +827,7 @@ else
         }
     }
 
-    private bool IsSectionChild((MenuEditorNodeDto node, Guid? parentKindOwner) pair)
+    private bool IsSectionChild((MenuEditorNodeDto node, long? parentKindOwner) pair)
     {
         if (_tree is null || pair.node.ParentId is null) { return false; }
         var parent = FlattenAll(_tree.Roots).FirstOrDefault(x => x.Id == pair.node.ParentId);
@@ -951,7 +951,7 @@ else
         }
     };
 
-    private void ToggleCollapse(Guid id)
+    private void ToggleCollapse(long id)
     {
         if (!_collapsed.Remove(id)) { _collapsed.Add(id); }
     }

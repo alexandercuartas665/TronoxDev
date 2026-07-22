@@ -16,5 +16,5 @@ public interface IMenuProvisioningService
     /// Siembra la vista "Completo" (IsDefault) con el arbol canonico si el tenant aun no tiene
     /// NINGUNA vista de menu. Idempotente: si ya tiene vistas, no hace nada.
     /// </summary>
-    Task EnsureDefaultMenuAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task EnsureDefaultMenuAsync(long tenantId, CancellationToken cancellationToken = default);
 }

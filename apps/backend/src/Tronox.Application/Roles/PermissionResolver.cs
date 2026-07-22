@@ -44,9 +44,9 @@ public sealed class EffectivePermissions
     public bool Unrestricted { get; }
 
     /// <summary>Id del rol de permisos aplicado (null si AllowAll, Unrestricted sin rol o sin rol).</summary>
-    public Guid? RolId { get; }
+    public long? RolId { get; }
 
-    private EffectivePermissions(bool allowAll, bool unrestricted, Guid? rolId, IReadOnlyDictionary<string, ModuleAccess> byModule)
+    private EffectivePermissions(bool allowAll, bool unrestricted, long? rolId, IReadOnlyDictionary<string, ModuleAccess> byModule)
     {
         AllowAll = allowAll;
         Unrestricted = unrestricted;
@@ -66,7 +66,7 @@ public sealed class EffectivePermissions
         new(false, true, null, EmptyMap);
 
     /// <summary>Usuario con rol: resuelve el set desde sus filas de permiso (queda sujeto a la matriz).</summary>
-    public static EffectivePermissions FromPermissions(Guid rolId, IEnumerable<ModulePermissionDto> permisos)
+    public static EffectivePermissions FromPermissions(long rolId, IEnumerable<ModulePermissionDto> permisos)
     {
         var map = new Dictionary<string, ModuleAccess>(StringComparer.Ordinal);
         foreach (var p in permisos)
@@ -133,14 +133,14 @@ public static class PermissionResolver
     /// </summary>
     public static EffectivePermissions Resolve(
         bool isOwnerOrAdmin,
-        Guid? rolId,
+        long? rolId,
         IEnumerable<ModulePermissionDto>? permisos)
     {
         if (isOwnerOrAdmin)
         {
             return EffectivePermissions.AllowAllPermissions();
         }
-        if (rolId is Guid id && permisos is not null)
+        if (rolId is long id && permisos is not null)
         {
             return EffectivePermissions.FromPermissions(id, permisos);
         }

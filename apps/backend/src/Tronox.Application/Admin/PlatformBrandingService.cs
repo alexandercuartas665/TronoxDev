@@ -31,7 +31,7 @@ public sealed record SaveBrandingRequest(
 public interface IPlatformBrandingService
 {
     Task<PlatformBrandingDto> GetAsync(CancellationToken cancellationToken = default);
-    Task SaveAsync(SaveBrandingRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task SaveAsync(SaveBrandingRequest request, long actorUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -56,7 +56,7 @@ public sealed class PlatformBrandingService : IPlatformBrandingService
         return new PlatformBrandingDto(row.PlatformName, row.Tagline, row.LoginLogoUrl, row.LoginHeadline, row.LoginSubtext);
     }
 
-    public async Task SaveAsync(SaveBrandingRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(SaveBrandingRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var name = string.IsNullOrWhiteSpace(request.PlatformName) ? "TRONOX.tareas" : request.PlatformName.Trim();
 

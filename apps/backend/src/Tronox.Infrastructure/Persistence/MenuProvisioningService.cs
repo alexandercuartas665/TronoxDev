@@ -38,7 +38,7 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
         ("sistema",           "SISTEMA",                    "bi-shield-lock")
     ];
 
-    public async Task EnsureDefaultMenuAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    public async Task EnsureDefaultMenuAsync(long tenantId, CancellationToken cancellationToken = default)
     {
         // Se consulta IGNORANDO el filtro global: el alta corre bajo el contexto de la plataforma,
         // no bajo el del tenant que se esta creando, asi que el filtro no aplicaria aqui.

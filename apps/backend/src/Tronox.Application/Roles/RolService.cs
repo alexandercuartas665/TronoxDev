@@ -34,7 +34,7 @@ public sealed class RolService : IRolService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<RolDetailDto?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<RolDetailDto?> GetAsync(long id, CancellationToken cancellationToken = default)
     {
         var r = await _db.Roles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (r is null) { return null; }
@@ -45,7 +45,7 @@ public sealed class RolService : IRolService
     }
 
     public async Task<RolResult<RolDto>> SaveAsync(
-        Guid? id, string name, string? description, bool isActive, Guid actorUserId,
+        long? id, string name, string? description, bool isActive, long actorUserId,
         CancellationToken cancellationToken = default)
     {
         var trimmed = (name ?? string.Empty).Trim();
@@ -59,7 +59,7 @@ public sealed class RolService : IRolService
         }
 
         Rol entity;
-        if (id is Guid gid)
+        if (id is long gid)
         {
             var found = await _db.Roles.FirstOrDefaultAsync(x => x.Id == gid, cancellationToken);
             if (found is null)
@@ -87,7 +87,7 @@ public sealed class RolService : IRolService
         }
         else
         {
-            if (_tenant.TenantId is not Guid tenantId)
+            if (_tenant.TenantId is not long tenantId)
             {
                 return RolResult<RolDto>.Invalid("No hay tenant activo.");
             }
@@ -116,7 +116,7 @@ public sealed class RolService : IRolService
             await _db.TenantUsers.CountAsync(u => u.RolId == entity.Id, cancellationToken)));
     }
 
-    public async Task<RolResult<bool>> DeleteAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<RolResult<bool>> DeleteAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
     {
         var entity = await _db.Roles.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (entity is null)
@@ -162,7 +162,7 @@ public sealed class RolService : IRolService
     }
 
     public async Task<RolResult<bool>> SavePermisosAsync(
-        Guid rolId, IReadOnlyList<ModulePermissionDto> permisos, Guid actorUserId,
+        long rolId, IReadOnlyList<ModulePermissionDto> permisos, long actorUserId,
         CancellationToken cancellationToken = default)
     {
         var rol = await _db.Roles.FirstOrDefaultAsync(x => x.Id == rolId, cancellationToken);
@@ -237,11 +237,11 @@ public sealed class RolService : IRolService
         var byId = nodes.ToDictionary(n => n.Id);
 
         // Nombre del grupo = Section ancestro del Item (subiendo por ParentId a traves de Subgroups).
-        string GroupNameFor(Guid? parentId)
+        string GroupNameFor(long? parentId)
         {
             var guard = 0;
             var current = parentId;
-            while (current is Guid pid && byId.TryGetValue(pid, out var node) && guard++ < 100)
+            while (current is long pid && byId.TryGetValue(pid, out var node) && guard++ < 100)
             {
                 if (node.Kind == MenuNodeKind.Section)
                 {
@@ -282,7 +282,7 @@ public sealed class RolService : IRolService
     private static IReadOnlyList<ModuloInfo> WithSubPermisos(IReadOnlyList<ModuloInfo> catalog) => catalog;
 
     public async Task<EffectivePermissions> ResolveEffectivePermissionsAsync(
-        Guid platformUserId, CancellationToken cancellationToken = default)
+        long platformUserId, CancellationToken cancellationToken = default)
     {
         var tu = await _db.TenantUsers.AsNoTracking()
             .FirstOrDefaultAsync(u => u.PlatformUserId == platformUserId, cancellationToken);
@@ -297,7 +297,7 @@ public sealed class RolService : IRolService
         {
             return PermissionResolver.Resolve(true, null, null);
         }
-        if (tu.RolId is not Guid rolId)
+        if (tu.RolId is not long rolId)
         {
             // Usuario sin rol de permisos finos: conserva el acceso del paso 1 (regla opt-in B2).
             return EffectivePermissions.UnrestrictedAccess();
@@ -310,14 +310,14 @@ public sealed class RolService : IRolService
     }
 
     public async Task<RolResult<bool>> AssignRoleToUserAsync(
-        Guid tenantUserId, Guid? rolId, Guid actorUserId, CancellationToken cancellationToken = default)
+        long tenantUserId, long? rolId, long actorUserId, CancellationToken cancellationToken = default)
     {
         var user = await _db.TenantUsers.FirstOrDefaultAsync(u => u.Id == tenantUserId, cancellationToken);
         if (user is null)
         {
             return RolResult<bool>.NotFound("El usuario no existe.");
         }
-        if (rolId is Guid rid)
+        if (rolId is long rid)
         {
             var exists = await _db.Roles.AnyAsync(r => r.Id == rid, cancellationToken);
             if (!exists)

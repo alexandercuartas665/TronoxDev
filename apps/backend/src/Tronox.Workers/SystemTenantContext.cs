@@ -9,6 +9,6 @@ namespace Tronox.Workers;
 /// </summary>
 public sealed class SystemTenantContext : ITenantContext
 {
-    public Guid? TenantId => null;
-    public Guid? UserId => null;
+    public long? TenantId => null;
+    public long? UserId => null;
 }

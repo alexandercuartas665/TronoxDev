@@ -9,11 +9,11 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class OrgUnitMember : TenantEntity
 {
-    public Guid OrgUnitId { get; set; }
+    public long OrgUnitId { get; set; }
     public OrgUnit? OrgUnit { get; set; }
 
     /// <summary>Usuario del tenant asignado a la unidad.</summary>
-    public Guid TenantUserId { get; set; }
+    public long TenantUserId { get; set; }
 
     /// <summary>Rol funcional dentro de la unidad (ej. "Analista", "Lider tecnico").</summary>
     public string? Role { get; set; }

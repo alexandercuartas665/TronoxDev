@@ -1,5 +1,0 @@
-# Secretos y estado local del deploy: nunca al repo publico.
-.env
-backups/
-*.sql
-*.dump

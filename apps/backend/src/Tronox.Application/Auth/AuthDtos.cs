@@ -1,21 +1,21 @@
 namespace Tronox.Application.Auth;
 
-public sealed record LoginRequest(string Email, string Password, Guid? TenantId = null);
+public sealed record LoginRequest(string Email, string Password, long? TenantId = null);
 
 public sealed record TokenResponse(
     string AccessToken,
     DateTimeOffset ExpiresAt,
-    Guid? TenantId,
+    long? TenantId,
     bool TenantSelectionRequired);
 
-public sealed record SwitchTenantRequest(Guid TenantId);
+public sealed record SwitchTenantRequest(long TenantId);
 
-public sealed record TenantSummary(Guid TenantId, string Name, string TenantRole);
+public sealed record TenantSummary(long TenantId, string Name, string TenantRole);
 
 public sealed record MeResponse(
-    Guid UserId,
+    long UserId,
     string Email,
     string? DisplayName,
     string? PlatformRole,
-    Guid? CurrentTenantId,
+    long? CurrentTenantId,
     IReadOnlyList<TenantSummary> Tenants);

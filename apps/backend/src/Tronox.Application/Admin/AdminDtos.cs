@@ -14,7 +14,7 @@ public sealed record CreateTenantRequest(
 public sealed record ChangeTenantStatusRequest(TenantStatus Status, string? Reason = null);
 
 public sealed record TenantListItem(
-    Guid Id,
+    long Id,
     string Name,
     TenantStatus Status,
     TenantKind Kind,
@@ -23,7 +23,7 @@ public sealed record TenantListItem(
     DateTimeOffset CreatedAt);
 
 public sealed record TenantDetail(
-    Guid Id,
+    long Id,
     string Name,
     string? LegalName,
     string? TaxId,
@@ -57,7 +57,7 @@ public sealed record UpdateTenantProfileRequest(
 /// <summary>Un usuario del tenant tal como lo ve el operador de plataforma en la ficha de empresa
 /// (modulo 000072, solo lectura). Cross-tenant acotado y auditado (ADR-0026).</summary>
 public sealed record TenantUserListItem(
-    Guid Id,
+    long Id,
     string Email,
     TenantRole TenantRole,
     PlatformUserStatus Status);
@@ -80,7 +80,7 @@ public sealed record CreatePlanRequest(
 public sealed record PlanLimitDto(string LimitKey, long LimitValue, string? LimitUnit, LimitEnforcementMode EnforcementMode);
 
 public sealed record PlanDetail(
-    Guid Id,
+    long Id,
     string Name,
     string? Description,
     decimal? MonthlyPrice,
@@ -91,15 +91,15 @@ public sealed record PlanDetail(
 
 // --- Subscriptions ---
 public sealed record AssignSubscriptionRequest(
-    Guid TenantId,
-    Guid PlanId,
+    long TenantId,
+    long PlanId,
     BillingFrequency BillingFrequency,
     DateTimeOffset? StartsAt = null);
 
 public sealed record SubscriptionDetail(
-    Guid Id,
-    Guid TenantId,
-    Guid PlanId,
+    long Id,
+    long TenantId,
+    long PlanId,
     SubscriptionStatus Status,
     BillingFrequency BillingFrequency,
     DateTimeOffset StartsAt,
@@ -110,8 +110,8 @@ public sealed record SubscriptionDetail(
 
 // --- Payments ---
 public sealed record RegisterPaymentRequest(
-    Guid TenantId,
-    Guid SubscriptionId,
+    long TenantId,
+    long SubscriptionId,
     decimal Amount,
     string Currency,
     PaymentStatus Status,
@@ -120,9 +120,9 @@ public sealed record RegisterPaymentRequest(
     string? ProviderReference = null);
 
 public sealed record PaymentDetail(
-    Guid Id,
-    Guid TenantId,
-    Guid SubscriptionId,
+    long Id,
+    long TenantId,
+    long SubscriptionId,
     string Provider,
     string? ProviderReference,
     decimal Amount,
@@ -137,7 +137,7 @@ public sealed record PaymentDetail(
 public sealed record AuditLogListItem(
     DateTimeOffset OccurredAt,
     AuditActorType ActorType,
-    Guid ActorUserId,
+    long ActorUserId,
     string? TenantName,
     string ActionName,
     string EntityName,

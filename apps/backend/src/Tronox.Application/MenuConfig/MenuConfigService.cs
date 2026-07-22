@@ -23,11 +23,11 @@ public sealed class MenuConfigService : IMenuConfigService
     }
 
     public async Task<ResolvedMenuDto?> GetMenuForTenantUserAsync(
-        Guid tenantId, Guid? menuViewId, CancellationToken cancellationToken = default)
+        long tenantId, long? menuViewId, CancellationToken cancellationToken = default)
     {
         // Vista objetivo: la asignada si existe y tiene nodos visibles; si no, la IsDefault.
         MenuView? view = null;
-        if (menuViewId is Guid viewId)
+        if (menuViewId is long viewId)
         {
             view = await _db.MenuViews.AsNoTracking()
                 .FirstOrDefaultAsync(v => v.Id == viewId, cancellationToken);
@@ -92,7 +92,7 @@ public sealed class MenuConfigService : IMenuConfigService
         string name, string? description = null, bool isDefault = false, int sortOrder = 0,
         CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return MenuConfigResult<MenuViewDto>.Invalid("No hay tenant activo.");
         }
@@ -124,9 +124,9 @@ public sealed class MenuConfigService : IMenuConfigService
     }
 
     public async Task<MenuConfigResult<MenuViewDto>> CloneViewAsync(
-        Guid sourceViewId, string newName, CancellationToken cancellationToken = default)
+        long sourceViewId, string newName, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return MenuConfigResult<MenuViewDto>.Invalid("No hay tenant activo.");
         }
@@ -165,13 +165,13 @@ public sealed class MenuConfigService : IMenuConfigService
         };
 
         // Mapa old->new id para reconstruir ParentId en la copia.
-        var idMap = sourceNodes.ToDictionary(n => n.Id, _ => Guid.CreateVersion7());
+        var idMap = sourceNodes.ToDictionary(n => n.Id, _ => long.CreateVersion7());
         var cloneNodes = sourceNodes.Select(n => new MenuNode
         {
             Id = idMap[n.Id],
             TenantId = tenantId,
             MenuViewId = clone.Id,
-            ParentId = n.ParentId is Guid pid && idMap.TryGetValue(pid, out var newPid) ? newPid : null,
+            ParentId = n.ParentId is long pid && idMap.TryGetValue(pid, out var newPid) ? newPid : null,
             Kind = n.Kind,
             Name = n.Name,
             IconKey = n.IconKey,
@@ -211,7 +211,7 @@ public sealed class MenuConfigService : IMenuConfigService
     // ================= Ola 2: edicion de vistas =================
 
     public async Task<MenuConfigResult<MenuViewDto>> UpdateViewAsync(
-        Guid viewId, string name, string? description, CancellationToken cancellationToken = default)
+        long viewId, string name, string? description, CancellationToken cancellationToken = default)
     {
         var trimmed = name?.Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
@@ -242,7 +242,7 @@ public sealed class MenuConfigService : IMenuConfigService
             view.Id, view.Name, view.Description, view.IsDefault, view.SortOrder, nodeCount));
     }
 
-    public async Task<MenuConfigResult<bool>> DeleteViewAsync(Guid viewId, CancellationToken cancellationToken = default)
+    public async Task<MenuConfigResult<bool>> DeleteViewAsync(long viewId, CancellationToken cancellationToken = default)
     {
         var view = await _db.MenuViews.FirstOrDefaultAsync(v => v.Id == viewId, cancellationToken);
         if (view is null)
@@ -282,7 +282,7 @@ public sealed class MenuConfigService : IMenuConfigService
         return MenuConfigResult<bool>.Ok(true);
     }
 
-    public async Task<MenuConfigResult<bool>> SetDefaultViewAsync(Guid viewId, CancellationToken cancellationToken = default)
+    public async Task<MenuConfigResult<bool>> SetDefaultViewAsync(long viewId, CancellationToken cancellationToken = default)
     {
         var target = await _db.MenuViews.FirstOrDefaultAsync(v => v.Id == viewId, cancellationToken);
         if (target is null)
@@ -313,7 +313,7 @@ public sealed class MenuConfigService : IMenuConfigService
         return MenuConfigResult<bool>.Ok(true);
     }
 
-    public async Task<MenuConfigResult<MenuViewTreeDto>> GetViewTreeAsync(Guid viewId, CancellationToken cancellationToken = default)
+    public async Task<MenuConfigResult<MenuViewTreeDto>> GetViewTreeAsync(long viewId, CancellationToken cancellationToken = default)
     {
         var view = await _db.MenuViews.AsNoTracking().FirstOrDefaultAsync(v => v.Id == viewId, cancellationToken);
         if (view is null)
@@ -330,7 +330,7 @@ public sealed class MenuConfigService : IMenuConfigService
             .GroupBy(n => n.ParentId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        List<MenuEditorNodeDto> BuildLevel(Guid? parentId)
+        List<MenuEditorNodeDto> BuildLevel(long? parentId)
         {
             IEnumerable<MenuNode> level = parentId is null
                 ? flat.Where(n => n.ParentId is null)
@@ -350,12 +350,12 @@ public sealed class MenuConfigService : IMenuConfigService
     // ================= Ola 2: edicion de nodos =================
 
     public async Task<MenuConfigResult<MenuEditorNodeDto>> CreateNodeAsync(
-        Guid viewId, Guid? parentId, MenuNodeKind kind, string name,
+        long viewId, long? parentId, MenuNodeKind kind, string name,
         string? iconKey = null, string? legacyCode = null, string? route = null,
         string? description = null, string? helpText = null, MenuNodeState state = MenuNodeState.Ready,
         CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return MenuConfigResult<MenuEditorNodeDto>.Invalid("No hay tenant activo.");
         }
@@ -372,7 +372,7 @@ public sealed class MenuConfigService : IMenuConfigService
         }
 
         MenuNode? parent = null;
-        if (parentId is Guid pid)
+        if (parentId is long pid)
         {
             parent = await _db.MenuNodes.AsNoTracking()
                 .FirstOrDefaultAsync(n => n.Id == pid && n.MenuViewId == viewId, cancellationToken);
@@ -417,7 +417,7 @@ public sealed class MenuConfigService : IMenuConfigService
     }
 
     public async Task<MenuConfigResult<MenuEditorNodeDto>> UpdateNodeAsync(
-        Guid nodeId, MenuNodeEditDto edit, CancellationToken cancellationToken = default)
+        long nodeId, MenuNodeEditDto edit, CancellationToken cancellationToken = default)
     {
         var node = await _db.MenuNodes.FirstOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
         if (node is null)
@@ -447,7 +447,7 @@ public sealed class MenuConfigService : IMenuConfigService
     }
 
     public async Task<MenuConfigResult<MenuEditorNodeDto>> ToggleNodeVisibilityAsync(
-        Guid nodeId, CancellationToken cancellationToken = default)
+        long nodeId, CancellationToken cancellationToken = default)
     {
         var node = await _db.MenuNodes.FirstOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
         if (node is null)
@@ -460,7 +460,7 @@ public sealed class MenuConfigService : IMenuConfigService
     }
 
     public async Task<MenuConfigResult<MenuEditorNodeDto>> SetNodeStateAsync(
-        Guid nodeId, MenuNodeState state, CancellationToken cancellationToken = default)
+        long nodeId, MenuNodeState state, CancellationToken cancellationToken = default)
     {
         var node = await _db.MenuNodes.FirstOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
         if (node is null)
@@ -473,7 +473,7 @@ public sealed class MenuConfigService : IMenuConfigService
     }
 
     public async Task<MenuConfigResult<bool>> MoveNodeAsync(
-        Guid nodeId, Guid? newParentId, int newSortOrder, CancellationToken cancellationToken = default)
+        long nodeId, long? newParentId, int newSortOrder, CancellationToken cancellationToken = default)
     {
         var node = await _db.MenuNodes.FirstOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
         if (node is null)
@@ -487,7 +487,7 @@ public sealed class MenuConfigService : IMenuConfigService
             .ToListAsync(cancellationToken);
 
         MenuNode? newParent = null;
-        if (newParentId is Guid npid)
+        if (newParentId is long npid)
         {
             newParent = viewNodes.FirstOrDefault(n => n.Id == npid);
             if (newParent is null)
@@ -538,7 +538,7 @@ public sealed class MenuConfigService : IMenuConfigService
         return MenuConfigResult<bool>.Ok(true);
     }
 
-    public async Task<MenuConfigResult<bool>> DeleteNodeAsync(Guid nodeId, CancellationToken cancellationToken = default)
+    public async Task<MenuConfigResult<bool>> DeleteNodeAsync(long nodeId, CancellationToken cancellationToken = default)
     {
         var node = await _db.MenuNodes.FirstOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
         if (node is null)
@@ -552,7 +552,7 @@ public sealed class MenuConfigService : IMenuConfigService
 
         // Recolecta el nodo + toda su descendencia (el self-ref es NO ACTION: hay que borrar a mano).
         var toDelete = new List<MenuNode> { node };
-        var frontier = new Queue<Guid>();
+        var frontier = new Queue<long>();
         frontier.Enqueue(nodeId);
         while (frontier.Count > 0)
         {
@@ -588,14 +588,14 @@ public sealed class MenuConfigService : IMenuConfigService
     // ================= Ola 2: asignacion de usuarios =================
 
     public async Task<MenuConfigResult<bool>> AssignUserToViewAsync(
-        Guid tenantUserId, Guid? viewId, CancellationToken cancellationToken = default)
+        long tenantUserId, long? viewId, CancellationToken cancellationToken = default)
     {
         var user = await _db.TenantUsers.FirstOrDefaultAsync(u => u.Id == tenantUserId, cancellationToken);
         if (user is null)
         {
             return MenuConfigResult<bool>.NotFound("El usuario no existe.");
         }
-        if (viewId is Guid vid)
+        if (viewId is long vid)
         {
             var exists = await _db.MenuViews.AnyAsync(v => v.Id == vid, cancellationToken);
             if (!exists)
@@ -628,7 +628,7 @@ public sealed class MenuConfigService : IMenuConfigService
         WriteIndented = true
     };
 
-    public async Task<MenuConfigResult<MenuExportDocument>> ExportViewAsync(Guid viewId, CancellationToken cancellationToken = default)
+    public async Task<MenuConfigResult<MenuExportDocument>> ExportViewAsync(long viewId, CancellationToken cancellationToken = default)
     {
         var view = await _db.MenuViews.AsNoTracking().FirstOrDefaultAsync(v => v.Id == viewId, cancellationToken);
         if (view is null)
@@ -645,7 +645,7 @@ public sealed class MenuConfigService : IMenuConfigService
             .GroupBy(n => n.ParentId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        List<MenuExportNode> BuildLevel(Guid? parentId)
+        List<MenuExportNode> BuildLevel(long? parentId)
         {
             IEnumerable<MenuNode> level = parentId is null
                 ? flat.Where(n => n.ParentId is null)
@@ -666,7 +666,7 @@ public sealed class MenuConfigService : IMenuConfigService
     public async Task<MenuConfigResult<MenuViewDto>> ImportViewAsync(
         string json, string newName, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return MenuConfigResult<MenuViewDto>.Invalid("No hay tenant activo.");
         }
@@ -708,7 +708,7 @@ public sealed class MenuConfigService : IMenuConfigService
         };
 
         var newNodes = new List<MenuNode>();
-        void Flatten(IEnumerable<MenuExportNode> level, Guid? parentId)
+        void Flatten(IEnumerable<MenuExportNode> level, long? parentId)
         {
             var order = 0;
             foreach (var n in level)
@@ -717,7 +717,7 @@ public sealed class MenuConfigService : IMenuConfigService
                 if (!Enum.TryParse<MenuNodeState>(n.State, out var state)) { state = MenuNodeState.Ready; }
                 var node = new MenuNode
                 {
-                    Id = Guid.CreateVersion7(),
+                    Id = long.CreateVersion7(),
                     TenantId = tenantId,
                     MenuViewId = view.Id,
                     ParentId = parentId,
@@ -773,11 +773,11 @@ public sealed class MenuConfigService : IMenuConfigService
         Array.Empty<MenuEditorNodeDto>());
 
     /// <summary>true si candidateId esta dentro del subarbol de ancestorId (para detectar ciclos).</summary>
-    private static bool IsDescendant(IReadOnlyList<MenuNode> nodes, Guid ancestorId, Guid candidateId)
+    private static bool IsDescendant(IReadOnlyList<MenuNode> nodes, long ancestorId, long candidateId)
     {
         var current = nodes.FirstOrDefault(n => n.Id == candidateId);
         var guard = 0;
-        while (current?.ParentId is Guid pid && guard++ < 1000)
+        while (current?.ParentId is long pid && guard++ < 1000)
         {
             if (pid == ancestorId) { return true; }
             current = nodes.FirstOrDefault(n => n.Id == pid);

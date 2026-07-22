@@ -303,9 +303,9 @@ else
     private List<MenuViewDto> _views = new();
     private List<RolDto> _roles = new();
     // TenantUserId -> nombre de la vista asignada (para la columna "Vista de menu").
-    private Dictionary<Guid, string> _assignedView = new();
+    private Dictionary<long, string> _assignedView = new();
     // PlatformUserId -> RolId de permisos efectivo del usuario (columna "Rol de permisos").
-    private Dictionary<Guid, Guid?> _userRol = new();
+    private Dictionary<long, long?> _userRol = new();
 
     // Form compartido.
     private string _fEmail = "";
@@ -343,7 +343,7 @@ else
         _assignedView = withView
             .Where(x => x.MenuViewName is not null)
             .ToDictionary(x => x.TenantUserId, x => x.MenuViewName!);
-        _userRol = new Dictionary<Guid, Guid?>();
+        _userRol = new Dictionary<long, long?>();
         foreach (var u in _users)
         {
             var eff = await RolesSvc.ResolveEffectivePermissionsAsync(u.PlatformUserId);
@@ -351,21 +351,21 @@ else
         }
     }
 
-    private string ViewNameFor(Guid tenantUserId) =>
+    private string ViewNameFor(long tenantUserId) =>
         _assignedView.TryGetValue(tenantUserId, out var name) ? name : "Predeterminada";
 
-    private string RolIdFor(Guid platformUserId) =>
-        _userRol.TryGetValue(platformUserId, out var rid) && rid is Guid g ? g.ToString() : "";
+    private string RolIdFor(long platformUserId) =>
+        _userRol.TryGetValue(platformUserId, out var rid) && rid is long g ? g.ToString() : "";
 
     /// <summary>Nombre del rol de permisos del usuario (para mostrar cuando no puede editar).</summary>
-    private string RolNameFor(Guid platformUserId) =>
-        _userRol.TryGetValue(platformUserId, out var rid) && rid is Guid g
+    private string RolNameFor(long platformUserId) =>
+        _userRol.TryGetValue(platformUserId, out var rid) && rid is long g
             ? _roles.FirstOrDefault(r => r.Id == g)?.Name ?? "Sin rol"
             : "Sin rol";
 
     private async Task AssignRolAsync(TenantUserDto u, string? value)
     {
-        Guid? rolId = Guid.TryParse(value, out var g) ? g : null;
+        long? rolId = long.TryParse(value, out var g) ? g : null;
         _busy = true;
         try
         {
@@ -417,7 +417,7 @@ else
                 return;
             }
 
-            if (Guid.TryParse(_fViewId, out var viewId))
+            if (long.TryParse(_fViewId, out var viewId))
             {
                 await MenuSvc.AssignUserToViewAsync(created.Id, viewId);
             }
@@ -465,7 +465,7 @@ else
             {
                 await UsersSvc.SetStatusAsync(id, _fStatus, actor);
             }
-            Guid? viewId = Guid.TryParse(_fViewId, out var vid) ? vid : null;
+            long? viewId = long.TryParse(_fViewId, out var vid) ? vid : null;
             await MenuSvc.AssignUserToViewAsync(id, viewId);
 
             _editOpen = false;
@@ -565,12 +565,12 @@ else
         _toastOk = ok;
     }
 
-    private async Task<Guid> ResolveSelfIdAsync()
+    private async Task<long> ResolveSelfIdAsync()
     {
-        if (TenantCtx.UserId is Guid uid) { return uid; }
-        if (AuthState is null) { return Guid.Empty; }
+        if (TenantCtx.UserId is long uid) { return uid; }
+        if (AuthState is null) { return 0; }
         var st = await AuthState;
-        return Guid.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+        return long.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     }
 
     private static string RoleLabel(TenantRole role) => role switch

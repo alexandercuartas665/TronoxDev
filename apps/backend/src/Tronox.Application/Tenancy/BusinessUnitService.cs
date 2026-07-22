@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Tronox.Application.Tenancy;
 
-public sealed record BusinessUnitDto(Guid Id, string Name, string Color, BusinessUnitModalKind ModalKind, int SortOrder, bool IsActive);
+public sealed record BusinessUnitDto(long Id, string Name, string Color, BusinessUnitModalKind ModalKind, int SortOrder, bool IsActive);
 public sealed record SaveBusinessUnitRequest(string Name, string Color, BusinessUnitModalKind ModalKind);
 
 /// <summary>
@@ -14,12 +14,12 @@ public sealed record SaveBusinessUnitRequest(string Name, string Color, Business
 /// </summary>
 public interface IBusinessUnitService
 {
-    Task EnsureDefaultsAsync(Guid actorUserId, CancellationToken cancellationToken = default);
+    Task EnsureDefaultsAsync(long actorUserId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BusinessUnitDto>> ListAsync(bool includeInactive = true, CancellationToken cancellationToken = default);
-    Task<BusinessUnitDto?> CreateAsync(SaveBusinessUnitRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
-    Task<BusinessUnitDto?> UpdateAsync(Guid id, SaveBusinessUnitRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
-    Task<bool> SetActiveAsync(Guid id, bool isActive, Guid actorUserId, CancellationToken cancellationToken = default);
-    Task<bool> DeleteAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task<BusinessUnitDto?> CreateAsync(SaveBusinessUnitRequest request, long actorUserId, CancellationToken cancellationToken = default);
+    Task<BusinessUnitDto?> UpdateAsync(long id, SaveBusinessUnitRequest request, long actorUserId, CancellationToken cancellationToken = default);
+    Task<bool> SetActiveAsync(long id, bool isActive, long actorUserId, CancellationToken cancellationToken = default);
+    Task<bool> DeleteAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 }
 
 public sealed class BusinessUnitService : IBusinessUnitService
@@ -39,9 +39,9 @@ public sealed class BusinessUnitService : IBusinessUnitService
         ("General", "#2563eb", BusinessUnitModalKind.Generic)
     };
 
-    public async Task EnsureDefaultsAsync(Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task EnsureDefaultsAsync(long actorUserId, CancellationToken cancellationToken = default)
     {
-        if (_tenant.TenantId is not Guid tenantId) { return; }
+        if (_tenant.TenantId is not long tenantId) { return; }
         if (await _db.BusinessUnits.AnyAsync(cancellationToken)) { return; }
         var order = 0;
         foreach (var (name, color, kind) in Defaults)
@@ -58,9 +58,9 @@ public sealed class BusinessUnitService : IBusinessUnitService
             .Select(u => new BusinessUnitDto(u.Id, u.Name, u.Color, u.ModalKind, u.SortOrder, u.IsActive))
             .ToListAsync(cancellationToken);
 
-    public async Task<BusinessUnitDto?> CreateAsync(SaveBusinessUnitRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<BusinessUnitDto?> CreateAsync(SaveBusinessUnitRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
-        if (_tenant.TenantId is not Guid tenantId) { return null; }
+        if (_tenant.TenantId is not long tenantId) { return null; }
         var name = (request.Name ?? string.Empty).Trim();
         if (name.Length == 0) { return null; }
         var next = (await _db.BusinessUnits.Select(u => (int?)u.SortOrder).MaxAsync(cancellationToken) ?? -1) + 1;
@@ -79,7 +79,7 @@ public sealed class BusinessUnitService : IBusinessUnitService
         return new BusinessUnitDto(u.Id, u.Name, u.Color, u.ModalKind, u.SortOrder, u.IsActive);
     }
 
-    public async Task<BusinessUnitDto?> UpdateAsync(Guid id, SaveBusinessUnitRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<BusinessUnitDto?> UpdateAsync(long id, SaveBusinessUnitRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var u = await _db.BusinessUnits.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (u is null) { return null; }
@@ -93,7 +93,7 @@ public sealed class BusinessUnitService : IBusinessUnitService
         return new BusinessUnitDto(u.Id, u.Name, u.Color, u.ModalKind, u.SortOrder, u.IsActive);
     }
 
-    public async Task<bool> SetActiveAsync(Guid id, bool isActive, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<bool> SetActiveAsync(long id, bool isActive, long actorUserId, CancellationToken cancellationToken = default)
     {
         var u = await _db.BusinessUnits.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (u is null) { return false; }
@@ -102,7 +102,7 @@ public sealed class BusinessUnitService : IBusinessUnitService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<bool> DeleteAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
     {
         var u = await _db.BusinessUnits.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (u is null) { return false; }

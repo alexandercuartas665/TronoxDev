@@ -12,21 +12,21 @@ namespace Tronox.Web.Auth;
 /// </summary>
 public sealed class AmbientTenantContext(IHttpContextAccessor accessor) : ITenantContext
 {
-    private sealed record Scope(Guid TenantId, Guid? UserId);
+    private sealed record Scope(long TenantId, long? UserId);
     private static readonly AsyncLocal<Scope?> _ambient = new();
 
-    public Guid? TenantId =>
+    public long? TenantId =>
         _ambient.Value is { } s
             ? s.TenantId
-            : (Guid.TryParse(accessor.HttpContext?.User.FindFirst("tenant_id")?.Value, out var id) ? id : null);
+            : (long.TryParse(accessor.HttpContext?.User.FindFirst("tenant_id")?.Value, out var id) ? id : null);
 
-    public Guid? UserId =>
+    public long? UserId =>
         _ambient.Value is { } s
             ? s.UserId
-            : (Guid.TryParse(accessor.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null);
+            : (long.TryParse(accessor.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null);
 
     /// <summary>Fija el tenant (y usuario opcional) para el resto de la cadena async. Restaura al disponer.</summary>
-    public static IDisposable Begin(Guid tenantId, Guid? userId = null)
+    public static IDisposable Begin(long tenantId, long? userId = null)
     {
         var previous = _ambient.Value;
         _ambient.Value = new Scope(tenantId, userId);

@@ -96,10 +96,10 @@ else
         finally { _saving = false; }
     }
 
-    private async Task<Guid> ActorAsync()
+    private async Task<long> ActorAsync()
     {
-        if (AuthState is null) { return Guid.Empty; }
+        if (AuthState is null) { return 0; }
         var st = await AuthState;
-        return Guid.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+        return long.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     }
 }

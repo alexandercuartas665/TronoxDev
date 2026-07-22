@@ -9,12 +9,12 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class SuperAdminAuditLog : BaseEntity
 {
-    public Guid ActorUserId { get; set; }
+    public long ActorUserId { get; set; }
     public AuditActorType ActorType { get; set; } = AuditActorType.Human;
     public string ActionName { get; set; } = null!;
     public string EntityName { get; set; } = null!;
-    public Guid? EntityId { get; set; }
-    public Guid? TenantId { get; set; }
+    public long? EntityId { get; set; }
+    public long? TenantId { get; set; }
     public string? PreviousValue { get; set; }
     public string? NewValue { get; set; }
     public string? Reason { get; set; }

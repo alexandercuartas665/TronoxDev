@@ -8,7 +8,7 @@ namespace Tronox.Application.Modules;
 /// deshabilitado por defecto (opt-in explicito por tenant).
 /// </summary>
 public sealed record ModuleCatalogRowDto(
-    Guid ModuleDefinitionId,
+    long ModuleDefinitionId,
     string LegacyCode,
     string Name,
     string? Description,
@@ -20,7 +20,7 @@ public sealed record ModuleCatalogRowDto(
 
 /// <summary>Modulo habilitado de un tenant (para derivar el menu del registry).</summary>
 public sealed record EnabledModuleDto(
-    Guid ModuleDefinitionId,
+    long ModuleDefinitionId,
     string LegacyCode,
     string Name,
     string? Route,

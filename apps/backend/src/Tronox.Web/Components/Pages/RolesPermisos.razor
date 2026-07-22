@@ -278,16 +278,16 @@ else
     private List<RolDto> _roles = new();
     private List<TenantUserDto> _users = new();
     private IReadOnlyList<ModuloInfo> _catalog = Array.Empty<ModuloInfo>();
-    private Guid? _selectedId;
+    private long? _selectedId;
     private RolDetailDto? _detail;
     private List<MatrixRow> _matrix = new();
 
     // Asignacion en memoria mientras el modal esta abierto (TenantUserId -> RolId elegido).
-    private Dictionary<Guid, Guid?> _assignedRol = new();
+    private Dictionary<long, long?> _assignedRol = new();
 
     // Form.
     private bool _formOpen;
-    private Guid? _formId;
+    private long? _formId;
     private bool _fIsSystem;
     private string _fName = "";
     private string _fDescription = "";
@@ -328,7 +328,7 @@ else
         public bool CanDelete { get; set; }
     }
 
-    private async Task SelectAsync(Guid id)
+    private async Task SelectAsync(long id)
     {
         _selectedId = id;
         _detail = await RolesSvc.GetAsync(id);
@@ -477,7 +477,7 @@ else
         finally { _busy = false; }
     }
 
-    private async Task DeleteAsync(Guid id)
+    private async Task DeleteAsync(long id)
     {
         _busy = true;
         try
@@ -501,7 +501,7 @@ else
     private async Task OpenAssign()
     {
         _users = (await UsersSvc.ListAsync()).ToList();
-        _assignedRol = new Dictionary<Guid, Guid?>();
+        _assignedRol = new Dictionary<long, long?>();
         foreach (var u in _users)
         {
             var eff = await RolesSvc.ResolveEffectivePermissionsAsync(u.PlatformUserId);
@@ -514,12 +514,12 @@ else
 
     private void CloseAssign() { _assignOpen = false; }
 
-    private string ChosenRolFor(Guid tenantUserId) =>
-        _assignedRol.TryGetValue(tenantUserId, out var rid) && rid is Guid g ? g.ToString() : "";
+    private string ChosenRolFor(long tenantUserId) =>
+        _assignedRol.TryGetValue(tenantUserId, out var rid) && rid is long g ? g.ToString() : "";
 
-    private async Task OnAssignChange(Guid tenantUserId, string? value)
+    private async Task OnAssignChange(long tenantUserId, string? value)
     {
-        Guid? rolId = Guid.TryParse(value, out var g) ? g : null;
+        long? rolId = long.TryParse(value, out var g) ? g : null;
         _assignedRol[tenantUserId] = rolId;
         _busy = true;
         try
@@ -552,11 +552,11 @@ else
 
     private void ShowToast(string message, bool ok) { _toast = message; _toastOk = ok; }
 
-    private async Task<Guid> ResolveSelfIdAsync()
+    private async Task<long> ResolveSelfIdAsync()
     {
-        if (TenantCtx.UserId is Guid uid) { return uid; }
-        if (AuthState is null) { return Guid.Empty; }
+        if (TenantCtx.UserId is long uid) { return uid; }
+        if (AuthState is null) { return 0; }
         var st = await AuthState;
-        return Guid.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+        return long.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     }
 }

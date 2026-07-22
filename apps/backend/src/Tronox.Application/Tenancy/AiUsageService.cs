@@ -16,9 +16,9 @@ public sealed class AiUsageService : IAiUsageService
         _tenantContext = tenantContext;
     }
 
-    public async Task RecordAsync(Guid? agentId, AiProvider provider, string model, int inputTokens, int outputTokens, string source, bool success, CancellationToken cancellationToken = default)
+    public async Task RecordAsync(long? agentId, AiProvider provider, string model, int inputTokens, int outputTokens, string source, bool success, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId) { return; }
+        if (_tenantContext.TenantId is not long tenantId) { return; }
 
         var total = inputTokens + outputTokens;
         var log = new AiUsageLog
@@ -66,7 +66,7 @@ public sealed class AiUsageService : IAiUsageService
 
     public async Task<AiQuotaDto> GetQuotaAsync(CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId) { return new AiQuotaDto(0, 0, true); }
+        if (_tenantContext.TenantId is not long tenantId) { return new AiQuotaDto(0, 0, true); }
 
         // Consumo del mes en curso (UTC). AiUsageLogs ya esta filtrado por tenant.
         var now = DateTimeOffset.UtcNow;
@@ -79,12 +79,12 @@ public sealed class AiUsageService : IAiUsageService
         var planId = await _db.TenantSubscriptions.AsNoTracking()
             .Where(s => s.TenantId == tenantId && s.Status != SubscriptionStatus.Cancelled)
             .OrderByDescending(s => s.StartsAt)
-            .Select(s => (Guid?)s.PlanId)
+            .Select(s => (long?)s.PlanId)
             .FirstOrDefaultAsync(cancellationToken);
 
         long limit = 0;
         var hard = true;
-        if (planId is Guid pid)
+        if (planId is long pid)
         {
             var lim = await _db.SaasPlanLimits.AsNoTracking()
                 .Where(l => l.PlanId == pid && l.LimitKey == IAiUsageService.MonthlyTokenLimitKey)

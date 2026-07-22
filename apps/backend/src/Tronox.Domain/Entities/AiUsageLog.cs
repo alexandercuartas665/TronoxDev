@@ -11,7 +11,7 @@ namespace Tronox.Domain.Entities;
 public class AiUsageLog : TenantEntity
 {
     /// <summary>Agente que origino el consumo (null si fue una ejecucion sin agente concreto).</summary>
-    public Guid? AgentId { get; set; }
+    public long? AgentId { get; set; }
 
     public AiProvider Provider { get; set; }
     public string Model { get; set; } = "";

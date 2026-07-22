@@ -16,7 +16,7 @@ public sealed class SubscriptionAdminService : ISubscriptionAdminService
         _audit = audit;
     }
 
-    public async Task<SubscriptionDetail?> AssignAsync(AssignSubscriptionRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<SubscriptionDetail?> AssignAsync(AssignSubscriptionRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenantExists = await _db.Tenants.AnyAsync(t => t.Id == request.TenantId, cancellationToken);
         var planExists = await _db.SaasPlans.AnyAsync(p => p.Id == request.PlanId, cancellationToken);
@@ -50,7 +50,7 @@ public sealed class SubscriptionAdminService : ISubscriptionAdminService
         return Map(subscription);
     }
 
-    public async Task<ChangePlanResult?> ChangePlanAsync(Guid tenantId, Guid planId, BillingFrequency frequency, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<ChangePlanResult?> ChangePlanAsync(long tenantId, long planId, BillingFrequency frequency, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenantExists = await _db.Tenants.AnyAsync(t => t.Id == tenantId, cancellationToken);
         var newPlan = await _db.SaasPlans.AsNoTracking().FirstOrDefaultAsync(p => p.Id == planId, cancellationToken);
@@ -121,7 +121,7 @@ public sealed class SubscriptionAdminService : ISubscriptionAdminService
     private static decimal AmountOf(SaasPlan plan, BillingFrequency frequency) =>
         (frequency == BillingFrequency.Yearly ? plan.YearlyPrice : plan.MonthlyPrice) ?? 0m;
 
-    public async Task<IReadOnlyList<SubscriptionDetail>> ListByTenantAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SubscriptionDetail>> ListByTenantAsync(long tenantId, CancellationToken cancellationToken = default)
     {
         return await _db.TenantSubscriptions
             .AsNoTracking()

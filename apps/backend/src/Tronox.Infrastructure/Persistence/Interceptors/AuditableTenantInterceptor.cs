@@ -55,8 +55,8 @@ public sealed class AuditableTenantInterceptor : SaveChangesInterceptor
                     entry.Entity.CreatedBy ??= userId;
 
                     if (entry.Entity is TenantEntity added
-                        && added.TenantId == Guid.Empty
-                        && _tenantContext.TenantId is Guid tenantId)
+                        && added.TenantId == 0
+                        && _tenantContext.TenantId is long tenantId)
                     {
                         added.TenantId = tenantId;
                     }

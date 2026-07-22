@@ -9,13 +9,13 @@ namespace Tronox.Application.Common;
 public interface IAuditWriter
 {
     void Write(
-        Guid actorUserId,
+        long actorUserId,
         string actionName,
         string entityName,
-        Guid? entityId,
+        long? entityId,
         object? previousValue,
         object? newValue,
-        Guid? tenantId = null,
+        long? tenantId = null,
         string? reason = null,
         AuditActorType actorType = AuditActorType.Human);
 }

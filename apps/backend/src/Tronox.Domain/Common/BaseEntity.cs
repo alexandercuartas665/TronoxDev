@@ -1,15 +1,16 @@
 namespace Tronox.Domain.Common;
 
 /// <summary>
-/// Raiz de todas las entidades. Id es Guid v7 (ordenable por tiempo) generado en la aplicacion.
+/// Raiz de todas las entidades. Id es BIGINT de identidad: lo genera la base de datos
+/// al insertar (ValueGeneratedOnAdd), no la aplicacion. Antes de SaveChanges vale 0.
 /// Los campos de auditoria los gestiona el interceptor de SaveChanges, no el codigo de negocio.
 /// </summary>
 public abstract class BaseEntity
 {
-    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public long Id { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
-    public Guid? CreatedBy { get; set; }
+    public long? CreatedBy { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
-    public Guid? UpdatedBy { get; set; }
+    public long? UpdatedBy { get; set; }
 }

@@ -21,7 +21,7 @@ public sealed class TenantAdminService : ITenantAdminService
         _menuProvisioning = menuProvisioning;
     }
 
-    public async Task<TenantDetail> CreateAsync(CreateTenantRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantDetail> CreateAsync(CreateTenantRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenant = new Tenant
         {
@@ -74,13 +74,13 @@ public sealed class TenantAdminService : ITenantAdminService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<TenantDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<TenantDetail?> GetAsync(long id, CancellationToken cancellationToken = default)
     {
         var tenant = await _db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
         return tenant is null ? null : Map(tenant);
     }
 
-    public async Task<TenantDetail?> ChangeStatusAsync(Guid id, ChangeTenantStatusRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantDetail?> ChangeStatusAsync(long id, ChangeTenantStatusRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
         if (tenant is null)
@@ -105,7 +105,7 @@ public sealed class TenantAdminService : ITenantAdminService
         return Map(tenant);
     }
 
-    public async Task<TenantDetail?> UpdateProfileAsync(Guid id, UpdateTenantProfileRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantDetail?> UpdateProfileAsync(long id, UpdateTenantProfileRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
         if (tenant is null)
@@ -133,7 +133,7 @@ public sealed class TenantAdminService : ITenantAdminService
         return Map(tenant);
     }
 
-    public async Task<IReadOnlyList<TenantUserListItem>> ListUsersAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TenantUserListItem>> ListUsersAsync(long tenantId, CancellationToken cancellationToken = default)
     {
         // Ficha de empresa del operador de plataforma (modulo 000072): lectura cross-tenant
         // ACOTADA a este tenant. TenantUser es tenant-scoped, asi que se ignora el filtro

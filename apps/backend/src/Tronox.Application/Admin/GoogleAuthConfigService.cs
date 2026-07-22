@@ -15,7 +15,7 @@ public sealed record GoogleAuthCredentials(string ClientId, string ClientSecret,
 public interface IGoogleAuthConfigService
 {
     Task<GoogleAuthConfigDto?> GetAsync(CancellationToken cancellationToken = default);
-    Task SaveAsync(SaveGoogleAuthConfigRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task SaveAsync(SaveGoogleAuthConfigRequest request, long actorUserId, CancellationToken cancellationToken = default);
     /// <summary>Devuelve ClientId + secret descifrado para el flujo. Null si no esta configurado/habilitado.</summary>
     Task<GoogleAuthCredentials?> GetCredentialsAsync(CancellationToken cancellationToken = default);
 }
@@ -43,7 +43,7 @@ public sealed class GoogleAuthConfigService : IGoogleAuthConfigService
         return cfg is null ? null : new GoogleAuthConfigDto(cfg.ClientId, !string.IsNullOrEmpty(cfg.ClientSecretEncrypted), cfg.IsEnabled);
     }
 
-    public async Task SaveAsync(SaveGoogleAuthConfigRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(SaveGoogleAuthConfigRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var cfg = await _db.GoogleAuthConfigs.FirstOrDefaultAsync(cancellationToken);
         var isNew = cfg is null;

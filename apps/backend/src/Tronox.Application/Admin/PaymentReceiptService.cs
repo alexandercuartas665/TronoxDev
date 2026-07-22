@@ -15,7 +15,7 @@ public sealed class PaymentReceiptService : IPaymentReceiptService
         _renderer = renderer;
     }
 
-    public async Task<PaymentReceiptFile?> GenerateAsync(Guid paymentId, CancellationToken cancellationToken = default)
+    public async Task<PaymentReceiptFile?> GenerateAsync(long paymentId, CancellationToken cancellationToken = default)
     {
         // Se ignora el filtro de tenant: la propiedad la valida el endpoint con los claims del usuario.
         var payment = await _db.TenantPayments.IgnoreQueryFilters().AsNoTracking()

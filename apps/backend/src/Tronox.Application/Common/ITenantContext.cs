@@ -7,6 +7,6 @@ namespace Tronox.Application.Common;
 /// </summary>
 public interface ITenantContext
 {
-    Guid? TenantId { get; }
-    Guid? UserId { get; }
+    long? TenantId { get; }
+    long? UserId { get; }
 }

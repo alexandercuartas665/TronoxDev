@@ -9,7 +9,7 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class AccountActivationCode : BaseEntity
 {
-    public Guid PlatformUserId { get; set; }
+    public long PlatformUserId { get; set; }
 
     /// <summary>SHA-256 (hex) del codigo enviado por correo. La validacion compara por hash.</summary>
     public string CodeHash { get; set; } = null!;

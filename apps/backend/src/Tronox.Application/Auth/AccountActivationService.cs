@@ -11,12 +11,12 @@ namespace Tronox.Application.Auth;
 public sealed record IssueActivationResult(bool Ok, string? Code, string? Error);
 
 /// <summary>Resultado de activar la cuenta con un codigo.</summary>
-public sealed record ActivateAccountResult(bool Ok, Guid? PlatformUserId, Guid? TenantId, string? Email, string? Error);
+public sealed record ActivateAccountResult(bool Ok, long? PlatformUserId, long? TenantId, string? Email, string? Error);
 
 public interface IAccountActivationService
 {
     /// <summary>Genera un codigo nuevo, guarda su hash y devuelve el valor en claro (para enviar por correo).</summary>
-    Task<IssueActivationResult> IssueCodeAsync(Guid platformUserId, CancellationToken cancellationToken = default);
+    Task<IssueActivationResult> IssueCodeAsync(long platformUserId, CancellationToken cancellationToken = default);
 
     /// <summary>Valida el codigo (hash + expiracion + un solo uso), activa al usuario y resuelve su tenant.</summary>
     Task<ActivateAccountResult> ActivateAsync(string email, string code, CancellationToken cancellationToken = default);
@@ -43,7 +43,7 @@ public sealed class AccountActivationService : IAccountActivationService
         _timeProvider = timeProvider;
     }
 
-    public async Task<IssueActivationResult> IssueCodeAsync(Guid platformUserId, CancellationToken cancellationToken = default)
+    public async Task<IssueActivationResult> IssueCodeAsync(long platformUserId, CancellationToken cancellationToken = default)
     {
         var user = await _db.PlatformUsers.FirstOrDefaultAsync(u => u.Id == platformUserId, cancellationToken);
         if (user is null) { return new IssueActivationResult(false, null, "Usuario no encontrado."); }
@@ -122,13 +122,13 @@ public sealed class AccountActivationService : IAccountActivationService
         return await IssueCodeAsync(user.Id, cancellationToken);
     }
 
-    private async Task<Guid?> ResolveTenantAsync(Guid platformUserId, CancellationToken ct)
+    private async Task<long?> ResolveTenantAsync(long platformUserId, CancellationToken ct)
     {
         return await _db.TenantUsers
             .IgnoreQueryFilters()
             .Where(tu => tu.PlatformUserId == platformUserId && tu.Status == PlatformUserStatus.Active)
             .OrderBy(tu => tu.CreatedAt)
-            .Select(tu => (Guid?)tu.TenantId)
+            .Select(tu => (long?)tu.TenantId)
             .FirstOrDefaultAsync(ct);
     }
 

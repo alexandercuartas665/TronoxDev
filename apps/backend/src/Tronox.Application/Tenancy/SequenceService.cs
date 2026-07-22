@@ -28,7 +28,7 @@ public sealed class SequenceService : ISequenceService
 
     public async Task EnsureSequenceAsync(string code, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             throw new InvalidOperationException("No hay tenant activo para emitir consecutivos.");
         }

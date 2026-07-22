@@ -14,19 +14,19 @@ public static class OrgAssigneeTree
 {
     /// <summary>Fila plana de unidad para el resolver (proyeccion de OrgUnit).</summary>
     public readonly record struct UnitRow(
-        Guid Id, Guid? ParentId, OrgUnitClassifier Classifier,
-        Guid? ResponsibleTenantUserId, Guid? TenantUserId);
+        long Id, long? ParentId, OrgUnitClassifier Classifier,
+        long? ResponsibleTenantUserId, long? TenantUserId);
 
     /// <summary>Fila plana de miembro (proyeccion de OrgUnitMember).</summary>
-    public readonly record struct MemberRow(Guid OrgUnitId, Guid TenantUserId);
+    public readonly record struct MemberRow(long OrgUnitId, long TenantUserId);
 
     /// <summary>
     /// Candidatos (TenantUserIds distintos) de UNA unidad raiz (Dependencia|Cargo) de una
     /// policy: union de funcionarios descendientes, miembros de la unidad+descendientes y
     /// responsable. Camina el subarbol con un set de visitados (tolera ciclos en datos).
     /// </summary>
-    public static IReadOnlyList<Guid> ResolveForUnit(
-        Guid rootUnitId, IReadOnlyList<UnitRow> units, IReadOnlyList<MemberRow> members)
+    public static IReadOnlyList<long> ResolveForUnit(
+        long rootUnitId, IReadOnlyList<UnitRow> units, IReadOnlyList<MemberRow> members)
     {
         var byParent = units
             .Where(u => u.ParentId is not null)
@@ -37,9 +37,9 @@ public static class OrgAssigneeTree
             .GroupBy(m => m.OrgUnitId)
             .ToDictionary(g => g.Key, g => g.Select(m => m.TenantUserId).ToList());
 
-        var result = new HashSet<Guid>();
-        var visited = new HashSet<Guid>();
-        var stack = new Stack<Guid>();
+        var result = new HashSet<long>();
+        var visited = new HashSet<long>();
+        var stack = new Stack<long>();
         stack.Push(rootUnitId);
         while (stack.Count > 0)
         {
@@ -49,7 +49,7 @@ public static class OrgAssigneeTree
                 continue;
             }
             // (a) Funcionario descendiente -> su usuario ocupante.
-            if (unit.Classifier == OrgUnitClassifier.Funcionario && unit.TenantUserId is Guid occupant)
+            if (unit.Classifier == OrgUnitClassifier.Funcionario && unit.TenantUserId is long occupant)
             {
                 result.Add(occupant);
             }
@@ -62,7 +62,7 @@ public static class OrgAssigneeTree
                 }
             }
             // (c) Responsable de la unidad.
-            if (unit.ResponsibleTenantUserId is Guid responsible)
+            if (unit.ResponsibleTenantUserId is long responsible)
             {
                 result.Add(responsible);
             }
@@ -78,10 +78,10 @@ public static class OrgAssigneeTree
     }
 
     /// <summary>Candidatos distintos de VARIAS unidades de policy (union de ResolveForUnit).</summary>
-    public static IReadOnlyList<Guid> ResolveForUnits(
-        IEnumerable<Guid> rootUnitIds, IReadOnlyList<UnitRow> units, IReadOnlyList<MemberRow> members)
+    public static IReadOnlyList<long> ResolveForUnits(
+        IEnumerable<long> rootUnitIds, IReadOnlyList<UnitRow> units, IReadOnlyList<MemberRow> members)
     {
-        var result = new HashSet<Guid>();
+        var result = new HashSet<long>();
         foreach (var rootId in rootUnitIds)
         {
             foreach (var candidate in ResolveForUnit(rootId, units, members))

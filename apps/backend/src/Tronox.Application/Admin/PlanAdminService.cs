@@ -15,7 +15,7 @@ public sealed class PlanAdminService : IPlanAdminService
         _audit = audit;
     }
 
-    public async Task<PlanDetail> CreateAsync(CreatePlanRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<PlanDetail> CreateAsync(CreatePlanRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var plan = new SaasPlan
         {
@@ -45,7 +45,7 @@ public sealed class PlanAdminService : IPlanAdminService
         return Map(plan);
     }
 
-    public async Task<PlanDetail?> UpdateAsync(Guid id, CreatePlanRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<PlanDetail?> UpdateAsync(long id, CreatePlanRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var plan = await _db.SaasPlans.Include(p => p.Limits).FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (plan is null)
@@ -93,7 +93,7 @@ public sealed class PlanAdminService : IPlanAdminService
         return plans.Select(Map).ToList();
     }
 
-    public async Task<PlanDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<PlanDetail?> GetAsync(long id, CancellationToken cancellationToken = default)
     {
         var plan = await _db.SaasPlans
             .AsNoTracking()
@@ -103,7 +103,7 @@ public sealed class PlanAdminService : IPlanAdminService
         return plan is null ? null : Map(plan);
     }
 
-    public async Task<PlanDetail?> SetActiveAsync(Guid id, bool isActive, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<PlanDetail?> SetActiveAsync(long id, bool isActive, long actorUserId, CancellationToken cancellationToken = default)
     {
         var plan = await _db.SaasPlans.Include(p => p.Limits).FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (plan is null)

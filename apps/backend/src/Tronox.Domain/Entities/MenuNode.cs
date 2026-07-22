@@ -13,11 +13,11 @@ namespace Tronox.Domain.Entities;
 public class MenuNode : TenantEntity
 {
     /// <summary>Vista a la que pertenece el nodo (cascade: borrar la vista borra sus nodos).</summary>
-    public Guid MenuViewId { get; set; }
+    public long MenuViewId { get; set; }
     public MenuView? MenuView { get; set; }
 
     /// <summary>Padre en el arbol (null = nodo de primer nivel). Self-ref NO ACTION.</summary>
-    public Guid? ParentId { get; set; }
+    public long? ParentId { get; set; }
     public MenuNode? Parent { get; set; }
 
     public MenuNodeKind Kind { get; set; }

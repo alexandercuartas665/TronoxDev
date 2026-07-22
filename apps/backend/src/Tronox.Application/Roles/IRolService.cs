@@ -10,19 +10,19 @@ public interface IRolService
 {
     Task<IReadOnlyList<RolDto>> ListAsync(CancellationToken cancellationToken = default);
 
-    Task<RolDetailDto?> GetAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<RolDetailDto?> GetAsync(long id, CancellationToken cancellationToken = default);
 
     /// <summary>Crea (id null) o edita un rol. No permite duplicar nombre; el rol de sistema no se renombra.</summary>
     Task<RolResult<RolDto>> SaveAsync(
-        Guid? id, string name, string? description, bool isActive, Guid actorUserId,
+        long? id, string name, string? description, bool isActive, long actorUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>Borra un rol. Bloquea (Invalid) si es de sistema o si tiene usuarios asignados.</summary>
-    Task<RolResult<bool>> DeleteAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task<RolResult<bool>> DeleteAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>Guarda la matriz de permisos del rol: borra e reinserta solo las filas con algun flag. Transaccional.</summary>
     Task<RolResult<bool>> SavePermisosAsync(
-        Guid rolId, IReadOnlyList<ModulePermissionDto> permisos, Guid actorUserId,
+        long rolId, IReadOnlyList<ModulePermissionDto> permisos, long actorUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -37,9 +37,9 @@ public interface IRolService
     /// del rol; sin rol -> vacio. platformUserId = PlatformUser.Id (resuelve el TenantUser del tenant).
     /// </summary>
     Task<EffectivePermissions> ResolveEffectivePermissionsAsync(
-        Guid platformUserId, CancellationToken cancellationToken = default);
+        long platformUserId, CancellationToken cancellationToken = default);
 
     /// <summary>Asigna (o desasigna con rolId null) el rol de permisos de un usuario del tenant. Auditado.</summary>
     Task<RolResult<bool>> AssignRoleToUserAsync(
-        Guid tenantUserId, Guid? rolId, Guid actorUserId, CancellationToken cancellationToken = default);
+        long tenantUserId, long? rolId, long actorUserId, CancellationToken cancellationToken = default);
 }

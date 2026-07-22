@@ -8,7 +8,7 @@ namespace Tronox.Application.Admin;
 /// agencias (esos viven en TenantUserService). Modulo Equipo plataforma.
 /// </summary>
 public sealed record PlatformOperatorDto(
-    Guid Id,
+    long Id,
     string Email,
     string? DisplayName,
     PlatformRole Role,
@@ -30,5 +30,5 @@ public sealed record UpdatePlatformOperatorRequest(
     PlatformUserStatus Status);
 
 public sealed record ChangeOperatorPasswordRequest(
-    Guid OperatorId,
+    long OperatorId,
     string NewPassword);

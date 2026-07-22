@@ -4,12 +4,12 @@ namespace Tronox.Application.Notifications;
 
 /// <summary>Notificacion in-app para la campana / bandeja del workspace (Ola 7).</summary>
 public sealed record NotificationDto(
-    Guid Id,
+    long Id,
     NotificationKind Kind,
     string Title,
     string Body,
     string? LinkRoute,
-    Guid? RelatedTaskItemId,
+    long? RelatedTaskItemId,
     string? ActorName,
     bool IsRead,
     DateTimeOffset CreatedAt);

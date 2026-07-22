@@ -141,11 +141,11 @@ else
         finally { _busy = false; }
     }
 
-    private async Task<Guid> ActorAsync()
+    private async Task<long> ActorAsync()
     {
-        if (AuthState is null) { return Guid.Empty; }
+        if (AuthState is null) { return 0; }
         var state = await AuthState;
-        return Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+        return long.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     }
 
     private static string StatusText(AiProviderDto p) => !p.HasApiKey ? "Sin configurar" : p.IsEnabled ? "Habilitado" : "Apagado";

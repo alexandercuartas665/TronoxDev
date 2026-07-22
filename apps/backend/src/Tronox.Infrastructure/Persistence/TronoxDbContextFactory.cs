@@ -26,7 +26,7 @@ public sealed class TronoxDbContextFactory : IDesignTimeDbContextFactory<TronoxD
 
     private sealed class DesignTimeTenantContext : ITenantContext
     {
-        public Guid? TenantId => null;
-        public Guid? UserId => null;
+        public long? TenantId => null;
+        public long? UserId => null;
     }
 }

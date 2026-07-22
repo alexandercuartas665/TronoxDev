@@ -33,7 +33,7 @@ public class Rol : TenantEntity
 /// </summary>
 public class RolPermiso : TenantEntity
 {
-    public Guid RolId { get; set; }
+    public long RolId { get; set; }
     public Rol? Rol { get; set; }
 
     /// <summary>Clave del modulo = Route del MenuNode Item (ej. "inventario-items").</summary>

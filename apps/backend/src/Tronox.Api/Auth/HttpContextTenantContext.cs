@@ -12,12 +12,12 @@ public sealed class HttpContextTenantContext : ITenantContext
 
     public HttpContextTenantContext(IHttpContextAccessor accessor) => _accessor = accessor;
 
-    public Guid? TenantId => ReadGuidClaim("tenant_id");
-    public Guid? UserId => ReadGuidClaim("sub");
+    public long? TenantId => ReadLongClaim("tenant_id");
+    public long? UserId => ReadLongClaim("sub");
 
-    private Guid? ReadGuidClaim(string claimType)
+    private long? ReadLongClaim(string claimType)
     {
         var value = _accessor.HttpContext?.User.FindFirst(claimType)?.Value;
-        return Guid.TryParse(value, out var parsed) ? parsed : null;
+        return long.TryParse(value, out var parsed) ? parsed : null;
     }
 }

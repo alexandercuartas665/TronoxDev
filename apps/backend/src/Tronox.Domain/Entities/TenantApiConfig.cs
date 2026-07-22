@@ -9,7 +9,7 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class TenantApiConfig : BaseEntity
 {
-    public Guid TenantId { get; set; }
+    public long TenantId { get; set; }
 
     /// <summary>SHA-256 (hex) de la API key, para resolver el tenant en cada request.</summary>
     public string? ApiKeyHash { get; set; }

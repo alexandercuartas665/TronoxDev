@@ -23,7 +23,7 @@ public sealed record SaveAiProviderRequest(
 /// <summary>Proveedor disponible para que una agencia lo use en sus agentes (sin datos sensibles).
 /// <paramref name="ConfigId"/> es el Id de la fila del Super Admin: sirve como referencia estable cuando
 /// un modulo (p.ej. Extraccion de datos) necesita fijar EXACTAMENTE cual proveedor eligio el operador.</summary>
-public sealed record AiProviderOptionDto(AiProvider Provider, string DisplayName, string DefaultModel, Guid ConfigId);
+public sealed record AiProviderOptionDto(AiProvider Provider, string DisplayName, string DefaultModel, long ConfigId);
 
 /// <summary>
 /// Cuentas maestras de IA de la plataforma (Super Admin). Un registro por proveedor; la API key
@@ -32,7 +32,7 @@ public sealed record AiProviderOptionDto(AiProvider Provider, string DisplayName
 public interface IAiServerConfigService
 {
     Task<IReadOnlyList<AiProviderDto>> ListAsync(CancellationToken cancellationToken = default);
-    Task<AiProviderDto> SaveAsync(SaveAiProviderRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task<AiProviderDto> SaveAsync(SaveAiProviderRequest request, long actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>Proveedores habilitados (con API key) que las agencias pueden elegir en sus agentes.</summary>
     Task<IReadOnlyList<AiProviderOptionDto>> ListEnabledAsync(CancellationToken cancellationToken = default);

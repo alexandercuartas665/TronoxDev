@@ -6,5 +6,5 @@ namespace Tronox.Domain.Common;
 /// </summary>
 public abstract class TenantEntity : BaseEntity, ITenantScoped
 {
-    public Guid TenantId { get; set; }
+    public long TenantId { get; set; }
 }

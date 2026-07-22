@@ -39,9 +39,9 @@ public sealed class TenantUserService : ITenantUserService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<TenantUserDto?> InviteAsync(InviteTenantUserRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantUserDto?> InviteAsync(InviteTenantUserRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return null;
         }
@@ -89,7 +89,7 @@ public sealed class TenantUserService : ITenantUserService
         return Map(tenantUser);
     }
 
-    public async Task<TenantUserDto?> ChangeRoleAsync(Guid tenantUserId, TenantRole role, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantUserDto?> ChangeRoleAsync(long tenantUserId, TenantRole role, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenantUser = await _db.TenantUsers.FirstOrDefaultAsync(tu => tu.Id == tenantUserId, cancellationToken);
         if (tenantUser is null)
@@ -111,7 +111,7 @@ public sealed class TenantUserService : ITenantUserService
         return Map(tenantUser);
     }
 
-    public async Task<TenantUserDto?> SetStatusAsync(Guid tenantUserId, PlatformUserStatus status, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantUserDto?> SetStatusAsync(long tenantUserId, PlatformUserStatus status, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenantUser = await _db.TenantUsers.FirstOrDefaultAsync(tu => tu.Id == tenantUserId, cancellationToken);
         if (tenantUser is null)
@@ -133,7 +133,7 @@ public sealed class TenantUserService : ITenantUserService
         return Map(tenantUser);
     }
 
-    public async Task<TenantUserDto?> ResetPasswordAsync(Guid tenantUserId, string newPassword, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantUserDto?> ResetPasswordAsync(long tenantUserId, string newPassword, long actorUserId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
         {
@@ -177,7 +177,7 @@ public sealed class TenantUserService : ITenantUserService
         return Map(tenantUser, platformUser.DisplayName);
     }
 
-    public async Task<TenantUserDto?> UpdateProfileAsync(Guid tenantUserId, string? displayName, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<TenantUserDto?> UpdateProfileAsync(long tenantUserId, string? displayName, long actorUserId, CancellationToken cancellationToken = default)
     {
         var tenantUser = await _db.TenantUsers.FirstOrDefaultAsync(tu => tu.Id == tenantUserId, cancellationToken);
         if (tenantUser is null)

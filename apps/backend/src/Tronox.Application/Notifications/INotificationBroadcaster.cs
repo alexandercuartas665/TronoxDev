@@ -7,12 +7,12 @@ namespace Tronox.Application.Notifications;
 /// </summary>
 public interface INotificationBroadcaster
 {
-    Task NotificationAddedAsync(Guid recipientTenantUserId, CancellationToken cancellationToken = default);
+    Task NotificationAddedAsync(long recipientTenantUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Implementacion por defecto (no hace nada) para procesos sin SignalR (Api, tests).</summary>
 public sealed class NoOpNotificationBroadcaster : INotificationBroadcaster
 {
-    public Task NotificationAddedAsync(Guid recipientTenantUserId, CancellationToken cancellationToken = default)
+    public Task NotificationAddedAsync(long recipientTenantUserId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 }

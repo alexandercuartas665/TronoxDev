@@ -2,7 +2,7 @@ namespace Tronox.Application.Roles;
 
 /// <summary>Rol de permisos (fila del listado). UserCount = usuarios del tenant que lo tienen asignado.</summary>
 public sealed record RolDto(
-    Guid Id,
+    long Id,
     string Name,
     string? Description,
     bool IsActive,
@@ -23,7 +23,7 @@ public sealed record ModulePermissionDto(
 
 /// <summary>Detalle de un rol: sus datos + la lista de permisos por modulo (solo los persistidos).</summary>
 public sealed record RolDetailDto(
-    Guid Id,
+    long Id,
     string Name,
     string? Description,
     bool IsActive,

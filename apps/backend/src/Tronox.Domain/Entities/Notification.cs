@@ -12,7 +12,7 @@ namespace Tronox.Domain.Entities;
 public class Notification : TenantEntity
 {
     /// <summary>TenantUser destinatario (a quien se le entrega la notificacion).</summary>
-    public Guid RecipientTenantUserId { get; set; }
+    public long RecipientTenantUserId { get; set; }
     public TenantUser? RecipientTenantUser { get; set; }
 
     public NotificationKind Kind { get; set; } = NotificationKind.General;
@@ -24,7 +24,7 @@ public class Notification : TenantEntity
     public string? LinkRoute { get; set; }
 
     /// <summary>Tarea relacionada (si aplica), para trazabilidad.</summary>
-    public Guid? RelatedTaskItemId { get; set; }
+    public long? RelatedTaskItemId { get; set; }
 
     /// <summary>Nombre legible de quien origino la notificacion (capturado en el momento).</summary>
     public string? ActorName { get; set; }

@@ -26,14 +26,14 @@ public class OrgUnit : TenantEntity
     /// Classifier=Funcionario; null para Dependencia y Cargo. FK NO ACTION (el usuario
     /// nunca se borra en cascada desde el organigrama).
     /// </summary>
-    public Guid? TenantUserId { get; set; }
+    public long? TenantUserId { get; set; }
 
     /// <summary>Unidad padre (null = raiz del organigrama).</summary>
-    public Guid? ParentId { get; set; }
+    public long? ParentId { get; set; }
     public OrgUnit? Parent { get; set; }
 
     /// <summary>Responsable de la unidad (TenantUser del mismo tenant, opcional).</summary>
-    public Guid? ResponsibleTenantUserId { get; set; }
+    public long? ResponsibleTenantUserId { get; set; }
 
     public string? Description { get; set; }
 

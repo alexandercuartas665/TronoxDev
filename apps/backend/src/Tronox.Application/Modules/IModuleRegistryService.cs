@@ -30,15 +30,15 @@ public interface IModuleRegistryService
     // ---- Estado por tenant ----
 
     /// <summary>Habilita/deshabilita el modulo para el tenant activo (owner/admin o PlatformAdmin). Invalid si IsCore y se intenta deshabilitar.</summary>
-    Task<OrgResult<ModuleCatalogRowDto>> SetModuleEnabledAsync(Guid moduleDefinitionId, bool enabled, CancellationToken cancellationToken = default);
+    Task<OrgResult<ModuleCatalogRowDto>> SetModuleEnabledAsync(long moduleDefinitionId, bool enabled, CancellationToken cancellationToken = default);
 
     /// <summary>Guarda los settings JSON del modulo para el tenant activo. Invalid si el texto no es un objeto JSON.</summary>
-    Task<OrgResult<ModuleCatalogRowDto>> UpdateSettingsAsync(Guid moduleDefinitionId, string? settingsJson, CancellationToken cancellationToken = default);
+    Task<OrgResult<ModuleCatalogRowDto>> UpdateSettingsAsync(long moduleDefinitionId, string? settingsJson, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Modulos habilitados de un tenant, pensado para derivar el menu futuro del registry.
     /// Fail-closed: si hay tenant activo y no coincide con <paramref name="tenantId"/>,
     /// devuelve vacio (solo el PlatformAdmin, sin tenant ambiente, consulta cualquier tenant).
     /// </summary>
-    Task<IReadOnlyList<EnabledModuleDto>> GetEnabledModulesAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EnabledModuleDto>> GetEnabledModulesAsync(long tenantId, CancellationToken cancellationToken = default);
 }

@@ -8,5 +8,5 @@ namespace Tronox.Domain.Common;
 /// </summary>
 public interface ITenantScoped
 {
-    Guid TenantId { get; }
+    long TenantId { get; }
 }

@@ -331,7 +331,7 @@ else
         else if (isTenantUser)
         {
             _roleLabel = state.User.FindFirst("tenant_role")?.Value ?? "Miembro";
-            if (Guid.TryParse(tenantClaim, out var tenantId))
+            if (long.TryParse(tenantClaim, out var tenantId))
             {
                 var tenant = await TenantsSvc.GetAsync(tenantId);
                 _tenantName = tenant?.Name;
@@ -359,7 +359,7 @@ else
     /// <summary>Arbol resuelto del menu del workspace (Ola 1). Null = no renderiza el bloque tenant.</summary>
     private ResolvedMenuDto? _menu;
 
-    private async Task LoadMenuAsync(Guid tenantId, string? platformUserIdClaim)
+    private async Task LoadMenuAsync(long tenantId, string? platformUserIdClaim)
     {
         try
         {
@@ -367,9 +367,9 @@ else
             var menuSvc = scope.ServiceProvider.GetRequiredService<IMenuConfigService>();
 
             // Vista asignada al usuario (o null -> el servicio cae a la IsDefault del tenant).
-            Guid? assignedViewId = null;
+            long? assignedViewId = null;
             Tronox.Application.Roles.EffectivePermissions? permissions = null;
-            if (Guid.TryParse(platformUserIdClaim, out var platformUserId))
+            if (long.TryParse(platformUserIdClaim, out var platformUserId))
             {
                 var db = scope.ServiceProvider.GetRequiredService<Tronox.Application.Common.IApplicationDbContext>();
                 assignedViewId = await db.TenantUsers
@@ -398,7 +398,7 @@ else
     /// <summary>Arbol dinamico de "Mis Procesos" (Ola 4): categorias con sus subcategorias tipo proceso.</summary>
     private List<ProcesoCat> _procesoCats = new();
     private sealed record ProcesoCat(string Nombre, string Slug, List<ProcesoSub> Subs);
-    private sealed record ProcesoSub(Guid Id, string Nombre, bool Publicado);
+    private sealed record ProcesoSub(long Id, string Nombre, bool Publicado);
 
     /// <summary>Inicial del tenant para el tile cuadrado del header (prototipo: "S" de SKY SYSTEM).</summary>
     private string TenantInitial => string.IsNullOrWhiteSpace(_tenantName) ? "E" : _tenantName.Trim()[..1].ToUpperInvariant();

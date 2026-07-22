@@ -28,7 +28,7 @@ public sealed class AuthService : IAuthService
         _tokenService = tokenService;
     }
 
-    public async Task<ChangePasswordResult> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
+    public async Task<ChangePasswordResult> ChangePasswordAsync(long userId, string currentPassword, string newPassword, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
         {
@@ -68,7 +68,7 @@ public sealed class AuthService : IAuthService
         var memberships = await GetMembershipsAsync(user.Id, cancellationToken);
 
         // Si pidio un tenant explicito, debe pertenecer a el.
-        if (request.TenantId is Guid requestedTenant)
+        if (request.TenantId is long requestedTenant)
         {
             var match = memberships.FirstOrDefault(m => m.TenantId == requestedTenant);
             return match is null ? null : BuildToken(user, match);
@@ -82,7 +82,7 @@ public sealed class AuthService : IAuthService
         };
     }
 
-    public async Task<TokenResponse?> SwitchTenantAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken = default)
+    public async Task<TokenResponse?> SwitchTenantAsync(long userId, long tenantId, CancellationToken cancellationToken = default)
     {
         var user = await _db.PlatformUsers.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null || user.Status != PlatformUserStatus.Active)
@@ -95,7 +95,7 @@ public sealed class AuthService : IAuthService
         return match is null ? null : BuildToken(user, match);
     }
 
-    public async Task<MeResponse?> GetMeAsync(Guid userId, Guid? currentTenantId, CancellationToken cancellationToken = default)
+    public async Task<MeResponse?> GetMeAsync(long userId, long? currentTenantId, CancellationToken cancellationToken = default)
     {
         var user = await _db.PlatformUsers.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
@@ -117,7 +117,7 @@ public sealed class AuthService : IAuthService
             tenants);
     }
 
-    private async Task<List<Membership>> GetMembershipsAsync(Guid userId, CancellationToken cancellationToken)
+    private async Task<List<Membership>> GetMembershipsAsync(long userId, CancellationToken cancellationToken)
     {
         // IgnoreQueryFilters: resolver las agencias del usuario es una operacion cross-tenant legitima
         // que ocurre antes de fijar el tenant activo.
@@ -149,5 +149,5 @@ public sealed class AuthService : IAuthService
 
     private static string Normalize(string email) => email.Trim().ToLowerInvariant();
 
-    private sealed record Membership(Guid TenantId, string Name, TenantRole TenantRole);
+    private sealed record Membership(long TenantId, string Name, TenantRole TenantRole);
 }

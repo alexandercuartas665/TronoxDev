@@ -19,7 +19,7 @@ public sealed record SelfSignupRequest(
 /// configurado): el visitante debe ir a /activar y usar "Reenviar codigo" cuando el correo este
 /// disponible. Solo Success=false significa que la cuenta NO se creo.
 /// </summary>
-public sealed record SelfSignupResult(bool Success, Guid TenantId, Guid AdminUserId, string Email, string? Error, string? EmailDeliveryWarning = null);
+public sealed record SelfSignupResult(bool Success, long TenantId, long AdminUserId, string Email, string? Error, string? EmailDeliveryWarning = null);
 
 public interface ISelfSignupService
 {
@@ -63,15 +63,15 @@ public sealed class SelfSignupService : ISelfSignupService
 
         if (string.IsNullOrWhiteSpace(agency))
         {
-            return new SelfSignupResult(false, Guid.Empty, Guid.Empty, email, "Escribe el nombre de tu agencia.");
+            return new SelfSignupResult(false, 0, 0, email, "Escribe el nombre de tu agencia.");
         }
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
         {
-            return new SelfSignupResult(false, Guid.Empty, Guid.Empty, email, "Escribe un correo valido.");
+            return new SelfSignupResult(false, 0, 0, email, "Escribe un correo valido.");
         }
         if (password.Length < 8)
         {
-            return new SelfSignupResult(false, Guid.Empty, Guid.Empty, email, "La clave debe tener al menos 8 caracteres.");
+            return new SelfSignupResult(false, 0, 0, email, "La clave debe tener al menos 8 caracteres.");
         }
 
         // actorUserId vacio = registro hecho por el propio visitante (no hay operador de plataforma).
@@ -81,12 +81,12 @@ public sealed class SelfSignupService : ISelfSignupService
                 AdminEmail: email,
                 AdminPassword: password,
                 AdminDisplayName: string.IsNullOrWhiteSpace(name) ? null : name),
-            actorUserId: Guid.Empty,
+            actorUserId: 0,
             cancellationToken);
 
         if (!outcome.Success || outcome.Result is null)
         {
-            return new SelfSignupResult(false, Guid.Empty, Guid.Empty, email, outcome.Error ?? "No se pudo crear la cuenta.");
+            return new SelfSignupResult(false, 0, 0, email, outcome.Error ?? "No se pudo crear la cuenta.");
         }
 
         // Marca al usuario como pendiente de activacion: el OnboardingService lo dejo como Active.
@@ -101,7 +101,7 @@ public sealed class SelfSignupService : ISelfSignupService
         var issued = await _activation.IssueCodeAsync(outcome.Result.AdminUserId, cancellationToken);
         if (!issued.Ok || string.IsNullOrEmpty(issued.Code))
         {
-            return new SelfSignupResult(false, Guid.Empty, Guid.Empty, email, issued.Error ?? "No se pudo emitir el codigo de activacion.");
+            return new SelfSignupResult(false, 0, 0, email, issued.Error ?? "No se pudo emitir el codigo de activacion.");
         }
 
         var brand = await _branding.GetAsync(cancellationToken);

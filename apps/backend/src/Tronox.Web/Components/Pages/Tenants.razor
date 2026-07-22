@@ -151,7 +151,7 @@ else
                     <div class="field">
                         <label class="form-label">Plan</label>
                         <select class="form-control" @bind="_createPlanId">
-                            <option value="@Guid.Empty">Sin plan (lo elige el cliente)</option>
+                            <option value="@0">Sin plan (lo elige el cliente)</option>
                             @foreach (var p in _plans)
                             {
                                 <option value="@p.Id">@p.Name</option>
@@ -237,21 +237,21 @@ else
     private string _adminEmail = string.Empty;
     private string _adminName = string.Empty;
     private string _adminPassword = string.Empty;
-    private Guid _createPlanId = Guid.Empty;
+    private long _createPlanId = 0;
     private BillingFrequency _createFreq = BillingFrequency.Monthly;
     private bool _busy;
     private string? _error;
 
     private List<PlanDetail> _plans = new();
-    private Dictionary<Guid, string> _planNames = new();
-    private Dictionary<Guid, SubscriptionDetail?> _subs = new();
+    private Dictionary<long, string> _planNames = new();
+    private Dictionary<long, SubscriptionDetail?> _subs = new();
 
     private bool _subModalOpen;
     private bool _subBusy;
     private string? _subError;
-    private Guid _subTenantId;
+    private long _subTenantId;
     private string _subTenantName = string.Empty;
-    private Guid _subPlanId;
+    private long _subPlanId;
     private BillingFrequency _subFreq = BillingFrequency.Monthly;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
@@ -261,7 +261,7 @@ else
         _tenants = (await TenantsSvc.ListAsync()).ToList();
         _plans = (await PlansSvc.ListAsync()).ToList();
         _planNames = _plans.ToDictionary(p => p.Id, p => p.Name);
-        _subs = new Dictionary<Guid, SubscriptionDetail?>();
+        _subs = new Dictionary<long, SubscriptionDetail?>();
         foreach (var t in _tenants)
         {
             _subs[t.Id] = (await SubsSvc.ListByTenantAsync(t.Id)).FirstOrDefault();
@@ -279,7 +279,7 @@ else
         _adminEmail = string.Empty;
         _adminName = string.Empty;
         _adminPassword = string.Empty;
-        _createPlanId = Guid.Empty;
+        _createPlanId = 0;
         _createFreq = BillingFrequency.Monthly;
         _modalOpen = true;
     }
@@ -301,7 +301,7 @@ else
                 AdminDisplayName: string.IsNullOrWhiteSpace(_adminName) ? null : _adminName.Trim(),
                 Country: _country,
                 Currency: _currency,
-                PlanId: _createPlanId == Guid.Empty ? null : _createPlanId,
+                PlanId: _createPlanId == 0 ? null : _createPlanId,
                 BillingFrequency: _createFreq), actor);
             if (!outcome.Success)
             {
@@ -321,28 +321,28 @@ else
         }
     }
 
-    private async Task ChangeStatusAsync(Guid id, TenantStatus status)
+    private async Task ChangeStatusAsync(long id, TenantStatus status)
     {
         var actor = await ActorAsync();
         await TenantsSvc.ChangeStatusAsync(id, new ChangeTenantStatusRequest(status), actor);
         await ReloadAsync();
     }
 
-    private async Task<Guid> ActorAsync()
+    private async Task<long> ActorAsync()
     {
-        if (AuthState is null) return Guid.Empty;
+        if (AuthState is null) return 0;
         var state = await AuthState;
-        return Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
+        return long.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     }
 
-    private string PlanName(Guid planId) => _planNames.TryGetValue(planId, out var n) ? n : "Plan";
+    private string PlanName(long planId) => _planNames.TryGetValue(planId, out var n) ? n : "Plan";
 
     private void OpenSubscription(TenantListItem t)
     {
         _subError = null;
         _subTenantId = t.Id;
         _subTenantName = t.Name;
-        _subPlanId = _plans.FirstOrDefault()?.Id ?? Guid.Empty;
+        _subPlanId = _plans.FirstOrDefault()?.Id ?? 0;
         _subFreq = BillingFrequency.Monthly;
         _subModalOpen = true;
     }
@@ -355,7 +355,7 @@ else
         _subBusy = true;
         try
         {
-            if (_subPlanId == Guid.Empty)
+            if (_subPlanId == 0)
             {
                 _subError = "Selecciona un plan.";
                 return;

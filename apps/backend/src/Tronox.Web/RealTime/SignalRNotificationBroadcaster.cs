@@ -14,7 +14,7 @@ public sealed class SignalRNotificationBroadcaster : INotificationBroadcaster
         _hub = hub;
     }
 
-    public Task NotificationAddedAsync(Guid recipientTenantUserId, CancellationToken cancellationToken = default)
+    public Task NotificationAddedAsync(long recipientTenantUserId, CancellationToken cancellationToken = default)
         => _hub.Clients.Group(NotificationHub.UserGroup(recipientTenantUserId.ToString()))
             .SendAsync("NotificationAdded", cancellationToken);
 }

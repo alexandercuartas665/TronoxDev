@@ -9,21 +9,21 @@ public sealed record OnboardTenantRequest(
     string? AdminDisplayName = null,
     string? Country = null,
     string? Currency = null,
-    Guid? PlanId = null,
+    long? PlanId = null,
     BillingFrequency BillingFrequency = BillingFrequency.Monthly,
     // Cuando viene un subject de Google, el admin se crea sin clave (login via Google).
     string? GoogleSubject = null);
 
 public sealed record OnboardingResult(
-    Guid TenantId,
+    long TenantId,
     string TenantName,
-    Guid AdminUserId,
+    long AdminUserId,
     string AdminEmail,
-    Guid? SubscriptionId);
+    long? SubscriptionId);
 
 public sealed record OnboardingOutcome(bool Success, OnboardingResult? Result, string? Error);
 
 public interface IOnboardingService
 {
-    Task<OnboardingOutcome> OnboardAsync(OnboardTenantRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task<OnboardingOutcome> OnboardAsync(OnboardTenantRequest request, long actorUserId, CancellationToken cancellationToken = default);
 }

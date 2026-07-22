@@ -510,8 +510,8 @@ app.MapPost("/auth/logout", async (HttpContext http) =>
 // items para que la fuente demo y los tests E2E corran sin depender de internet. Es
 // AllowAnonymous a proposito: el ejecutor hace un GET sin cookies (datos ficticios, sin
 // informacion de tenant). El guard SSRF solo lo alcanza via loopback en Development.
-app.MapGet("/comprobante/{paymentId:guid}", async (
-    Guid paymentId,
+app.MapGet("/comprobante/{paymentId:long}", async (
+    long paymentId,
     HttpContext http,
     Tronox.Application.Admin.IPaymentReceiptService receipts) =>
 {
@@ -522,7 +522,7 @@ app.MapGet("/comprobante/{paymentId:guid}", async (
     }
 
     var isOperator = http.User.FindFirst("platform_role") is not null;
-    var ownsTenant = Guid.TryParse(http.User.FindFirst("tenant_id")?.Value, out var tid) && tid == receipt.TenantId;
+    var ownsTenant = long.TryParse(http.User.FindFirst("tenant_id")?.Value, out var tid) && tid == receipt.TenantId;
     if (!isOperator && !ownsTenant)
     {
         return Results.Forbid();
@@ -538,5 +538,5 @@ app.Run();
 namespace Tronox.Web
 {
     /// <summary>Cuerpo del emulador de canal: texto del cliente + opciones de prueba + imagen opcional (base64).</summary>
-    public sealed record TestAgentRequest(string? Text = null, Guid? AgentId = null, string? ContactPhone = null, string? ContactName = null, string? ImageBase64 = null, string? ImageMime = null);
+    public sealed record TestAgentRequest(string? Text = null, long? AgentId = null, string? ContactPhone = null, string? ContactName = null, string? ImageBase64 = null, string? ImageMime = null);
 }

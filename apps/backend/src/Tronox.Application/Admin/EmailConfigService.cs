@@ -29,7 +29,7 @@ public sealed record SaveEmailConfigRequest(
 public interface IEmailConfigService
 {
     Task<EmailConfigDto?> GetAsync(CancellationToken cancellationToken = default);
-    Task<EmailConfigDto> SaveAsync(SaveEmailConfigRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task<EmailConfigDto> SaveAsync(SaveEmailConfigRequest request, long actorUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -55,7 +55,7 @@ public sealed class EmailConfigService : IEmailConfigService
         return cfg is null ? null : Map(cfg);
     }
 
-    public async Task<EmailConfigDto> SaveAsync(SaveEmailConfigRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<EmailConfigDto> SaveAsync(SaveEmailConfigRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var cfg = await _db.EmailConfigs.FirstOrDefaultAsync(cancellationToken);
         var isNew = cfg is null;

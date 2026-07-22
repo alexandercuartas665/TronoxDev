@@ -39,7 +39,7 @@ public sealed class JwtTokenService : IJwtTokenService
             claims.Add(new Claim("name", input.DisplayName));
         }
 
-        if (input.TenantId is Guid tenantId)
+        if (input.TenantId is long tenantId)
         {
             claims.Add(new Claim("tenant_id", tenantId.ToString()));
         }

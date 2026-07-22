@@ -75,7 +75,7 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private IReadOnlyList<NotificationDto>? _items;
-    private Guid _platformUserId;
+    private long _platformUserId;
     private bool _busy;
 
     protected override async Task OnInitializedAsync()
@@ -83,7 +83,7 @@
         if (AuthState is not null)
         {
             var state = await AuthState;
-            Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _platformUserId);
+            long.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _platformUserId);
         }
         await ReloadAsync();
     }
@@ -91,7 +91,7 @@
     private async Task ReloadAsync()
         => _items = await Notifications.ListForPlatformUserAsync(_platformUserId, take: 50);
 
-    private async Task MarkReadAsync(Guid id)
+    private async Task MarkReadAsync(long id)
     {
         _busy = true;
         try { await Notifications.MarkReadAsync(id); await ReloadAsync(); }

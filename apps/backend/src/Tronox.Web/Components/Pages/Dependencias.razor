@@ -359,7 +359,7 @@ else
     private IReadOnlyList<OrgUnitNodeDto> _tree = [];
     private IReadOnlyList<OrgUnitDto> _flat = [];
     private IReadOnlyList<TenantUserDto> _users = [];
-    private readonly HashSet<Guid> _collapsed = [];
+    private readonly HashSet<long> _collapsed = [];
 
     private OrgUnitDto? _selected;
     private string _selectedPath = "";
@@ -417,7 +417,7 @@ else
         return Walk(_tree, 0);
     }
 
-    private void ToggleCollapse(Guid id)
+    private void ToggleCollapse(long id)
     {
         if (!_collapsed.Remove(id))
         {
@@ -425,7 +425,7 @@ else
         }
     }
 
-    private async Task SelectAsync(Guid unitId)
+    private async Task SelectAsync(long unitId)
     {
         _detailError = null;
         _selected = await OrgSvc.GetAsync(unitId);
@@ -445,7 +445,7 @@ else
         var parts = new List<string>();
         var current = unit.ParentId;
         var guard = 0;
-        while (current is Guid id && nameById.TryGetValue(id, out var parent) && guard++ < 20)
+        while (current is long id && nameById.TryGetValue(id, out var parent) && guard++ < 20)
         {
             parts.Insert(0, parent.Name);
             current = parent.ParentId;
@@ -457,7 +457,7 @@ else
 
     private async Task AddMemberAsync()
     {
-        if (_selected is null || !Guid.TryParse(_newMemberUserId, out var userId)) { return; }
+        if (_selected is null || !long.TryParse(_newMemberUserId, out var userId)) { return; }
         _busy = true;
         _detailError = null;
         var result = await OrgSvc.AddMemberAsync(_selected.Id, userId, _newMemberRole);
@@ -525,7 +525,7 @@ else
 
     // ---- Editor ----
 
-    private void OpenEditor(OrgUnitDto? unit, Guid? presetParentId)
+    private void OpenEditor(OrgUnitDto? unit, long? presetParentId)
     {
         _editing = unit;
         _fName = unit?.Name ?? "";
@@ -547,12 +547,12 @@ else
         var request = new SaveOrgUnitRequest(
             _fName,
             _fKind,
-            Guid.TryParse(_fParentId, out var parentId) ? parentId : null,
-            Guid.TryParse(_fResponsibleId, out var responsibleId) ? responsibleId : null,
+            long.TryParse(_fParentId, out var parentId) ? parentId : null,
+            long.TryParse(_fResponsibleId, out var responsibleId) ? responsibleId : null,
             _fDescription,
             _fSortOrder,
             _fClassifier,
-            Guid.TryParse(_fTenantUserId, out var occupantId) ? occupantId : null);
+            long.TryParse(_fTenantUserId, out var occupantId) ? occupantId : null);
         var result = _editing is null
             ? await OrgSvc.CreateAsync(request)
             : await OrgSvc.UpdateAsync(_editing.Id, request);

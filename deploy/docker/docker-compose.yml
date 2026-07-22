@@ -1,9 +1,18 @@
-name: tronox-tareas
+# Stack de desarrollo de TRONOX SGDEA.
+#
+# La maquina de desarrollo corre en paralelo varios stacks hermanos (ecorex-tareas, doktrino,
+# cubot, cubot-travels, cubotrm, visal, propia, traiding). Por eso TRONOX usa un BLOQUE DE
+# PUERTOS DEDICADO, nombre de proyecto propio y red propia: ningun contenedor hermano debe
+# caerse al levantar este stack. Los puertos se parametrizan en .env (no versionado).
+#
+# Antes de "docker compose up" corre SIEMPRE deploy/docker/preflight.ps1.
+
+name: tronox
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: tronox-tareas-postgres
+    container_name: tronox-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -11,9 +20,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "${POSTGRES_PORT:-5442}:5432"
+      - "${POSTGRES_PORT:-5443}:5432"
     volumes:
-      - tronox-tareas-postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -21,38 +30,17 @@ services:
       retries: 10
       start_period: 20s
     networks:
-      - tronox-tareas-net
-
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: tronox-tareas-sqlserver
-    restart: unless-stopped
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${SQLSERVER_SA_PASSWORD}
-      MSSQL_PID: Developer
-    ports:
-      - "${SQLSERVER_PORT:-1443}:1433"
-    volumes:
-      - tronox-tareas-sqlserver-data:/var/opt/mssql
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' -b -o /dev/null"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 40s
-    networks:
-      - tronox-tareas-net
+      - tronox-net
 
   redis:
     image: redis:7-alpine
-    container_name: tronox-tareas-redis
+    container_name: tronox-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     ports:
-      - "${REDIS_PORT:-6389}:6379"
+      - "${REDIS_PORT:-6390}:6379"
     volumes:
-      - tronox-tareas-redis-data:/data
+      - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
@@ -60,20 +48,20 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - tronox-tareas-net
+      - tronox-net
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    container_name: tronox-tareas-rabbitmq
+    container_name: tronox-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     ports:
-      - "${RABBITMQ_PORT:-5682}:5672"
-      - "${RABBITMQ_MGMT_PORT:-15682}:15672"
+      - "${RABBITMQ_PORT:-5683}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15683}:15672"
     volumes:
-      - tronox-tareas-rabbitmq-data:/var/lib/rabbitmq
+      - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 15s
@@ -81,27 +69,53 @@ services:
       retries: 10
       start_period: 30s
     networks:
-      - tronox-tareas-net
+      - tronox-net
+
+  # Object storage S3-compatible. Es especifico de TRONOX: las specs prohiben BLOB en base
+  # de datos, asi que TODO binario (documentos, anexos, imagenes de firma) vive aqui.
+  minio:
+    image: minio/minio:latest
+    container_name: tronox-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT:-9004}:9000"
+      - "${MINIO_CONSOLE_PORT:-9005}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - tronox-net
 
   adminer:
     image: adminer:latest
-    container_name: tronox-tareas-adminer
+    container_name: tronox-adminer
     restart: unless-stopped
     ports:
-      - "${ADMINER_PORT:-8092}:8080"
+      - "${ADMINER_PORT:-8093}:8080"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - tronox-tareas-net
+      - tronox-net
 
+# Con "name: tronox" los volumenes quedan prefijados (tronox_postgres-data) y no se
+# mezclan con los de los stacks hermanos.
 volumes:
-  tronox-tareas-postgres-data:
-  tronox-tareas-sqlserver-data:
-  tronox-tareas-redis-data:
-  tronox-tareas-rabbitmq-data:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  minio-data:
 
 networks:
-  tronox-tareas-net:
-    name: tronox-tareas-net
+  tronox-net:
+    name: tronox-net
     driver: bridge

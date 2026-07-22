@@ -18,11 +18,11 @@ public interface IGoogleOAuthClient
 public sealed record GoogleSignInResult(
     bool Success,
     string? Error = null,
-    Guid UserId = default,
+    long UserId = default,
     string? DisplayName = null,
     string? Email = null,
     string? PlatformRole = null,
-    Guid? TenantId = null,
+    long? TenantId = null,
     string? TenantRole = null);
 
 public interface IGoogleSignInService
@@ -114,7 +114,7 @@ public sealed class GoogleSignInService : IGoogleSignInService
                     AdminPassword: string.Empty,
                     AdminDisplayName: identity.Name,
                     GoogleSubject: identity.Subject),
-                actorUserId: Guid.Empty,
+                actorUserId: 0,
                 cancellationToken);
 
             if (!outcome.Success || outcome.Result is null)

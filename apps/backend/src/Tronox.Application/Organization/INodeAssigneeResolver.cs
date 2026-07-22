@@ -12,5 +12,5 @@ public interface INodeAssigneeResolver
     /// TenantUserIds distintos que pueden atender el nodo. Vacio si el nodo no tiene policies
     /// (sin asignacion = nadie resuelto todavia).
     /// </summary>
-    Task<IReadOnlyList<Guid>> ResolveCandidatesAsync(Guid workflowNodeId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<long>> ResolveCandidatesAsync(long workflowNodeId, CancellationToken cancellationToken = default);
 }

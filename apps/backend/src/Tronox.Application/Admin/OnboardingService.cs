@@ -29,7 +29,7 @@ public sealed class OnboardingService : IOnboardingService
         _menuProvisioning = menuProvisioning;
     }
 
-    public async Task<OnboardingOutcome> OnboardAsync(OnboardTenantRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
+    public async Task<OnboardingOutcome> OnboardAsync(OnboardTenantRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var email = request.AdminEmail.Trim().ToLowerInvariant();
         var isGoogle = !string.IsNullOrWhiteSpace(request.GoogleSubject);
@@ -47,7 +47,7 @@ public sealed class OnboardingService : IOnboardingService
             return new OnboardingOutcome(false, null, "Ya existe un usuario con ese correo.");
         }
 
-        if (request.PlanId is Guid planId && !await _db.SaasPlans.AnyAsync(p => p.Id == planId, cancellationToken))
+        if (request.PlanId is long planId && !await _db.SaasPlans.AnyAsync(p => p.Id == planId, cancellationToken))
         {
             return new OnboardingOutcome(false, null, "Plan inexistente.");
         }
@@ -84,8 +84,8 @@ public sealed class OnboardingService : IOnboardingService
             Status = PlatformUserStatus.Active
         });
 
-        Guid? subscriptionId = null;
-        if (request.PlanId is Guid plan)
+        long? subscriptionId = null;
+        if (request.PlanId is long plan)
         {
             var startsAt = DateTimeOffset.UtcNow;
             var subscription = new TenantSubscription

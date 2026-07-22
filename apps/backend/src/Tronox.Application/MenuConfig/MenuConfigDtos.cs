@@ -8,7 +8,7 @@ namespace Tronox.Application.MenuConfig;
 /// contador del acordeon del prototipo).
 /// </summary>
 public sealed record MenuNodeDto(
-    Guid Id,
+    long Id,
     MenuNodeKind Kind,
     string Name,
     string? IconKey,
@@ -25,13 +25,13 @@ public sealed record MenuNodeDto(
 
 /// <summary>Arbol resuelto de una vista: lista de nodos raiz (con Children recursivos).</summary>
 public sealed record ResolvedMenuDto(
-    Guid MenuViewId,
+    long MenuViewId,
     string MenuViewName,
     IReadOnlyList<MenuNodeDto> Roots);
 
 /// <summary>Vista del menu (perfil) para listados y edicion (Ola 2).</summary>
 public sealed record MenuViewDto(
-    Guid Id,
+    long Id,
     string Name,
     string? Description,
     bool IsDefault,
@@ -44,8 +44,8 @@ public sealed record MenuViewDto(
 /// recursivo, ordenado por SortOrder.
 /// </summary>
 public sealed record MenuEditorNodeDto(
-    Guid Id,
-    Guid? ParentId,
+    long Id,
+    long? ParentId,
     MenuNodeKind Kind,
     string Name,
     string? IconKey,
@@ -63,7 +63,7 @@ public sealed record MenuEditorNodeDto(
 /// Arbol COMPLETO de una vista para el editor (incluye invisibles). Roots con Children recursivos.
 /// </summary>
 public sealed record MenuViewTreeDto(
-    Guid ViewId,
+    long ViewId,
     string ViewName,
     string? Description,
     bool IsDefault,
@@ -82,10 +82,10 @@ public sealed record MenuNodeEditDto(
 
 /// <summary>Usuario del tenant con su vista asignada (para la pantalla de asignacion, Ola 2).</summary>
 public sealed record TenantUserViewDto(
-    Guid TenantUserId,
+    long TenantUserId,
     string Email,
     string? DisplayName,
-    Guid? MenuViewId,
+    long? MenuViewId,
     string? MenuViewName);
 
 /// <summary>

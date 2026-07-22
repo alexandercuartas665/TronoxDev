@@ -2,7 +2,7 @@ using Tronox.Domain.Enums;
 
 namespace Tronox.Application.Tenancy;
 
-public sealed record AgentUsageDto(Guid? AgentId, int Calls, long InputTokens, long OutputTokens, long TotalTokens, decimal EstimatedCostUsd);
+public sealed record AgentUsageDto(long? AgentId, int Calls, long InputTokens, long OutputTokens, long TotalTokens, decimal EstimatedCostUsd);
 
 public sealed record AiUsageSummaryDto(
     int TotalCalls,
@@ -28,7 +28,7 @@ public sealed record AiQuotaDto(long MonthlyLimitTokens, long MonthlyUsedTokens,
 public interface IAiUsageService
 {
     /// <summary>Registra un consumo de IA. Lo invoca el motor de inferencia tras cada llamada al proveedor.</summary>
-    Task RecordAsync(Guid? agentId, AiProvider provider, string model, int inputTokens, int outputTokens, string source, bool success, CancellationToken cancellationToken = default);
+    Task RecordAsync(long? agentId, AiProvider provider, string model, int inputTokens, int outputTokens, string source, bool success, CancellationToken cancellationToken = default);
 
     /// <summary>Totales de consumo del tenant: global y desglosado por agente.</summary>
     Task<AiUsageSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default);

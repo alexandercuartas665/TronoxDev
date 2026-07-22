@@ -30,11 +30,11 @@ public sealed class OrgUnitService : IOrgUnitService
 
         var byParent = units
             .GroupBy(u => u.ParentId)
-            .ToDictionary(g => g.Key ?? Guid.Empty, g => g.OrderBy(u => u.SortOrder).ThenBy(u => u.Name).ToList());
+            .ToDictionary(g => g.Key ?? 0, g => g.OrderBy(u => u.SortOrder).ThenBy(u => u.Name).ToList());
 
-        List<OrgUnitNodeDto> BuildChildren(Guid? parentId)
+        List<OrgUnitNodeDto> BuildChildren(long? parentId)
         {
-            if (!byParent.TryGetValue(parentId ?? Guid.Empty, out var children))
+            if (!byParent.TryGetValue(parentId ?? 0, out var children))
             {
                 return [];
             }
@@ -67,14 +67,14 @@ public sealed class OrgUnitService : IOrgUnitService
             .OrderBy(u => u.SortOrder).ThenBy(u => u.Name)
             .Select(u => new OrgUnitDto(
                 u.Id, u.Name, u.Kind, u.ParentId,
-                u.ParentId is Guid pid && nameById.TryGetValue(pid, out var pname) ? pname : null,
+                u.ParentId is long pid && nameById.TryGetValue(pid, out var pname) ? pname : null,
                 u.ResponsibleTenantUserId, u.ResponsibleName, u.Description,
                 u.SortOrder, u.IsArchived, u.MemberCount,
                 u.Classifier, u.TenantUserId, u.OccupantName))
             .ToList();
     }
 
-    public async Task<OrgUnitDto?> GetAsync(Guid unitId, CancellationToken cancellationToken = default)
+    public async Task<OrgUnitDto?> GetAsync(long unitId, CancellationToken cancellationToken = default)
     {
         var unit = await _db.OrgUnits.AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
@@ -109,7 +109,7 @@ public sealed class OrgUnitService : IOrgUnitService
     public async Task<OrgResult<OrgUnitDto>> CreateAsync(
         SaveOrgUnitRequest request, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return OrgResult<OrgUnitDto>.Invalid("No hay tenant activo.");
         }
@@ -118,7 +118,7 @@ public sealed class OrgUnitService : IOrgUnitService
         {
             return OrgResult<OrgUnitDto>.Invalid(error);
         }
-        if (request.ParentId is Guid parentId
+        if (request.ParentId is long parentId
             && !await _db.OrgUnits.AnyAsync(u => u.Id == parentId, cancellationToken))
         {
             return OrgResult<OrgUnitDto>.NotFound("La unidad padre no existe.");
@@ -143,7 +143,7 @@ public sealed class OrgUnitService : IOrgUnitService
     }
 
     public async Task<OrgResult<OrgUnitDto>> UpdateAsync(
-        Guid unitId, SaveOrgUnitRequest request, CancellationToken cancellationToken = default)
+        long unitId, SaveOrgUnitRequest request, CancellationToken cancellationToken = default)
     {
         var unit = await _db.OrgUnits.FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
         if (unit is null)
@@ -156,7 +156,7 @@ public sealed class OrgUnitService : IOrgUnitService
             return OrgResult<OrgUnitDto>.Invalid(error);
         }
 
-        if (request.ParentId != unit.ParentId && request.ParentId is Guid newParentId)
+        if (request.ParentId != unit.ParentId && request.ParentId is long newParentId)
         {
             if (newParentId == unitId)
             {
@@ -190,7 +190,7 @@ public sealed class OrgUnitService : IOrgUnitService
     }
 
     public async Task<OrgResult<bool>> SetArchivedAsync(
-        Guid unitId, bool archived, CancellationToken cancellationToken = default)
+        long unitId, bool archived, CancellationToken cancellationToken = default)
     {
         var unit = await _db.OrgUnits.FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
         if (unit is null)
@@ -209,7 +209,7 @@ public sealed class OrgUnitService : IOrgUnitService
     // ---- Miembros ----
 
     public async Task<IReadOnlyList<OrgUnitMemberDto>> ListMembersAsync(
-        Guid unitId, CancellationToken cancellationToken = default)
+        long unitId, CancellationToken cancellationToken = default)
     {
         return await _db.OrgUnitMembers.AsNoTracking()
             .Where(m => m.OrgUnitId == unitId)
@@ -231,9 +231,9 @@ public sealed class OrgUnitService : IOrgUnitService
     }
 
     public async Task<OrgResult<OrgUnitMemberDto>> AddMemberAsync(
-        Guid unitId, Guid tenantUserId, string? role = null, CancellationToken cancellationToken = default)
+        long unitId, long tenantUserId, string? role = null, CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId is not Guid tenantId)
+        if (_tenantContext.TenantId is not long tenantId)
         {
             return OrgResult<OrgUnitMemberDto>.Invalid("No hay tenant activo.");
         }
@@ -278,7 +278,7 @@ public sealed class OrgUnitService : IOrgUnitService
             member.Id, unitId, tenantUserId, tenantUser.Email, displayName, member.Role, member.IsResponsible));
     }
 
-    public async Task<OrgResult<bool>> RemoveMemberAsync(Guid memberId, CancellationToken cancellationToken = default)
+    public async Task<OrgResult<bool>> RemoveMemberAsync(long memberId, CancellationToken cancellationToken = default)
     {
         var member = await _db.OrgUnitMembers.FirstOrDefaultAsync(m => m.Id == memberId, cancellationToken);
         if (member is null)
@@ -300,7 +300,7 @@ public sealed class OrgUnitService : IOrgUnitService
     }
 
     public async Task<OrgResult<bool>> SetMemberResponsibleAsync(
-        Guid memberId, bool isResponsible, CancellationToken cancellationToken = default)
+        long memberId, bool isResponsible, CancellationToken cancellationToken = default)
     {
         var member = await _db.OrgUnitMembers.FirstOrDefaultAsync(m => m.Id == memberId, cancellationToken);
         if (member is null)
@@ -343,9 +343,9 @@ public sealed class OrgUnitService : IOrgUnitService
     // ---- Internos ----
 
     private sealed record UnitMeta(
-        Guid Id, string Name, OrgUnitKind Kind, Guid? ParentId, Guid? ResponsibleTenantUserId,
+        long Id, string Name, OrgUnitKind Kind, long? ParentId, long? ResponsibleTenantUserId,
         string? ResponsibleName, string? Description, int SortOrder, bool IsArchived, int MemberCount,
-        OrgUnitClassifier Classifier, Guid? TenantUserId, string? OccupantName);
+        OrgUnitClassifier Classifier, long? TenantUserId, string? OccupantName);
 
     private async Task<List<UnitMeta>> LoadUnitsWithMetaAsync(bool includeArchived, CancellationToken cancellationToken)
     {
@@ -388,17 +388,17 @@ public sealed class OrgUnitService : IOrgUnitService
 
     private async Task<OrgUnitDto> ToDtoAsync(OrgUnit unit, CancellationToken cancellationToken)
     {
-        var parentName = unit.ParentId is Guid parentId
+        var parentName = unit.ParentId is long parentId
             ? await _db.OrgUnits.AsNoTracking().Where(u => u.Id == parentId).Select(u => u.Name).FirstOrDefaultAsync(cancellationToken)
             : null;
-        var responsibleName = unit.ResponsibleTenantUserId is Guid responsibleId
+        var responsibleName = unit.ResponsibleTenantUserId is long responsibleId
             ? await _db.TenantUsers.AsNoTracking()
                 .Where(tu => tu.Id == responsibleId)
                 .Join(_db.PlatformUsers, tu => tu.PlatformUserId, pu => pu.Id, (tu, pu) => pu.DisplayName ?? tu.Email)
                 .FirstOrDefaultAsync(cancellationToken)
             : null;
         var memberCount = await _db.OrgUnitMembers.CountAsync(m => m.OrgUnitId == unit.Id, cancellationToken);
-        var occupantName = unit.TenantUserId is Guid occupantId
+        var occupantName = unit.TenantUserId is long occupantId
             ? await _db.TenantUsers.AsNoTracking()
                 .Where(tu => tu.Id == occupantId)
                 .Join(_db.PlatformUsers, tu => tu.PlatformUserId, pu => pu.Id, (tu, pu) => pu.DisplayName ?? tu.Email)
@@ -425,7 +425,7 @@ public sealed class OrgUnitService : IOrgUnitService
         {
             return "La descripcion no puede superar 600 caracteres.";
         }
-        if (request.ResponsibleTenantUserId is Guid responsibleId
+        if (request.ResponsibleTenantUserId is long responsibleId
             && !await _db.TenantUsers.AnyAsync(tu => tu.Id == responsibleId, cancellationToken))
         {
             return "El responsable no pertenece al tenant.";
@@ -434,7 +434,7 @@ public sealed class OrgUnitService : IOrgUnitService
         // Coherencia del clasificador de asignacion por nodo (ADR-0035). Jerarquia suave:
         // un Cargo cuelga de una Dependencia (o raiz); un Funcionario cuelga de un Cargo y
         // exige TenantUserId (el usuario que ocupa el puesto, del mismo tenant).
-        var parentClassifier = request.ParentId is Guid parentUnitId
+        var parentClassifier = request.ParentId is long parentUnitId
             ? await _db.OrgUnits.AsNoTracking()
                 .Where(u => u.Id == parentUnitId)
                 .Select(u => (OrgUnitClassifier?)u.Classifier)
@@ -450,7 +450,7 @@ public sealed class OrgUnitService : IOrgUnitService
                 }
                 break;
             case OrgUnitClassifier.Funcionario:
-                if (request.TenantUserId is not Guid occupantId)
+                if (request.TenantUserId is not long occupantId)
                 {
                     return "Un Funcionario requiere el usuario del tenant que ocupa el puesto.";
                 }

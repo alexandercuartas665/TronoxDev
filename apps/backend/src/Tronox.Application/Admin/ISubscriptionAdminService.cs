@@ -13,7 +13,7 @@ public sealed record ChangePlanResult(
 public interface ISubscriptionAdminService
 {
     /// <summary>Devuelve null si el tenant o el plan no existen.</summary>
-    Task<SubscriptionDetail?> AssignAsync(AssignSubscriptionRequest request, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task<SubscriptionDetail?> AssignAsync(AssignSubscriptionRequest request, long actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cambio de plan en autoservicio (lo solicita el cliente). Aplica de inmediato.
@@ -22,7 +22,7 @@ public interface ISubscriptionAdminService
     /// (downgrade) no se cobra nada ahora y se conserva la fecha de corte actual (el plan menor
     /// se cobra en la siguiente renovacion). Devuelve null si el tenant o el plan no existen.
     /// </summary>
-    Task<ChangePlanResult?> ChangePlanAsync(Guid tenantId, Guid planId, BillingFrequency frequency, Guid actorUserId, CancellationToken cancellationToken = default);
+    Task<ChangePlanResult?> ChangePlanAsync(long tenantId, long planId, BillingFrequency frequency, long actorUserId, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<SubscriptionDetail>> ListByTenantAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<SubscriptionDetail>> ListByTenantAsync(long tenantId, CancellationToken cancellationToken = default);
 }

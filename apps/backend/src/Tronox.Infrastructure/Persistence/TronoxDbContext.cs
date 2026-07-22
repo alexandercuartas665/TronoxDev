@@ -237,7 +237,31 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         var isNpgsql = Database.IsNpgsql();
 
         ConfigureEntities(modelBuilder, isNpgsql);
+        ApplyIdentityKeys(modelBuilder);
         ApplyTenantQueryFilters(modelBuilder);
+    }
+
+    /// <summary>
+    /// DAT-01 / ADR-001: la clave de toda entidad es BIGINT de identidad, generada por la base
+    /// al insertar. Se declara explicitamente (no por convencion) para que ambos proveedores del
+    /// DAL dual emitan la misma semantica: bigserial/GENERATED AS IDENTITY en PostgreSQL,
+    /// IDENTITY(1,1) en SQL Server. Antes de SaveChanges el Id vale 0.
+    /// </summary>
+    private static void ApplyIdentityKeys(ModelBuilder modelBuilder)
+    {
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (!typeof(BaseEntity).IsAssignableFrom(entityType.ClrType))
+            {
+                continue;
+            }
+
+            var id = entityType.FindProperty(nameof(BaseEntity.Id));
+            if (id is not null)
+            {
+                id.ValueGenerated = ValueGenerated.OnAdd;
+            }
+        }
     }
 
     private static void ConfigureEntities(ModelBuilder modelBuilder, bool isNpgsql)
