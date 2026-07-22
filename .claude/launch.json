@@ -8,11 +8,8 @@
         "run",
         "--project",
         "apps/backend/src/Tronox.Web/Tronox.Web.csproj",
-        "--no-launch-profile",
-        "--urls",
-        "http://localhost:8095",
-        "--environment",
-        "Development"
+        "--launch-profile",
+        "tronox-dev"
       ],
       "port": 8095
     }
