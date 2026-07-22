@@ -54,6 +54,28 @@ la prueba se pone en rojo.
 **Leccion.** Las transformaciones masivas de codigo por patron textual pueden desactivar en
 silencio una defensa de seguridad. Todo cambio de este tipo debe cerrarse EJECUTANDO los
 tests de invariantes, no solo compilando.
+
+---
+
+## INCIDENTE - Poda excesiva de endpoints (en correccion)
+
+Al podar `Tronox.Api` se borro `ConnectEndpoints.cs` junto con los endpoints de WhatsApp y
+la pasarela de pagos, por asociacion. **No era dominio ajeno: era la AUTENTICACION de la API**
+(`/connect/token`, `/connect/switch-tenant`, `/connect/me`, `/platform/me`,
+`/tenant/configurations`). Tambien se borro entero `TenantEndpoints.cs`, que mezclaba
+`/tenant/users` (legitimo, RF06) con pipeline y dashboard de CRM.
+
+Sin `/connect/token` la API no tiene forma de emitir un token: queda inutilizable.
+
+**Como se detecto.** 17 tests de integracion del grupo Auth fallando con 404.
+
+**Criterio que fallo.** La regla de corte era "si no aparece en las 17 specs ni sostiene la
+fundacion multi-tenant, se borra". La autenticacion SI sostiene la fundacion; se elimino por
+estar en la misma carpeta y en el mismo lote que codigo que si sobraba. Al podar por lotes hay
+que revisar cada archivo por su contenido, no por su vecindad.
+
+**Correccion en curso:** restaurar `ConnectEndpoints` completo y de `TenantEndpoints` solo el
+grupo `/tenant/users`, adaptados a ids `long`.
 | 0.8 | Plantilla Velzon integrada | PARCIAL (assets copiados; falta aplicarla al layout) |
 | 0.9 | `CLAUDE.md` reescrito para TRONOX | HECHO |
 
@@ -148,7 +170,14 @@ Falta aplicar la plantilla al layout y a las pantallas.
 6. **FAIL-OPEN heredado**: `Tronox.Web/Auth/CurrentPermissions.cs` resuelve `Unrestricted`
    para Owner/Admin y para usuarios sin rol. TRONOX debe ser **fail-closed**. Corregir en 1.3,
    y leer los claims del `AuthenticationState`, nunca del `HttpContext`.
-7. **Pantallas de plataforma dentro de `Tronox.Web`** (`Tenants`, `Plans`, `EquipoPlataforma`,
+7. **Dos aserciones debiles detectadas (marcadas, NO modificadas):**
+   - `MenuConfigEditorTests.cs:190` - `Assert.NotEqual(0, keep)` es vacua: `keep` es un id de
+     identidad generado por la base, nunca puede ser 0. Parece un resto de cuando la variable
+     necesitaba un uso.
+   - `TenantUsersTests.InvitedUsers_AreIsolatedPerTenant` **no comprueba lo que su nombre dice**:
+     solo confirma que el usuario nuevo aparece en la lista de su propio tenant, no que sea
+     invisible desde otro. Su propio comentario lo admite. Reescribirla al abordar 1.3.
+8. **Pantallas de plataforma dentro de `Tronox.Web`** (`Tenants`, `Plans`, `EquipoPlataforma`,
    `Anuncios`): se mueven a `Tronox.Console` en Fase 2 (ver ADR-002).
 8. **Un commit no atomico**: `3a773ac` ("docker: ...") arrastro trabajo en curso del
    renombrado de ids porque se uso `git add -A` mientras corria un agente en paralelo.
