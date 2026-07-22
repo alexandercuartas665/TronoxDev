@@ -70,10 +70,10 @@ public abstract class TenantIsolationTestsBase
     /// Siembra dos tenants nuevos (GUIDs frescos, seguros ante el contenedor compartido):
     /// A con 1 configuracion y B con 2. El interceptor estampa TenantId desde el contexto.
     /// </summary>
-    private async Task<(Guid TenantA, Guid TenantB)> SeedTwoTenantsAsync()
+    private async Task<(long TenantA, long TenantB)> SeedTwoTenantsAsync()
     {
-        var tenantA = Guid.CreateVersion7();
-        var tenantB = Guid.CreateVersion7();
+        var tenantA = TestIds.Next();
+        var tenantB = TestIds.Next();
 
         // Tenants: entidades globales (sin filtro por tenant).
         await using (var ctx = _fixture.CreateContext(tenantId: null))

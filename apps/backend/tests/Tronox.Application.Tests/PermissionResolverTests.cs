@@ -29,7 +29,7 @@ public class PermissionResolverTests
     [Fact]
     public void Resolve_WithRole_ResolvesTheSet()
     {
-        var rolId = Guid.NewGuid();
+        var rolId = TestIds.Next();
         var permisos = new[]
         {
             P("inventario-items", v: true, c: true),
@@ -78,7 +78,7 @@ public class PermissionResolverTests
     public void Resolve_WithRole_IsNotUnrestricted()
     {
         var eff = PermissionResolver.Resolve(
-            isOwnerOrAdmin: false, rolId: Guid.NewGuid(),
+            isOwnerOrAdmin: false, rolId: TestIds.Next(),
             permisos: new[] { P("actividades", v: true) });
 
         Assert.False(eff.AllowAll);

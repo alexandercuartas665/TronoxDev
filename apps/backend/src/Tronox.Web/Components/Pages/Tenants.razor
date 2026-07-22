@@ -151,7 +151,7 @@ else
                     <div class="field">
                         <label class="form-label">Plan</label>
                         <select class="form-control" @bind="_createPlanId">
-                            <option value="@0">Sin plan (lo elige el cliente)</option>
+                            <option value="0">Sin plan (lo elige el cliente)</option>
                             @foreach (var p in _plans)
                             {
                                 <option value="@p.Id">@p.Name</option>

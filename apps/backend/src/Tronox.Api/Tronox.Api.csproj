@@ -14,11 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tronox.Infrastructure\Tronox.Infrastructure.csproj" />
-    <!-- Migraciones del proveedor SQL Server: necesarias en el output para MigrateAsync
-         cuando Database:Provider=SqlServer (ADR-001). -->
-    <ProjectReference Include="..\Tronox.Infrastructure.SqlServer\Tronox.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="..\Tronox.Application\Tronox.Application.csproj" />
-    <ProjectReference Include="..\Tronox.Shared\Tronox.Shared.csproj" />
   </ItemGroup>
 
 </Project>

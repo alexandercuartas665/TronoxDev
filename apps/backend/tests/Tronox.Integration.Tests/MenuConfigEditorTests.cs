@@ -166,7 +166,7 @@ public abstract class MenuConfigEditorTestsBase
         var section = await RunAsync(tenantId, s => s.CreateNodeAsync(doomed, null, MenuNodeKind.Section, "Sec"));
         Assert.True(section.IsOk);
 
-        Guid tenantUserId;
+        long tenantUserId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var pu = new PlatformUser { Email = "d@menu.local", DisplayName = "D" };
@@ -187,7 +187,7 @@ public abstract class MenuConfigEditorTestsBase
             var tu = await ctx.TenantUsers.FirstAsync(u => u.Id == tenantUserId);
             Assert.Null(tu.MenuViewId); // cae a la vista por defecto
         }
-        Assert.NotEqual(Guid.Empty, keep);
+        Assert.NotEqual(0, keep);
     }
 
     [Fact]
@@ -226,7 +226,7 @@ public abstract class MenuConfigEditorTestsBase
         await RunAsync(tenantId, s => s.CreateNodeAsync(big, null, MenuNodeKind.QuickLink, "SoloBig", route: "b"));
         await RunAsync(tenantId, s => s.CreateNodeAsync(small, null, MenuNodeKind.QuickLink, "SoloSmall", route: "s"));
 
-        Guid tenantUserId;
+        long tenantUserId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var pu = new PlatformUser { Email = "a@menu.local", DisplayName = "A" };
@@ -266,16 +266,16 @@ public abstract class MenuConfigEditorTestsBase
 
     // ---- Helpers ----
 
-    private async Task<Guid> NewTenantAsync(string name)
+    private async Task<long> NewTenantAsync(string name)
     {
-        var tenantId = Guid.CreateVersion7();
+        var tenantId = TestIds.Next();
         await using var ctx = _fixture.CreateContext(tenantId: null);
         ctx.Tenants.Add(new Tenant { Id = tenantId, Name = name });
         await ctx.SaveChangesAsync();
         return tenantId;
     }
 
-    private async Task<Guid> NewViewAsync(Guid tenantId, string name, bool isDefault)
+    private async Task<long> NewViewAsync(long tenantId, string name, bool isDefault)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         var view = new MenuView { TenantId = tenantId, Name = name, IsDefault = isDefault, SortOrder = 0 };
@@ -284,17 +284,17 @@ public abstract class MenuConfigEditorTestsBase
         return view.Id;
     }
 
-    private async Task<T> RunAsync<T>(Guid tenantId, Func<IMenuConfigService, Task<T>> action)
+    private async Task<T> RunAsync<T>(long tenantId, Func<IMenuConfigService, Task<T>> action)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         var service = new MenuConfigService(ctx, new TestTenantContext(tenantId));
         return await action(service);
     }
 
-    private sealed class TestTenantContext(Guid? tenantId, Guid? userId = null) : ITenantContext
+    private sealed class TestTenantContext(long? tenantId, long? userId = null) : ITenantContext
     {
-        public Guid? TenantId { get; } = tenantId;
-        public Guid? UserId { get; } = userId;
+        public long? TenantId { get; } = tenantId;
+        public long? UserId { get; } = userId;
     }
 }
 

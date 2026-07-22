@@ -106,7 +106,7 @@ public class PermissionAuthorizationTests
     public async Task Composite_AllRequirementsMet_Succeeds()
     {
         // Rol con formularios View + Edit -> la policy compuesta (dos requisitos) concede.
-        var eff = EffectivePermissions.FromPermissions(Guid.NewGuid(), new[]
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
         {
             new ModulePermissionDto("formularios", CanView: true, CanCreate: false, CanEdit: true, CanDelete: false)
         });
@@ -129,7 +129,7 @@ public class PermissionAuthorizationTests
     {
         // Rol con formularios View pero SIN Edit -> la policy compuesta (View AND Edit) NO concede,
         // porque ASP.NET exige que TODOS los requisitos se cumplan.
-        var eff = EffectivePermissions.FromPermissions(Guid.NewGuid(), new[]
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
         {
             new ModulePermissionDto("formularios", CanView: true, CanCreate: false, CanEdit: false, CanDelete: false)
         });
@@ -148,7 +148,7 @@ public class PermissionAuthorizationTests
     }
 
     private static ClaimsPrincipal UserWithTenant()
-        => new(new ClaimsIdentity(new[] { new Claim("tenant_id", Guid.NewGuid().ToString()) }, "test"));
+        => new(new ClaimsIdentity(new[] { new Claim("tenant_id", TestIds.Next().ToString()) }, "test"));
 
     // ---- PermissionAuthorizationHandler ----
 
@@ -156,7 +156,7 @@ public class PermissionAuthorizationTests
     {
         var user = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
-            new Claim("tenant_id", Guid.NewGuid().ToString())
+            new Claim("tenant_id", TestIds.Next().ToString())
         }, "test"));
         return new AuthorizationHandlerContext(new[] { requirement }, user, resource: null);
     }
@@ -191,7 +191,7 @@ public class PermissionAuthorizationTests
     [Fact]
     public async Task Handler_WithRole_Grants_WhenMatrixAllows()
     {
-        var eff = EffectivePermissions.FromPermissions(Guid.NewGuid(), new[]
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
         {
             new ModulePermissionDto("inventario-items", CanView: true, CanCreate: false, CanEdit: false, CanDelete: false)
         });
@@ -207,7 +207,7 @@ public class PermissionAuthorizationTests
     [Fact]
     public async Task Handler_WithRole_Denies_WhenMatrixLacksPermission()
     {
-        var eff = EffectivePermissions.FromPermissions(Guid.NewGuid(), new[]
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
         {
             new ModulePermissionDto("inventario-items", CanView: true, CanCreate: false, CanEdit: false, CanDelete: false)
         });

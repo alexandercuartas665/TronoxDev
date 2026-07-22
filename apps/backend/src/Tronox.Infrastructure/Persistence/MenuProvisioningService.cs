@@ -60,10 +60,12 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
         };
         _db.MenuViews.Add(vista);
 
+        // El Id de la vista lo asigna la base al insertar (BIGINT identidad), asi que aqui todavia
+        // vale 0: se enlaza por la propiedad de navegacion y EF resuelve la FK y el orden de insercion.
         _db.MenuNodes.Add(new MenuNode
         {
             TenantId = tenantId,
-            MenuViewId = vista.Id,
+            MenuView = vista,
             Kind = MenuNodeKind.QuickLink,
             Name = "Inicio",
             IconKey = "bi-house",
@@ -79,7 +81,7 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
             _db.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = vista.Id,
+                MenuView = vista,
                 Kind = MenuNodeKind.Section,
                 Name = name,
                 IconKey = icon,

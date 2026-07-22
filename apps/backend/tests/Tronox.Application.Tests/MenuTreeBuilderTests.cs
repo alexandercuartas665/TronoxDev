@@ -11,16 +11,16 @@ namespace Tronox.Application.Tests;
 public class MenuTreeBuilderTests
 {
     private static MenuTreeBuilder.FlatNode Node(
-        Guid id, Guid? parent, MenuNodeKind kind, string name, int sort, bool visible = true, string? route = null)
+        long id, long? parent, MenuNodeKind kind, string name, int sort, bool visible = true, string? route = null)
         => new(id, parent, kind, name, null, null, route, MenuNodeState.Ready, visible, sort);
 
     [Fact]
     public void BuildsNestedTree_FromFlatList()
     {
-        var section = Guid.NewGuid();
-        var sub = Guid.NewGuid();
-        var leaf1 = Guid.NewGuid();
-        var leaf2 = Guid.NewGuid();
+        var section = TestIds.Next();
+        var sub = TestIds.Next();
+        var leaf1 = TestIds.Next();
+        var leaf2 = TestIds.Next();
 
         var roots = MenuTreeBuilder.Build(new[]
         {
@@ -42,9 +42,9 @@ public class MenuTreeBuilderTests
     [Fact]
     public void OrdersBySortOrder()
     {
-        var a = Guid.NewGuid();
-        var b = Guid.NewGuid();
-        var c = Guid.NewGuid();
+        var a = TestIds.Next();
+        var b = TestIds.Next();
+        var c = TestIds.Next();
         var roots = MenuTreeBuilder.Build(new[]
         {
             Node(a, null, MenuNodeKind.Section, "Tercero", 2),
@@ -58,10 +58,10 @@ public class MenuTreeBuilderTests
     [Fact]
     public void FiltersInvisibleNodes_AndPrunesTheirChildren()
     {
-        var visibleSection = Guid.NewGuid();
-        var hiddenSection = Guid.NewGuid();
-        var childOfHidden = Guid.NewGuid();
-        var hiddenLeaf = Guid.NewGuid();
+        var visibleSection = TestIds.Next();
+        var hiddenSection = TestIds.Next();
+        var childOfHidden = TestIds.Next();
+        var hiddenLeaf = TestIds.Next();
 
         var roots = MenuTreeBuilder.Build(new[]
         {
@@ -81,10 +81,10 @@ public class MenuTreeBuilderTests
     [Fact]
     public void CountsOnlyVisibleChildren()
     {
-        var section = Guid.NewGuid();
-        var v1 = Guid.NewGuid();
-        var v2 = Guid.NewGuid();
-        var hidden = Guid.NewGuid();
+        var section = TestIds.Next();
+        var v1 = TestIds.Next();
+        var v2 = TestIds.Next();
+        var hidden = TestIds.Next();
 
         var roots = MenuTreeBuilder.Build(new[]
         {
@@ -115,11 +115,11 @@ public class MenuTreeBuilderTests
         var list = new List<MenuTreeBuilder.FlatNode>();
         for (var s = 0; s < sectionCount; s++)
         {
-            var sectionId = Guid.NewGuid();
+            var sectionId = TestIds.Next();
             list.Add(Node(sectionId, null, MenuNodeKind.Section, $"Sec {s}", s));
             for (var i = 0; i < itemsPerSection; i++)
             {
-                list.Add(Node(Guid.NewGuid(), sectionId, MenuNodeKind.Item, $"Item {s}-{i}", i));
+                list.Add(Node(TestIds.Next(), sectionId, MenuNodeKind.Item, $"Item {s}-{i}", i));
             }
         }
         return list;

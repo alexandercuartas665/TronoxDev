@@ -2,7 +2,6 @@ using Tronox.Application.Common;
 using Tronox.Infrastructure.Persistence;
 using Tronox.Infrastructure.Persistence.Interceptors;
 using Microsoft.EntityFrameworkCore;
-using Testcontainers.MsSql;
 using Testcontainers.PostgreSql;
 
 namespace Tronox.Integration.Tests;
@@ -30,12 +29,12 @@ public abstract class TenantIsolationDbFixture : IAsyncLifetime
     /// Crea un contexto EF con el tenant activo indicado (null = sin tenant, fail-closed).
     /// Espeja la configuracion de DependencyInjection: proveedor + snake_case + interceptor.
     /// </summary>
-    public abstract TronoxDbContext CreateContext(Guid? tenantId);
+    public abstract TronoxDbContext CreateContext(long? tenantId);
 
-    protected sealed class FixedTenantContext(Guid? tenantId, Guid? userId = null) : ITenantContext
+    protected sealed class FixedTenantContext(long? tenantId, long? userId = null) : ITenantContext
     {
-        public Guid? TenantId { get; } = tenantId;
-        public Guid? UserId { get; } = userId;
+        public long? TenantId { get; } = tenantId;
+        public long? UserId { get; } = userId;
     }
 }
 
@@ -49,7 +48,7 @@ public sealed class PostgresTenantIsolationFixture : TenantIsolationDbFixture
 
     public override async Task DisposeAsync() => await _db.DisposeAsync();
 
-    public override TronoxDbContext CreateContext(Guid? tenantId)
+    public override TronoxDbContext CreateContext(long? tenantId)
     {
         var tenantContext = new FixedTenantContext(tenantId);
         var options = new DbContextOptionsBuilder<TronoxDbContext>()

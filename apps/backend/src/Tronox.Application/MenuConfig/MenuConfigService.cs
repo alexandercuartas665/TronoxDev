@@ -164,14 +164,13 @@ public sealed class MenuConfigService : IMenuConfigService
             SortOrder = source.SortOrder
         };
 
-        // Mapa old->new id para reconstruir ParentId en la copia.
-        var idMap = sourceNodes.ToDictionary(n => n.Id, _ => long.CreateVersion7());
-        var cloneNodes = sourceNodes.Select(n => new MenuNode
+        // Los Id los asigna la base al insertar (BIGINT identidad), asi que no se pueden precalcular.
+        // Se construye un mapa old-id -> instancia nueva y se enlaza por propiedades de navegacion
+        // (MenuView / Parent): EF ordena los INSERT y rellena MenuViewId / ParentId al guardar.
+        var cloneBySourceId = sourceNodes.ToDictionary(n => n.Id, n => new MenuNode
         {
-            Id = idMap[n.Id],
             TenantId = tenantId,
-            MenuViewId = clone.Id,
-            ParentId = n.ParentId is long pid && idMap.TryGetValue(pid, out var newPid) ? newPid : null,
+            MenuView = clone,
             Kind = n.Kind,
             Name = n.Name,
             IconKey = n.IconKey,
@@ -183,7 +182,18 @@ public sealed class MenuConfigService : IMenuConfigService
             IsVisible = n.IsVisible,
             SortOrder = n.SortOrder,
             IsProcessGroup = n.IsProcessGroup
-        }).ToList();
+        });
+
+        // Segunda pasada: reconstruir la jerarquia enlazando las instancias nuevas entre si.
+        foreach (var sourceNode in sourceNodes)
+        {
+            if (sourceNode.ParentId is long pid && cloneBySourceId.TryGetValue(pid, out var newParent))
+            {
+                cloneBySourceId[sourceNode.Id].Parent = newParent;
+            }
+        }
+
+        var cloneNodes = cloneBySourceId.Values.ToList();
 
         var joinTx = _db.HasActiveTransaction;
         var tx = joinTx ? null : await _db.BeginTransactionAsync(cancellationToken);
@@ -708,7 +718,9 @@ public sealed class MenuConfigService : IMenuConfigService
         };
 
         var newNodes = new List<MenuNode>();
-        void Flatten(IEnumerable<MenuExportNode> level, long? parentId)
+        // Los Id son BIGINT de identidad: no existen hasta el INSERT. La jerarquia se arma con la
+        // navegacion Parent (y MenuView), y EF resuelve FKs y orden de insercion en SaveChanges.
+        void Flatten(IEnumerable<MenuExportNode> level, MenuNode? parent)
         {
             var order = 0;
             foreach (var n in level)
@@ -717,10 +729,9 @@ public sealed class MenuConfigService : IMenuConfigService
                 if (!Enum.TryParse<MenuNodeState>(n.State, out var state)) { state = MenuNodeState.Ready; }
                 var node = new MenuNode
                 {
-                    Id = long.CreateVersion7(),
                     TenantId = tenantId,
-                    MenuViewId = view.Id,
-                    ParentId = parentId,
+                    MenuView = view,
+                    Parent = parent,
                     Kind = kind,
                     Name = string.IsNullOrWhiteSpace(n.Name) ? "(sin nombre)" : n.Name.Trim(),
                     IconKey = n.IconKey,
@@ -736,7 +747,7 @@ public sealed class MenuConfigService : IMenuConfigService
                 newNodes.Add(node);
                 if (n.Children is { Count: > 0 })
                 {
-                    Flatten(n.Children, node.Id);
+                    Flatten(n.Children, node);
                 }
             }
         }

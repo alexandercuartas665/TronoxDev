@@ -121,12 +121,12 @@ public sealed class AuthEndpointsTests : IClassFixture<TronoxApiFactory>
         response.EnsureSuccessStatusCode();
     }
 
-    private static async Task<TokenResponse> LoginAsync(HttpClient client, string email, Guid? tenantId = null)
+    private static async Task<TokenResponse> LoginAsync(HttpClient client, string email, long? tenantId = null)
     {
         var response = await client.PostAsJsonAsync("/connect/token", new LoginRequest(email, TronoxApiFactory.Password, tenantId));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<TokenResponse>())!;
     }
 
-    private sealed record ConfigDto(Guid Id, Guid TenantId, string ConfigKey, string? ConfigValue);
+    private sealed record ConfigDto(long Id, long TenantId, string ConfigKey, string? ConfigValue);
 }

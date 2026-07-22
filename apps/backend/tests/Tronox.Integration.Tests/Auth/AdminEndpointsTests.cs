@@ -97,7 +97,7 @@ public sealed class AdminEndpointsTests : IClassFixture<TronoxApiFactory>
     {
         var client = await SuperAdminClientAsync();
         var response = await client.PostAsJsonAsync("/admin/subscriptions",
-            new AssignSubscriptionRequest(Guid.CreateVersion7(), Guid.CreateVersion7(), BillingFrequency.Monthly));
+            new AssignSubscriptionRequest(TestIds.Next(), TestIds.Next(), BillingFrequency.Monthly));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 

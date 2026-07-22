@@ -24,8 +24,8 @@ public sealed class TronoxApiFactory : WebApplicationFactory<Program>, IAsyncLif
     public const string MultiEmail = "multi@tronox.tareas";
     public const string SuperEmail = "super@tronox.tareas";
 
-    public Guid TenantAId { get; } = Guid.CreateVersion7();
-    public Guid TenantBId { get; } = Guid.CreateVersion7();
+    public long TenantAId { get; } = TestIds.Next();
+    public long TenantBId { get; } = TestIds.Next();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

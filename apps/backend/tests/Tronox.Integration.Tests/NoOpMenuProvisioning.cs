@@ -12,6 +12,6 @@ namespace Tronox.Integration.Tests;
 /// </summary>
 public sealed class NoOpMenuProvisioning : IMenuProvisioningService
 {
-    public Task EnsureDefaultMenuAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    public Task EnsureDefaultMenuAsync(long tenantId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 }

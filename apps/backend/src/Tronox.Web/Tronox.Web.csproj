@@ -1,15 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <ProjectReference Include="..\Tronox.Shared\Tronox.Shared.csproj" />
     <ProjectReference Include="..\Tronox.Application\Tronox.Application.csproj" />
     <ProjectReference Include="..\Tronox.Infrastructure\Tronox.Infrastructure.csproj" />
-    <!-- Migraciones del proveedor SQL Server: necesarias en el output para MigrateAsync
-         cuando Database:Provider=SqlServer (ADR-001). -->
-    <ProjectReference Include="..\Tronox.Infrastructure.SqlServer\Tronox.Infrastructure.SqlServer.csproj" />
     <!-- Agente Conector On-Prem: contrato compartido del canal SignalR (fuente unica del protocolo,
          doc 02). El mismo proyecto que consume el agente WPF; aqui lo usa el AgenteHub del servidor. -->
-    <ProjectReference Include="..\..\..\agent\libs\Tronox.Contracts.Agent\Tronox.Contracts.Agent.csproj" />
   </ItemGroup>
 
   <ItemGroup>

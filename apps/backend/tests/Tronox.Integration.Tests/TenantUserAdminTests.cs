@@ -29,7 +29,7 @@ public abstract class TenantUserAdminTestsBase
         var email = $"asesor-{Guid.NewGuid():N}@empresa.local";
 
         var created = await RunAsync(tenantId, s =>
-            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor, "Clave123", "Ana Perez"), Guid.CreateVersion7()));
+            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor, "Clave123", "Ana Perez"), TestIds.Next()));
 
         Assert.NotNull(created);
         Assert.Equal(email, created!.Email);
@@ -54,7 +54,7 @@ public abstract class TenantUserAdminTestsBase
         var email = $"invitado-{Guid.NewGuid():N}@empresa.local";
 
         var created = await RunAsync(tenantId, s =>
-            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor), Guid.CreateVersion7()));
+            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor), TestIds.Next()));
         Assert.NotNull(created);
 
         await using var ctx = _fixture.CreateContext(tenantId);
@@ -69,10 +69,10 @@ public abstract class TenantUserAdminTestsBase
         var tenantId = await NewTenantAsync("Rol Y Estado");
         var email = $"usr-{Guid.NewGuid():N}@empresa.local";
         var created = await RunAsync(tenantId, s =>
-            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor, "Clave123"), Guid.CreateVersion7()));
+            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor, "Clave123"), TestIds.Next()));
 
-        await RunAsync(tenantId, s => s.ChangeRoleAsync(created!.Id, TenantRole.Supervisor, Guid.CreateVersion7()));
-        await RunAsync(tenantId, s => s.SetStatusAsync(created!.Id, PlatformUserStatus.Suspended, Guid.CreateVersion7()));
+        await RunAsync(tenantId, s => s.ChangeRoleAsync(created!.Id, TenantRole.Supervisor, TestIds.Next()));
+        await RunAsync(tenantId, s => s.SetStatusAsync(created!.Id, PlatformUserStatus.Suspended, TestIds.Next()));
 
         var row = Assert.Single(await RunAsync(tenantId, s => s.ListAsync()), u => u.Id == created!.Id);
         Assert.Equal(TenantRole.Supervisor, row.TenantRole);
@@ -86,9 +86,9 @@ public abstract class TenantUserAdminTestsBase
         var email = $"inv-{Guid.NewGuid():N}@empresa.local";
         // Sin clave -> Invited.
         var created = await RunAsync(tenantId, s =>
-            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor), Guid.CreateVersion7()));
+            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor), TestIds.Next()));
 
-        var updated = await RunAsync(tenantId, s => s.ResetPasswordAsync(created!.Id, "NuevaClave1", Guid.CreateVersion7()));
+        var updated = await RunAsync(tenantId, s => s.ResetPasswordAsync(created!.Id, "NuevaClave1", TestIds.Next()));
         Assert.NotNull(updated);
         Assert.Equal(PlatformUserStatus.Active, updated!.Status);
 
@@ -104,10 +104,10 @@ public abstract class TenantUserAdminTestsBase
         var tenantId = await NewTenantAsync("Asignar Vista");
         var email = $"vis-{Guid.NewGuid():N}@empresa.local";
         var created = await RunAsync(tenantId, s =>
-            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor, "Clave123"), Guid.CreateVersion7()));
+            s.InviteAsync(new InviteTenantUserRequest(email, TenantRole.Advisor, "Clave123"), TestIds.Next()));
 
         // Vista de menu del tenant.
-        Guid viewId;
+        long viewId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var view = new MenuView { TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
@@ -143,16 +143,16 @@ public abstract class TenantUserAdminTestsBase
 
         var emailA = $"a-{Guid.NewGuid():N}@empresa.local";
         var userA = await RunAsync(a, s =>
-            s.InviteAsync(new InviteTenantUserRequest(emailA, TenantRole.Admin, "Clave123"), Guid.CreateVersion7()));
+            s.InviteAsync(new InviteTenantUserRequest(emailA, TenantRole.Admin, "Clave123"), TestIds.Next()));
 
         // B no ve al usuario de A.
         var bList = await RunAsync(b, s => s.ListAsync());
         Assert.DoesNotContain(bList, u => u.Id == userA!.Id);
 
         // B no puede cambiar rol/estado/clave de un usuario de A (filtro global -> null).
-        Assert.Null(await RunAsync(b, s => s.ChangeRoleAsync(userA!.Id, TenantRole.Owner, Guid.CreateVersion7())));
-        Assert.Null(await RunAsync(b, s => s.SetStatusAsync(userA!.Id, PlatformUserStatus.Blocked, Guid.CreateVersion7())));
-        Assert.Null(await RunAsync(b, s => s.ResetPasswordAsync(userA!.Id, "Hackeada1", Guid.CreateVersion7())));
+        Assert.Null(await RunAsync(b, s => s.ChangeRoleAsync(userA!.Id, TenantRole.Owner, TestIds.Next())));
+        Assert.Null(await RunAsync(b, s => s.SetStatusAsync(userA!.Id, PlatformUserStatus.Blocked, TestIds.Next())));
+        Assert.Null(await RunAsync(b, s => s.ResetPasswordAsync(userA!.Id, "Hackeada1", TestIds.Next())));
 
         // El usuario de A quedo intacto.
         var row = Assert.Single(await RunAsync(a, s => s.ListAsync()), u => u.Id == userA!.Id);
@@ -162,16 +162,16 @@ public abstract class TenantUserAdminTestsBase
 
     // ---- Helpers ----
 
-    private async Task<Guid> NewTenantAsync(string name)
+    private async Task<long> NewTenantAsync(string name)
     {
-        var tenantId = Guid.CreateVersion7();
+        var tenantId = TestIds.Next();
         await using var ctx = _fixture.CreateContext(tenantId: null);
         ctx.Tenants.Add(new Tenant { Id = tenantId, Name = name });
         await ctx.SaveChangesAsync();
         return tenantId;
     }
 
-    private async Task<T> RunAsync<T>(Guid tenantId, Func<ITenantUserService, Task<T>> action)
+    private async Task<T> RunAsync<T>(long tenantId, Func<ITenantUserService, Task<T>> action)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         var tenantCtx = new TestTenantContext(tenantId);
@@ -179,17 +179,17 @@ public abstract class TenantUserAdminTestsBase
         return await action(service);
     }
 
-    private async Task<T> RunMenuAsync<T>(Guid tenantId, Func<IMenuConfigService, Task<T>> action)
+    private async Task<T> RunMenuAsync<T>(long tenantId, Func<IMenuConfigService, Task<T>> action)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         var service = new MenuConfigService(ctx, new TestTenantContext(tenantId));
         return await action(service);
     }
 
-    private sealed class TestTenantContext(Guid? tenantId, Guid? userId = null) : ITenantContext
+    private sealed class TestTenantContext(long? tenantId, long? userId = null) : ITenantContext
     {
-        public Guid? TenantId { get; } = tenantId;
-        public Guid? UserId { get; } = userId;
+        public long? TenantId { get; } = tenantId;
+        public long? UserId { get; } = userId;
     }
 }
 

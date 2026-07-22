@@ -12,21 +12,21 @@ namespace Tronox.Application.Tests;
 /// </summary>
 public class OrgAssigneeTreeTests
 {
-    private static readonly Guid Comercial = Guid.Parse("00000000-0000-0000-0000-0000000000c1");
-    private static readonly Guid Asesor = Guid.Parse("00000000-0000-0000-0000-0000000000c2");
-    private static readonly Guid FuncAna = Guid.Parse("00000000-0000-0000-0000-0000000000c3");
-    private static readonly Guid FuncBeto = Guid.Parse("00000000-0000-0000-0000-0000000000c4");
-    private static readonly Guid Finanzas = Guid.Parse("00000000-0000-0000-0000-0000000000f1");
-    private static readonly Guid Aprobador = Guid.Parse("00000000-0000-0000-0000-0000000000f2");
-    private static readonly Guid FuncCaro = Guid.Parse("00000000-0000-0000-0000-0000000000f3");
+    private static readonly long Comercial = TestIds.Next();
+    private static readonly long Asesor = TestIds.Next();
+    private static readonly long FuncAna = TestIds.Next();
+    private static readonly long FuncBeto = TestIds.Next();
+    private static readonly long Finanzas = TestIds.Next();
+    private static readonly long Aprobador = TestIds.Next();
+    private static readonly long FuncCaro = TestIds.Next();
 
-    private static readonly Guid UserAna = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
-    private static readonly Guid UserBeto = Guid.Parse("00000000-0000-0000-0000-0000000000a2");
-    private static readonly Guid UserCaro = Guid.Parse("00000000-0000-0000-0000-0000000000a3");
-    private static readonly Guid UserResp = Guid.Parse("00000000-0000-0000-0000-0000000000a4");
-    private static readonly Guid UserMember = Guid.Parse("00000000-0000-0000-0000-0000000000a5");
+    private static readonly long UserAna = TestIds.Next();
+    private static readonly long UserBeto = TestIds.Next();
+    private static readonly long UserCaro = TestIds.Next();
+    private static readonly long UserResp = TestIds.Next();
+    private static readonly long UserMember = TestIds.Next();
 
-    private static List<OrgAssigneeTree.UnitRow> Units(Guid? asesorResponsible = null) =>
+    private static List<OrgAssigneeTree.UnitRow> Units(long? asesorResponsible = null) =>
     [
         new(Comercial, null, OrgUnitClassifier.Dependencia, null, null),
         new(Asesor, Comercial, OrgUnitClassifier.Cargo, asesorResponsible, null),
@@ -70,7 +70,7 @@ public class OrgAssigneeTreeTests
     [Fact]
     public void NoUnits_ResolvesEmpty()
     {
-        var result = OrgAssigneeTree.ResolveForUnit(Guid.NewGuid(), Units(), []);
+        var result = OrgAssigneeTree.ResolveForUnit(TestIds.Next(), Units(), []);
         Assert.Empty(result);
     }
 
@@ -97,8 +97,8 @@ public class OrgAssigneeTreeTests
     public void CyclicData_DoesNotHang()
     {
         // Datos corruptos: A -> B -> A, ambos con funcionario. El recorrido termina.
-        var a = Guid.Parse("00000000-0000-0000-0000-0000000000e1");
-        var b = Guid.Parse("00000000-0000-0000-0000-0000000000e2");
+        var a = TestIds.Next();
+        var b = TestIds.Next();
         var units = new List<OrgAssigneeTree.UnitRow>
         {
             new(a, b, OrgUnitClassifier.Funcionario, null, UserAna),

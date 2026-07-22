@@ -25,7 +25,7 @@ public abstract class RolesTestsBase
     {
         var tenantId = await NewTenantAsync("Roles RoundTrip");
 
-        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "QA", "rol de prueba", true, Guid.NewGuid()));
+        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "QA", "rol de prueba", true, TestIds.Next()));
         Assert.True(created.IsOk, created.Error);
         var rolId = created.Value!.Id;
 
@@ -35,7 +35,7 @@ public abstract class RolesTestsBase
             new("actividades", true, false, false, false),
             new("vacio", false, false, false, false) // no debe persistir
         };
-        var saved = await RunAsync(tenantId, s => s.SavePermisosAsync(rolId, permisos, Guid.NewGuid()));
+        var saved = await RunAsync(tenantId, s => s.SavePermisosAsync(rolId, permisos, TestIds.Next()));
         Assert.True(saved.IsOk, saved.Error);
 
         var detail = await RunAsync(tenantId, s => s.GetAsync(rolId));
@@ -51,16 +51,16 @@ public abstract class RolesTestsBase
     public async Task SavePermisos_IsReplacedOnResave()
     {
         var tenantId = await NewTenantAsync("Roles Resave");
-        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "Reasigna", null, true, Guid.NewGuid()));
+        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "Reasigna", null, true, TestIds.Next()));
         var rolId = created.Value!.Id;
 
         await RunAsync(tenantId, s => s.SavePermisosAsync(rolId,
             new List<ModulePermissionDto> { new("a", true, false, false, false), new("b", true, false, false, false) },
-            Guid.NewGuid()));
+            TestIds.Next()));
         // Reguardar con un set distinto: borra e reinserta (no acumula).
         await RunAsync(tenantId, s => s.SavePermisosAsync(rolId,
             new List<ModulePermissionDto> { new("c", true, true, false, false) },
-            Guid.NewGuid()));
+            TestIds.Next()));
 
         var detail = await RunAsync(tenantId, s => s.GetAsync(rolId));
         Assert.Single(detail!.Permisos);
@@ -73,8 +73,8 @@ public abstract class RolesTestsBase
         var tenantId = await NewTenantAsync("Roles Asignacion");
 
         // Usuario Advisor (no Owner/Admin) para que el rol mande.
-        Guid platformUserId;
-        Guid tenantUserId;
+        long platformUserId;
+        long tenantUserId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var pu = new PlatformUser { Email = "adv@roles.local", DisplayName = "Adv" };
@@ -92,11 +92,11 @@ public abstract class RolesTestsBase
             tenantUserId = tu.Id;
         }
 
-        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "Operativo", null, true, Guid.NewGuid()));
+        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "Operativo", null, true, TestIds.Next()));
         var rolId = created.Value!.Id;
         await RunAsync(tenantId, s => s.SavePermisosAsync(rolId,
             new List<ModulePermissionDto> { new("inventario-items", true, true, false, false) },
-            Guid.NewGuid()));
+            TestIds.Next()));
 
         // Antes de asignar: sin rol -> Unrestricted (regla opt-in B2: conserva acceso del paso 1,
         // no se restringe). No es AllowAll (no ostenta poder organico Owner/Admin) pero Can=true.
@@ -105,7 +105,7 @@ public abstract class RolesTestsBase
         Assert.True(before.Unrestricted);
         Assert.True(before.Can("inventario-items", PermissionAction.View));
 
-        var assigned = await RunAsync(tenantId, s => s.AssignRoleToUserAsync(tenantUserId, rolId, Guid.NewGuid()));
+        var assigned = await RunAsync(tenantId, s => s.AssignRoleToUserAsync(tenantUserId, rolId, TestIds.Next()));
         Assert.True(assigned.IsOk, assigned.Error);
 
         // Con rol asignado: ya NO es Unrestricted; queda sujeto a su matriz.
@@ -122,7 +122,7 @@ public abstract class RolesTestsBase
     public async Task OwnerOrAdmin_ResolveAllowAll_RegardlessOfRole()
     {
         var tenantId = await NewTenantAsync("Roles OwnerAllowAll");
-        Guid platformUserId;
+        long platformUserId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var pu = new PlatformUser { Email = "owner@roles.local", DisplayName = "Owner" };
@@ -147,10 +147,10 @@ public abstract class RolesTestsBase
     public async Task RoleName_IsUniquePerTenant()
     {
         var tenantId = await NewTenantAsync("Roles Unicidad");
-        var first = await RunAsync(tenantId, s => s.SaveAsync(null, "Duplicado", null, true, Guid.NewGuid()));
+        var first = await RunAsync(tenantId, s => s.SaveAsync(null, "Duplicado", null, true, TestIds.Next()));
         Assert.True(first.IsOk);
 
-        var second = await RunAsync(tenantId, s => s.SaveAsync(null, "Duplicado", null, true, Guid.NewGuid()));
+        var second = await RunAsync(tenantId, s => s.SaveAsync(null, "Duplicado", null, true, TestIds.Next()));
         Assert.False(second.IsOk);
         Assert.Equal(RolServiceStatus.Conflict, second.Status);
     }
@@ -161,7 +161,7 @@ public abstract class RolesTestsBase
         var a = await NewTenantAsync("Roles Tenant A");
         var b = await NewTenantAsync("Roles Tenant B");
 
-        var inA = await RunAsync(a, s => s.SaveAsync(null, "Solo A", null, true, Guid.NewGuid()));
+        var inA = await RunAsync(a, s => s.SaveAsync(null, "Solo A", null, true, TestIds.Next()));
         Assert.True(inA.IsOk);
 
         var bList = await RunAsync(b, s => s.ListAsync());
@@ -176,7 +176,7 @@ public abstract class RolesTestsBase
     public async Task Delete_BlocksSystemRole()
     {
         var tenantId = await NewTenantAsync("Roles DeleteSystem");
-        Guid systemRolId;
+        long systemRolId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var rol = new Rol { TenantId = tenantId, Name = "Administrador", IsSystem = true, IsActive = true };
@@ -185,7 +185,7 @@ public abstract class RolesTestsBase
             systemRolId = rol.Id;
         }
 
-        var res = await RunAsync(tenantId, s => s.DeleteAsync(systemRolId, Guid.NewGuid()));
+        var res = await RunAsync(tenantId, s => s.DeleteAsync(systemRolId, TestIds.Next()));
         Assert.False(res.IsOk);
         Assert.Equal(RolServiceStatus.Invalid, res.Status);
     }
@@ -194,7 +194,7 @@ public abstract class RolesTestsBase
     public async Task Delete_BlocksRoleWithUsers()
     {
         var tenantId = await NewTenantAsync("Roles DeleteWithUsers");
-        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "ConUsuarios", null, true, Guid.NewGuid()));
+        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "ConUsuarios", null, true, TestIds.Next()));
         var rolId = created.Value!.Id;
 
         await using (var ctx = _fixture.CreateContext(tenantId))
@@ -212,7 +212,7 @@ public abstract class RolesTestsBase
             await ctx.SaveChangesAsync();
         }
 
-        var res = await RunAsync(tenantId, s => s.DeleteAsync(rolId, Guid.NewGuid()));
+        var res = await RunAsync(tenantId, s => s.DeleteAsync(rolId, TestIds.Next()));
         Assert.False(res.IsOk);
         Assert.Equal(RolServiceStatus.Invalid, res.Status);
     }
@@ -221,12 +221,12 @@ public abstract class RolesTestsBase
     public async Task Delete_RemovesRoleAndPermisos()
     {
         var tenantId = await NewTenantAsync("Roles DeleteOk");
-        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "Borrable", null, true, Guid.NewGuid()));
+        var created = await RunAsync(tenantId, s => s.SaveAsync(null, "Borrable", null, true, TestIds.Next()));
         var rolId = created.Value!.Id;
         await RunAsync(tenantId, s => s.SavePermisosAsync(rolId,
-            new List<ModulePermissionDto> { new("actividades", true, false, false, false) }, Guid.NewGuid()));
+            new List<ModulePermissionDto> { new("actividades", true, false, false, false) }, TestIds.Next()));
 
-        var res = await RunAsync(tenantId, s => s.DeleteAsync(rolId, Guid.NewGuid()));
+        var res = await RunAsync(tenantId, s => s.DeleteAsync(rolId, TestIds.Next()));
         Assert.True(res.IsOk, res.Error);
 
         await using var ctx = _fixture.CreateContext(tenantId);
@@ -291,8 +291,8 @@ public abstract class RolesTestsBase
     public async Task MenuFilter_LimitedRole_ExcludesModulesWithoutView()
     {
         var tenantId = await NewTenantAsync("Menu Filtrado");
-        Guid platformUserId, tenantUserId;
-        Guid viewId;
+        long platformUserId, tenantUserId;
+        long viewId;
 
         // Menu: seccion "Inventarios" (2 items) + seccion "Desarrollo" (1 item) + un usuario Advisor.
         await using (var ctx = _fixture.CreateContext(tenantId))
@@ -318,12 +318,12 @@ public abstract class RolesTestsBase
         }
 
         // Rol: Ver en inventario-items, NADA de la seccion Desarrollo, sin inventario-bodegas.
-        var rol = await RunAsync(tenantId, s => s.SaveAsync(null, "Limitado", null, true, Guid.NewGuid()));
+        var rol = await RunAsync(tenantId, s => s.SaveAsync(null, "Limitado", null, true, TestIds.Next()));
         await RunAsync(tenantId, s => s.SavePermisosAsync(rol.Value!.Id, new List<ModulePermissionDto>
         {
             new("inventario-items", true, false, false, false)
-        }, Guid.NewGuid()));
-        await RunAsync(tenantId, s => s.AssignRoleToUserAsync(tenantUserId, rol.Value!.Id, Guid.NewGuid()));
+        }, TestIds.Next()));
+        await RunAsync(tenantId, s => s.AssignRoleToUserAsync(tenantUserId, rol.Value!.Id, TestIds.Next()));
 
         var eff = await RunAsync(tenantId, s => s.ResolveEffectivePermissionsAsync(platformUserId));
         Assert.False(eff.Unrestricted);
@@ -347,7 +347,7 @@ public abstract class RolesTestsBase
     public async Task MenuFilter_OwnerAndNoRole_SeeFullMenu()
     {
         var tenantId = await NewTenantAsync("Menu Completo");
-        Guid ownerUserId, noRoleUserId, viewId;
+        long ownerUserId, noRoleUserId, viewId;
 
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
@@ -383,39 +383,39 @@ public abstract class RolesTestsBase
 
     // ---- Helpers ----
 
-    private async Task<ResolvedMenuDto?> ResolveMenuAsync(Guid tenantId, Guid viewId)
+    private async Task<ResolvedMenuDto?> ResolveMenuAsync(long tenantId, long viewId)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         var svc = new Tronox.Application.MenuConfig.MenuConfigService(ctx, new TestTenantContext(tenantId));
         return await svc.GetMenuForTenantUserAsync(tenantId, viewId);
     }
 
-    private async Task<Guid> NewTenantAsync(string name)
+    private async Task<long> NewTenantAsync(string name)
     {
-        var tenantId = Guid.CreateVersion7();
+        var tenantId = TestIds.Next();
         await using var ctx = _fixture.CreateContext(tenantId: null);
         ctx.Tenants.Add(new Tenant { Id = tenantId, Name = name });
         await ctx.SaveChangesAsync();
         return tenantId;
     }
 
-    private async Task<T> RunAsync<T>(Guid tenantId, Func<IRolService, Task<T>> action)
+    private async Task<T> RunAsync<T>(long tenantId, Func<IRolService, Task<T>> action)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         var service = new RolService(ctx, new TestTenantContext(tenantId), new NoOpAuditWriter());
         return await action(service);
     }
 
-    private sealed class TestTenantContext(Guid? tenantId, Guid? userId = null) : ITenantContext
+    private sealed class TestTenantContext(long? tenantId, long? userId = null) : ITenantContext
     {
-        public Guid? TenantId { get; } = tenantId;
-        public Guid? UserId { get; } = userId;
+        public long? TenantId { get; } = tenantId;
+        public long? UserId { get; } = userId;
     }
 
     private sealed class NoOpAuditWriter : IAuditWriter
     {
-        public void Write(Guid actorUserId, string actionName, string entityName, Guid? entityId,
-            object? previousValue, object? newValue, Guid? tenantId = null, string? reason = null,
+        public void Write(long actorUserId, string actionName, string entityName, long? entityId,
+            object? previousValue, object? newValue, long? tenantId = null, string? reason = null,
             AuditActorType actorType = AuditActorType.Human)
         {
             // Los tests no persisten auditoria; el interceptor ya estampa tenant/fechas.

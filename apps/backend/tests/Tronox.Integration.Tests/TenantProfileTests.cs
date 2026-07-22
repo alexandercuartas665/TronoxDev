@@ -25,7 +25,7 @@ public abstract class TenantProfileTestsBase
         var tenantId = await SeedTenantAsync("Perfil CRUD");
         await using var ctx = _fixture.CreateContext(tenantId: null);
         var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning());
-        var actor = Guid.CreateVersion7();
+        var actor = TestIds.Next();
 
         var updated = await service.UpdateProfileAsync(tenantId, new UpdateTenantProfileRequest(
             Name: "Comercial SAS",
@@ -73,7 +73,7 @@ public abstract class TenantProfileTestsBase
         var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning());
 
         var suspended = await service.ChangeStatusAsync(
-            tenantId, new ChangeTenantStatusRequest(TenantStatus.Suspended, "prueba"), Guid.CreateVersion7());
+            tenantId, new ChangeTenantStatusRequest(TenantStatus.Suspended, "prueba"), TestIds.Next());
         Assert.Equal(TenantStatus.Suspended, suspended!.Status);
         Assert.Equal(TenantStatus.Suspended, (await service.GetAsync(tenantId))!.Status);
     }
@@ -106,16 +106,16 @@ public abstract class TenantProfileTestsBase
 
     // =========================================================================
 
-    private async Task<Guid> SeedTenantAsync(string name)
+    private async Task<long> SeedTenantAsync(string name)
     {
-        var tenantId = Guid.CreateVersion7();
+        var tenantId = TestIds.Next();
         await using var ctx = _fixture.CreateContext(tenantId: null);
         ctx.Tenants.Add(new Tenant { Id = tenantId, Name = name });
         await ctx.SaveChangesAsync();
         return tenantId;
     }
 
-    private async Task SeedTenantUserAsync(Guid tenantId, string email, TenantRole role)
+    private async Task SeedTenantUserAsync(long tenantId, string email, TenantRole role)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         // TenantUser.PlatformUserId es FK a platform_users: hay que crear el PlatformUser primero.

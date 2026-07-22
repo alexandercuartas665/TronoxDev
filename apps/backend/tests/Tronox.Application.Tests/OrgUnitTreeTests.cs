@@ -9,13 +9,13 @@ namespace Tronox.Application.Tests;
 /// </summary>
 public class OrgUnitTreeTests
 {
-    private static readonly Guid Root = Guid.Parse("00000000-0000-0000-0000-000000000001");
-    private static readonly Guid Child = Guid.Parse("00000000-0000-0000-0000-000000000002");
-    private static readonly Guid GrandChild = Guid.Parse("00000000-0000-0000-0000-000000000003");
-    private static readonly Guid Sibling = Guid.Parse("00000000-0000-0000-0000-000000000004");
+    private static readonly long Root = TestIds.Next();
+    private static readonly long Child = TestIds.Next();
+    private static readonly long GrandChild = TestIds.Next();
+    private static readonly long Sibling = TestIds.Next();
 
     /// <summary>Arbol: Root -> Child -> GrandChild; Root -> Sibling.</summary>
-    private static Dictionary<Guid, Guid?> Tree() => new()
+    private static Dictionary<long, long?> Tree() => new()
     {
         [Root] = null,
         [Child] = Root,
@@ -67,9 +67,9 @@ public class OrgUnitTreeTests
     public void PreexistingCorruptCycle_IsReportedAsCycle()
     {
         // Datos corruptos: A -> B -> A. Mover Sibling bajo A no debe colgarse ni aceptarse.
-        var a = Guid.Parse("00000000-0000-0000-0000-00000000000a");
-        var b = Guid.Parse("00000000-0000-0000-0000-00000000000b");
-        var corrupt = new Dictionary<Guid, Guid?> { [a] = b, [b] = a, [Sibling] = null };
+        var a = TestIds.Next();
+        var b = TestIds.Next();
+        var corrupt = new Dictionary<long, long?> { [a] = b, [b] = a, [Sibling] = null };
         Assert.True(OrgUnitTree.WouldCreateCycle(Sibling, a, corrupt));
     }
 
@@ -77,7 +77,7 @@ public class OrgUnitTreeTests
     public void ParentMissingFromMap_TreatedAsRoot()
     {
         // El padre propuesto no esta en el mapa (ej. recien creado): se corta la caminata.
-        var unknown = Guid.Parse("00000000-0000-0000-0000-0000000000ff");
+        var unknown = TestIds.Next();
         Assert.False(OrgUnitTree.WouldCreateCycle(Child, unknown, Tree()));
     }
 }

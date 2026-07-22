@@ -223,14 +223,14 @@ public abstract class OrgAndModuleRegistryTestsBase
         Assert.Contains("nucleo", coreOff.Error, StringComparison.OrdinalIgnoreCase);
 
         // Modulo inexistente -> NotFound.
-        Assert.Equal(OrgServiceStatus.NotFound, (await registry.SetModuleEnabledAsync(Guid.CreateVersion7(), true)).Status);
+        Assert.Equal(OrgServiceStatus.NotFound, (await registry.SetModuleEnabledAsync(TestIds.Next(), true)).Status);
     }
 
     // ---- Helpers ----
 
     private async Task<SeedData> SeedTenantAsync(string name)
     {
-        var tenantId = Guid.CreateVersion7();
+        var tenantId = TestIds.Next();
 
         await using (var ctx = _fixture.CreateContext(tenantId: null))
         {
@@ -238,8 +238,8 @@ public abstract class OrgAndModuleRegistryTestsBase
             await ctx.SaveChangesAsync();
         }
 
-        Guid tenantUserId;
-        Guid platformUserId;
+        long tenantUserId;
+        long platformUserId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var platformUser = new PlatformUser
@@ -265,7 +265,7 @@ public abstract class OrgAndModuleRegistryTestsBase
     }
 
     /// <summary>Upsert de una definicion GLOBAL del catalogo (sin tenant, como el PlatformAdmin).</summary>
-    private async Task<Guid> SeedModuleDefinitionAsync(string legacyCode, string name, bool isCore = false)
+    private async Task<long> SeedModuleDefinitionAsync(string legacyCode, string name, bool isCore = false)
     {
         await using var ctx = _fixture.CreateContext(tenantId: null);
         var existing = await ctx.ModuleDefinitions.FirstOrDefaultAsync(d => d.LegacyCode == legacyCode);
@@ -285,12 +285,12 @@ public abstract class OrgAndModuleRegistryTestsBase
         return definition.Id;
     }
 
-    private sealed record SeedData(Guid TenantId, Guid TenantUserId, Guid PlatformUserId);
+    private sealed record SeedData(long TenantId, long TenantUserId, long PlatformUserId);
 
-    private sealed class TestTenantContext(Guid? tenantId, Guid? userId = null) : ITenantContext
+    private sealed class TestTenantContext(long? tenantId, long? userId = null) : ITenantContext
     {
-        public Guid? TenantId { get; } = tenantId;
-        public Guid? UserId { get; } = userId;
+        public long? TenantId { get; } = tenantId;
+        public long? UserId { get; } = userId;
     }
 }
 

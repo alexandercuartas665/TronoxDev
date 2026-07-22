@@ -14,10 +14,10 @@ namespace Tronox.Web.Tests;
 /// </summary>
 public class CurrentPermissionsTests
 {
-    private static IHttpContextAccessor AccessorFor(Guid? platformUserId)
+    private static IHttpContextAccessor AccessorFor(long? platformUserId)
     {
         var ctx = new DefaultHttpContext();
-        if (platformUserId is Guid id)
+        if (platformUserId is long id)
         {
             ctx.User = new ClaimsPrincipal(new ClaimsIdentity(new[]
             {
@@ -44,9 +44,9 @@ public class CurrentPermissionsTests
     [Fact]
     public async Task Resolve_CachesResult_ResolvesOnce()
     {
-        var userId = Guid.NewGuid();
+        var userId = TestIds.Next();
         var fake = new CountingRolService(EffectivePermissions.FromPermissions(
-            Guid.NewGuid(),
+            TestIds.Next(),
             new[] { new ModulePermissionDto("inventario-items", true, false, false, false) }));
 
         var (scopes, services) = ProviderWith(fake);
@@ -66,7 +66,7 @@ public class CurrentPermissionsTests
     [Fact]
     public async Task Resolve_NoUser_IsUnrestricted_FailOpen()
     {
-        var fake = new CountingRolService(EffectivePermissions.FromPermissions(Guid.NewGuid(), Array.Empty<ModulePermissionDto>()));
+        var fake = new CountingRolService(EffectivePermissions.FromPermissions(TestIds.Next(), Array.Empty<ModulePermissionDto>()));
         var (scopes, services) = ProviderWith(fake);
         var sut = new CurrentPermissions(AccessorFor(null), scopes, services);
 
@@ -80,7 +80,7 @@ public class CurrentPermissionsTests
     public async Task Resolve_WhenServiceThrows_IsUnrestricted_FailOpen()
     {
         var (scopes, services) = ProviderWith(new ThrowingRolService());
-        var sut = new CurrentPermissions(AccessorFor(Guid.NewGuid()), scopes, services);
+        var sut = new CurrentPermissions(AccessorFor(TestIds.Next()), scopes, services);
 
         var eff = await sut.GetAsync();
 
@@ -94,14 +94,14 @@ public class CurrentPermissionsTests
         // Regresion del bug de seguridad del 2026-07-16: en un circuito Blazor NO hay HttpContext,
         // se caia en fail-open y el gateado en pagina no restringia a NADIE. La identidad tiene que
         // salir del AuthenticationState.
-        var userId = Guid.NewGuid();
+        var userId = TestIds.Next();
         var fake = new CountingRolService(EffectivePermissions.FromPermissions(
-            Guid.NewGuid(),
+            TestIds.Next(),
             new[] { new ModulePermissionDto("inventario-items", true, false, false, false) }));
 
         var services = new ServiceCollection();
         services.AddScoped<IRolService>(_ => fake);
-        services.AddScoped<AuthenticationStateProvider>(_ => new FakeAuthStateProvider(userId, Guid.NewGuid()));
+        services.AddScoped<AuthenticationStateProvider>(_ => new FakeAuthStateProvider(userId, TestIds.Next()));
         var provider = services.BuildServiceProvider();
 
         var sinHttp = new HttpContextAccessor { HttpContext = null };
@@ -116,7 +116,7 @@ public class CurrentPermissionsTests
     }
 
     /// <summary>AuthenticationStateProvider con un usuario y tenant fijos, como el de un circuito.</summary>
-    private sealed class FakeAuthStateProvider(Guid userId, Guid tenantId) : AuthenticationStateProvider
+    private sealed class FakeAuthStateProvider(long userId, long tenantId) : AuthenticationStateProvider
     {
         public override Task<AuthenticationState> GetAuthenticationStateAsync()
         {
@@ -138,7 +138,7 @@ public class CurrentPermissionsTests
         public CountingRolService(EffectivePermissions eff) => _eff = eff;
 
         public override Task<EffectivePermissions> ResolveEffectivePermissionsAsync(
-            Guid platformUserId, CancellationToken cancellationToken = default)
+            long platformUserId, CancellationToken cancellationToken = default)
         {
             Calls++;
             return Task.FromResult(_eff);
@@ -148,22 +148,22 @@ public class CurrentPermissionsTests
     private sealed class ThrowingRolService : StubRolService
     {
         public override Task<EffectivePermissions> ResolveEffectivePermissionsAsync(
-            Guid platformUserId, CancellationToken cancellationToken = default)
+            long platformUserId, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("boom");
     }
 
     /// <summary>Base con todos los miembros de IRolService lanzando NotSupported salvo el resolutor.</summary>
     private abstract class StubRolService : IRolService
     {
-        public virtual Task<EffectivePermissions> ResolveEffectivePermissionsAsync(Guid platformUserId, CancellationToken cancellationToken = default)
+        public virtual Task<EffectivePermissions> ResolveEffectivePermissionsAsync(long platformUserId, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 
         public Task<IReadOnlyList<RolDto>> ListAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<RolDetailDto?> GetAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<RolResult<RolDto>> SaveAsync(Guid? id, string name, string? description, bool isActive, Guid actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<RolResult<bool>> DeleteAsync(Guid id, Guid actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<RolResult<bool>> SavePermisosAsync(Guid rolId, IReadOnlyList<ModulePermissionDto> permisos, Guid actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RolDetailDto?> GetAsync(long id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RolResult<RolDto>> SaveAsync(long? id, string name, string? description, bool isActive, long actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RolResult<bool>> DeleteAsync(long id, long actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RolResult<bool>> SavePermisosAsync(long rolId, IReadOnlyList<ModulePermissionDto> permisos, long actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<ModuloInfo>> GetModuleCatalogAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<RolResult<bool>> AssignRoleToUserAsync(Guid tenantUserId, Guid? rolId, Guid actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RolResult<bool>> AssignRoleToUserAsync(long tenantUserId, long? rolId, long actorUserId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

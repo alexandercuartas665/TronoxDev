@@ -23,12 +23,12 @@ public abstract class MenuConfigTestsBase
     {
         var tenantId = await NewTenantAsync("Menu Round-Trip");
 
-        Guid viewId = Guid.CreateVersion7();
+        long viewId = TestIds.Next();
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var view = new MenuView { Id = viewId, TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            var sectionId = Guid.CreateVersion7();
+            var sectionId = TestIds.Next();
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
@@ -133,7 +133,7 @@ public abstract class MenuConfigTestsBase
     public async Task User_AssignedToView_IsPersisted()
     {
         var tenantId = await NewTenantAsync("Menu Asignacion");
-        Guid viewId;
+        long viewId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var view = new MenuView { TenantId = tenantId, Name = "Simple", SortOrder = 0 };
@@ -165,7 +165,7 @@ public abstract class MenuConfigTestsBase
         var a = await NewTenantAsync("Menu Tenant A");
         var b = await NewTenantAsync("Menu Tenant B");
 
-        Guid viewA;
+        long viewA;
         await using (var ctx = _fixture.CreateContext(a))
         {
             var view = new MenuView { TenantId = a, Name = "Solo A", IsDefault = true, SortOrder = 0 };
@@ -196,12 +196,12 @@ public abstract class MenuConfigTestsBase
     public async Task DeletingView_CascadesToNodes()
     {
         var tenantId = await NewTenantAsync("Menu Cascade");
-        Guid viewId;
+        long viewId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var view = new MenuView { TenantId = tenantId, Name = "Completo", SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            var section = Guid.CreateVersion7();
+            var section = TestIds.Next();
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
@@ -243,12 +243,12 @@ public abstract class MenuConfigTestsBase
     public async Task Clone_CopiesNodes_PreservingHierarchy()
     {
         var tenantId = await NewTenantAsync("Menu Clone");
-        Guid sourceId;
+        long sourceId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
             var view = new MenuView { TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            var section = Guid.CreateVersion7();
+            var section = TestIds.Next();
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
@@ -287,26 +287,26 @@ public abstract class MenuConfigTestsBase
 
     // ---- Helpers ----
 
-    private async Task<Guid> NewTenantAsync(string name)
+    private async Task<long> NewTenantAsync(string name)
     {
-        var tenantId = Guid.CreateVersion7();
+        var tenantId = TestIds.Next();
         await using var ctx = _fixture.CreateContext(tenantId: null);
         ctx.Tenants.Add(new Tenant { Id = tenantId, Name = name });
         await ctx.SaveChangesAsync();
         return tenantId;
     }
 
-    private async Task<T> RunAsync<T>(Guid tenantId, Func<IMenuConfigService, Task<T>> action)
+    private async Task<T> RunAsync<T>(long tenantId, Func<IMenuConfigService, Task<T>> action)
     {
         await using var ctx = _fixture.CreateContext(tenantId);
         var service = new MenuConfigService(ctx, new TestTenantContext(tenantId));
         return await action(service);
     }
 
-    private sealed class TestTenantContext(Guid? tenantId, Guid? userId = null) : ITenantContext
+    private sealed class TestTenantContext(long? tenantId, long? userId = null) : ITenantContext
     {
-        public Guid? TenantId { get; } = tenantId;
-        public Guid? UserId { get; } = userId;
+        public long? TenantId { get; } = tenantId;
+        public long? UserId { get; } = userId;
     }
 }
 

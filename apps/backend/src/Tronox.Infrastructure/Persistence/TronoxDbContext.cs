@@ -5,6 +5,7 @@ using Tronox.Domain.Entities;
 using Tronox.Domain.Enums;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace Tronox.Infrastructure.Persistence;
 

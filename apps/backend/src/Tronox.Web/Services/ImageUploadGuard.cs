@@ -7,7 +7,7 @@ namespace Tronox.Web.Services;
 ///  - La extension y el ContentType que llegan del navegador los controla el CLIENTE. Un atacante
 ///    envia lo que quiera en ambos, asi que por si solos no prueban nada: hay que mirar los BYTES.
 ///  - El nombre del archivo tambien viene del cliente. Nunca se usa para construir la ruta de
-///    escritura (path traversal); el nombre en disco lo genera el servidor con un long y la
+///    escritura (path traversal); el nombre en disco lo genera el servidor con un Guid y la
 ///    extension SALE DE ESTA LISTA BLANCA, no del texto que mando el navegador.
 ///  - SVG queda FUERA a proposito: es XML, admite &lt;script&gt; y manejadores on*, y al servirse
 ///    desde el mismo origen de la aplicacion se convierte en XSS almacenado (roba la sesion de
@@ -71,7 +71,7 @@ public static class ImageUploadGuard
     public static bool HasImageSignature(ReadOnlySpan<byte> bytes)
         => IsJpeg(bytes) || IsPng(bytes) || IsGif(bytes) || IsWebp(bytes) || IsBmp(bytes);
 
-    /// <summary>Nombre a escribir en disco: prefijo del modulo + long del SERVIDOR + extension de la lista blanca.</summary>
+    /// <summary>Nombre a escribir en disco: prefijo del modulo + Guid del SERVIDOR + extension de la lista blanca.</summary>
     public static string BuildStoredFileName(string prefix, string extension)
         => $"{prefix}-{Guid.NewGuid():N}{extension}";
 

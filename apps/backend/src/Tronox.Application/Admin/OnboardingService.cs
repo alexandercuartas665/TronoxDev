@@ -73,42 +73,64 @@ public sealed class OnboardingService : IOnboardingService
             PasswordHash = isGoogle ? null : _passwordHasher.Hash(request.AdminPassword)
         };
 
-        _db.Tenants.Add(tenant);
-        _db.PlatformUsers.Add(admin);
-        _db.TenantUsers.Add(new TenantUser
+        // Los Id son BIGINT de identidad: solo existen despues del INSERT. Por eso el alta se
+        // hace en dos guardados (tenant + admin, luego lo que depende de sus Id) dentro de una
+        // sola transaccion, para que el conjunto siga siendo atomico como antes.
+        var joinTx = _db.HasActiveTransaction;
+        var tx = joinTx ? null : await _db.BeginTransactionAsync(cancellationToken);
+        long? subscriptionId;
+        try
         {
-            TenantId = tenant.Id,
-            PlatformUserId = admin.Id,
-            Email = email,
-            TenantRole = TenantRole.Owner,
-            Status = PlatformUserStatus.Active
-        });
+            _db.Tenants.Add(tenant);
+            _db.PlatformUsers.Add(admin);
+            await _db.SaveChangesAsync(cancellationToken);
 
-        long? subscriptionId = null;
-        if (request.PlanId is long plan)
-        {
-            var startsAt = DateTimeOffset.UtcNow;
-            var subscription = new TenantSubscription
+            _db.TenantUsers.Add(new TenantUser
             {
                 TenantId = tenant.Id,
-                PlanId = plan,
-                Status = SubscriptionStatus.Active,
-                BillingFrequency = request.BillingFrequency,
-                StartsAt = startsAt,
-                CurrentPeriodEndsAt = request.BillingFrequency == BillingFrequency.Yearly
-                    ? startsAt.AddYears(1)
-                    : startsAt.AddMonths(1)
-            };
-            _db.TenantSubscriptions.Add(subscription);
-            subscriptionId = subscription.Id;
+                PlatformUserId = admin.Id,
+                Email = email,
+                TenantRole = TenantRole.Owner,
+                Status = PlatformUserStatus.Active
+            });
+
+            TenantSubscription? subscription = null;
+            if (request.PlanId is long plan)
+            {
+                var startsAt = DateTimeOffset.UtcNow;
+                subscription = new TenantSubscription
+                {
+                    TenantId = tenant.Id,
+                    PlanId = plan,
+                    Status = SubscriptionStatus.Active,
+                    BillingFrequency = request.BillingFrequency,
+                    StartsAt = startsAt,
+                    CurrentPeriodEndsAt = request.BillingFrequency == BillingFrequency.Yearly
+                        ? startsAt.AddYears(1)
+                        : startsAt.AddMonths(1)
+                };
+                _db.TenantSubscriptions.Add(subscription);
+            }
+
+            _audit.Write(actorUserId, "tenant.onboard", nameof(Tenant), tenant.Id,
+                previousValue: null,
+                newValue: new { tenant.Name, AdminEmail = email, HasSubscription = subscription is not null },
+                tenantId: tenant.Id);
+
+            await _db.SaveChangesAsync(cancellationToken);
+            subscriptionId = subscription?.Id;
+
+            if (tx is not null) { await tx.CommitAsync(cancellationToken); }
         }
-
-        _audit.Write(actorUserId, "tenant.onboard", nameof(Tenant), tenant.Id,
-            previousValue: null,
-            newValue: new { tenant.Name, AdminEmail = email, HasSubscription = subscriptionId is not null },
-            tenantId: tenant.Id);
-
-        await _db.SaveChangesAsync(cancellationToken);
+        catch
+        {
+            if (tx is not null) { await tx.RollbackAsync(cancellationToken); }
+            throw;
+        }
+        finally
+        {
+            if (tx is not null) { await tx.DisposeAsync(); }
+        }
 
         // El tenant nace CON menu: vista "Completo" (por defecto) con el arbol canonico. Sin esto el
         // cliente quedaba sin ninguna vista y sus usuarios no veian nada (bug real detectado en prod).
