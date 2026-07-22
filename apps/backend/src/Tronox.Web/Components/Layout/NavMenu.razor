@@ -1,8 +1,7 @@
 @implements IDisposable
 @inject NavigationManager Navigation
-@inject ITenantAdminService TenantsSvc
-@inject ISubscriptionAdminService SubsSvc
-@inject IPlanAdminService PlansSvc
+@* Los servicios de tenant/suscripcion/plan NO se inyectan en el circuito: se resuelven en un
+   scope aislado dentro de OnInitializedAsync para no compartir el DbContext de la peticion. *@
 @inject IServiceScopeFactory ScopeFactory
 @using Microsoft.Extensions.DependencyInjection
 @using Microsoft.EntityFrameworkCore
@@ -164,6 +163,11 @@ else
                                 <summary>
                                     <span class="tronox-acc-ico">@MenuIcons.Render(child.IconKey)</span>
                                     <span class="tronox-acc-name">@child.Name</span>
+                                    @if (!string.IsNullOrWhiteSpace(child.LegacyCode))
+                                    {
+                                        @* Codigo del requerimiento del modulo (prototipo: mod.req). *@
+                                        <span class="menu-rf menu-rf-mod" title="@child.LegacyCode">@child.LegacyCode</span>
+                                    }
                                     <span class="tronox-acc-count">@child.VisibleChildCount</span>
                                     <svg class="tronox-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                                 </summary>
@@ -173,6 +177,11 @@ else
                                         <NavLink class="tronox-acc-item" href="@leaf.Route">
                                             <span class="tronox-acc-ico">@MenuIcons.Render(leaf.IconKey)</span>
                                             <span class="lbl">@leaf.Name</span>
+                                            @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
+                                            {
+                                                @* Badge de codigo del prototipo (.menu-rf en tronox-shell.js). *@
+                                                <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
+                                            }
                                         </NavLink>
                                     }
                                 </div>
@@ -183,6 +192,10 @@ else
                             <NavLink class="tronox-acc-item" href="@child.Route">
                                 <span class="tronox-acc-ico">@MenuIcons.Render(child.IconKey)</span>
                                 <span class="lbl">@child.Name</span>
+                                @if (!string.IsNullOrWhiteSpace(child.LegacyCode))
+                                {
+                                    <span class="menu-rf" title="@child.LegacyCode">@child.LegacyCode</span>
+                                }
                             </NavLink>
                         }
                     }
@@ -267,11 +280,9 @@ else
         <div class="nm">@(_userName ?? "Usuario")</div>
         <div class="rl">@_roleLabel</div>
     </div>
-    @* Toggle de modo oscuro (icono luna, prototipo). JS plano: funciona en SSR e interactivo. *@
-    <button type="button" class="tronox-theme-btn" title="Cambiar modo claro/oscuro"
-            onclick="window.tronoxTheme && window.tronoxTheme.toggle()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-    </button>
+    @* El antiguo toggle claro/oscuro (clase html.dark del backbone) lo sustituye el
+       selector de paletas del prototipo: un boton flotante con las 5 opciones, de las
+       cuales dos (Deep Dark y Aurora Dark) son los temas oscuros. Ver js/tronox-theme.js. *@
 </div>
 
 @code {
@@ -336,20 +347,31 @@ else
             _roleLabel = state.User.FindFirst("tenant_role")?.Value ?? "Miembro";
             if (long.TryParse(tenantClaim, out var tenantId))
             {
-                var tenant = await TenantsSvc.GetAsync(tenantId);
-                _tenantName = tenant?.Name;
-
-                // Plan activo para la cabecera del workspace ("Plan Empresa - TRONOX").
-                // Si no hay suscripcion (o falla), se muestra la bajada generica.
+                // Nombre del tenant y plan activo para la cabecera del workspace
+                // ("Plan Empresa - TRONOX"), en un scope AISLADO.
+                //
+                // POR QUE AISLADO: estos tres servicios comparten el DbContext del scope de la
+                // peticion, y durante el prerender MainLayout y la propia pagina se inicializan en
+                // paralelo con este componente. Al resolverlos desde el scope compartido, dos
+                // consultas caian sobre el mismo DbContext y el render fallaba de forma
+                // intermitente con "A second operation was started on this context instance".
+                // Es el mismo motivo por el que LoadMenuAsync y la carga de la marca ya abren su
+                // propio scope; a estas dos consultas simplemente no se les habia aplicado.
                 try
                 {
-                    var sub = (await SubsSvc.ListByTenantAsync(tenantId)).FirstOrDefault();
+                    await using var wsScope = ScopeFactory.CreateAsyncScope();
+                    var tenants = wsScope.ServiceProvider.GetRequiredService<ITenantAdminService>();
+                    _tenantName = (await tenants.GetAsync(tenantId))?.Name;
+
+                    var subs = wsScope.ServiceProvider.GetRequiredService<ISubscriptionAdminService>();
+                    var sub = (await subs.ListByTenantAsync(tenantId)).FirstOrDefault();
                     if (sub is not null)
                     {
-                        _planName = (await PlansSvc.GetAsync(sub.PlanId))?.Name;
+                        var plans = wsScope.ServiceProvider.GetRequiredService<IPlanAdminService>();
+                        _planName = (await plans.GetAsync(sub.PlanId))?.Name;
                     }
                 }
-                catch { /* sin plan visible: bajada generica */ }
+                catch { /* sin nombre/plan visible: se muestra la bajada generica */ }
 
                 // Menu configurable (Ola 1): resuelve el arbol de la vista del usuario (o la
                 // IsDefault del tenant) en un scope aislado, como la marca. Si falla, _menu queda

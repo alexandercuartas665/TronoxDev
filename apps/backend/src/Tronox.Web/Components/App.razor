@@ -14,21 +14,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <script>
-        // Modo oscuro por clase en <html> con persistencia en localStorage. Corre antes
-        // del CSS para evitar el destello claro. window.tronoxTheme.toggle() lo conmuta
-        // (boton luna del sidebar); funciona igual en SSR y en paginas interactivas.
+        // Paleta de la plataforma: el mismo mecanismo del prototipo (atributo
+        // data-tronox-theme en <html>, data-bs-theme para los oscuros, clave
+        // localStorage 'tronox_theme'). Corre ANTES de las hojas para que la primera
+        // pintura ya salga con el tema elegido y no haya destello.
+        // Por defecto: classic-light (azul corporativo #0c478a), NO metronic.
+        // El panel de seleccion lo construye js/tronox-theme.js al final del body.
         (function () {
+            var IDS = ['classic-light', 'fresh-light', 'deep-dark', 'aurora-dark', 'metronic'];
+            var DARK = { 'deep-dark': 1, 'aurora-dark': 1 };
+            var id = 'classic-light';
             try {
-                if (localStorage.getItem('tronox-theme') === 'dark') {
-                    document.documentElement.classList.add('dark');
-                }
-            } catch (e) { /* sin storage: modo claro */ }
-            window.tronoxTheme = {
-                toggle: function () {
-                    var dark = document.documentElement.classList.toggle('dark');
-                    try { localStorage.setItem('tronox-theme', dark ? 'dark' : 'light'); } catch (e) { }
-                }
-            };
+                var v = localStorage.getItem('tronox_theme');
+                if (IDS.indexOf(v) >= 0) { id = v; }
+            } catch (e) { /* sin storage: tema por defecto */ }
+            // 'metronic' es el :root base de custom.css: se activa quitando el atributo.
+            if (id !== 'metronic') { document.documentElement.setAttribute('data-tronox-theme', id); }
+            if (DARK[id]) { document.documentElement.setAttribute('data-bs-theme', 'dark'); }
             // Colapso del sidebar del workspace (boton panel del topbar, prototipo):
             // clase en <html> restaurada antes del primer render + persistencia.
             try {
@@ -93,6 +95,8 @@
     <script src="js/menu-config.js?v=1"></script>
     <script src="js/dc-canvas.js?v=2"></script>
     <script src="js/form-capture.js?v=1"></script>
+    @* Selector de las 5 paletas TRONOX (boton flotante + panel), portado del prototipo. *@
+    <script src="js/tronox-theme.js?v=1"></script>
 </body>
 
 </html>

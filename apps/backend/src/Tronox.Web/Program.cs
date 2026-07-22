@@ -174,21 +174,27 @@ try
 
     var tenantIds = await iconDb.Tenants.IgnoreQueryFilters().Select(t => t.Id).ToListAsync();
     var rellenados = 0;
+    var renombrados = 0;
     foreach (var tenantId in tenantIds)
     {
         rellenados += await iconProvisioning.BackfillIconKeysAsync(tenantId);
+        // Misma politica para el ROTULO: los tenants existentes conservan los nombres de
+        // agrupacion previos a la alineacion con el prototipo. Solo se renombra el nodo que aun
+        // se llama exactamente como la version anterior del catalogo; si el tenant lo personalizo
+        // en el editor de vistas, su nombre manda.
+        renombrados += await iconProvisioning.BackfillCanonicalNamesAsync(tenantId);
     }
 
-    if (rellenados > 0)
+    if (rellenados > 0 || renombrados > 0)
     {
         app.Logger.LogInformation(
-            "Menu: se relleno la clave de icono de {Nodos} nodos en {Tenants} tenants.",
-            rellenados, tenantIds.Count);
+            "Menu: {Iconos} nodos con icono rellenado y {Nombres} renombrados al catalogo canonico en {Tenants} tenants.",
+            rellenados, renombrados, tenantIds.Count);
     }
 }
 catch (Exception ex)
 {
-    app.Logger.LogWarning(ex, "Menu: no se pudo rellenar la clave de icono de los nodos existentes.");
+    app.Logger.LogWarning(ex, "Menu: no se pudo poner al dia el menu de los tenants existentes.");
 }
 
 // Detras del proxy de Railway (TLS en el borde, HTTP al contenedor): leer

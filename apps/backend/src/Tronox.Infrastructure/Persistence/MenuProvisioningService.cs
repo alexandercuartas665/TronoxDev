@@ -54,8 +54,10 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
             if (yaTieneItems)
             {
                 // El arbol ya esta: no se recrea nada (respeto a la personalizacion del tenant).
-                // Lo unico que se hace es RELLENAR el icono de los nodos que lo tengan vacio.
+                // Lo unico que se hace es RELLENAR el icono de los nodos que lo tengan vacio y
+                // poner al dia los rotulos que aun sean los de una version anterior del catalogo.
                 await BackfillIconKeysAsync(tenantId, cancellationToken);
+                await BackfillCanonicalNamesAsync(tenantId, cancellationToken);
                 return;
             }
         }
@@ -191,5 +193,52 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
         }
 
         return rellenados;
+    }
+
+    /// <summary>
+    /// Pone al dia el ROTULO de los nodos que aun se llaman como los dejo una version anterior del
+    /// catalogo canonico (ver MenuCatalogo.NombresAnterioresPorRuta).
+    ///
+    /// Misma politica que BackfillIconKeysAsync: es REPARADOR, no destructivo. Solo se renombra el
+    /// nodo cuyo nombre actual coincide EXACTAMENTE con un nombre historico conocido de esa ruta.
+    /// En cuanto el tenant lo renombro en el editor de vistas del menu, deja de coincidir y su
+    /// nombre se respeta para siempre.
+    /// </summary>
+    public async Task<int> BackfillCanonicalNamesAsync(long tenantId, CancellationToken cancellationToken = default)
+    {
+        var rutas = MenuCatalogo.NombresAnterioresPorRuta.Keys.ToList();
+
+        var candidatos = await _db.MenuNodes
+            .IgnoreQueryFilters()
+            .Where(n => n.TenantId == tenantId && n.Route != null && rutas.Contains(n.Route))
+            .ToListAsync(cancellationToken);
+
+        var renombrados = 0;
+        foreach (var nodo in candidatos)
+        {
+            if (!MenuCatalogo.NombresAnterioresPorRuta.TryGetValue(nodo.Route!, out var anteriores)
+                || !MenuCatalogo.NombresPorRuta.TryGetValue(nodo.Route!, out var canonico))
+            {
+                continue;
+            }
+
+            if (string.Equals(nodo.Name, canonico, StringComparison.Ordinal))
+            {
+                continue; // ya esta al dia
+            }
+
+            if (anteriores.Contains(nodo.Name, StringComparer.Ordinal))
+            {
+                nodo.Name = canonico;
+                renombrados++;
+            }
+        }
+
+        if (renombrados > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        return renombrados;
     }
 }

@@ -13,6 +13,13 @@ namespace Tronox.Application.MenuConfig;
 public interface IMenuProvisioningService
 {
     /// <summary>
+    /// Actualiza el ROTULO de los nodos del tenant que aun conservan un nombre de una version
+    /// anterior del catalogo canonico. Solo toca los que coinciden EXACTAMENTE con el nombre viejo:
+    /// si el tenant lo renombro en el editor de vistas, se respeta. Devuelve cuantos renombro.
+    /// </summary>
+    Task<int> BackfillCanonicalNamesAsync(long tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Siembra la vista "Completo" (IsDefault) con el arbol canonico si el tenant aun no tiene
     /// NINGUNA vista de menu. Idempotente: si ya tiene vistas, no hace nada.
     /// </summary>

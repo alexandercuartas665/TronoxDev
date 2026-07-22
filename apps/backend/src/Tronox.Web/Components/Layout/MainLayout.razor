@@ -9,46 +9,9 @@
     <!-- Toggle solo-CSS del menu (off-canvas en movil). Funciona en cualquier render mode. -->
     <input type="checkbox" id="tronox-nav-toggle" class="tronox-nav-toggle" autocomplete="off" />
 
-    @if (_hasTenant)
-    {
-        @* Rail vertical de iconos (doble panel del prototipo): navegacion rapida a los
-           modulos principales; el sidebar contextual queda a su derecha. Oculto en movil. *@
-        <nav class="tronox-rail" aria-label="Navegacion rapida">
-            @* Hueco superior de 38px (slot del logo en el fuente del prototipo). *@
-            <div class="tronox-rail-top"></div>
-            @* Bloque superior del rail (fuente TRONOX.dc.html, const rail):
-               Inicio, Tareas (gestor de actividades), Flujos y Formularios. *@
-            <NavLink class="tronox-rail-btn" href="inicio" title="Inicio">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/></svg>
-            </NavLink>
-            <NavLink class="tronox-rail-btn" href="actividades" title="Tareas">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h12M9 12h12M9 18h12"/><path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/></svg>
-            </NavLink>
-            <NavLink class="tronox-rail-btn" href="flujos" title="Flujos">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="6" rx="1.4"/><rect x="16" y="15" width="6" height="6" rx="1.4"/><path d="M5 9v3a4 4 0 0 0 4 4h7"/></svg>
-            </NavLink>
-            <NavLink class="tronox-rail-btn" href="formularios" title="Formularios">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
-            </NavLink>
-            <div class="tronox-rail-spacer"></div>
-            @* Bloque inferior del rail (fuente: railDeco): Calendario, Notificaciones,
-               Indicadores del sistema y Alertas del sistema. Indicadores apunta a la
-               pagina real de metricas; el resto navega a su stub (nunca 404). *@
-            <NavLink class="tronox-rail-btn" href="modulo/calendario" title="Calendario">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-            </NavLink>
-            <NavLink class="tronox-rail-btn" href="modulo/notificaciones" title="Notificaciones">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
-            </NavLink>
-            <NavLink class="tronox-rail-btn" href="metricas" title="Indicadores del sistema">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><rect x="7.5" y="11" width="3" height="6" rx="1"/><rect x="13.5" y="7" width="3" height="10" rx="1"/></svg>
-            </NavLink>
-            <NavLink class="tronox-rail-btn" href="modulo/alertas" title="Alertas del sistema">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-            </NavLink>
-            <div class="tronox-rail-avatar" title="@(_userName ?? "Usuario")" style="background:@AvatarBg">@_avatar</div>
-        </nav>
-    }
+    @* El rail vertical de iconos que heredamos del backbone se retiro: el prototipo TRONOX
+       (index.html) tiene UN solo sidebar. Ademas la mitad de sus destinos (actividades,
+       flujos, formularios, metricas) eran rutas del backbone que en TRONOX no existen. *@
 
     <aside class="tronox-sidebar">
         <NavMenu />
@@ -182,14 +145,11 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
-    // El rail y el breadcrumb solo aplican al workspace del tenant. Los operadores de
-    // plataforma (PlatformAdmin) conservan su chrome actual: ws-tenant NO se aplica,
-    // asi sus botones primarios siguen violeta (no se rompe su estilo).
-    private bool _hasTenant;          // claim tenant_id presente (muestra el rail)
+    // El breadcrumb solo aplica al workspace del tenant. Los operadores de plataforma
+    // (PlatformAdmin) conservan su chrome actual: ws-tenant NO se aplica, asi sus botones
+    // primarios siguen violeta (no se rompe su estilo).
     private bool _isTenantWorkspace;  // tenant sin platform_role (breadcrumb + botones negros)
     private string? _tenantName;
-    private string? _userName;
-    private string _avatar = "U";
     private int _unread;   // notificaciones no leidas del usuario (badge de la campana)
     // #4b: refresco en vivo del badge por SignalR.
     private HubConnection? _notifHub;
@@ -205,10 +165,7 @@
         var isOperator = state.User.FindFirst("platform_role") is not null;
         var tenantClaim = state.User.FindFirst("tenant_id")?.Value;
 
-        _hasTenant = tenantClaim is not null;
-        _isTenantWorkspace = _hasTenant && !isOperator;
-        _userName = state.User.Identity?.Name;
-        _avatar = Initials(_userName);
+        _isTenantWorkspace = tenantClaim is not null && !isOperator;
 
         if (_isTenantWorkspace && long.TryParse(tenantClaim, out var tenantId))
         {
@@ -302,33 +259,6 @@
                 "metricas" => "Metricas",
                 _ => char.ToUpperInvariant(seg[0]) + seg[1..]
             };
-        }
-    }
-
-    private static string Initials(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "U";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 1
-            ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
-            : $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant();
-    }
-
-    // Paleta AVPAL del prototipo (colores solidos mate para avatares) y su formula
-    // de asignacion por iniciales: (char0 + char1) % 8.
-    private static readonly string[] AvatarPalette =
-    [
-        "#E0876B", "#7E78E6", "#3FA39B", "#5B8DEF", "#C77FD0", "#D9A441", "#5FAE6E", "#E07A9B"
-    ];
-
-    private string AvatarBg
-    {
-        get
-        {
-            var ini = _avatar;
-            if (string.IsNullOrEmpty(ini)) { return AvatarPalette[0]; }
-            var sum = ini[0] + (ini.Length > 1 ? ini[1] : 0);
-            return AvatarPalette[sum % AvatarPalette.Length];
         }
     }
 

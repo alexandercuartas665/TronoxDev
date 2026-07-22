@@ -14,67 +14,119 @@ File: Custom Css File
 
 /* =========================================================================
    0. TOKENS DE MARCA TRONOX
-   Fuente: Prototipo REQ001 -> assets/css/tronox.css (paleta Metronic 8 Light).
-   Esta capa es la UNICA fuente de color del sistema. Los tres consumidores
-   (Velzon --vz-*, hoja heredada app.css, y las clases tronox-*) leen de aqui.
+   Fuente: Prototipo -> assets/css/tronox.css.
+
+   IMPORTANTE (correccion): este bloque :root NO es la marca TRONOX. Es la
+   paleta base de METRONIC que el prototipo usa como punto de partida y que
+   despues REVISTE con una de sus 5 paletas mediante el atributo
+   <html data-tronox-theme="...">. En una pasada anterior se tomaron estos
+   valores (primario #009ef7) por los de marca; el prototipo arranca en
+   "classic-light" (primario #0c478a). El tema por defecto se fija ahora en
+   Components/App.razor y en wwwroot/js/tronox-theme.js.
+
+   Se conservan los nombres --kt-* del prototipo para poder copiar sus bloques
+   de tema TAL CUAL (ver seccion 0.a). La capa --tx-* es la que consumen los
+   tres destinos (Velzon --vz-*, hoja heredada app.css y las clases tronox-*)
+   y se limita a DERIVAR de --kt-*: cambiar de tema recolorea todo el shell
+   sin tocar una sola regla mas abajo.
    ========================================================================= */
 :root {
-  /* --- Primario / marca --- */
-  --tx-primary:            #009ef7;
-  --tx-primary-active:     #0095e8;
-  --tx-primary-light:      #e8f4fd;
-  --tx-primary-rgb:        0, 158, 247;
+  /* --- Base Metronic 8 Light (identica al :root de tronox.css) --- */
+  --kt-app-bg:           #f5f8fa;
+  --kt-sidebar-bg:       #ffffff;
+  --kt-card-bg:          #ffffff;
+  --kt-header-bg:        #ffffff;
+  --kt-input-bg:         #f5f8fa;
+  --kt-border-color:     #e4e6ef;
+  --kt-border-dashed:    #b5b5c3;
+  --kt-hover-bg:         #fafbfc;
 
-  /* --- Superficies --- */
-  --tx-app-bg:             #f5f8fa;
-  --tx-sidebar-bg:         #ffffff;
-  --tx-card-bg:            #ffffff;
-  --tx-header-bg:          #ffffff;
-  --tx-input-bg:           #f5f8fa;
-  --tx-hover-bg:           #fafbfc;
+  --kt-text-dark:        #181c32;
+  --kt-text-gray-900:    #181c32;
+  --kt-text-gray-800:    #3f4254;
+  --kt-text-gray-700:    #5e6278;
+  --kt-text-gray-600:    #7e8299;
+  --kt-text-gray-500:    #a1a5b7;
+  --kt-text-gray-400:    #b5b5c3;
+  --kt-text-gray-300:    #e4e6ef;
+  --kt-text-muted:       #a1a5b7;
 
-  /* --- Bordes --- */
-  --tx-border:             #e4e6ef;
-  --tx-border-dashed:      #b5b5c3;
+  --kt-primary:          #009ef7;
+  --kt-primary-active:   #0095e8;
+  --kt-primary-light:    #e8f4fd;
+  --kt-success:          #50cd89;
+  --kt-success-active:   #47be7d;
+  --kt-success-light:    #e8fff3;
+  --kt-warning:          #ffc700;
+  --kt-warning-active:   #f1bc00;
+  --kt-warning-light:    #fff8dd;
+  --kt-danger:           #f1416c;
+  --kt-danger-active:    #d9214e;
+  --kt-danger-light:     #fff5f8;
+  --kt-info:             #7239ea;
+  --kt-info-active:      #5014d0;
+  --kt-info-light:       #f8f5ff;
 
-  /* --- Escala de texto --- */
-  --tx-text-900:           #181c32;
-  --tx-text-800:           #3f4254;
-  --tx-text-700:           #5e6278;
-  --tx-text-600:           #7e8299;
-  --tx-text-500:           #a1a5b7;
-  --tx-text-400:           #b5b5c3;
-  --tx-text-300:           #e4e6ef;
-  --tx-text-muted:         #a1a5b7;
+  --kt-menu-item-active-bg:    #e8f4fd;
+  --kt-menu-item-active-color: #009ef7;
+  --kt-menu-item-hover-color:  #009ef7;
 
-  /* --- Semanticos --- */
-  --tx-success:            #50cd89;
-  --tx-success-active:     #47be7d;
-  --tx-success-light:      #e8fff3;
-  --tx-warning:            #ffc700;
-  --tx-warning-active:     #f1bc00;
-  --tx-warning-light:      #fff8dd;
-  --tx-danger:             #f1416c;
-  --tx-danger-active:      #d9214e;
-  --tx-danger-light:       #fff5f8;
-  --tx-info:               #7239ea;
-  --tx-info-active:        #5014d0;
-  --tx-info-light:         #f8f5ff;
+  --kt-border-radius:    0.625rem;
+  --kt-border-radius-sm: 0.375rem;
+  --kt-border-radius-lg: 0.85rem;
 
-  /* --- Navy institucional (hero del portal y panel de login) --- */
+  /* Acento institucional del prototipo (lo reviste cada tema). */
   --tx-navy:               #0b1f3a;
   --tx-navy-2:             #13294b;
-  --tx-navy-3:             #1c3a63;
   --tx-hero-grad:          linear-gradient(120deg, #0b1f3a 0%, #13294b 55%, #1c3a63 100%);
 
-  /* --- Item de menu activo --- */
-  --tx-menu-active-bg:     #e8f4fd;
-  --tx-menu-active-color:  #009ef7;
+  /* rgb() del primario para las rgba(): no se puede derivar de un hex en CSS,
+     asi que cada tema lo declara aparte (seccion 0.a). */
+  --tx-primary-rgb:        0, 158, 247;
 
-  /* --- Radios --- */
-  --tx-radius:             0.625rem;
-  --tx-radius-sm:          0.375rem;
-  --tx-radius-lg:          0.85rem;
+  /* --- Capa --tx-*: DERIVADA de --kt-*. No fijar hexadecimales aqui. --- */
+  --tx-primary:            var(--kt-primary);
+  --tx-primary-active:     var(--kt-primary-active);
+  --tx-primary-light:      var(--kt-primary-light);
+
+  --tx-app-bg:             var(--kt-app-bg);
+  --tx-sidebar-bg:         var(--kt-sidebar-bg);
+  --tx-card-bg:            var(--kt-card-bg);
+  --tx-header-bg:          var(--kt-header-bg);
+  --tx-input-bg:           var(--kt-input-bg);
+  --tx-hover-bg:           var(--kt-hover-bg);
+
+  --tx-border:             var(--kt-border-color);
+  --tx-border-dashed:      var(--kt-border-dashed);
+
+  --tx-text-900:           var(--kt-text-gray-900);
+  --tx-text-800:           var(--kt-text-gray-800);
+  --tx-text-700:           var(--kt-text-gray-700);
+  --tx-text-600:           var(--kt-text-gray-600);
+  --tx-text-500:           var(--kt-text-gray-500);
+  --tx-text-400:           var(--kt-text-gray-400);
+  --tx-text-300:           var(--kt-text-gray-300);
+  --tx-text-muted:         var(--kt-text-muted);
+
+  --tx-success:            var(--kt-success);
+  --tx-success-active:     var(--kt-success-active);
+  --tx-success-light:      var(--kt-success-light);
+  --tx-warning:            var(--kt-warning);
+  --tx-warning-active:     var(--kt-warning-active);
+  --tx-warning-light:      var(--kt-warning-light);
+  --tx-danger:             var(--kt-danger);
+  --tx-danger-active:      var(--kt-danger-active);
+  --tx-danger-light:       var(--kt-danger-light);
+  --tx-info:               var(--kt-info);
+  --tx-info-active:        var(--kt-info-active);
+  --tx-info-light:         var(--kt-info-light);
+
+  --tx-menu-active-bg:     var(--kt-menu-item-active-bg);
+  --tx-menu-active-color:  var(--kt-menu-item-active-color);
+
+  --tx-radius:             var(--kt-border-radius);
+  --tx-radius-sm:          var(--kt-border-radius-sm);
+  --tx-radius-lg:          var(--kt-border-radius-lg);
 
   /* --- Metricas del shell --- */
   --tx-sidebar-width:      280px;
@@ -89,8 +141,90 @@ File: Custom Css File
   /* Alias historicos del panel de login (seccion 2). */
   --tronox-blue-900: var(--tx-navy);
   --tronox-blue-700: var(--tx-navy-2);
-  --tronox-blue-500: var(--tx-navy-3);
 }
+
+/* =========================================================================
+   0.a LOS 5 TEMAS TRONOX
+   Copiados TAL CUAL de Prototipo/assets/css/tronox.css (lineas ~665-721).
+   Se activan con <html data-tronox-theme="..."> (wwwroot/js/tronox-theme.js);
+   los oscuros anaden ademas data-bs-theme="dark" para Bootstrap.
+   "metronic" es el :root base de arriba y se activa QUITANDO el atributo.
+   El tema POR DEFECTO es classic-light (no metronic).
+   ========================================================================= */
+
+/* --- Opcion 3: Tronox Classic Light (azul corporativo) --- */
+html[data-tronox-theme="classic-light"] {
+  --kt-primary: #0c478a; --kt-primary-active: #09376b; --kt-primary-light: #e7eef7;
+  --kt-app-bg: #f4f7f9; --kt-input-bg: #eef2f6; --kt-border-color: #e2e8f0; --kt-hover-bg: #f6f9fb;
+  --kt-text-dark: #0f1a26; --kt-text-gray-900: #0f1a26;
+  --kt-menu-item-active-bg: #e7eef7; --kt-menu-item-active-color: #0c478a; --kt-menu-item-hover-color: #0c478a;
+  --tx-navy: #0c478a; --tx-navy-2: #005ca9;
+  --tx-hero-grad: linear-gradient(135deg, #0c478a 0%, #005ca9 100%);
+}
+
+/* --- Opcion 4: Tronox Fresh Light (teal tecnologico) --- */
+html[data-tronox-theme="fresh-light"] {
+  --kt-primary: #00a89f; --kt-primary-active: #008f87; --kt-primary-light: #e1f4f2;
+  --kt-app-bg: #f2f8f6; --kt-input-bg: #edf5f3; --kt-border-color: #e2eeea; --kt-hover-bg: #f5faf8;
+  --kt-text-dark: #11201b; --kt-text-gray-900: #11201b;
+  --kt-success: #16c79a; --kt-success-active: #0fa880; --kt-success-light: #e2f7f0;
+  --kt-menu-item-active-bg: #e1f4f2; --kt-menu-item-active-color: #00a89f; --kt-menu-item-hover-color: #00a89f;
+  --tx-navy: #0c478a; --tx-navy-2: #00a89f;
+  --tx-hero-grad: linear-gradient(135deg, #00a89f 0%, #16c79a 100%);
+}
+
+/* --- Opcion 1: Tronox Deep Dark (oscuro corporativo) --- */
+html[data-tronox-theme="deep-dark"] {
+  --kt-app-bg: #070e17; --kt-sidebar-bg: #0f1a26; --kt-card-bg: #0f1a26; --kt-header-bg: #0b131d; --kt-input-bg: #16222f;
+  --kt-border-color: #1c2e41; --kt-border-dashed: #33485e; --kt-hover-bg: #16222f;
+  --kt-text-dark: #f1f5f9; --kt-text-gray-900: #f1f5f9; --kt-text-gray-800: #e2e8f0; --kt-text-gray-700: #cbd5e1;
+  --kt-text-gray-600: #94a3b8; --kt-text-gray-500: #7b8a9e; --kt-text-gray-400: #5b6b7e; --kt-text-gray-300: #334155; --kt-text-muted: #7b8a9e;
+  --kt-primary: #16c79a; --kt-primary-active: #0fa880; --kt-primary-light: rgba(22,199,154,.14);
+  --kt-success: #16c79a; --kt-success-active: #0fa880; --kt-success-light: rgba(22,199,154,.14);
+  --kt-warning: #ffc700; --kt-warning-light: rgba(255,199,0,.13);
+  --kt-danger: #f1416c; --kt-danger-light: rgba(241,65,108,.14);
+  --kt-info: #3b9dff; --kt-info-light: rgba(59,157,255,.14);
+  --kt-menu-item-active-bg: rgba(22,199,154,.14); --kt-menu-item-active-color: #16c79a; --kt-menu-item-hover-color: #16c79a;
+  --tx-navy: #0c478a; --tx-navy-2: #16c79a;
+  --tx-hero-grad: linear-gradient(135deg, #0c478a 0%, #16c79a 100%);
+}
+
+/* --- Opcion 2: Tronox Aurora Dark (teal oscuro) --- */
+html[data-tronox-theme="aurora-dark"] {
+  --kt-app-bg: #050f0e; --kt-sidebar-bg: #0c1b19; --kt-card-bg: #0c1b19; --kt-header-bg: #081413; --kt-input-bg: #10211f;
+  --kt-border-color: #16332f; --kt-border-dashed: #2a4f4a; --kt-hover-bg: #10211f;
+  --kt-text-dark: #ecfdf5; --kt-text-gray-900: #ecfdf5; --kt-text-gray-800: #d5e5e3; --kt-text-gray-700: #c0d6d3;
+  --kt-text-gray-600: #8fa9a5; --kt-text-gray-500: #7a938f; --kt-text-gray-400: #5d736f; --kt-text-gray-300: #2f4541; --kt-text-muted: #7a938f;
+  --kt-primary: #00a89f; --kt-primary-active: #16c79a; --kt-primary-light: rgba(0,168,159,.16);
+  --kt-success: #16c79a; --kt-success-active: #0fa880; --kt-success-light: rgba(22,199,154,.16);
+  --kt-warning: #ffc700; --kt-warning-light: rgba(255,199,0,.13);
+  --kt-danger: #f1416c; --kt-danger-light: rgba(241,65,108,.14);
+  --kt-info: #3b9dff; --kt-info-light: rgba(59,157,255,.14);
+  --kt-menu-item-active-bg: rgba(0,168,159,.16); --kt-menu-item-active-color: #00a89f; --kt-menu-item-hover-color: #00a89f;
+  --tx-navy: #005ca9; --tx-navy-2: #00a89f;
+  --tx-hero-grad: linear-gradient(135deg, #005ca9 0%, #00a89f 100%);
+}
+
+/* --- Complemento propio: el canal rgb del primario de cada tema.
+       Lo necesitan las rgba() de foco, glow y sombras; CSS no sabe extraer los
+       componentes de un hexadecimal guardado en una variable. --- */
+html[data-tronox-theme="classic-light"] { --tx-primary-rgb: 12, 71, 138; }
+html[data-tronox-theme="fresh-light"]   { --tx-primary-rgb: 0, 168, 159; }
+html[data-tronox-theme="deep-dark"]     { --tx-primary-rgb: 22, 199, 154; }
+html[data-tronox-theme="aurora-dark"]   { --tx-primary-rgb: 0, 168, 159; }
+
+/* --- Los temas oscuros: el "glass" del topbar y el tercer navy del login
+       son literales claros heredados; hay que oscurecerlos. --- */
+html[data-tronox-theme="deep-dark"],
+html[data-tronox-theme="aurora-dark"] {
+  color-scheme: dark;
+  --glass: rgba(15, 26, 38, .82);
+  --sh-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --sh-md: 0 0 20px rgba(0, 0, 0, .35);
+  --sh-lg: 0 18px 50px -12px rgba(0, 0, 0, .55);
+}
+html[data-tronox-theme="deep-dark"] .ws-tenant,
+html[data-tronox-theme="aurora-dark"] .ws-tenant { --glass: var(--tx-header-bg); }
 
 /* -------------------------------------------------------------------------
    0.b TIPOGRAFIA - decision: NO se enlaza Google Fonts.
@@ -177,7 +311,7 @@ html, body {
 /* -------------------------------------------------------------------------
    0.d PUENTE A LA HOJA HEREDADA (wwwroot/app.css)
    app.css NO se puede retirar: contiene TODO el layout del shell
-   (.tronox-shell, .tronox-sidebar, .tronox-rail, .tronox-topbar,
+   (.tronox-shell, .tronox-sidebar, .tronox-topbar,
    .tronox-content, .tronox-nav-*, .tronox-acc-*). Lo que si se puede es
    apoderarse de sus tokens: se carga ANTES que custom.css, asi que
    redefinir aqui sus variables :root reviste todo el shell sin tocarla.
@@ -291,19 +425,6 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
   -webkit-backdrop-filter: none;
   box-shadow: 0 1px 4px rgba(24, 28, 50, .04);
 }
-
-/* --- Rail de iconos: superficie y activo en primario. --- */
-.tronox-rail {
-  background: var(--tx-sidebar-bg);
-  border-right: 1px solid var(--tx-border);
-}
-.tronox-rail-btn { color: var(--tx-text-500); border-radius: var(--tx-radius); }
-.tronox-rail-btn:hover {
-  background: var(--tx-primary-light);
-  color: var(--tx-primary);
-  box-shadow: none;
-}
-.tronox-rail-btn.active { background: var(--tx-primary); color: #fff; }
 
 /* --- Logo del sidebar. --- */
 .tronox-logo { background: var(--tx-hero-grad); border-radius: var(--tx-radius); }
@@ -565,9 +686,10 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
 
 /* Velzon trae .auth-bg-cover con un degradado fijo (azul #25a0e2 -> verde agua
    #00bd9d) escrito como literal, no como variable: reasignar --vz-primary no lo
-   alcanza. Se lleva al navy institucional del prototipo. */
+   alcanza. El degradado sale ahora de --tx-hero-grad, que cada tema redefine:
+   el panel del login se recolorea junto con el resto del shell. */
 .auth-bg-cover {
-  background: linear-gradient(-45deg, var(--tx-navy) 0%, var(--tx-navy-2) 55%, var(--tx-navy-3) 100%);
+  background: var(--tx-hero-grad);
 }
 
 /* -------------------------------------------------------------------------
@@ -576,7 +698,7 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
    el degradado azul institucional pedido en el PLAN seccion 3.1.
    ------------------------------------------------------------------------- */
 .auth-one-bg {
-  background-image: linear-gradient(135deg, var(--tronox-blue-900) 0%, var(--tronox-blue-700) 55%, var(--tronox-blue-500) 100%);
+  background-image: var(--tx-hero-grad);
   background-position: center;
   background-size: cover;
 }
@@ -758,3 +880,77 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
   opacity: 1;
   color: var(--primary);
 }
+
+/* -------------------------------------------------------------------------
+   Badge de codigo del menu (prototipo: .menu-rf en tronox-shell.js).
+   El sidebar del prototipo rotula cada pantalla con su codigo RF y cada
+   modulo con su REQ. Aqui el dato viene de menu_nodes.legacy_code, que la
+   semilla ya llenaba pero que el sidebar no pintaba.
+   ------------------------------------------------------------------------- */
+.tronox-acc-item .menu-rf,
+.tronox-acc-sub > summary .menu-rf {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  line-height: 1.5;
+  color: var(--tx-text-400);
+  background: var(--tx-input-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* En el summary del modulo el contador va pegado al chevron, asi que el badge
+   no debe empujarlo: el margen automatico lo pone la etiqueta del nombre. */
+.tronox-acc-sub > summary .menu-rf { margin-left: auto; margin-right: 2px; }
+.tronox-acc-sub > summary .tronox-acc-name { margin-right: 0; }
+
+.tronox-acc-item.active .menu-rf {
+  color: var(--tx-primary);
+  background: var(--tx-primary-light);
+}
+
+/* La etiqueta del item se trunca antes que el badge (prototipo: .msl-label). */
+.tronox-acc-item .lbl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------------------
+   Selector flotante de tema. Copiado de Prototipo/assets/css/tronox.css
+   (bloque "Selector flotante de tema"), con los mismos nombres de clase.
+   Lo construye wwwroot/js/tronox-theme.js.
+   ------------------------------------------------------------------------- */
+#tx-theme-fab {
+  position: fixed; left: 20px; bottom: 20px; z-index: 9998;
+  width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--tx-hero-grad); color: #fff; font-size: 19px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.22); display: flex; align-items: center; justify-content: center;
+  transition: transform .15s;
+}
+#tx-theme-fab:hover { transform: scale(1.06); }
+#tx-theme-panel {
+  position: fixed; left: 20px; bottom: 78px; z-index: 9998;
+  width: 270px; background: var(--tx-card-bg); border: 1px solid var(--tx-border);
+  border-radius: var(--tx-radius-lg); box-shadow: 0 18px 50px rgba(0,0,0,.25);
+  padding: 14px; display: none;
+}
+#tx-theme-panel.open { display: block; }
+#tx-theme-panel .tp-title { font-size: 13px; font-weight: 700; color: var(--tx-text-900); margin-bottom: 2px; }
+#tx-theme-panel .tp-sub { font-size: 11px; color: var(--tx-text-500); margin-bottom: 10px; }
+.tp-opt {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 9px 10px; border-radius: var(--tx-radius); border: 1px solid transparent;
+  background: transparent; cursor: pointer; margin-bottom: 4px; transition: background .12s, border-color .12s;
+}
+.tp-opt:hover { background: var(--tx-input-bg); }
+.tp-opt.active { border-color: var(--tx-primary); background: var(--tx-primary-light); }
+.tp-sw { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; border: 1px solid rgba(0,0,0,.08); }
+.tp-opt .tp-name { flex: 1; font-size: 12.5px; font-weight: 600; color: var(--tx-text-900); line-height: 1.2; }
+.tp-opt .tp-name small { display: block; font-size: 10.5px; font-weight: 500; color: var(--tx-text-500); }
+.tp-opt .tp-check { font-size: 14px; color: var(--tx-primary); opacity: 0; }
+.tp-opt.active .tp-check { opacity: 1; }

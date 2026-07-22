@@ -1665,43 +1665,12 @@ html.dark {
 .ws-tenant .form-control:focus { border-color: var(--ink-3); }
 
 /* =====================================================================
-   SHELL (prototipo: grid 68px rail + 272px sidebar + main; topbar 56px)
+   SHELL (prototipo: sidebar unico + main; topbar 56px).
+   El rail de iconos de 68px que traia el backbone se retiro: el prototipo
+   TRONOX no lo tiene. El shell es flex, asi que al quitar esa columna el
+   sidebar queda pegado al borde sin hueco que compensar.
    ===================================================================== */
 .ws-tenant .tronox-sidebar { width: 272px; }
-
-/* --- Rail de iconos (fuente: 68px, botones 42x42 r12, activo brand/on-brand
-       como en el SPA final y las capturas; hover ink + sombra) --- */
-.tronox-rail {
-  width: 68px; flex-shrink: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; align-items: center;
-  gap: 6px; padding: 16px 0;
-  position: sticky; top: 0; height: 100vh;
-  z-index: 6;
-}
-.tronox-rail-top { width: 38px; height: 38px; margin-bottom: 10px; }
-.tronox-rail-btn {
-  width: 42px; height: 42px;
-  border-radius: 12px; border: none;
-  display: grid; place-items: center;
-  background: none; color: var(--ink-3); text-decoration: none;
-  cursor: pointer;
-  transition: transform .16s, box-shadow .16s, color .16s, background .16s;
-}
-.tronox-rail-btn svg { width: 19px; height: 19px; }
-.tronox-rail-btn:hover { color: var(--ink); box-shadow: 0 3px 10px -3px rgba(20,20,25,.2); }
-.tronox-rail-btn.active { background: var(--brand); color: var(--on-brand); box-shadow: none; }
-.tronox-rail-spacer { flex: 1; }
-.tronox-rail-avatar {
-  width: 34px; height: 34px; border-radius: 50%;
-  color: #fff; font-weight: 700; font-size: 12px;
-  display: grid; place-items: center;
-  margin-top: 6px;
-  border: 2px solid var(--surface);
-  box-shadow: 0 0 0 2px var(--line-2);
-}
-@media (max-width: 991.98px) { .tronox-rail { display: none; } }
 
 /* --- Topbar slim del prototipo: 56px, glass + blur, gap 14 --- */
 .ws-tenant .tronox-topbar {

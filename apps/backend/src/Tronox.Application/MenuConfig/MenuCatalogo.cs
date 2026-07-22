@@ -139,7 +139,7 @@ public static class MenuCatalogo
             // RQ05: en la operacion diaria el modulo tiene UN solo item propio, "Mis Firmas",
             // con sus cuatro bandejas. Lo demas es accion contextual sobre un documento (RQ04),
             // configuracion en RQ01, o el hito futuro de la Seccion B (firma digital certificada).
-            new("Mis Firmas", "mis-firmas", "bi-pen", "RQ05",
+            new("Firma Electronica", "mis-firmas", "bi-pen", "RQ05",
             [
                 new("Pendientes", "modulo/firmas-pendientes", "bi-hourglass-split", "RQ05"),
                 new("Enviadas", "modulo/firmas-enviadas", "bi-send", "RQ05"),
@@ -147,7 +147,7 @@ public static class MenuCatalogo
                 new("Rechazadas", "modulo/firmas-rechazadas", "bi-x-circle", "RQ05")
             ]),
 
-            new("Formularios", "formularios", "bi-ui-checks-grid", "RQ08",
+            new("Formularios Dinamicos", "formularios", "bi-ui-checks-grid", "RQ08",
             [
                 new("Listado de Formularios", "modulo/formularios", "bi-ui-checks-grid", "RQ08"),
                 new("Plantillas de Formularios", "modulo/formularios-plantillas", "bi-files", "RQ08"),
@@ -155,7 +155,7 @@ public static class MenuCatalogo
                 new("Respuestas Huerfanas", "modulo/formularios-respuestas-huerfanas", "bi-inboxes", "RQ08")
             ]),
 
-            new("Workflow", "workflow", "bi-diagram-2", "RQ11",
+            new("Workflow Documental", "workflow", "bi-diagram-2", "RQ11",
             [
                 new("Mis Workflows", "modulo/workflows", "bi-diagram-2", "RQ11"),
                 new("Estados Personalizados", "modulo/workflow-estados", "bi-flag", "RQ11"),
@@ -164,10 +164,10 @@ public static class MenuCatalogo
             ])
         ], []),
 
-        // ------------------------------------------------------- CORRESPONDENCIA Y TRAMITE
-        new("CORRESPONDENCIA Y TRAMITE", "correspondencia", "bi-envelope",
+        // -------------------------------------------------------------- GESTION Y TRAMITE
+        new("GESTION Y TRAMITE", "correspondencia", "bi-envelope",
         [
-            new("Radicacion", "radicacion", "bi-inbox", "RQ09",
+            new("Ventanilla / Radicacion", "radicacion", "bi-inbox", "RQ09",
             [
                 new("Radicados de Entrada", "modulo/radicados-entrada", "bi-box-arrow-in-down", "RQ09"),
                 new("Radicados de Salida", "modulo/radicados-salida", "bi-box-arrow-up", "RQ09"),
@@ -178,7 +178,7 @@ public static class MenuCatalogo
             ]),
 
             // RQ10: "Mis Tareas" es deliberadamente UNA bandeja con filtros, no varias bandejas.
-            new("Gestion y Tramite", "tramite", "bi-list-check", "RQ10",
+            new("Tramitar", "tramite", "bi-list-check", "RQ10",
             [
                 new("Mis Tareas", "modulo/mis-tareas", "bi-check2-square", "RQ10"),
                 new("Correos Capturados", "modulo/tramite-correos-capturados", "bi-envelope-open", "RQ10"),
@@ -207,7 +207,7 @@ public static class MenuCatalogo
                 new("Firmas Enviadas", "modulo/portal-firmas-enviadas", "bi-send", "RQ06")
             ]),
 
-            new("Terceros", "terceros", "bi-person-vcard", "RQ07",
+            new("Catalogo de Terceros", "terceros", "bi-person-vcard", "RQ07",
             [
                 new("Catalogo de Terceros", "modulo/terceros", "bi-people", "RQ07"),
                 new("Importacion y Exportacion Masiva", "modulo/terceros-carga-masiva", "bi-arrow-down-up", "RQ07")
@@ -298,6 +298,44 @@ public static class MenuCatalogo
             .Concat(TodosLosItems().Select(i => (i.Ruta, i.Icono)))
             .GroupBy(t => t.Item1, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().Item2, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Mapa Ruta/Slug -> NOMBRE canonico para todos los nodos del arbol. Es el equivalente de
+    /// <see cref="IconosPorRuta"/> para el rotulo, y lo consume el relleno de tenants existentes.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> NombresPorRuta { get; } =
+        new[] { (Inicio.Ruta, Inicio.Nombre) }
+            .Concat(Secciones.Select(s => (s.Slug, s.Nombre)))
+            .Concat(Secciones.SelectMany(s => s.Grupos.Select(g => (g.Slug, g.Nombre))))
+            .Concat(TodosLosItems().Select(i => (i.Ruta, i.Nombre)))
+            .GroupBy(t => t.Item1, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Item2, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Nombres ANTERIORES de los nodos que este catalogo ha renombrado, indexados por ruta/slug.
+    ///
+    /// POR QUE EXISTE: un tenant sembrado con una version previa conserva el rotulo viejo, y el
+    /// aprovisionamiento es idempotente (si ya hay items, no toca nada). Reasignar el nombre
+    /// canonico a TODOS los nodos arreglaria eso pero PISARIA el rotulo que el tenant haya puesto
+    /// en el editor de vistas, que es justo la personalizacion que se promete respetar. La regla
+    /// segura es la misma de BackfillIconKeysAsync trasladada al nombre: se renombra SOLO si el
+    /// nodo aun se llama exactamente como lo dejo una version anterior del catalogo. Si el tenant
+    /// lo renombro, su nombre manda y no se toca.
+    ///
+    /// Renombrado en esta pasada: alineacion de las agrupaciones con el prototipo unificado
+    /// (assets/js/tronox-shell.js, GROUPS + SHORT).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string[]> NombresAnterioresPorRuta =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["correspondencia"] = ["CORRESPONDENCIA Y TRAMITE"],
+            ["radicacion"] = ["Radicacion"],
+            ["tramite"] = ["Gestion y Tramite"],
+            ["mis-firmas"] = ["Mis Firmas"],
+            ["formularios"] = ["Formularios"],
+            ["workflow"] = ["Workflow"],
+            ["terceros"] = ["Terceros"]
+        };
 
     /// <summary>Numero total de nodos del arbol (QuickLink + secciones + grupos + items).</summary>
     public static int TotalNodos { get; } =
