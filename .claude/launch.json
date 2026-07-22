@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tronox-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "apps/backend/src/Tronox.Web/Tronox.Web.csproj",
+        "--no-launch-profile",
+        "--urls",
+        "http://localhost:8095",
+        "--environment",
+        "Development"
+      ],
+      "port": 8095
+    }
+  ]
+}

@@ -27,7 +27,12 @@ public class MenuNode : TenantEntity
     /// <summary>Clave del icono (ej. "list", "cube", "gear"); la UI la mapea al SVG. No es el SVG.</summary>
     public string? IconKey { get; set; }
 
-    /// <summary>Codigo de modulo legacy (ej. "000850"). Se muestra como badge del item.</summary>
+    /// <summary>
+    /// Badge del nodo. Es el `codigo_rf` de RF09 (5.9.1): trazabilidad del item a la spec que lo
+    /// define, ej. "RF01" o "RQ12". En nodos heredados del backbone lleva el codigo de modulo
+    /// legacy (ej. "000850"). Es METADATO: no participa en la resolucion de permisos, que depende
+    /// solo de Route (RF09 5.9.5.6).
+    /// </summary>
     public string? LegacyCode { get; set; }
 
     /// <summary>Ruta o slug de navegacion (ej. "inventario-items", "modulo/estados"); slug de la seccion (data-acc).</summary>

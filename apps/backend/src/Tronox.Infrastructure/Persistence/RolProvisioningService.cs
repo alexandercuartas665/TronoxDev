@@ -52,7 +52,7 @@ public sealed class RolProvisioningService : IRolProvisioningService
             .ToListAsync(cancellationToken);
         var existentes = yaSembrados.ToHashSet(StringComparer.Ordinal);
 
-        var nuevos = new List<(Rol Rol, RolCatalogo.RolSemilla Semilla)>();
+        var nuevos = new List<Rol>();
         foreach (var semilla in RolCatalogo.Roles)
         {
             if (existentes.Contains(semilla.CodigoSistema))
@@ -76,14 +76,16 @@ public sealed class RolProvisioningService : IRolProvisioningService
                 Estado = RolEstado.Activo
             };
             _db.Roles.Add(rol);
-            nuevos.Add((rol, semilla));
+            nuevos.Add(rol);
         }
 
         if (nuevos.Count > 0)
         {
             await _db.SaveChangesAsync(cancellationToken);
-            await SembrarMatrizCompletaAsync(tenantId, nuevos, cancellationToken);
         }
+
+        // Siempre, aunque no se haya sembrado ningun rol nuevo: cierra la brecha de ADR-004.
+        await EnsureMatrizCompletaAsync(tenantId, cancellationToken);
 
         // Siempre, aunque no se haya sembrado nada nuevo: es el ancla de arranque fail-closed.
         await EnsureOwnerTieneSuperAdminAsync(tenantId, cancellationToken);
@@ -94,14 +96,32 @@ public sealed class RolProvisioningService : IRolProvisioningService
     /// tenant. Esto es lo que SUSTITUYE al bypass "AllowAll" del backbone: el Super Administrador
     /// lo puede todo porque su MATRIZ lo dice y queda auditada fila a fila, no porque el resolver
     /// de permisos lo deje pasar por una excepcion en el codigo.
+    ///
+    /// Corre en TODA invocacion, no solo cuando se crean roles nuevos. ADR-004 afirma que el rol
+    /// nace "con la matriz completa derivada del menu", pero si la matriz se sembraba unicamente
+    /// junto al rol, un tenant cuyo menu llegara vacio o incompleto en el momento del alta se
+    /// quedaba con CERO filas para siempre y fail-closed, sin nadie capaz de entrar a repartir
+    /// permisos. Aqui se recalcula la diferencia contra el menu vigente.
+    ///
+    /// NO REVIERTE decisiones del tenant: solo inserta los pares (modulo, accion) que NO tienen
+    /// fila. Si el tenant denego una accion explicitamente, la fila existe con Permitido = false
+    /// y no se toca.
     /// </summary>
-    private async Task SembrarMatrizCompletaAsync(
-        long tenantId,
-        IReadOnlyList<(Rol Rol, RolCatalogo.RolSemilla Semilla)> nuevos,
-        CancellationToken cancellationToken)
+    private async Task EnsureMatrizCompletaAsync(long tenantId, CancellationToken cancellationToken)
     {
-        var conMatrizCompleta = nuevos.Where(n => n.Semilla.MatrizCompleta).ToList();
-        if (conMatrizCompleta.Count == 0)
+        var codigosConMatriz = RolCatalogo.Roles
+            .Where(r => r.MatrizCompleta)
+            .Select(r => r.CodigoSistema)
+            .ToList();
+
+        var roles = await _db.Roles
+            .IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId
+                && r.CodigoSistema != null
+                && codigosConMatriz.Contains(r.CodigoSistema))
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+        if (roles.Count == 0)
         {
             return;
         }
@@ -112,25 +132,43 @@ public sealed class RolProvisioningService : IRolProvisioningService
             return;
         }
 
-        foreach (var (rol, _) in conMatrizCompleta)
+        var yaDefinidos = await _db.RolPermisos
+            .IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && roles.Contains(p.RolId))
+            .Select(p => new { p.RolId, p.Modulo, p.Accion })
+            .ToListAsync(cancellationToken);
+        var definidos = yaDefinidos
+            .Select(p => (p.RolId, p.Modulo, p.Accion))
+            .ToHashSet();
+
+        var agregadas = 0;
+        foreach (var rolId in roles)
         {
             foreach (var modulo in modulos)
             {
                 foreach (var accion in PermissionActions.All)
                 {
+                    if (definidos.Contains((rolId, modulo, accion)))
+                    {
+                        continue;
+                    }
                     _db.RolPermisos.Add(new RolPermiso
                     {
                         TenantId = tenantId,
-                        RolId = rol.Id,
+                        RolId = rolId,
                         Modulo = modulo,
                         Accion = accion,
                         Permitido = true
                     });
+                    agregadas++;
                 }
             }
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
+        if (agregadas > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     /// <summary>
