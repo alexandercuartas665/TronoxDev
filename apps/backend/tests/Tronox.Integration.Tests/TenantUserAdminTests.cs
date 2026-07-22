@@ -115,7 +115,7 @@ public abstract class TenantUserAdminTestsBase
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
+                MenuView = view,
                 Kind = MenuNodeKind.QuickLink,
                 Name = "Inicio",
                 Route = "inicio",

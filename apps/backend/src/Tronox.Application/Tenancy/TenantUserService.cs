@@ -49,6 +49,7 @@ public sealed class TenantUserService : ITenantUserService
         var email = request.Email.Trim().ToLowerInvariant();
 
         var platformUser = await _db.PlatformUsers.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
+        var esUsuarioNuevo = platformUser is null;
         if (platformUser is null)
         {
             platformUser = new PlatformUser
@@ -63,17 +64,24 @@ public sealed class TenantUserService : ITenantUserService
             _db.PlatformUsers.Add(platformUser);
         }
 
-        // Filtro global: solo ve miembros del tenant activo.
-        var alreadyMember = await _db.TenantUsers.AnyAsync(tu => tu.PlatformUserId == platformUser.Id, cancellationToken);
-        if (alreadyMember)
+        // Filtro global: solo ve miembros del tenant activo. Un usuario recien creado no puede
+        // ser miembro de nada todavia, y ademas su Id vale 0 hasta que la base lo genere: la
+        // consulta no tendria sentido y siempre daria falso.
+        if (!esUsuarioNuevo)
         {
-            return null;
+            var alreadyMember = await _db.TenantUsers.AnyAsync(tu => tu.PlatformUserId == platformUser.Id, cancellationToken);
+            if (alreadyMember)
+            {
+                return null;
+            }
         }
 
         var tenantUser = new TenantUser
         {
             TenantId = tenantId,
-            PlatformUserId = platformUser.Id,
+            // Por navegacion, NO por id: con ids de identidad el Id del padre vale 0 hasta que
+            // se guarda. EF resuelve la FK y el orden de insercion.
+            PlatformUser = platformUser,
             Email = email,
             TenantRole = request.Role,
             Status = PlatformUserStatus.Active

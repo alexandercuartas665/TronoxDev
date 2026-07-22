@@ -131,7 +131,7 @@ public abstract class TenantProfileTestsBase
         ctx.TenantUsers.Add(new TenantUser
         {
             TenantId = tenantId,
-            PlatformUserId = user.Id,
+            PlatformUser = user,
             Email = email,
             TenantRole = role,
             Status = PlatformUserStatus.Active

@@ -244,7 +244,7 @@ public abstract class OrgAndModuleRegistryTestsBase
         {
             var platformUser = new PlatformUser
             {
-                Email = $"user-{tenantId:N}@org.test",
+                Email = $"user-{tenantId}@org.test",
                 EmailVerified = true,
                 Status = PlatformUserStatus.Active
             };
@@ -252,7 +252,7 @@ public abstract class OrgAndModuleRegistryTestsBase
             var tenantUser = new TenantUser
             {
                 TenantId = tenantId,
-                PlatformUserId = platformUser.Id,
+                PlatformUser = platformUser,
                 Email = platformUser.Email
             };
             ctx.TenantUsers.Add(tenantUser);

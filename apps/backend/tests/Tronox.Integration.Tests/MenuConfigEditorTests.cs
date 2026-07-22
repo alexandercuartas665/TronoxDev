@@ -171,7 +171,7 @@ public abstract class MenuConfigEditorTestsBase
         {
             var pu = new PlatformUser { Email = "d@menu.local", DisplayName = "D" };
             ctx.PlatformUsers.Add(pu);
-            var tu = new TenantUser { TenantId = tenantId, PlatformUserId = pu.Id, Email = "d@menu.local", MenuViewId = doomed };
+            var tu = new TenantUser { TenantId = tenantId, PlatformUser = pu, Email = "d@menu.local", MenuViewId = doomed };
             ctx.TenantUsers.Add(tu);
             await ctx.SaveChangesAsync();
             tenantUserId = tu.Id;
@@ -231,7 +231,7 @@ public abstract class MenuConfigEditorTestsBase
         {
             var pu = new PlatformUser { Email = "a@menu.local", DisplayName = "A" };
             ctx.PlatformUsers.Add(pu);
-            var tu = new TenantUser { TenantId = tenantId, PlatformUserId = pu.Id, Email = "a@menu.local" };
+            var tu = new TenantUser { TenantId = tenantId, PlatformUser = pu, Email = "a@menu.local" };
             ctx.TenantUsers.Add(tu);
             await ctx.SaveChangesAsync();
             tenantUserId = tu.Id;

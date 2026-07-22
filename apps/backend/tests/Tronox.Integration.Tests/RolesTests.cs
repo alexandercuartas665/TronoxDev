@@ -82,7 +82,7 @@ public abstract class RolesTestsBase
             var tu = new TenantUser
             {
                 TenantId = tenantId,
-                PlatformUserId = pu.Id,
+                PlatformUser = pu,
                 Email = "adv@roles.local",
                 TenantRole = TenantRole.Advisor
             };
@@ -130,7 +130,7 @@ public abstract class RolesTestsBase
             ctx.TenantUsers.Add(new TenantUser
             {
                 TenantId = tenantId,
-                PlatformUserId = pu.Id,
+                PlatformUser = pu,
                 Email = "owner@roles.local",
                 TenantRole = TenantRole.Owner
             });
@@ -204,7 +204,7 @@ public abstract class RolesTestsBase
             ctx.TenantUsers.Add(new TenantUser
             {
                 TenantId = tenantId,
-                PlatformUserId = pu.Id,
+                PlatformUser = pu,
                 Email = "u2@roles.local",
                 TenantRole = TenantRole.Advisor,
                 RolId = rolId
@@ -246,7 +246,7 @@ public abstract class RolesTestsBase
             var section = new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
+                MenuView = view,
                 Kind = MenuNodeKind.Section,
                 Name = "Sistema General",
                 Route = "gen",
@@ -257,8 +257,8 @@ public abstract class RolesTestsBase
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
-                ParentId = section.Id,
+                MenuView = view,
+                Parent = section,
                 Kind = MenuNodeKind.Item,
                 Name = "Administracion de usuarios",
                 Route = "admin-usuarios",
@@ -269,8 +269,8 @@ public abstract class RolesTestsBase
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
-                ParentId = section.Id,
+                MenuView = view,
+                Parent = section,
                 Kind = MenuNodeKind.Item,
                 Name = "Stub",
                 Route = "modulo/stub",
@@ -299,20 +299,20 @@ public abstract class RolesTestsBase
         {
             var view = new MenuView { TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            viewId = view.Id;
 
-            var inv = new MenuNode { TenantId = tenantId, MenuViewId = view.Id, Kind = MenuNodeKind.Section, Name = "Inventarios", Route = "inv", SortOrder = 0 };
-            var dev = new MenuNode { TenantId = tenantId, MenuViewId = view.Id, Kind = MenuNodeKind.Section, Name = "Desarrollo", Route = "dev", SortOrder = 1 };
+            var inv = new MenuNode { TenantId = tenantId, MenuView = view, Kind = MenuNodeKind.Section, Name = "Inventarios", Route = "inv", SortOrder = 0 };
+            var dev = new MenuNode { TenantId = tenantId, MenuView = view, Kind = MenuNodeKind.Section, Name = "Desarrollo", Route = "dev", SortOrder = 1 };
             ctx.MenuNodes.AddRange(inv, dev);
-            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = view.Id, ParentId = inv.Id, Kind = MenuNodeKind.Item, Name = "Items", Route = "inventario-items", State = MenuNodeState.Ready, SortOrder = 0 });
-            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = view.Id, ParentId = inv.Id, Kind = MenuNodeKind.Item, Name = "Bodegas", Route = "inventario-bodegas", State = MenuNodeState.Ready, SortOrder = 1 });
-            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = view.Id, ParentId = dev.Id, Kind = MenuNodeKind.Item, Name = "Reglas", Route = "reglas", State = MenuNodeState.Ready, SortOrder = 0 });
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuView = view, Parent = inv, Kind = MenuNodeKind.Item, Name = "Items", Route = "inventario-items", State = MenuNodeState.Ready, SortOrder = 0 });
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuView = view, Parent = inv, Kind = MenuNodeKind.Item, Name = "Bodegas", Route = "inventario-bodegas", State = MenuNodeState.Ready, SortOrder = 1 });
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuView = view, Parent = dev, Kind = MenuNodeKind.Item, Name = "Reglas", Route = "reglas", State = MenuNodeState.Ready, SortOrder = 0 });
 
             var pu = new PlatformUser { Email = "lim@roles.local", DisplayName = "Limitado" };
             ctx.PlatformUsers.Add(pu);
-            var tu = new TenantUser { TenantId = tenantId, PlatformUserId = pu.Id, Email = "lim@roles.local", TenantRole = TenantRole.Advisor };
+            var tu = new TenantUser { TenantId = tenantId, PlatformUser = pu, Email = "lim@roles.local", TenantRole = TenantRole.Advisor };
             ctx.TenantUsers.Add(tu);
             await ctx.SaveChangesAsync();
+            viewId = view.Id;
             platformUserId = pu.Id;
             tenantUserId = tu.Id;
         }
@@ -353,18 +353,18 @@ public abstract class RolesTestsBase
         {
             var view = new MenuView { TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            viewId = view.Id;
-            var sec = new MenuNode { TenantId = tenantId, MenuViewId = view.Id, Kind = MenuNodeKind.Section, Name = "Sistema", Route = "sys", SortOrder = 0 };
+            var sec = new MenuNode { TenantId = tenantId, MenuView = view, Kind = MenuNodeKind.Section, Name = "Sistema", Route = "sys", SortOrder = 0 };
             ctx.MenuNodes.Add(sec);
-            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = view.Id, ParentId = sec.Id, Kind = MenuNodeKind.Item, Name = "Reglas", Route = "reglas", State = MenuNodeState.Ready, SortOrder = 0 });
-            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = view.Id, ParentId = sec.Id, Kind = MenuNodeKind.Item, Name = "Items", Route = "inventario-items", State = MenuNodeState.Ready, SortOrder = 1 });
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuView = view, Parent = sec, Kind = MenuNodeKind.Item, Name = "Reglas", Route = "reglas", State = MenuNodeState.Ready, SortOrder = 0 });
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuView = view, Parent = sec, Kind = MenuNodeKind.Item, Name = "Items", Route = "inventario-items", State = MenuNodeState.Ready, SortOrder = 1 });
 
             var owner = new PlatformUser { Email = "own@roles.local", DisplayName = "Owner" };
             var advisor = new PlatformUser { Email = "sr@roles.local", DisplayName = "SinRol" };
             ctx.PlatformUsers.AddRange(owner, advisor);
-            ctx.TenantUsers.Add(new TenantUser { TenantId = tenantId, PlatformUserId = owner.Id, Email = "own@roles.local", TenantRole = TenantRole.Owner });
-            ctx.TenantUsers.Add(new TenantUser { TenantId = tenantId, PlatformUserId = advisor.Id, Email = "sr@roles.local", TenantRole = TenantRole.Advisor });
+            ctx.TenantUsers.Add(new TenantUser { TenantId = tenantId, PlatformUser = owner, Email = "own@roles.local", TenantRole = TenantRole.Owner });
+            ctx.TenantUsers.Add(new TenantUser { TenantId = tenantId, PlatformUser = advisor, Email = "sr@roles.local", TenantRole = TenantRole.Advisor });
             await ctx.SaveChangesAsync();
+            viewId = view.Id;
             ownerUserId = owner.Id;
             noRoleUserId = advisor.Id;
         }

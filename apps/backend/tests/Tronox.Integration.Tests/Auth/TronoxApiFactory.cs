@@ -73,10 +73,13 @@ public sealed class TronoxApiFactory : WebApplicationFactory<Program>, IAsyncLif
         };
         ctx.PlatformUsers.AddRange(single, multi, super);
 
+        // El Id de PlatformUser lo asigna la base al insertar (BIGINT identidad): antes de
+        // SaveChanges vale 0. Se enlaza por la propiedad de navegacion para que EF resuelva
+        // la FK y el orden de insercion.
         ctx.TenantUsers.AddRange(
-            new TenantUser { TenantId = TenantAId, PlatformUserId = single.Id, Email = SingleEmail, TenantRole = TenantRole.Advisor, Status = PlatformUserStatus.Active },
-            new TenantUser { TenantId = TenantAId, PlatformUserId = multi.Id, Email = MultiEmail, TenantRole = TenantRole.Advisor, Status = PlatformUserStatus.Active },
-            new TenantUser { TenantId = TenantBId, PlatformUserId = multi.Id, Email = MultiEmail, TenantRole = TenantRole.Admin, Status = PlatformUserStatus.Active });
+            new TenantUser { TenantId = TenantAId, PlatformUser = single, Email = SingleEmail, TenantRole = TenantRole.Advisor, Status = PlatformUserStatus.Active },
+            new TenantUser { TenantId = TenantAId, PlatformUser = multi, Email = MultiEmail, TenantRole = TenantRole.Advisor, Status = PlatformUserStatus.Active },
+            new TenantUser { TenantId = TenantBId, PlatformUser = multi, Email = MultiEmail, TenantRole = TenantRole.Admin, Status = PlatformUserStatus.Active });
 
         ctx.TenantConfigurations.AddRange(
             new TenantConfiguration { TenantId = TenantAId, ConfigKey = "tono", ConfigValue = "formal" },

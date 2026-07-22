@@ -23,28 +23,27 @@ public abstract class MenuConfigTestsBase
     {
         var tenantId = await NewTenantAsync("Menu Round-Trip");
 
-        long viewId = TestIds.Next();
+        long viewId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
-            var view = new MenuView { Id = viewId, TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
+            var view = new MenuView { TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            var sectionId = TestIds.Next();
-            ctx.MenuNodes.Add(new MenuNode
+            var sectionNode = new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = viewId,
+                MenuView = view,
                 Kind = MenuNodeKind.Section,
                 Name = "Mis Procesos",
                 Route = "misproc",
                 IconKey = "list",
-                SortOrder = 0,
-                Id = sectionId
-            });
+                SortOrder = 0
+            };
+            ctx.MenuNodes.Add(sectionNode);
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = viewId,
-                ParentId = sectionId,
+                MenuView = view,
+                Parent = sectionNode,
                 Kind = MenuNodeKind.Item,
                 Name = "Crear una actividad",
                 Route = "crear-actividad",
@@ -54,8 +53,8 @@ public abstract class MenuConfigTestsBase
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = viewId,
-                ParentId = sectionId,
+                MenuView = view,
+                Parent = sectionNode,
                 Kind = MenuNodeKind.Item,
                 Name = "Oculto",
                 Route = "oculto",
@@ -63,6 +62,7 @@ public abstract class MenuConfigTestsBase
                 SortOrder = 1
             });
             await ctx.SaveChangesAsync();
+            viewId = view.Id;
         }
 
         var resolved = await RunAsync(tenantId, s => s.GetMenuForTenantUserAsync(tenantId, viewId));
@@ -89,7 +89,7 @@ public abstract class MenuConfigTestsBase
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = def.Id,
+                MenuView = def,
                 Kind = MenuNodeKind.QuickLink,
                 Name = "Inicio",
                 Route = "inicio",
@@ -116,10 +116,10 @@ public abstract class MenuConfigTestsBase
             var minimal = new MenuView { TenantId = tenantId, Name = "E2E mini", IsDefault = false, SortOrder = 0 };
             var rich = new MenuView { TenantId = tenantId, Name = "Completo", IsDefault = false, SortOrder = 1 };
             ctx.MenuViews.AddRange(minimal, rich);
-            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = minimal.Id, Kind = MenuNodeKind.QuickLink, Name = "Inicio", Route = "inicio", IsVisible = true, SortOrder = 0 });
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuView = minimal, Kind = MenuNodeKind.QuickLink, Name = "Inicio", Route = "inicio", IsVisible = true, SortOrder = 0 });
             for (var i = 0; i < 3; i++)
             {
-                ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = rich.Id, Kind = MenuNodeKind.QuickLink, Name = $"N{i}", Route = $"r{i}", IsVisible = true, SortOrder = i });
+                ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuView = rich, Kind = MenuNodeKind.QuickLink, Name = $"N{i}", Route = $"r{i}", IsVisible = true, SortOrder = i });
             }
             await ctx.SaveChangesAsync();
         }
@@ -143,10 +143,10 @@ public abstract class MenuConfigTestsBase
             ctx.TenantUsers.Add(new TenantUser
             {
                 TenantId = tenantId,
-                PlatformUserId = pu.Id,
+                PlatformUser = pu,
                 Email = "u@menu.local",
                 TenantRole = TenantRole.Advisor,
-                MenuViewId = view.Id
+                MenuView = view
             });
             await ctx.SaveChangesAsync();
             viewId = view.Id;
@@ -173,7 +173,7 @@ public abstract class MenuConfigTestsBase
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = a,
-                MenuViewId = view.Id,
+                MenuView = view,
                 Kind = MenuNodeKind.QuickLink,
                 Name = "Inicio",
                 Route = "inicio",
@@ -201,22 +201,21 @@ public abstract class MenuConfigTestsBase
         {
             var view = new MenuView { TenantId = tenantId, Name = "Completo", SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            var section = TestIds.Next();
-            ctx.MenuNodes.Add(new MenuNode
+            var section = new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
+                MenuView = view,
                 Kind = MenuNodeKind.Section,
                 Name = "Sec",
                 Route = "sec",
-                SortOrder = 0,
-                Id = section
-            });
+                SortOrder = 0
+            };
+            ctx.MenuNodes.Add(section);
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
-                ParentId = section,
+                MenuView = view,
+                Parent = section,
                 Kind = MenuNodeKind.Item,
                 Name = "Item",
                 Route = "item",
@@ -248,22 +247,21 @@ public abstract class MenuConfigTestsBase
         {
             var view = new MenuView { TenantId = tenantId, Name = "Completo", IsDefault = true, SortOrder = 0 };
             ctx.MenuViews.Add(view);
-            var section = TestIds.Next();
-            ctx.MenuNodes.Add(new MenuNode
+            var section = new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
+                MenuView = view,
                 Kind = MenuNodeKind.Section,
                 Name = "Sec",
                 Route = "sec",
-                SortOrder = 0,
-                Id = section
-            });
+                SortOrder = 0
+            };
+            ctx.MenuNodes.Add(section);
             ctx.MenuNodes.Add(new MenuNode
             {
                 TenantId = tenantId,
-                MenuViewId = view.Id,
-                ParentId = section,
+                MenuView = view,
+                Parent = section,
                 Kind = MenuNodeKind.Item,
                 Name = "Item",
                 Route = "item",
