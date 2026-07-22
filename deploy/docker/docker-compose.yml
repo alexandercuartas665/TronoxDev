@@ -63,11 +63,14 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
+      # Margen amplio a proposito: en esta maquina conviven ~30 contenedores de stacks
+      # hermanos y los efimeros de Testcontainers. Con timeout de 10s el ping daba
+      # falsos "unhealthy" bajo carga, con RabbitMQ perfectamente operativo.
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
     networks:
       - tronox-net
 
