@@ -1,4 +1,4 @@
-# CLAUDE.md - Memoria del agente de desarrollo para ECOREX.tareas
+# CLAUDE.md - Memoria del agente de desarrollo para TRONOX.tareas
 
 > Primera lectura obligatoria para cualquier agente (Claude Code u otro) antes de
 > modificar codigo en este repositorio. Reglas pequenas, concretas y verificables.
@@ -8,7 +8,7 @@
 
 ## 1. Contexto del proyecto
 
-ECOREX - Sistema de Tareas es la **reconstruccion sobre .NET 10** de un gestor de
+TRONOX - Sistema de Tareas es la **reconstruccion sobre .NET 10** de un gestor de
 **tareas, proyectos, tableros Kanban, flujos de proceso BPMN 2.0, formularios
 dinamicos y reglas de negocio** que hoy corre en WebForms/VB.NET (GestionMovil,
 legacy en `C:\Desarrollo\core`, SOLO referencia). Es un SaaS multi-tenant donde
@@ -17,7 +17,7 @@ legacy en `C:\Desarrollo\core`, SOLO referencia). Es un SaaS multi-tenant donde
 Pilares:
 
 - **Multi-tenant real**: `TenantId` (Guid v7) + `HasQueryFilter` global + RLS en BD.
-- **DAL dual**: PostgreSQL y SQL Server tras `IEcorexDbContext`, elegido por `Database:Provider`.
+- **DAL dual**: PostgreSQL y SQL Server tras `ITronoxDbContext`, elegido por `Database:Provider`.
 - **Tres motores**: WorkflowEngine (BPMN, bpmn-js), DynamicFormRenderer (EAV -> jsonb), RulesEngine (verbos tipados).
 - **PlatformAdmin** (Super Admin) separado del admin de tenant, con MFA y auditoria inmutable.
 - **Agentes de IA gobernados** (AI Provider Gateway multi-proveedor, cupos por plan).
@@ -25,12 +25,12 @@ Pilares:
 ### Origen del codigo (importante)
 
 Este repo se **clono del backbone `CUBOT.nails`** (a su vez derivado de `cubotcrm.git`,
-la familia SaaS ECOREX) y se renombro `CubotNails.*` -> `Ecorex.*`. La columna
+la familia SaaS TRONOX) y se renombro `CubotNails.*` -> `Tronox.*`. La columna
 vertebral SaaS (Super Admin, identidad JWT, planes, integraciones, AI Gateway)
 **ya viene funcionando**; lo que se construye nuevo es el **nucleo de tareas,
 tableros y proyectos + los tres motores**, y se ELIMINA el dominio belleza/agenda.
 
-- `origin`   -> https://github.com/alexandercuartas665/EcorexV.git (push del proyecto)
+- `origin`   -> https://github.com/alexandercuartas665/TronoxV.git (push del proyecto)
 - `upstream` -> https://github.com/alexandercuartas665/cubotcrm.git (backports del backbone via fetch + cherry-pick)
 
 ---
@@ -43,13 +43,13 @@ Las especificaciones funcionales viven en:
 C:\Users\acuartas\OneDrive - Bitcode IT Services S.A.S\Bitcode\13. Proyectos\044. Tareas\OBSIDIAN.tareas
 ```
 
-Repo del vault: https://github.com/alexandercuartas665/EcorexV_obsidian.git
+Repo del vault: https://github.com/alexandercuartas665/TronoxV_obsidian.git
 (empezar SIEMPRE por `00 - INDICE.md`).
 
 Documentos maestros (leer en este orden):
 
-1. `01. Requerimiento/Capa 0 Vision General/Vision y entorno.md` - que es ECOREX Tareas, stack, shell
-2. `01. Requerimiento/Prototipo/00 - Prototipo Final ECOREX.md` - aspecto y navegacion DEFINITIVOS (abrir el HTML)
+1. `01. Requerimiento/Capa 0 Vision General/Vision y entorno.md` - que es TRONOX Tareas, stack, shell
+2. `01. Requerimiento/Prototipo/00 - Prototipo Final TRONOX.md` - aspecto y navegacion DEFINITIVOS (abrir el HTML)
 3. `03. Hoja de Ruta desarrollo/HOJA DE RUTA DESARROLLO.md` - plan de construccion (contrato de trabajo)
 4. `01. Requerimiento/Capa 1 Gestion de tenant/Gestion de Empresas - Admin multi-tenant.md` - los 9 errores heredados
 5. `01. Requerimiento/Capa 5 Librerias Base/00 - Vision MotherData.md` - DAL dual (origen del concepto)
@@ -65,24 +65,24 @@ Antes de implementar un modulo, leer su documento. No reinterpretar requerimient
 ## 3. Estructura del repositorio
 
 ```txt
-ECOREX.tareas/
+TRONOX.tareas/
 +-- apps/
 |   +-- web-prototype/                # prototipo React heredado (SOLO referencia, no es el producto)
 |   +-- backend/
-|       +-- Ecorex.sln
+|       +-- Tronox.sln
 |       +-- src/
-|       |   +-- Ecorex.Domain/             (entidades + enums)
-|       |   +-- Ecorex.Application/        (servicios, DTOs, casos de uso)
-|       |   +-- Ecorex.Infrastructure/     (EF Core, migraciones, integraciones)
-|       |   +-- Ecorex.Shared/             (contratos compartidos)
-|       |   +-- Ecorex.Api/                (Minimal API + JWT)
-|       |   +-- Ecorex.SuperAdmin/         (CONSOLA UNIFICADA Blazor: PlatformAdmin Y tenant, separados por policies)
-|       |   +-- Ecorex.Web/                (Blazor Web App heredado + .Client WASM; rol final por decidir)
-|       |   +-- Ecorex.Workers/            (BackgroundServices)
+|       |   +-- Tronox.Domain/             (entidades + enums)
+|       |   +-- Tronox.Application/        (servicios, DTOs, casos de uso)
+|       |   +-- Tronox.Infrastructure/     (EF Core, migraciones, integraciones)
+|       |   +-- Tronox.Shared/             (contratos compartidos)
+|       |   +-- Tronox.Api/                (Minimal API + JWT)
+|       |   +-- Tronox.Web/         (CONSOLA UNIFICADA Blazor: PlatformAdmin Y tenant, separados por policies)
+|       |   +-- Tronox.Web/                (Blazor Web App heredado + .Client WASM; rol final por decidir)
+|       |   +-- Tronox.Workers/            (BackgroundServices)
 |       +-- tests/
-|           +-- Ecorex.Domain.Tests/
-|           +-- Ecorex.Application.Tests/
-|           +-- Ecorex.Integration.Tests/  (Testcontainers - requiere Docker)
+|           +-- Tronox.Domain.Tests/
+|           +-- Tronox.Application.Tests/
+|           +-- Tronox.Integration.Tests/  (Testcontainers - requiere Docker)
 +-- deploy/docker/                    # docker-compose, .env.example, preflight, README
 +-- docs/decisiones/                  # ADRs del repo
 +-- PROGRESO.md                       # bitacora de avance por sesion (OBLIGATORIA)
@@ -90,7 +90,7 @@ ECOREX.tareas/
 ```
 
 Pendientes de adaptacion del backbone (ver PROGRESO.md): agregar
-`Ecorex.Infrastructure.SqlServer` (DAL dual), eliminar dominio belleza/agenda,
+`Tronox.Infrastructure.SqlServer` (DAL dual), eliminar dominio belleza/agenda,
 construir nucleo tareas/tableros/proyectos + motores, menu del Prototipo Final.
 
 ---
@@ -113,7 +113,7 @@ para construir o desplegar la UI del producto. E2E con Playwright para .NET.
 
 **Fidelidad visual (regla del usuario): la UI del workspace debe replicar
 MILIMETRICAMENTE el prototipo** cuya FUENTE UNICA es
-`01. Requerimiento/Prototipo/ECOREX.dc.html` del vault (+ `support.js` y las
+`01. Requerimiento/Prototipo/TRONOX.dc.html` del vault (+ `support.js` y las
 capturas de `screenshots/`). OJO: version corregida del 2026-07-04 — el Design
 habia generado 2 archivos y el SPA viejo era erroneo (ya eliminado del vault).
 Toda tarea de UI extrae los tokens exactos de ese HTML (colores hex, tipografia,
@@ -124,15 +124,15 @@ del rail y "Administrar actividades" (000636) son EL MISMO sistema de tableros
 asignadas y vistas Tablero/Lista/Calendario/Gantt).
 El `web-prototype` React heredado es solo referencia secundaria.
 
-**Infraestructura local (bloque de puertos DEDICADO, prefijo `ecorex-tareas-`):**
+**Infraestructura local (bloque de puertos DEDICADO, prefijo `tronox-tareas-`):**
 
 | Servicio        | Puerto host | Contenedor                |
 |-----------------|-------------|---------------------------|
-| PostgreSQL 16   | 5442        | ecorex-tareas-postgres    |
-| SQL Server 2022 | 1443        | ecorex-tareas-sqlserver   |
-| Redis           | 6389        | ecorex-tareas-redis       |
-| RabbitMQ        | 5682/15682  | ecorex-tareas-rabbitmq    |
-| Adminer         | 8092        | ecorex-tareas-adminer     |
+| PostgreSQL 16   | 5442        | tronox-tareas-postgres    |
+| SQL Server 2022 | 1443        | tronox-tareas-sqlserver   |
+| Redis           | 6389        | tronox-tareas-redis       |
+| RabbitMQ        | 5682/15682  | tronox-tareas-rabbitmq    |
+| Adminer         | 8092        | tronox-tareas-adminer     |
 
 Correr `deploy/docker/preflight.ps1` ANTES de `docker compose up -d`.
 
@@ -191,7 +191,7 @@ disponibilidad, no-show, Wompi de salon. Hacerlo con ADR y en commits separados.
 
 ## 8. Checklist antes de cada commit
 
-- [ ] `dotnet build` verde en `apps/backend/Ecorex.sln`.
+- [ ] `dotnet build` verde en `apps/backend/Tronox.sln`.
 - [ ] `dotnet test` verde en proyectos tocados (Integration.Tests requiere Docker, corre dual).
 - [ ] Test de aislamiento cross-tenant pasa (cuando exista, en AMBOS motores).
 - [ ] Sin secretos versionados; sin credenciales/tokens en logs.
@@ -209,22 +209,22 @@ disponibilidad, no-show, Wompi de salon. Hacerlo con ADR y en commits separados.
 
 ```powershell
 # Build / test
-cd C:\DesarrolloIA\ECOREX.tareas\apps\backend
-dotnet build Ecorex.sln
-dotnet test  Ecorex.sln
+cd C:\DesarrolloIA\TRONOX.tareas\apps\backend
+dotnet build Tronox.sln
+dotnet test  Tronox.sln
 
 # Infraestructura local (pre-flight primero)
-cd C:\DesarrolloIA\ECOREX.tareas\deploy\docker
+cd C:\DesarrolloIA\TRONOX.tareas\deploy\docker
 .\preflight.ps1 ; docker compose up -d ; docker compose ps
 
 # Migraciones EF (startup-project = Infrastructure, ejecutar desde apps/backend)
 dotnet ef migrations add NombreMigracion `
-  --project src/Ecorex.Infrastructure --startup-project src/Ecorex.Infrastructure
+  --project src/Tronox.Infrastructure --startup-project src/Tronox.Infrastructure
 dotnet ef database update `
-  --project src/Ecorex.Infrastructure --startup-project src/Ecorex.Infrastructure
+  --project src/Tronox.Infrastructure --startup-project src/Tronox.Infrastructure
 
 # Levantar la consola unificada
-.\start-ecorex.ps1        # desde la raiz del repo
+.\start-tronox.ps1        # desde la raiz del repo
 ```
 
 ---

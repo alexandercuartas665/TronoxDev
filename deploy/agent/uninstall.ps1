@@ -15,23 +15,23 @@
 [CmdletBinding()]
 param(
     [switch]$RemoveVault,
-    [string]$InstallDir = "$env:ProgramFiles\ECOREX\Agente"
+    [string]$InstallDir = "$env:ProgramFiles\TRONOX\Agente"
 )
 
 $ErrorActionPreference = "Stop"
 
-$ServiceName = "EcorexAgent"
-$EventSource = "ECOREX Agente"
-$VaultDir    = "$env:ProgramData\Ecorex\Agent"
+$ServiceName = "TronoxAgent"
+$EventSource = "TRONOX Agente"
+$VaultDir    = "$env:ProgramData\Tronox\Agent"
 $RunKey      = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-$RunValue    = "EcorexColmena"
+$RunValue    = "TronoxColmena"
 
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "Exige una consola de ADMINISTRADOR."
 }
 
-Write-Host "Desinstalando el Agente ECOREX" -ForegroundColor Cyan
+Write-Host "Desinstalando el Agente TRONOX" -ForegroundColor Cyan
 
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($svc) {
@@ -43,7 +43,7 @@ if ($svc) {
 }
 
 Write-Host "  Cerrando la colmena si esta abierta..."
-Get-Process -Name "Ecorex.Agent.Gui" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "Tronox.Agent.Gui" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 Write-Host "  Quitando el auto-arranque..."
 Remove-ItemProperty -Path $RunKey -Name $RunValue -ErrorAction SilentlyContinue
@@ -66,7 +66,7 @@ if (Test-Path $InstallDir) {
 }
 
 # No dejar la carpeta padre huerfana: desinstalar debe no dejar rastro. Solo si quedo VACIA, por si
-# el sitio lo comparte con otro producto ECOREX.
+# el sitio lo comparte con otro producto TRONOX.
 $parent = Split-Path $InstallDir -Parent
 if ((Test-Path $parent) -and -not (Get-ChildItem $parent -Force -ErrorAction SilentlyContinue)) {
     Remove-Item $parent -Force -ErrorAction SilentlyContinue

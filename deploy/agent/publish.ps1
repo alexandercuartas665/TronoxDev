@@ -27,17 +27,17 @@ $ErrorActionPreference = "Stop"
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot "out" }
 $agentRoot = Resolve-Path "$PSScriptRoot\..\..\apps\agent"
 
-Write-Host "Publicando el Agente ECOREX en: $OutDir" -ForegroundColor Cyan
+Write-Host "Publicando el Agente TRONOX en: $OutDir" -ForegroundColor Cyan
 if (Test-Path $OutDir) { Remove-Item $OutDir -Recurse -Force }
 
 $common = @("-c", "Release", "-r", "win-x64", "--self-contained", "true", "-p:PublishSingleFile=false")
 
-Write-Host "  [1/2] Servicio (Ecorex.Agent.Service)..."
-& dotnet publish "$agentRoot\Ecorex.Agent.Service\Ecorex.Agent.Service.csproj" @common -o "$OutDir\service" | Out-Null
+Write-Host "  [1/2] Servicio (Tronox.Agent.Service)..."
+& dotnet publish "$agentRoot\Tronox.Agent.Service\Tronox.Agent.Service.csproj" @common -o "$OutDir\service" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Fallo la publicacion del servicio." }
 
-Write-Host "  [2/2] Colmena (Ecorex.Agent.Gui)..."
-& dotnet publish "$agentRoot\Ecorex.Agent.Gui\Ecorex.Agent.Gui.csproj" @common -o "$OutDir\gui" | Out-Null
+Write-Host "  [2/2] Colmena (Tronox.Agent.Gui)..."
+& dotnet publish "$agentRoot\Tronox.Agent.Gui\Tronox.Agent.Gui.csproj" @common -o "$OutDir\gui" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Fallo la publicacion de la colmena." }
 
 $size = [Math]::Round(((Get-ChildItem $OutDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)

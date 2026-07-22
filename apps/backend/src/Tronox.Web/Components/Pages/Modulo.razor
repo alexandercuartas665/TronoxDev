@@ -1,0 +1,96 @@
+@page "/modulo/{Slug}"
+@attribute [Authorize(Policy = "TenantMember")]
+@inject NavigationManager Nav
+@* Stub generico para las opciones del menu del prototipo (TRONOX.dc.html) que aun no
+   tienen modulo real. Registro estatico slug -> (titulo, grupo, codigo legacy); cuando
+   se construya el modulo real, la opcion del NavMenu pasa a apuntar a su pagina propia
+   con policy por modulo (los placeholders usan TenantMember). *@
+
+<ModuleStub Section="@_info.Section"
+            Title="@_info.Title"
+            Description="@_info.Description"
+            LegacyCode="@_info.Code"
+            PendingHeading="Modulo pendiente de construccion"
+            PendingText="Modulo pendiente de construccion - se priorizara en fases siguientes.">
+    <Icon>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg>
+    </Icon>
+</ModuleStub>
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private StubInfo _info = Unknown;
+
+    // Slugs cuyo modulo real YA existe: el nodo del menu sigue apuntando a /modulo/{slug} (dato por
+    // tenant), pero aqui redirigimos a la pagina real. Asi funciona en todos los tenants sin tocar la BD.
+    private static readonly Dictionary<string, string> Promoted = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["conceptos-actividades"] = "/conceptos-actividades",
+        // Etapas configurables del pipeline de oportunidades del CRM (000740).
+        ["estados-oportunidad"] = "/estados-oportunidad",
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (Promoted.TryGetValue(Slug ?? string.Empty, out var realRoute))
+        {
+            Nav.NavigateTo(realRoute, replace: true);
+            return;
+        }
+        _info = Registry.TryGetValue(Slug ?? string.Empty, out var info) ? info : Unknown;
+    }
+
+    private sealed record StubInfo(string Title, string Section, string? Code, string Description = "");
+
+    private static readonly StubInfo Unknown =
+        new("Modulo", "Modulos", null, "Opcion del menu del sistema sin modulo construido todavia.");
+
+    // Registro estatico de los items del menu del prototipo sin pagina real (codigos 000XXX)
+    // mas los destinos del rail que aun no existen (calendario/notificaciones/alertas).
+    private static readonly Dictionary<string, StubInfo> Registry = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Mis Procesos
+        ["programar-actividad"] = new("Programar actividad", "Mis Procesos", "000889", "Programacion de actividades recurrentes o futuras."),
+        // Negocio
+        ["creacion-de-clientes"] = new("Creacion de clientes", "Negocio", "000232", "Alta y edicion de clientes del negocio."),
+        ["seguimiento-de-clientes"] = new("Seguimiento de clientes", "Negocio", "000123", "Seguimiento comercial de clientes."),
+        // Automatizacion
+        ["power-bi-service"] = new("Power BI Service", "Automatizacion", "000788", "Integracion con reportes de Power BI Service."),
+        // Sistema - Inventarios (000556/000502/000506/000606/000498/000066): paginas reales
+        // en /inventario-bodegas, /inventario-marcas, /inventario-grupos, /inventario-subgrupos,
+        // /inventario-tipos, /inventario-items (ADR-0027). Retirados del stub generico.
+        // Sistema - Actividades
+        ["prioridades"] = new("Prioridades", "Sistema \u00b7 Actividades", "000621", "Catalogo de prioridades de actividades."),
+        ["tipos-de-proyecto"] = new("Tipos de proyecto", "Sistema \u00b7 Actividades", "000690", "Tipos de proyecto."),
+        // "conceptos" (000270) tiene pagina real: /conceptos (modulo CONCEPTOS).
+        ["estados"] = new("Estados", "Sistema \u00b7 Actividades", "000653", "Estados de actividades."),
+        // Sistema - CRM
+        ["conceptos-actividades"] = new("Conceptos actividades", "Sistema \u00b7 CRM", "000125", "Conceptos de actividades del CRM."),
+        ["estados-crm"] = new("Estados", "Sistema \u00b7 CRM", "000272", "Estados del CRM."),
+        ["perfiles-cliente-prov"] = new("Perfiles cliente/prov", "Sistema \u00b7 CRM", "000166", "Perfiles de cliente y proveedor."),
+        ["servicios-o-productos"] = new("Servicios o productos", "Sistema \u00b7 CRM", "000249", "Catalogo de servicios o productos."),
+        ["tipos-de-empresas"] = new("Tipos de empresas", "Sistema \u00b7 CRM", "000231", "Tipos de empresas."),
+        ["vendedores"] = new("Vendedores", "Sistema \u00b7 CRM", "000124", "Maestro de vendedores."),
+        ["origen-clientes"] = new("Origen clientes", "Sistema \u00b7 CRM", "000324", "Origenes de clientes."),
+        ["grupos-de-actividades"] = new("Grupos de actividades", "Sistema \u00b7 CRM", "000126", "Grupos de actividades del CRM."),
+        // Sistema - General
+        // "crear-empresas" (000072, adm_empresas) tiene pagina real: /admin/empresas
+        // (Ficha de empresa, area PlatformAdmin, ADR-0026).
+        // "extraccion-de-datos" (000730) tiene pagina real: /extraccion-datos (modulo EXTRACCION DE DATOS).
+        ["roles-y-permisos"] = new("Roles y permisos", "Sistema \u00b7 General", "000194", "Administracion de roles y permisos."),
+        ["administracion-de-usuarios"] = new("Administracion de usuarios", "Sistema \u00b7 General", "000073", "Administracion de usuarios del workspace."),
+        // Sistema - Desarrollo
+        ["autocompletado-formularios"] = new("Autocompletado formularios", "Sistema \u00b7 Desarrollo", "000801", "Autocompletado de formularios."),
+        ["notificaciones-config"] = new("Notificaciones", "Sistema \u00b7 Desarrollo", "000288", "Configuracion de notificaciones del sistema."),
+        ["objetos-del-sistema"] = new("Objetos del sistema", "Sistema \u00b7 Desarrollo", "000137", "Objetos del sistema."),
+        ["parametros-xml"] = new("Parametros XML", "Sistema \u00b7 Desarrollo", "000057", "Parametros XML del sistema."),
+        ["servicios-web"] = new("Servicios web", "Sistema \u00b7 Desarrollo", "000053", "Servicios web del sistema."),
+        ["sql-admin"] = new("SQL Admin", "Sistema \u00b7 Desarrollo", "000077", "Administrador SQL."),
+        ["consecutivos"] = new("Tipos de documentos \u00b7 Consecutivos", "Sistema \u00b7 Desarrollo", "000136", "Tipos de documentos y consecutivos."),
+        // Rail (fuente: railDeco sin pagina real todavia)
+        ["calendario"] = new("Calendario", "Rail", null, "Calendario del workspace."),
+        ["notificaciones"] = new("Notificaciones", "Rail", null, "Centro de notificaciones del workspace."),
+        ["alertas"] = new("Alertas del sistema", "Rail", null, "Alertas del sistema."),
+    };
+}

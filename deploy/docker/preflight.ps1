@@ -1,11 +1,11 @@
 <#
-  preflight.ps1 - Validaciones previas al arranque de la pila Docker de ECOREX.tareas.
+  preflight.ps1 - Validaciones previas al arranque de la pila Docker de TRONOX.tareas.
   Corre ANTES de `docker compose up -d`. Aborta con mensaje claro si algo falla.
 
   Verifica:
     1. Docker esta corriendo (docker info responde).
     2. Cada puerto de host del bloque dedicado esta libre (o lo ocupa nuestro propio contenedor).
-    3. No hay contenedores ecorex-tareas-* muertos de corridas previas.
+    3. No hay contenedores tronox-tareas-* muertos de corridas previas.
     4. Recursos minimos (>= 2 GB RAM asignada a Docker, >= 5 GB de disco libre).
 
   Uso:
@@ -14,7 +14,7 @@
 $ErrorActionPreference = 'Stop'
 $failures = @()
 
-# --- Cargar puertos del .env si existe (defaults del bloque dedicado ECOREX) ---
+# --- Cargar puertos del .env si existe (defaults del bloque dedicado TRONOX) ---
 $ports = @{
     POSTGRES_PORT      = 5442
     SQLSERVER_PORT     = 1443
@@ -44,7 +44,7 @@ try {
 
 # --- 2. Puertos libres (se permite que los ocupe nuestro propio contenedor) ---
 Write-Host '[2/4] Puertos del bloque dedicado...'
-$own = @(docker ps --filter 'name=ecorex-tareas-' --format '{{.Ports}}' 2>$null) -join ' '
+$own = @(docker ps --filter 'name=tronox-tareas-' --format '{{.Ports}}' 2>$null) -join ' '
 foreach ($entry in $ports.GetEnumerator() | Sort-Object Value) {
     $p = $entry.Value
     $busy = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
@@ -58,9 +58,9 @@ foreach ($entry in $ports.GetEnumerator() | Sort-Object Value) {
     }
 }
 
-# --- 3. Sin contenedores ecorex-tareas-* muertos ---
+# --- 3. Sin contenedores tronox-tareas-* muertos ---
 Write-Host '[3/4] Contenedores previos...' -NoNewline
-$dead = @(docker ps -a --filter 'name=ecorex-tareas-' --filter 'status=exited' --format '{{.Names}}' 2>$null)
+$dead = @(docker ps -a --filter 'name=tronox-tareas-' --filter 'status=exited' --format '{{.Names}}' 2>$null)
 if ($dead.Count -gt 0) {
     Write-Host " ATENCION" -ForegroundColor Yellow
     Write-Host ("  Contenedores detenidos de corridas previas: {0}" -f ($dead -join ', '))

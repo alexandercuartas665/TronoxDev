@@ -1,16 +1,16 @@
-# Deploy de ECOREX.tareas en Linux (BUILD-FROM-GIT)
+# Deploy de TRONOX.tareas en Linux (BUILD-FROM-GIT)
 
 Flujo sin registry (GHCR) y sin subir codigo: el server clona el repo PUBLICO
-`https://github.com/alexandercuartas665/EcorexV.git`, construye la imagen y
+`https://github.com/alexandercuartas665/TronoxV.git`, construye la imagen y
 levanta el stack. Solo copias 2 archivos al server.
 
 Convive con Visal (u otros stacks) en el MISMO Docker sin chocar: contenedores,
-red y volumen de datos son propios de ECOREX y el volumen es PERSISTENTE.
+red y volumen de datos son propios de TRONOX y el volumen es PERSISTENTE.
 
-- Contenedores: `ecorex-app`, `ecorex-postgres-prod`
-- Volumen datos: `ecorex-prod_ecorex-pgdata` (persistente)
-- Volumen subidas: `ecorex-prod_ecorex-uploads` (persistente, ver mas abajo)
-- Red: `ecorex-prod_ecorex-net`
+- Contenedores: `tronox-app`, `tronox-postgres-prod`
+- Volumen datos: `tronox-prod_tronox-pgdata` (persistente)
+- Volumen subidas: `tronox-prod_tronox-uploads` (persistente, ver mas abajo)
+- Red: `tronox-prod_tronox-net`
 - Puerto local por defecto: `127.0.0.1:5480` (Visal usa 5380)
 
 ---
@@ -27,12 +27,12 @@ red y volumen de datos son propios de ECOREX y el volumen es PERSISTENTE.
 
 1. **Crear la carpeta de deploy:**
    ```bash
-   mkdir -p /opt/ecorex && cd /opt/ecorex
+   mkdir -p /opt/tronox && cd /opt/tronox
    ```
 
 2. **Bajar los 2 archivos desde el repo:**
    ```bash
-   BASE="https://raw.githubusercontent.com/alexandercuartas665/EcorexV/fase-0/clon-backbone/deploy/docker-prod"
+   BASE="https://raw.githubusercontent.com/alexandercuartas665/TronoxV/fase-0/clon-backbone/deploy/docker-prod"
    curl -fsSL "$BASE/docker-compose.from-git.yml" -o docker-compose.from-git.yml
    curl -fsSL "$BASE/.env.example"                 -o .env
    ```
@@ -41,8 +41,8 @@ red y volumen de datos son propios de ECOREX y el volumen es PERSISTENTE.
    ```bash
    nano .env
    #  POSTGRES_PASSWORD          -> openssl rand -base64 32
-   #  ECOREX_SEED_ADMIN_PASSWORD -> clave del primer admin (admin@ecorex.local)
-   #  ECOREX_PORT                -> 5480 (o uno libre: ss -tlnp | grep 5480)
+   #  TRONOX_SEED_ADMIN_PASSWORD -> clave del primer admin (admin@tronox.local)
+   #  TRONOX_PORT                -> 5480 (o uno libre: ss -tlnp | grep 5480)
    ```
 
 4. **Build + up:**
@@ -50,7 +50,7 @@ red y volumen de datos son propios de ECOREX y el volumen es PERSISTENTE.
    docker compose -f docker-compose.from-git.yml build      # 1a vez ~5-10 min
    docker compose -f docker-compose.from-git.yml up -d
    docker compose -f docker-compose.from-git.yml ps
-   docker compose -f docker-compose.from-git.yml logs -f ecorex-app
+   docker compose -f docker-compose.from-git.yml logs -f tronox-app
    ```
    En los logs debes ver que aplica migraciones y crea el Super Admin.
 
@@ -59,15 +59,15 @@ red y volumen de datos son propios de ECOREX y el volumen es PERSISTENTE.
    curl -I http://127.0.0.1:5480/login    # debe responder 200 con HTML del login
    ```
 
-6. **Entrar la primera vez:** usuario `admin@ecorex.local`, clave = la que
-   pusiste en `ECOREX_SEED_ADMIN_PASSWORD`. No hay datos demo en produccion.
+6. **Entrar la primera vez:** usuario `admin@tronox.local`, clave = la que
+   pusiste en `TRONOX_SEED_ADMIN_PASSWORD`. No hay datos demo en produccion.
 
 ---
 
 ## Ingreso: puerto plano (estado actual de 10.0.0.3)
 
 El box `10.0.0.3` HOY no tiene reverse proxy ni TLS activo: cada app se expone
-directo en su puerto (Visal 5380, bookstack 6875, ocsinventory 9090). ECOREX
+directo en su puerto (Visal 5380, bookstack 6875, ocsinventory 9090). TRONOX
 sigue el mismo patron y queda en **`http://<IP-del-box>:5480/login`**.
 
 - No hay paso extra: el `docker-compose.from-git.yml` ya publica `5480` en todas
@@ -85,17 +85,17 @@ puedes activar el Caddy incluido (carpeta `caddy/`):
 
 ```bash
 mkdir -p caddy
-BASE="https://raw.githubusercontent.com/alexandercuartas665/EcorexV/fase-0/clon-backbone/deploy/docker-prod"
+BASE="https://raw.githubusercontent.com/alexandercuartas665/TronoxV/fase-0/clon-backbone/deploy/docker-prod"
 curl -fsSL "$BASE/caddy/docker-compose.caddy.yml" -o caddy/docker-compose.caddy.yml
 curl -fsSL "$BASE/caddy/Caddyfile"                -o caddy/Caddyfile
-# Define ECOREX_DOMAIN en .env con un registro A al IP publico del box.
+# Define TRONOX_DOMAIN en .env con un registro A al IP publico del box.
 docker compose --env-file .env \
     -f docker-compose.from-git.yml -f caddy/docker-compose.caddy.yml \
     up -d
-docker logs -f ecorex-caddy   # espera "certificate obtained successfully"
+docker logs -f tronox-caddy   # espera "certificate obtained successfully"
 ```
 
-> Nota: este Caddy tomaria 80/443 solo para ECOREX. Si a futuro quieres un TLS
+> Nota: este Caddy tomaria 80/443 solo para TRONOX. Si a futuro quieres un TLS
 > unico para todas las apps del box (visal, bookstack...), eso es un proxy
 > global aparte y lo decide el admin del server.
 
@@ -105,12 +105,12 @@ docker logs -f ecorex-caddy   # espera "certificate obtained successfully"
 
 Tras un commit nuevo en la rama:
 ```bash
-cd /opt/ecorex
+cd /opt/tronox
 docker compose -f docker-compose.from-git.yml build --no-cache   # reclona y reconstruye
 docker compose -f docker-compose.from-git.yml up -d
-docker compose -f docker-compose.from-git.yml logs --tail=50 ecorex-app
+docker compose -f docker-compose.from-git.yml logs --tail=50 tronox-app
 ```
-Para pinear una version concreta: en `.env` cambia `ECOREX_BRANCH` por un tag o
+Para pinear una version concreta: en `.env` cambia `TRONOX_BRANCH` por un tag o
 un commit sha y repite build + up.
 
 > El `build --no-cache` + `up -d` **recrea el contenedor desde cero**. Todo lo
@@ -121,7 +121,7 @@ un commit sha y repite build + up.
 
 ---
 
-## Archivos subidos por los usuarios (volumen `ecorex-uploads`)
+## Archivos subidos por los usuarios (volumen `tronox-uploads`)
 
 La app guarda los binarios que sube el usuario en el sistema de archivos, bajo
 `wwwroot/uploads`; en la BD solo queda la ruta (`/uploads/items/...`). Incluye:
@@ -145,8 +145,8 @@ El compose lo monta en `/app/wwwroot/uploads` (el `Dockerfile.superadmin` usa
 
 Comprobar que quedo montado:
 ```bash
-docker inspect -f '{{json .Mounts}}' ecorex-app | tr ',' '\n' | grep -i upload
-docker exec ecorex-app ls -R /app/wwwroot/uploads | head
+docker inspect -f '{{json .Mounts}}' tronox-app | tr ',' '\n' | grep -i upload
+docker exec tronox-app ls -R /app/wwwroot/uploads | head
 ```
 
 **Primer `up` tras agregar el volumen:** hay 17 archivos de demo versionados en
@@ -156,15 +156,15 @@ crea vacio**, asi que esos 17 sobreviven y las imagenes actuales no se rompen.
 Eso ocurre una sola vez: archivos nuevos que se agreguen al repo bajo
 `wwwroot/uploads` NO llegaran a un volumen ya existente. Si hiciera falta:
 ```bash
-docker cp <archivo> ecorex-app:/app/wwwroot/uploads/<subcarpeta>/
+docker cp <archivo> tronox-app:/app/wwwroot/uploads/<subcarpeta>/
 ```
 
 ### Backup de los archivos
 
 `backup.sh` respalda **solo Postgres**. Los binarios van aparte:
 ```bash
-docker run --rm -v ecorex-prod_ecorex-uploads:/data -v "$PWD/backups":/out \
-    alpine tar czf /out/ecorex-uploads-$(date +%F).tar.gz -C /data .
+docker run --rm -v tronox-prod_tronox-uploads:/data -v "$PWD/backups":/out \
+    alpine tar czf /out/tronox-uploads-$(date +%F).tar.gz -C /data .
 ```
 
 ---
@@ -172,14 +172,14 @@ docker run --rm -v ecorex-prod_ecorex-uploads:/data -v "$PWD/backups":/out \
 ## Backups de Postgres
 
 ```bash
-cd /opt/ecorex && ./backup.sh          # deja backups/ecorex-<fecha>.sql.gz
+cd /opt/tronox && ./backup.sh          # deja backups/tronox-<fecha>.sql.gz
 ```
 Programa diario con cron y sube los `.gz` a storage offsite.
 
 Restaurar (BD vacia):
 ```bash
-gunzip -c backups/ecorex-XXXX.sql.gz | docker exec -i ecorex-postgres-prod \
-    psql -U ecorex -d ecorex
+gunzip -c backups/tronox-XXXX.sql.gz | docker exec -i tronox-postgres-prod \
+    psql -U tronox -d tronox
 ```
 
 ---
@@ -189,12 +189,12 @@ gunzip -c backups/ecorex-XXXX.sql.gz | docker exec -i ecorex-postgres-prod \
 - **`build` falla con `failed to clone`**: verifica salida a github.com desde el
   server (`curl -I https://github.com`). Si hay proxy corporativo, configura
   `HTTP_PROXY`/`HTTPS_PROXY` en el daemon de Docker.
-- **`ecorex-app` reinicia en loop**: `docker compose ... logs ecorex-app`.
+- **`tronox-app` reinicia en loop**: `docker compose ... logs tronox-app`.
   Comunes: `POSTGRES_PASSWORD` con caracteres raros, o falta
-  `ECOREX_SEED_ADMIN_PASSWORD`.
+  `TRONOX_SEED_ADMIN_PASSWORD`.
 - **El sitio carga pero los clicks no responden**: WebSockets no habilitados en
-  el reverse proxy. Habilitalos para el host de ECOREX.
-- **Puerto 5480 ocupado**: cambia `ECOREX_PORT` en `.env` y `up -d` de nuevo.
+  el reverse proxy. Habilitalos para el host de TRONOX.
+- **Puerto 5480 ocupado**: cambia `TRONOX_PORT` en `.env` y `up -d` de nuevo.
 - **Caddy no levanta (80/443 en uso)**: hay otro proxy en esos puertos. Usa la
   Opcion A (enrutar desde el proxy global).
 

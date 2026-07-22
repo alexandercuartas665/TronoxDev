@@ -1,0 +1,54 @@
+@page "/recuperar"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject Tronox.Application.Admin.IPlatformBrandingService BrandingSvc
+
+<PageTitle>Recuperar contrasena - @_brand.PlatformName</PageTitle>
+
+<AuthShell PlatformName="@_brand.PlatformName"
+           LogoUrl="@_brand.LoginLogoUrl"
+           Headline="Recupera tu acceso"
+           Subtext="Te enviaremos un enlace a tu correo para crear una nueva contrasena."
+           ShowBullets="false">
+
+    <section class="auth-pane">
+        <div class="auth-head">
+            <h1>Recuperar contrasena</h1>
+            <p>Escribe tu correo y te enviaremos instrucciones.</p>
+        </div>
+
+        @if (Sent == 1)
+        {
+            <div class="auth-alert auth-alert-ok">Si el correo existe, te enviamos un enlace para restablecer tu contrasena. Revisa tu bandeja (y spam).</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(ErrorMsg))
+        {
+            <div class="auth-alert auth-alert-error">@ErrorMsg</div>
+        }
+
+        <form method="post" action="/auth/forgot" class="auth-form">
+            <div class="auth-field">
+                <label for="fp-email">Correo electronico</label>
+                <input id="fp-email" name="email" type="email" required placeholder="tu.correo@ejemplo.com" />
+            </div>
+            <button class="auth-submit" type="submit">
+                <span>Enviar enlace</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+            </button>
+        </form>
+
+        <p class="auth-switch">
+            <a class="auth-link" href="/login">Volver a iniciar sesion</a>
+        </p>
+    </section>
+
+</AuthShell>
+
+@code {
+    [SupplyParameterFromQuery] public int? Sent { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] public string? ErrorMsg { get; set; }
+
+    private Tronox.Application.Admin.PlatformBrandingDto _brand = Tronox.Application.Admin.PlatformBrandingDto.Default;
+
+    protected override async Task OnInitializedAsync() => _brand = await BrandingSvc.GetAsync();
+}

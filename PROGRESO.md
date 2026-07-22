@@ -11,7 +11,7 @@ Bitacora de entregables y decisiones. Fuente de verdad funcional: vault Obsidian
 |---|---|---|
 | 0.1 | Clonar backbone + recablear remotos | HECHO |
 | 0.3 | Podar dominio ajeno | HECHO (queda barrido de residuos) |
-| 0.2 | Renombrar `Ecorex.*` -> `Tronox.*` + reestructura de hosts | PENDIENTE |
+| 0.2 | Renombrar `Tronox.*` -> `Tronox.*` + reestructura de hosts | PENDIENTE |
 | 0.4 | Ids `Guid` -> `BIGINT` (ADR-001 / DAT-01) | PENDIENTE |
 | 0.5 | Docker con bloque de puertos propio + MinIO + preflight | PENDIENTE |
 | 0.6 | Migracion inicial limpia PostgreSQL | PENDIENTE |
@@ -21,25 +21,25 @@ Bitacora de entregables y decisiones. Fuente de verdad funcional: vault Obsidian
 
 ### 0.1 - Clonado (cerrado, verificado)
 
-- Clon de `C:\desarrolloia\ecorex.tareas` (punta `64bde77` de `main`).
+- Clon de `C:\desarrolloia\tronox.tareas` (punta `64bde77` de `main`).
 - **Historia limpia**: raiz huerfana `57f9de2`, sin padres. `.git` 97.2 MB -> 10.9 MB.
   Se eliminaron los dos tags heredados que anclaban los 495 commits del backbone.
 - Motivo: el repo destino es PUBLICO y la historia del backbone contenia la clave de
-  BD de desarrollo `EcorexDev2026pg` y un `Demo123*` de usuario semilla. No habia `.env`
+  BD de desarrollo `TronoxDev2026pg` y un `Demo123*` de usuario semilla. No habia `.env`
   real ni claves de API ni secretos de produccion (verificado sobre las 500 revisiones).
-- Remotos: `origin` -> TronoxDev · `backbone` -> ecorex local (solo lectura, para
+- Remotos: `origin` -> TronoxDev · `backbone` -> tronox local (solo lectura, para
   recuperar piezas puntuales; con historia huerfana NO hay cherry-pick).
 - **No se ha hecho push todavia.** Puerta previa al primer push: escaneo de secretos.
 
 ### 0.3 - Poda (compila en verde, falta barrido de residuos)
 
-Eliminado: proyecto SqlServer y su matriz de tests · scaffold `Ecorex.Web`/`Web.Client` ·
-`Ecorex.Shared` vacio · agente colmena (`apps/agent`) · `apps/web-prototype` ·
+Eliminado: proyecto SqlServer y su matriz de tests · scaffold `Tronox.Web`/`Web.Client` ·
+`Tronox.Shared` vacio · agente colmena (`apps/agent`) · `apps/web-prototype` ·
 106 entidades de dominio · 15 carpetas de Application · 6 integraciones de Infrastructure ·
 50 paginas Razor · 58 archivos de test · las 129 migraciones del backbone ·
 `DatabaseSeeder` (SKY SYSTEM).
 
-`dotnet build Ecorex.sln` **VERDE** (6 proyectos src + 4 de tests).
+`dotnet build Tronox.sln` **VERDE** (6 proyectos src + 4 de tests).
 
 ---
 
@@ -48,12 +48,12 @@ Eliminado: proyecto SqlServer y su matriz de tests · scaffold `Ecorex.Web`/`Web
 | ID | Decision | Estado ADR |
 |---|---|---|
 | D-01 | Historia git huerfana en vez de linaje conservado | Pendiente de ADR |
-| D-02 | `Ecorex.SuperAdmin` -> `Tronox.Web` (app del tenant); Console se crea nuevo y delgado con identidad y clave JWT propias. Contradice PLAN DE ARRANQUE 4, que mapeaba `Tronox.Web <- Ecorex.Web`: en el repo real ese proyecto es el scaffold vacio de la plantilla y toda la base de RF03/RF05/RF09 vive en SuperAdmin | **Pendiente ADR-002 + actualizar el vault** |
+| D-02 | `Tronox.Web` -> `Tronox.Web` (app del tenant); Console se crea nuevo y delgado con identidad y clave JWT propias. Contradice PLAN DE ARRANQUE 4, que mapeaba `Tronox.Web <- Tronox.Web`: en el repo real ese proyecto es el scaffold vacio de la plantilla y toda la base de RF03/RF05/RF09 vive en SuperAdmin | **Pendiente ADR-002 + actualizar el vault** |
 | D-03 | TRONOX no procesa pagos: se elimina la pasarela y la ruta de cobro automatico del cambio de plan | Pendiente de ADR |
 
 ## Decisiones abiertas (bloquean Fase 1)
 
-- **Dependencias vs Cargos (RF03/RF04 vs arbol unico de ECOREX).** Bloquea el
+- **Dependencias vs Cargos (RF03/RF04 vs arbol unico de TRONOX).** Bloquea el
   entregable 1.4. Sin resolver; no tomarla por cuenta propia.
 
 ---
@@ -74,11 +74,11 @@ Eliminado: proyecto SqlServer y su matriz de tests · scaffold `Ecorex.Web`/`Web
    `Metricas` (RQ13/RQ14). Se borraron por estar atadas a tareas/pagos/CRM.
 5. **`/api/v1`**: se elimino `TenantApiService` (era ingesta de leads). La API con
    API Key se disena segun spec; la entidad `TenantApiConfig` se conserva.
-6. **FAIL-OPEN heredado**: `Ecorex.SuperAdmin/Auth/CurrentPermissions.cs` resuelve
+6. **FAIL-OPEN heredado**: `Tronox.Web/Auth/CurrentPermissions.cs` resuelve
    `Unrestricted` para Owner/Admin y para usuarios sin rol. TRONOX debe ser
    **fail-closed** (maneja Reservado/Clasificado). Corregir en 1.3, y leer los claims
-   del `AuthenticationState`, nunca del `HttpContext` (bug que ECOREX corrigio).
-7. **Nombres de variables de entorno** siguen siendo `ECOREX_*`; se renombran en 0.2.
+   del `AuthenticationState`, nunca del `HttpContext` (bug que TRONOX corrigio).
+7. **Nombres de variables de entorno** siguen siendo `TRONOX_*`; se renombran en 0.2.
 
 ---
 

@@ -28,7 +28,7 @@
     Secreto del DataClient (handshake HMAC). NUNCA queda en disco en claro: se cifra en la boveda.
 
 .EXAMPLE
-    .\install.ps1 -ClientId cli_acme -HubUrl https://ecorex.midominio.com -Secret "<secreto>"
+    .\install.ps1 -ClientId cli_acme -HubUrl https://tronox.midominio.com -Secret "<secreto>"
 
 .EXAMPLE
     .\install.ps1    # instala sin identidad; se configura luego desde la colmena
@@ -39,7 +39,7 @@ param(
     [string]$HubUrl,
     [string]$Secret,
     [string]$SourceDir,
-    [string]$InstallDir = "$env:ProgramFiles\ECOREX\Agente"
+    [string]$InstallDir = "$env:ProgramFiles\TRONOX\Agente"
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,11 +48,11 @@ $ErrorActionPreference = "Stop"
 # -File (llega vacio, y la ruta queda en '\out'). Se resuelve aqui, en el cuerpo, donde si esta.
 if (-not $SourceDir) { $SourceDir = Join-Path $PSScriptRoot "out" }
 
-$ServiceName = "EcorexAgent"
-$EventSource = "ECOREX Agente"   # debe coincidir con Program.cs del servicio
-$VaultDir    = "$env:ProgramData\Ecorex\Agent"
+$ServiceName = "TronoxAgent"
+$EventSource = "TRONOX Agente"   # debe coincidir con Program.cs del servicio
+$VaultDir    = "$env:ProgramData\Tronox\Agent"
 $RunKey      = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-$RunValue    = "EcorexColmena"
+$RunValue    = "TronoxColmena"
 
 # ---- 0. Requisitos ----
 
@@ -60,11 +60,11 @@ $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "Este instalador exige una consola de ADMINISTRADOR (crea un servicio y una boveda cerrada)."
 }
-if (-not (Test-Path "$SourceDir\service\Ecorex.Agent.Service.exe")) {
+if (-not (Test-Path "$SourceDir\service\Tronox.Agent.Service.exe")) {
     throw "No hay binarios publicados en '$SourceDir'. Ejecute primero .\publish.ps1"
 }
 
-Write-Host "Instalando el Agente ECOREX" -ForegroundColor Cyan
+Write-Host "Instalando el Agente TRONOX" -ForegroundColor Cyan
 
 # ---- 1. Servicio previo: detener y quitar (reinstalacion limpia) ----
 
@@ -109,7 +109,7 @@ if ($ClientId -and $HubUrl) {
     Write-Host "  [4/6] Guardando la identidad en la boveda (cifrada)..."
     $args = @("--save-config", $ClientId, $HubUrl)
     if ($Secret) { $args += $Secret }
-    & "$InstallDir\service\Ecorex.Agent.Service.exe" @args
+    & "$InstallDir\service\Tronox.Agent.Service.exe" @args
     if ($LASTEXITCODE -ne 0) { throw "No se pudo guardar la identidad en la boveda." }
 } else {
     Write-Host "  [4/6] Sin identidad: se configura despues desde la colmena (requiere administrador)."
@@ -126,10 +126,10 @@ if (-not [System.Diagnostics.EventLog]::SourceExists($EventSource)) {
 }
 
 Write-Host "  [5/6] Registrando el servicio '$ServiceName' (LocalSystem, arranque automatico)..."
-$bin = "`"$InstallDir\service\Ecorex.Agent.Service.exe`""
-& sc.exe create $ServiceName binPath= $bin obj= "LocalSystem" start= auto DisplayName= "ECOREX - Agente Conector" | Out-Null
+$bin = "`"$InstallDir\service\Tronox.Agent.Service.exe`""
+& sc.exe create $ServiceName binPath= $bin obj= "LocalSystem" start= auto DisplayName= "TRONOX - Agente Conector" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "sc.exe create fallo (codigo $LASTEXITCODE)." }
-& sc.exe description $ServiceName "Mantiene el canal seguro con ECOREX y atiende consultas a fuentes locales (Gateway y Archivos)." | Out-Null
+& sc.exe description $ServiceName "Mantiene el canal seguro con TRONOX y atiende consultas a fuentes locales (Gateway y Archivos)." | Out-Null
 # Que un fallo no deje al cliente sin agente hasta el proximo reinicio: reintentos escalonados.
 & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/30000/restart/60000 | Out-Null
 Start-Service -Name $ServiceName
@@ -137,13 +137,13 @@ Start-Service -Name $ServiceName
 # ---- 6. Colmena al iniciar sesion ----
 
 Write-Host "  [6/6] Auto-arranque de la colmena al iniciar sesion..."
-Set-ItemProperty -Path $RunKey -Name $RunValue -Value "`"$InstallDir\gui\Ecorex.Agent.Gui.exe`""
+Set-ItemProperty -Path $RunKey -Name $RunValue -Value "`"$InstallDir\gui\Tronox.Agent.Gui.exe`""
 
 Write-Host ""
 Write-Host "Instalado." -ForegroundColor Green
 Write-Host "  Servicio : $ServiceName ($((Get-Service $ServiceName).Status)) - LocalSystem, arranque automatico"
 Write-Host "  Boveda   : $VaultDir (solo SYSTEM y Administradores)"
-Write-Host "  Colmena  : $InstallDir\gui\Ecorex.Agent.Gui.exe (arranca al iniciar sesion)"
-Write-Host "  Bitacora : Visor de eventos -> Registros de Windows -> Aplicacion -> origen 'ECOREX Agente'"
+Write-Host "  Colmena  : $InstallDir\gui\Tronox.Agent.Gui.exe (arranca al iniciar sesion)"
+Write-Host "  Bitacora : Visor de eventos -> Registros de Windows -> Aplicacion -> origen 'TRONOX Agente'"
 Write-Host ""
 Write-Host "Para desinstalar: .\uninstall.ps1"

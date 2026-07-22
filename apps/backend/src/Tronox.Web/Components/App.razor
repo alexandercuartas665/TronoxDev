@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <script>
+        // Modo oscuro por clase en <html> con persistencia en localStorage. Corre antes
+        // del CSS para evitar el destello claro. window.tronoxTheme.toggle() lo conmuta
+        // (boton luna del sidebar); funciona igual en SSR y en paginas interactivas.
+        (function () {
+            try {
+                if (localStorage.getItem('tronox-theme') === 'dark') {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch (e) { /* sin storage: modo claro */ }
+            window.tronoxTheme = {
+                toggle: function () {
+                    var dark = document.documentElement.classList.toggle('dark');
+                    try { localStorage.setItem('tronox-theme', dark ? 'dark' : 'light'); } catch (e) { }
+                }
+            };
+            // Colapso del sidebar del workspace (boton panel del topbar, prototipo):
+            // clase en <html> restaurada antes del primer render + persistencia.
+            try {
+                if (localStorage.getItem('tronox-sidebar') === 'collapsed') {
+                    document.documentElement.classList.add('sidebar-collapsed');
+                }
+            } catch (e) { /* sin storage: sidebar visible */ }
+            window.tronoxSidebar = {
+                toggle: function () {
+                    var c = document.documentElement.classList.toggle('sidebar-collapsed');
+                    try { localStorage.setItem('tronox-sidebar', c ? 'collapsed' : 'open'); } catch (e) { }
+                }
+            };
+        })();
+    </script>
+    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    @* bpmn-js (editor de flujos, ADR-0034): estilos base de diagram-js + iconografia BPMN. *@
+    <link rel="stylesheet" href="lib/bpmnio/diagram-js.css" />
+    <link rel="stylesheet" href="lib/bpmnio/bpmn.css" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["Tronox.Web.styles.css"]" />
+    <ImportMap />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet />
+</head>
+
+<body>
+    <Routes />
+    <script src="_framework/blazor.web.js"></script>
+    @* bpmn-js UMD (expone window.BpmnJS); el modulo interop tronox-bpmn.js se importa on-demand. *@
+    <script src="lib/bpmnio/bpmn-modeler.js"></script>
+    <script src="js/wompi.js?v=3"></script>
+    <script src="js/pipeline-dnd.js?v=3"></script>
+    <script src="js/agent-editor.js?v=3"></script>
+    <script src="js/task-timer.js?v=1"></script>
+    <script src="js/menu-config.js?v=1"></script>
+    <script src="js/dc-canvas.js?v=2"></script>
+    <script src="js/form-capture.js?v=1"></script>
+</body>
+
+</html>

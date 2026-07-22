@@ -1,0 +1,71 @@
+using Tronox.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+
+namespace Tronox.Application.Common;
+
+/// <summary>
+/// Abstraccion del DbContext para los casos de uso de Application, sin acoplar a la
+/// implementacion concreta de Infrastructure. Expone solo los conjuntos que la capa necesita.
+/// </summary>
+public interface IApplicationDbContext
+{
+    // Plataforma y tenants (base de RQ14 - TRONOX Console).
+    DbSet<PlatformUser> PlatformUsers { get; }
+    DbSet<Tenant> Tenants { get; }
+    DbSet<TenantConfiguration> TenantConfigurations { get; }
+    DbSet<TenantSequence> TenantSequences { get; }
+    DbSet<TenantModule> TenantModules { get; }
+    DbSet<TenantApiConfig> TenantApiConfigs { get; }
+    DbSet<TenantSubscription> TenantSubscriptions { get; }
+    DbSet<TenantPayment> TenantPayments { get; }
+    DbSet<SaasPlan> SaasPlans { get; }
+    DbSet<SaasPlanLimit> SaasPlanLimits { get; }
+    DbSet<ModuleDefinition> ModuleDefinitions { get; }
+    DbSet<PlatformBranding> PlatformBrandings { get; }
+
+    // Identidad y acceso del tenant (base de RQ01 - RF06/RF07).
+    DbSet<TenantUser> TenantUsers { get; }
+    DbSet<PasswordResetToken> PasswordResetTokens { get; }
+    DbSet<AccountActivationCode> AccountActivationCodes { get; }
+    DbSet<GoogleAuthConfig> GoogleAuthConfigs { get; }
+
+    // Menu configurable por tenant (base de RQ01 - RF09, ver ADR-001).
+    DbSet<MenuView> MenuViews { get; }
+    DbSet<MenuNode> MenuNodes { get; }
+
+    // Roles y matriz de permisos Modulo x Accion (base de RQ01 - RF05).
+    DbSet<Rol> Roles { get; }
+    DbSet<RolPermiso> RolPermisos { get; }
+
+    // Estructura organizacional (base de RQ01 - RF03/RF04).
+    DbSet<OrgUnit> OrgUnits { get; }
+    DbSet<OrgUnitMember> OrgUnitMembers { get; }
+    DbSet<BusinessUnit> BusinessUnits { get; }
+
+    // Gateway de IA multi-proveedor y consumo (base de RQ16).
+    DbSet<AiProviderConfig> AiProviderConfigs { get; }
+    DbSet<AiUsageLog> AiUsageLogs { get; }
+
+    // Correo saliente por tenant (base de RQ01 - RF01-P.2).
+    DbSet<EmailConfig> EmailConfigs { get; }
+
+    // Notificaciones y pista de auditoria (RNF-04: append-only).
+    DbSet<Notification> Notifications { get; }
+    DbSet<SuperAdminAuditLog> SuperAdminAuditLogs { get; }
+
+    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Abre una transaccion explicita para casos de uso multi-paso (ej. emitir un consecutivo
+    /// de radicado e insertar el radicado de forma atomica). Los casos simples siguen usando
+    /// SaveChangesAsync solo.
+    /// </summary>
+    Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Indica si ya hay una transaccion abierta sobre la conexion. Permite que un caso de
+    /// uso anidado se una a la transaccion del llamador en vez de intentar abrir otra.
+    /// </summary>
+    bool HasActiveTransaction { get; }
+}

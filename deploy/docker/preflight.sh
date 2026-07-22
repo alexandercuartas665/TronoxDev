@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# preflight.sh - Validaciones previas al arranque de la pila Docker de ECOREX.tareas.
+# preflight.sh - Validaciones previas al arranque de la pila Docker de TRONOX.tareas.
 # Espejo POSIX de preflight.ps1. Corre ANTES de `docker compose up -d`.
 set -u
 
 FAIL=0
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Defaults del bloque dedicado ECOREX
+# Defaults del bloque dedicado TRONOX
 POSTGRES_PORT=5442; SQLSERVER_PORT=1443; REDIS_PORT=6389
 RABBITMQ_PORT=5682; RABBITMQ_MGMT_PORT=15682; ADMINER_PORT=8092
 [ -f "$DIR/.env" ] && . "$DIR/.env" 2>/dev/null || true
@@ -17,7 +17,7 @@ if docker info >/dev/null 2>&1; then echo OK; else
 fi
 
 echo "[2/4] Puertos del bloque dedicado..."
-OWN="$(docker ps --filter 'name=ecorex-tareas-' --format '{{.Ports}}' 2>/dev/null | tr '\n' ' ')"
+OWN="$(docker ps --filter 'name=tronox-tareas-' --format '{{.Ports}}' 2>/dev/null | tr '\n' ' ')"
 for spec in "POSTGRES:$POSTGRES_PORT" "SQLSERVER:$SQLSERVER_PORT" "REDIS:$REDIS_PORT" \
             "RABBITMQ:$RABBITMQ_PORT" "RABBITMQ_MGMT:$RABBITMQ_MGMT_PORT" "ADMINER:$ADMINER_PORT"; do
   name="${spec%%:*}"; port="${spec##*:}"
@@ -31,7 +31,7 @@ for spec in "POSTGRES:$POSTGRES_PORT" "SQLSERVER:$SQLSERVER_PORT" "REDIS:$REDIS_
 done
 
 echo -n "[3/4] Contenedores previos... "
-DEAD="$(docker ps -a --filter 'name=ecorex-tareas-' --filter 'status=exited' --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')"
+DEAD="$(docker ps -a --filter 'name=tronox-tareas-' --filter 'status=exited' --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')"
 if [ -n "${DEAD// /}" ]; then echo "ATENCION: detenidos de corridas previas: $DEAD"; else echo OK; fi
 
 echo -n "[4/4] Recursos... "

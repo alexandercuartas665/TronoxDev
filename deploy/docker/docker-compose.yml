@@ -1,9 +1,9 @@
-name: ecorex-tareas
+name: tronox-tareas
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ecorex-tareas-postgres
+    container_name: tronox-tareas-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -13,7 +13,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5442}:5432"
     volumes:
-      - ecorex-tareas-postgres-data:/var/lib/postgresql/data
+      - tronox-tareas-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -21,11 +21,11 @@ services:
       retries: 10
       start_period: 20s
     networks:
-      - ecorex-tareas-net
+      - tronox-tareas-net
 
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: ecorex-tareas-sqlserver
+    container_name: tronox-tareas-sqlserver
     restart: unless-stopped
     environment:
       ACCEPT_EULA: "Y"
@@ -34,7 +34,7 @@ services:
     ports:
       - "${SQLSERVER_PORT:-1443}:1433"
     volumes:
-      - ecorex-tareas-sqlserver-data:/var/opt/mssql
+      - tronox-tareas-sqlserver-data:/var/opt/mssql
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' -b -o /dev/null"]
       interval: 15s
@@ -42,17 +42,17 @@ services:
       retries: 10
       start_period: 40s
     networks:
-      - ecorex-tareas-net
+      - tronox-tareas-net
 
   redis:
     image: redis:7-alpine
-    container_name: ecorex-tareas-redis
+    container_name: tronox-tareas-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     ports:
       - "${REDIS_PORT:-6389}:6379"
     volumes:
-      - ecorex-tareas-redis-data:/data
+      - tronox-tareas-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
@@ -60,11 +60,11 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - ecorex-tareas-net
+      - tronox-tareas-net
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    container_name: ecorex-tareas-rabbitmq
+    container_name: tronox-tareas-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
@@ -73,7 +73,7 @@ services:
       - "${RABBITMQ_PORT:-5682}:5672"
       - "${RABBITMQ_MGMT_PORT:-15682}:15672"
     volumes:
-      - ecorex-tareas-rabbitmq-data:/var/lib/rabbitmq
+      - tronox-tareas-rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 15s
@@ -81,11 +81,11 @@ services:
       retries: 10
       start_period: 30s
     networks:
-      - ecorex-tareas-net
+      - tronox-tareas-net
 
   adminer:
     image: adminer:latest
-    container_name: ecorex-tareas-adminer
+    container_name: tronox-tareas-adminer
     restart: unless-stopped
     ports:
       - "${ADMINER_PORT:-8092}:8080"
@@ -93,15 +93,15 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - ecorex-tareas-net
+      - tronox-tareas-net
 
 volumes:
-  ecorex-tareas-postgres-data:
-  ecorex-tareas-sqlserver-data:
-  ecorex-tareas-redis-data:
-  ecorex-tareas-rabbitmq-data:
+  tronox-tareas-postgres-data:
+  tronox-tareas-sqlserver-data:
+  tronox-tareas-redis-data:
+  tronox-tareas-rabbitmq-data:
 
 networks:
-  ecorex-tareas-net:
-    name: ecorex-tareas-net
+  tronox-tareas-net:
+    name: tronox-tareas-net
     driver: bridge

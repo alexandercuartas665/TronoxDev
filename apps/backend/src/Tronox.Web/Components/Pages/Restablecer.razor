@@ -1,0 +1,71 @@
+@page "/restablecer"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject Tronox.Application.Admin.IPlatformBrandingService BrandingSvc
+
+<PageTitle>Restablecer contrasena - @_brand.PlatformName</PageTitle>
+
+<AuthShell PlatformName="@_brand.PlatformName"
+           LogoUrl="@_brand.LoginLogoUrl"
+           Headline="Crea una nueva contrasena"
+           Subtext="Elige una clave segura de al menos 8 caracteres para tu cuenta."
+           ShowBullets="false">
+
+    <section class="auth-pane">
+        <div class="auth-head">
+            <h1>Restablecer contrasena</h1>
+            <p>Define tu nueva contrasena.</p>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(ErrorMsg))
+        {
+            <div class="auth-alert auth-alert-error">@ErrorMsg</div>
+        }
+
+        @if (string.IsNullOrWhiteSpace(Token))
+        {
+            <div class="auth-alert auth-alert-error">Falta el token del enlace. Solicita un nuevo enlace de reseteo.</div>
+            <p class="auth-switch"><a class="auth-link" href="/recuperar">Solicitar nuevo enlace</a></p>
+        }
+        else
+        {
+            <form method="post" action="/auth/reset" class="auth-form">
+                <input type="hidden" name="token" value="@Token" />
+                <div class="auth-field">
+                    <label for="rp-password">Nueva contrasena</label>
+                    <div class="auth-input-icon">
+                        <input id="rp-password" name="password" type="password" required minlength="8" placeholder="Minimo 8 caracteres" />
+                        <button type="button" class="auth-eye" onclick="tronoxAuth.toggle('rp-password', this)">MOSTRAR</button>
+                    </div>
+                </div>
+                <button class="auth-submit" type="submit">
+                    <span>Guardar nueva contrasena</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                </button>
+            </form>
+            <p class="auth-switch"><a class="auth-link" href="/login">Volver a iniciar sesion</a></p>
+        }
+    </section>
+
+</AuthShell>
+
+<script>
+    window.tronoxAuth = window.tronoxAuth || {
+        toggle: function (id, btn) {
+            var input = document.getElementById(id);
+            if (!input) return;
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.textContent = show ? 'OCULTAR' : 'MOSTRAR';
+        }
+    };
+</script>
+
+@code {
+    [SupplyParameterFromQuery] public string? Token { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] public string? ErrorMsg { get; set; }
+
+    private Tronox.Application.Admin.PlatformBrandingDto _brand = Tronox.Application.Admin.PlatformBrandingDto.Default;
+
+    protected override async Task OnInitializedAsync() => _brand = await BrandingSvc.GetAsync();
+}
