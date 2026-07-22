@@ -24,7 +24,7 @@ public abstract class TenantProfileTestsBase
     {
         var tenantId = await SeedTenantAsync("Perfil CRUD");
         await using var ctx = _fixture.CreateContext(tenantId: null);
-        var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning());
+        var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning(), new NoOpRolProvisioning());
         var actor = TestIds.Next();
 
         var updated = await service.UpdateProfileAsync(tenantId, new UpdateTenantProfileRequest(
@@ -70,7 +70,7 @@ public abstract class TenantProfileTestsBase
     {
         var tenantId = await SeedTenantAsync("Estado Ficha");
         await using var ctx = _fixture.CreateContext(tenantId: null);
-        var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning());
+        var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning(), new NoOpRolProvisioning());
 
         var suspended = await service.ChangeStatusAsync(
             tenantId, new ChangeTenantStatusRequest(TenantStatus.Suspended, "prueba"), TestIds.Next());
@@ -88,7 +88,7 @@ public abstract class TenantProfileTestsBase
         await SeedTenantUserAsync(tenantB, "owner@b.local", TenantRole.Owner);
 
         await using var ctx = _fixture.CreateContext(tenantId: null);
-        var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning());
+        var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning(), new NoOpRolProvisioning());
 
         var usersA = await service.ListUsersAsync(tenantA);
         var usersB = await service.ListUsersAsync(tenantB);

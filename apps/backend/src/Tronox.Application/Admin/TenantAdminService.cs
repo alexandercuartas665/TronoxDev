@@ -11,17 +11,20 @@ public sealed class TenantAdminService : ITenantAdminService
     private readonly IAuditWriter _audit;
     private readonly Tronox.Application.MenuConfig.IMenuProvisioningService _menuProvisioning;
     private readonly Tronox.Application.Archivistica.IClasificacionProvisioningService _clasificacionProvisioning;
+    private readonly Tronox.Application.Roles.IRolProvisioningService _rolProvisioning;
 
     public TenantAdminService(
         IApplicationDbContext db,
         IAuditWriter audit,
         Tronox.Application.MenuConfig.IMenuProvisioningService menuProvisioning,
-        Tronox.Application.Archivistica.IClasificacionProvisioningService clasificacionProvisioning)
+        Tronox.Application.Archivistica.IClasificacionProvisioningService clasificacionProvisioning,
+        Tronox.Application.Roles.IRolProvisioningService rolProvisioning)
     {
         _db = db;
         _audit = audit;
         _menuProvisioning = menuProvisioning;
         _clasificacionProvisioning = clasificacionProvisioning;
+        _rolProvisioning = rolProvisioning;
     }
 
     public async Task<TenantDetail> CreateAsync(CreateTenantRequest request, long actorUserId, CancellationToken cancellationToken = default)
@@ -56,6 +59,11 @@ public sealed class TenantAdminService : ITenantAdminService
         // escala que RF05 usara para roles.nivel_acceso_maximo. Idempotente, y por la misma razon
         // que el menu cuelga del alta y no de un seeder.
         await _clasificacionProvisioning.EnsureNivelesClasificacionAsync(tenant.Id, cancellationToken);
+
+        // ... y CON sus roles predeterminados (RF05). VA DE ULTIMO A PROPOSITO: necesita los
+        // niveles (nivel_acceso_maximo es FK obligatorio) y el menu (de el se deriva la matriz
+        // completa del Super Administrador). Idempotente.
+        await _rolProvisioning.EnsureRolesPredeterminadosAsync(tenant.Id, cancellationToken);
 
         return Map(tenant);
     }

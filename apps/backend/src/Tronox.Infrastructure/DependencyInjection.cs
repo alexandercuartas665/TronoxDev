@@ -66,6 +66,12 @@ public static class DependencyInjection
         services.AddScoped<Tronox.Application.Archivistica.IClasificacionProvisioningService,
             ClasificacionProvisioningService>();
 
+        // Siembra de los roles predeterminados por tenant (RF05) y anclaje del Owner a
+        // "Super Administrador". Igual que los anteriores: cuelga del ALTA de tenant. Es
+        // IMPRESCINDIBLE con el enforcement fail-closed: un tenant sin roles no tiene a nadie
+        // capaz de entrar a repartir permisos.
+        services.AddScoped<Tronox.Application.Roles.IRolProvisioningService, RolProvisioningService>();
+
         // Comprobantes PDF (QuestPDF). Licencia Community: gratis para empresas con ingresos < USD 1M/ano.
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<Application.Common.IReceiptPdfRenderer, Pdf.QuestPdfReceiptRenderer>();

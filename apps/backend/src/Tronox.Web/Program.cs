@@ -56,25 +56,25 @@ builder.Services.AddAuthorizationBuilder()
     // Miembro de una agencia: tiene claim tenant_id.
     .AddPolicy("TenantMember", p => p.RequireClaim("tenant_id"))
     // ---- Policies por modulo ----
-    // Ola 7 (endurecimiento) PASO 2 REALIZADO para la familia Tareas: estas policies ya no son
-    // placeholder de tenant_id: derivan el requisito REAL del Module Registry (PermissionRequirement
-    // Modulo x Accion), sin tocar las paginas -solo cambia la definicion aqui-. El handler concede a
-    // Owner/Admin y sin-rol (Unrestricted, fail-open); solo un rol limitado sin el permiso queda fuera.
+    // Estas policies no son placeholder de tenant_id: derivan el requisito REAL del Module Registry
+    // (PermissionRequirement Modulo x Accion), sin tocar las paginas -solo cambia la definicion aqui-.
+    // FAIL-CLOSED (invariante 10): el handler concede UNICAMENTE si la matriz efectiva del usuario
+    // lo permite. Ni Owner/Admin ni "sin rol" son excepcion: quien no tenga el permiso, queda fuera.
     // "Formularios.Disenar" es una POLICY COMPUESTA (multi-permiso del legacy): exige VER *y* EDITAR
     // formularios (dos PermissionRequirement = AND). Route-keys del catalogo: actividades/proyectos/
     // flujos/formularios (ModuleCatalogFallback / menu Item Route).
     .AddPolicy("Tareas.Ver", p => p.RequireClaim("tenant_id")
-        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("actividades", Tronox.Application.Roles.PermissionAction.View)))
+        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("actividades", Tronox.Domain.Enums.PermissionAction.View)))
     .AddPolicy("Proyectos.Ver", p => p.RequireClaim("tenant_id")
-        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("proyectos", Tronox.Application.Roles.PermissionAction.View)))
+        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("proyectos", Tronox.Domain.Enums.PermissionAction.View)))
     .AddPolicy("Flujos.Ver", p => p.RequireClaim("tenant_id")
-        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("flujos", Tronox.Application.Roles.PermissionAction.View)))
+        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("flujos", Tronox.Domain.Enums.PermissionAction.View)))
     // ADR-0038: la policy "MisPasos.Ver" y la pagina /mis-pasos fueron RETIRADAS. El runtime de
     // flujos vive en el detalle de la tarea; los pasos pendientes se descubren en el tablero.
     // COMPUESTA (AND): disenar formularios exige ver Y editar el modulo formularios.
     .AddPolicy("Formularios.Disenar", p => p.RequireClaim("tenant_id")
-        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("formularios", Tronox.Application.Roles.PermissionAction.View))
-        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("formularios", Tronox.Application.Roles.PermissionAction.Edit)))
+        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("formularios", Tronox.Domain.Enums.PermissionAction.View))
+        .AddRequirements(new Tronox.Web.Auth.PermissionRequirement("formularios", Tronox.Domain.Enums.PermissionAction.Edit)))
     .AddPolicy("Reglas.Editar", p => p.RequireClaim("tenant_id"))
     .AddPolicy("Conceptos.Editar", p => p.RequireClaim("tenant_id"))
     .AddPolicy("Dependencias.Ver", p => p.RequireClaim("tenant_id"))
@@ -112,7 +112,8 @@ builder.Services.AddAuthorizationBuilder()
 // Enforcement dinamico de permisos por rol (Ola B2, ADR-0033). El policy provider materializa al
 // vuelo las policies con prefijo "Perm:{moduleKey}:{action}" (gate tenant_id + PermissionRequirement)
 // y DELEGA el resto en el default provider, asi que las policies existentes no cambian. El handler
-// consulta ICurrentPermissions (regla opt-in: Owner/Admin y sin-rol = Unrestricted; fail-open).
+// consulta ICurrentPermissions, que es FAIL-CLOSED: sin usuario, sin tenant, sin roles vigentes o
+// ante un fallo de resolucion, resuelve a SIN PERMISOS (invariante 10).
 builder.Services.AddScoped<Tronox.Web.Auth.ICurrentPermissions, Tronox.Web.Auth.CurrentPermissions>();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, Tronox.Web.Auth.PermissionPolicyProvider>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Tronox.Web.Auth.PermissionAuthorizationHandler>();

@@ -293,19 +293,20 @@ else
     private string? _toast;
     private bool _toastOk;
 
-    // Gateo de acciones por permiso (Ola B2, ADR-0033): Owner/Admin/sin-rol ven todo (Unrestricted).
+    // Gateo de acciones por permiso. FAIL-CLOSED (invariante 10): se parte de NEGADO y solo la
+    // matriz efectiva del usuario concede. Ya no hay "Owner/Admin/sin-rol lo ven todo".
     private const string ModuleKey = "admin-usuarios";
-    private bool _canCreate = true;
-    private bool _canEdit = true;
-    private bool _canDelete = true;
+    private bool _canCreate;
+    private bool _canEdit;
+    private bool _canDelete;
 
     private List<TenantUserDto> _users = new();
     private List<MenuViewDto> _views = new();
     private List<RolDto> _roles = new();
     // TenantUserId -> nombre de la vista asignada (para la columna "Vista de menu").
     private Dictionary<long, string> _assignedView = new();
-    // PlatformUserId -> RolId de permisos efectivo del usuario (columna "Rol de permisos").
-    private Dictionary<long, long?> _userRol = new();
+    // PlatformUserId -> roles asignados (RF05: un usuario puede tener VARIOS, con vigencia).
+    private Dictionary<long, IReadOnlyList<RolAsignacionDto>> _userRoles = new();
 
     // Form compartido.
     private string _fEmail = "";
@@ -343,36 +344,48 @@ else
         _assignedView = withView
             .Where(x => x.MenuViewName is not null)
             .ToDictionary(x => x.TenantUserId, x => x.MenuViewName!);
-        _userRol = new Dictionary<long, long?>();
+        // Los roles se leen de la puente usuarios_roles (no de un RolId en el usuario, que ya no
+        // existe). Se indexan por PlatformUserId porque es la clave que usa el markup.
+        _userRoles = new Dictionary<long, IReadOnlyList<RolAsignacionDto>>();
         foreach (var u in _users)
         {
-            var eff = await RolesSvc.ResolveEffectivePermissionsAsync(u.PlatformUserId);
-            _userRol[u.PlatformUserId] = eff.RolId;
+            _userRoles[u.PlatformUserId] = await RolesSvc.GetUserRolesAsync(u.Id);
         }
     }
 
     private string ViewNameFor(long tenantUserId) =>
         _assignedView.TryGetValue(tenantUserId, out var name) ? name : "Predeterminada";
 
+    /// <summary>
+    /// Id para el selector. Solo tiene sentido cuando el usuario tiene EXACTAMENTE un rol; con
+    /// varios se deja en blanco (el selector simple no puede representarlos) y la columna de
+    /// texto los muestra todos.
+    /// </summary>
     private string RolIdFor(long platformUserId) =>
-        _userRol.TryGetValue(platformUserId, out var rid) && rid is long g ? g.ToString() : "";
+        _userRoles.TryGetValue(platformUserId, out var rs) && rs.Count == 1
+            ? rs[0].RolId.ToString()
+            : "";
 
-    /// <summary>Nombre del rol de permisos del usuario (para mostrar cuando no puede editar).</summary>
+    /// <summary>Roles del usuario, para mostrar cuando no puede editar (o cuando son varios).</summary>
     private string RolNameFor(long platformUserId) =>
-        _userRol.TryGetValue(platformUserId, out var rid) && rid is long g
-            ? _roles.FirstOrDefault(r => r.Id == g)?.Name ?? "Sin rol"
+        _userRoles.TryGetValue(platformUserId, out var rs) && rs.Count > 0
+            ? string.Join(", ", rs.Select(r => r.RolNombre ?? "?"))
             : "Sin rol";
 
     private async Task AssignRolAsync(TenantUserDto u, string? value)
     {
-        long? rolId = long.TryParse(value, out var g) ? g : null;
         _busy = true;
         try
         {
             var actor = await ResolveSelfIdAsync();
-            await RolesSvc.AssignRoleToUserAsync(u.Id, rolId, actor);
+            // El selector fija el CONJUNTO de roles: vacio = ninguno, o exactamente el elegido.
+            // Sin vigencia (permanente); los encargos temporales se gestionan en Roles y permisos.
+            var roles = long.TryParse(value, out var rolId)
+                ? new List<RolAsignacionDto> { new(rolId, null, null, null) }
+                : new List<RolAsignacionDto>();
+            await RolesSvc.SetUserRolesAsync(u.Id, roles, actor);
             await ReloadAsync();
-            ShowToast("Rol de permisos actualizado.", true);
+            ShowToast("Roles de permisos actualizados.", true);
         }
         finally { _busy = false; }
     }

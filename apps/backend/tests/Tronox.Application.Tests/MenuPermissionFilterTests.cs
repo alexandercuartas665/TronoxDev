@@ -5,9 +5,11 @@ using Tronox.Domain.Enums;
 namespace Tronox.Application.Tests;
 
 /// <summary>
-/// Tests PUROS del filtrado del menu por permiso de "Ver" (Ola B2, ADR-0033): Unrestricted deja el
-/// arbol intacto; con rol poda los Item sin View y oculta secciones que quedan vacias; QuickLinks y
-/// Item sin Route se conservan.
+/// Tests PUROS del filtrado del menu por permiso de "Ver": poda los Item sin View y oculta las
+/// secciones que quedan vacias; QuickLinks e Item sin Route se conservan.
+///
+/// FAIL-CLOSED (invariante 10): unos permisos NULOS o VACIOS podan el menu ENTERO, no lo dejan
+/// intacto. Un menu de mas no es cosmetico: revela la estructura documental del tenant.
 /// </summary>
 public class MenuPermissionFilterTests
 {
@@ -26,24 +28,29 @@ public class MenuPermissionFilterTests
             mods.Select(m => new ModulePermissionDto(m.route, m.view, false, false, false)));
 
     [Fact]
-    public void Unrestricted_ReturnsTreeUntouched()
+    public void SinPermisos_PodaElMenuEntero()
     {
+        // Antes esto devolvia el arbol INTACTO (fail-open). Un usuario sin roles veia el menu
+        // completo del tenant, incluidos los modulos que no puede abrir.
         var roots = new[]
         {
             Section("Sistema", "sys", Item("A", "a"), Item("B", "b"))
         };
 
-        var kept = MenuPermissionFilter.Filter(roots, EffectivePermissions.UnrestrictedAccess());
+        var kept = MenuPermissionFilter.Filter(roots, EffectivePermissions.None);
 
-        Assert.Same(roots, kept);
+        Assert.Empty(kept);
     }
 
     [Fact]
-    public void NullPermissions_ReturnsTreeUntouched()
+    public void PermisosNulos_SeTratanComoSinPermisos()
     {
+        // null no es "no filtres": es "no pude resolver", y eso se resuelve cerrando.
         var roots = new[] { Section("Sistema", "sys", Item("A", "a")) };
+
         var kept = MenuPermissionFilter.Filter(roots, permissions: null);
-        Assert.Same(roots, kept);
+
+        Assert.Empty(kept);
     }
 
     [Fact]

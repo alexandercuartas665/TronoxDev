@@ -1,32 +1,40 @@
 using System.Security.Claims;
-using Tronox.Application.Roles;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Tronox.Application.Roles;
+using Tronox.Domain.Enums;
 
 namespace Tronox.Web.Auth;
 
 /// <summary>
-/// Permisos efectivos del usuario ACTUAL, resueltos una sola vez por scope/circuito (Ola B2,
-/// ADR-0033). Envuelve <see cref="IRolService.ResolveEffectivePermissionsAsync"/> tomando el
-/// PlatformUserId del claim NameIdentifier, y cachea el resultado. Lo consumen las paginas (para
-/// ocultar botones) y el filtrado del menu.
+/// Permisos efectivos del usuario ACTUAL, resueltos una sola vez por scope/circuito y cacheados.
+/// Los consumen las paginas (para ocultar botones), el filtrado del menu y el handler de
+/// autorizacion.
 ///
-/// Regla opt-in (back-compat): Owner/Admin y usuario SIN rol -> <see cref="Unrestricted"/> (acceso
-/// como en el paso 1). Solo un usuario CON rol queda sujeto a su matriz. Fail-OPEN: si la
-/// resolucion falla o no hay usuario, Unrestricted=true (no bloquea la consola).
+/// FAIL-CLOSED (invariante 10). No hay ninguna via por la que este servicio conceda acceso que la
+/// matriz del usuario no conceda:
+/// <list type="bullet">
+/// <item>Sin usuario autenticado -> SIN PERMISOS.</item>
+/// <item>Sin claim de tenant -> SIN PERMISOS (no es un usuario de tenant; no tiene modulos).</item>
+/// <item>Usuario sin ningun rol vigente -> SIN PERMISOS. NO acceso total.</item>
+/// <item>La resolucion falla o lanza -> SIN PERMISOS. Nada de "por si acaso, dejamos pasar".</item>
+/// </list>
+/// El backbone (ECOREX) era fail-OPEN a proposito y resolvia "Unrestricted" en todos esos casos.
+/// TRONOX no puede serlo: maneja niveles Reservado y Clasificado, y ahi un fallo de resolucion que
+/// abre la puerta no es un bug de usabilidad, es una fuga de informacion reservada.
 /// </summary>
 public interface ICurrentPermissions
 {
     /// <summary>Permisos efectivos del usuario actual (resueltos y cacheados en el scope).</summary>
     Task<EffectivePermissions> GetAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>true si el usuario no tiene matriz que aplicar (Owner/Admin o sin rol). Fail-open.</summary>
-    Task<bool> IsUnrestrictedAsync(CancellationToken cancellationToken = default);
-
+    Task<bool> CanAsync(string moduleKey, PermissionAction action, CancellationToken cancellationToken = default);
     Task<bool> CanViewAsync(string moduleKey, CancellationToken cancellationToken = default);
     Task<bool> CanCreateAsync(string moduleKey, CancellationToken cancellationToken = default);
     Task<bool> CanEditAsync(string moduleKey, CancellationToken cancellationToken = default);
     Task<bool> CanDeleteAsync(string moduleKey, CancellationToken cancellationToken = default);
+    Task<bool> CanExportAsync(string moduleKey, CancellationToken cancellationToken = default);
+    Task<bool> CanPrintAsync(string moduleKey, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -36,15 +44,13 @@ public interface ICurrentPermissions
 /// </summary>
 public sealed class CurrentPermissions : ICurrentPermissions
 {
-    private readonly IHttpContextAccessor _accessor;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IServiceProvider _services;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private EffectivePermissions? _cached;
 
-    public CurrentPermissions(IHttpContextAccessor accessor, IServiceScopeFactory scopeFactory, IServiceProvider services)
+    public CurrentPermissions(IServiceScopeFactory scopeFactory, IServiceProvider services)
     {
-        _accessor = accessor;
         _scopeFactory = scopeFactory;
         _services = services;
     }
@@ -59,11 +65,7 @@ public sealed class CurrentPermissions : ICurrentPermissions
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (_cached is not null)
-            {
-                return _cached;
-            }
-            _cached = await ResolveAsync(cancellationToken);
+            _cached ??= await ResolveAsync(cancellationToken);
             return _cached;
         }
         finally
@@ -77,84 +79,90 @@ public sealed class CurrentPermissions : ICurrentPermissions
         try
         {
             var (tenantId, platformUserId) = await ResolveIdentityAsync();
-            if (platformUserId is not long userId)
+
+            // Sin usuario, o sin tenant, no hay matriz que resolver: SIN PERMISOS.
+            // (Aqui el backbone devolvia acceso total. Ese era el agujero.)
+            if (platformUserId is not long userId || tenantId is not long tid)
             {
-                // Sin usuario resoluble (o no autenticado): no restringir (fail-open).
-                return EffectivePermissions.UnrestrictedAccess();
+                return EffectivePermissions.None;
             }
 
             // Scope propio: DbContext aislado del circuito Blazor (patron de NavMenu).
             await using var scope = _scopeFactory.CreateAsyncScope();
 
-            // El TenantUser es tenant-scoped: sin tenant en el contexto, el filtro global NO lo
-            // encuentra y la resolucion caeria en "sin TenantUser -> Unrestricted". En una peticion
-            // HTTP el tenant sale del claim; en un circuito Blazor no hay HttpContext, asi que se fija
-            // aqui de forma ambiental para que el filtro vea al usuario. Ver ResolveIdentityAsync.
-            using var ambient = tenantId is long tid ? AmbientTenantContext.Begin(tid, userId) : null;
+            // El TenantUser es tenant-scoped: sin tenant en el contexto el filtro global no lo
+            // encuentra. En una peticion HTTP el tenant saldria del HttpContext, pero en un
+            // circuito Blazor no hay HttpContext, asi que se fija de forma ambiental a partir del
+            // claim del AuthenticationState (unica fuente de identidad aqui, ver abajo).
+            using var ambient = AmbientTenantContext.Begin(tid, userId);
 
             var roles = scope.ServiceProvider.GetRequiredService<IRolService>();
             return await roles.ResolveEffectivePermissionsAsync(userId, cancellationToken);
         }
         catch
         {
-            // Fail-OPEN documentado (ADR-0033): si la resolucion falla, no bloqueamos la consola.
-            return EffectivePermissions.UnrestrictedAccess();
+            // FAIL-CLOSED: si la resolucion falla, NO se concede nada. Una resolucion de permisos
+            // que revienta es justo el momento en el que no se puede asumir buena fe.
+            return EffectivePermissions.None;
         }
     }
 
     /// <summary>
-    /// Tenant y usuario actuales, mirando las DOS realidades donde vive este servicio.
+    /// Tenant y usuario actuales, SIEMPRE desde el <see cref="AuthenticationState"/>.
     ///
-    /// OJO (bug corregido 2026-07-16): antes solo se leia de IHttpContextAccessor. En una peticion
-    /// HTTP eso funciona (es donde corre el handler de autorizacion), pero en un CIRCUITO Blazor
-    /// interactivo (las paginas con prerender:false) NO hay HttpContext, y fallaban DOS cosas: el
-    /// claim del usuario salia null, y el tenant tambien (con lo que el filtro global tampoco
-    /// encontraba el TenantUser). Por cualquiera de las dos, GetAsync caia en fail-open y devolvia
-    /// Unrestricted: el gateado en pagina (ocultar botones / negar acceso) NO restringia a nadie
-    /// aunque su rol lo prohibiera. Solo se salvaban las paginas con [Authorize(Policy="Perm:...")],
-    /// que se evalua en la peticion. En el circuito ambos claims viven en el AuthenticationState.
+    /// OJO - trampa heredada del backbone, no reintroducir: aqui NO se lee el
+    /// IHttpContextAccessor. En un circuito Blazor interactivo (paginas con prerender:false) NO
+    /// hay HttpContext: los claims salian nulos, la resolucion caia en su rama de fallo y -cuando
+    /// esa rama era fail-open- el gateado en pagina (ocultar botones, negar acceso) no restringia
+    /// a NADIE, aunque su rol lo prohibiera. Solo se salvaban las paginas con
+    /// [Authorize(Policy="Perm:...")], que se evalua durante la peticion.
     ///
-    /// El proveedor de autenticacion se pide por IServiceProvider (no por constructor) para no
-    /// exigirlo en scopes que no lo tengan (p. ej. trabajo de fondo).
+    /// El AuthenticationState es la fuente correcta en las DOS realidades: en el circuito lo
+    /// mantiene el propio Blazor, y en el render del servidor lo alimenta el framework a partir
+    /// del usuario autenticado de la peticion. Una sola fuente, sin ramas que diverjan.
+    ///
+    /// El proveedor se pide por IServiceProvider (no por constructor) para no exigirlo en scopes
+    /// que no lo tengan (p. ej. trabajo de fondo); si no esta, no hay identidad -> sin permisos.
     /// </summary>
     private async Task<(long? TenantId, long? UserId)> ResolveIdentityAsync()
     {
-        var http = _accessor.HttpContext?.User;
-        if (http is not null)
-        {
-            var httpUser = http.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (long.TryParse(httpUser, out var uid))
-            {
-                long.TryParse(http.FindFirst("tenant_id")?.Value, out var htid);
-                return (htid == 0 ? null : htid, uid);
-            }
-        }
-
         var authProvider = _services.GetService<AuthenticationStateProvider>();
-        if (authProvider is null) { return (null, null); }
-
-        var state = await authProvider.GetAuthenticationStateAsync();
-        var user = state.User;
-        if (!long.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var circuitUser))
+        if (authProvider is null)
         {
             return (null, null);
         }
-        long.TryParse(user.FindFirst("tenant_id")?.Value, out var ctid);
-        return (ctid == 0 ? null : ctid, circuitUser);
+
+        var state = await authProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!long.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        {
+            return (null, null);
+        }
+
+        return long.TryParse(user.FindFirst("tenant_id")?.Value, out var tenantId) && tenantId != 0
+            ? (tenantId, userId)
+            : (null, userId);
     }
 
-    public async Task<bool> IsUnrestrictedAsync(CancellationToken cancellationToken = default)
-        => (await GetAsync(cancellationToken)).Unrestricted;
+    public async Task<bool> CanAsync(
+        string moduleKey, PermissionAction action, CancellationToken cancellationToken = default)
+        => (await GetAsync(cancellationToken)).Can(moduleKey, action);
 
-    public async Task<bool> CanViewAsync(string moduleKey, CancellationToken cancellationToken = default)
-        => (await GetAsync(cancellationToken)).Can(moduleKey, PermissionAction.View);
+    public Task<bool> CanViewAsync(string moduleKey, CancellationToken cancellationToken = default)
+        => CanAsync(moduleKey, PermissionAction.View, cancellationToken);
 
-    public async Task<bool> CanCreateAsync(string moduleKey, CancellationToken cancellationToken = default)
-        => (await GetAsync(cancellationToken)).Can(moduleKey, PermissionAction.Create);
+    public Task<bool> CanCreateAsync(string moduleKey, CancellationToken cancellationToken = default)
+        => CanAsync(moduleKey, PermissionAction.Create, cancellationToken);
 
-    public async Task<bool> CanEditAsync(string moduleKey, CancellationToken cancellationToken = default)
-        => (await GetAsync(cancellationToken)).Can(moduleKey, PermissionAction.Edit);
+    public Task<bool> CanEditAsync(string moduleKey, CancellationToken cancellationToken = default)
+        => CanAsync(moduleKey, PermissionAction.Edit, cancellationToken);
 
-    public async Task<bool> CanDeleteAsync(string moduleKey, CancellationToken cancellationToken = default)
-        => (await GetAsync(cancellationToken)).Can(moduleKey, PermissionAction.Delete);
+    public Task<bool> CanDeleteAsync(string moduleKey, CancellationToken cancellationToken = default)
+        => CanAsync(moduleKey, PermissionAction.Delete, cancellationToken);
+
+    public Task<bool> CanExportAsync(string moduleKey, CancellationToken cancellationToken = default)
+        => CanAsync(moduleKey, PermissionAction.Export, cancellationToken);
+
+    public Task<bool> CanPrintAsync(string moduleKey, CancellationToken cancellationToken = default)
+        => CanAsync(moduleKey, PermissionAction.Print, cancellationToken);
 }

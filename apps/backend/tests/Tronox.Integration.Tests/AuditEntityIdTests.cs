@@ -2,6 +2,7 @@ using Tronox.Application.Admin;
 using Tronox.Application.Common;
 using Tronox.Application.Roles;
 using Tronox.Domain.Entities;
+using Tronox.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Tronox.Integration.Tests;
@@ -34,8 +35,10 @@ public sealed class AuditEntityIdTests : IClassFixture<PostgresTenantIsolationFi
         long rolId;
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
+            var nivelId = await RolesTestHelpers.SeedNivelesYObtenerIdAsync(ctx, tenantId);
             var service = new RolService(ctx, new TestTenantContext(tenantId), new AuditWriter(ctx));
-            var created = await service.SaveAsync(null, "Auditado", null, true, actorUserId);
+            var created = await service.SaveAsync(
+                new SaveRolRequest(null, "Auditado", null, nivelId, RolEstado.Activo), actorUserId);
             Assert.True(created.IsOk, created.Error);
             rolId = created.Value!.Id;
         }
@@ -66,7 +69,8 @@ public sealed class AuditEntityIdTests : IClassFixture<PostgresTenantIsolationFi
         long tenantId;
         await using (var ctx = _fixture.CreateContext(tenantId: null))
         {
-            var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning());
+            var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(),
+                new NoOpClasificacionProvisioning(), new NoOpRolProvisioning());
             var created = await service.CreateAsync(new CreateTenantRequest("Auditoria Tenant"), actorUserId);
             tenantId = created.Id;
         }
@@ -96,9 +100,14 @@ public sealed class AuditEntityIdTests : IClassFixture<PostgresTenantIsolationFi
 
         await using (var ctx = _fixture.CreateContext(tenantId))
         {
+            // Los niveles se siembran ANTES de abrir la transaccion: el rollback debe tumbar el
+            // rol y su asiento, no el nivel del que cuelga (que aqui es solo andamiaje).
+            var nivelId = await RolesTestHelpers.SeedNivelesYObtenerIdAsync(ctx, tenantId);
+
             await using var tx = await ctx.BeginTransactionAsync();
             var service = new RolService(ctx, new TestTenantContext(tenantId), new AuditWriter(ctx));
-            var created = await service.SaveAsync(null, "Revertido", null, true, actorUserId);
+            var created = await service.SaveAsync(
+                new SaveRolRequest(null, "Revertido", null, nivelId, RolEstado.Activo), actorUserId);
             Assert.True(created.IsOk, created.Error);
             await tx.RollbackAsync();
         }

@@ -1,14 +1,19 @@
 using System.Security.Claims;
-using Tronox.Application.Roles;
-using Tronox.Web.Auth;
 using Microsoft.AspNetCore.Authorization;
+using Tronox.Application.Roles;
+using Tronox.Domain.Enums;
+using Tronox.Web.Auth;
 
 namespace Tronox.Web.Tests;
 
 /// <summary>
-/// Tests unitarios del enforcement dinamico de permisos (Ola B2, ADR-0033): parseo de nombres de
-/// policy "Perm:{module}:{action}", y decision del PermissionAuthorizationHandler (Owner/Admin y
-/// sin-rol = Unrestricted -> permite; con rol -> respeta la matriz; sin permiso -> no concede).
+/// Tests unitarios del enforcement dinamico de permisos: parseo de nombres de policy
+/// "Perm:{modulo}:{accion}" (simples y COMPUESTAS con '+'), y decision del
+/// PermissionAuthorizationHandler.
+///
+/// FAIL-CLOSED (invariante 10): el handler concede UNICAMENTE si la matriz lo dice. Ya no existe
+/// la rama "si es Unrestricted, concede", que era por donde pasaban Owner/Admin y los usuarios
+/// sin rol para obtener acceso total.
 /// </summary>
 public class PermissionAuthorizationTests
 {
@@ -19,6 +24,9 @@ public class PermissionAuthorizationTests
     [InlineData("Perm:admin-usuarios:Create", "admin-usuarios", PermissionAction.Create)]
     [InlineData("Perm:roles-permisos:Edit", "roles-permisos", PermissionAction.Edit)]
     [InlineData("Perm:modulo/estados:Delete", "modulo/estados", PermissionAction.Delete)]
+    // Las dos acciones nuevas de la spec (6 acciones, no 4).
+    [InlineData("Perm:expedientes:Export", "expedientes", PermissionAction.Export)]
+    [InlineData("Perm:expedientes:Print", "expedientes", PermissionAction.Print)]
     public void TryParse_ValidNames_Parses(string name, string expectedModule, PermissionAction expectedAction)
     {
         Assert.True(PermissionPolicy.TryParse(name, out var module, out var action));
@@ -48,7 +56,46 @@ public class PermissionAuthorizationTests
         Assert.Equal(PermissionAction.Create, action);
     }
 
-    // ---- Ola 7: policies COMPUESTAS (AND) -> PermissionPolicy.TryParseMany / ForAll ----
+    // ---- La accion se toma tras el ULTIMO ':' (una ruta puede contener ':') ----
+
+    [Fact]
+    public void TryParse_RutaConDosPuntos_LaAccionEsElSegmentoTrasElULTIMO()
+    {
+        // El detalle que evita el bug: partir por el PRIMER ':' daria modulo="modulo" y
+        // accion="sub:View", que no parsea, y la policy se caeria al provider por defecto...
+        // que no la conoce. Resultado: una pagina sin gate efectivo.
+        Assert.True(PermissionPolicy.TryParse("Perm:modulo:sub:View", out var module, out var action));
+        Assert.Equal("modulo:sub", module);
+        Assert.Equal(PermissionAction.View, action);
+    }
+
+    [Fact]
+    public void TryParseMany_CompuestaConRutaQueContieneDosPuntos_ParseaCadaSegmento()
+    {
+        // Policy COMPUESTA (AND) donde AMBOS modulos llevan ':' en la ruta.
+        var name = "Perm:modulo:sub:View+otro:ruta:Export";
+
+        Assert.True(PermissionPolicy.TryParseMany(name, out var parts));
+
+        Assert.Equal(2, parts.Count);
+        Assert.Equal(("modulo:sub", PermissionAction.View), parts[0]);
+        Assert.Equal(("otro:ruta", PermissionAction.Export), parts[1]);
+    }
+
+    [Fact]
+    public void ForAll_ConRutasQueContienenDosPuntos_HaceRoundTrip()
+    {
+        var name = PermissionPolicy.ForAll(
+            ("modulo:sub", PermissionAction.View),
+            ("modulo:sub", PermissionAction.Print));
+
+        Assert.Equal("Perm:modulo:sub:View+modulo:sub:Print", name);
+        Assert.True(PermissionPolicy.TryParseMany(name, out var parts));
+        Assert.Equal(("modulo:sub", PermissionAction.View), parts[0]);
+        Assert.Equal(("modulo:sub", PermissionAction.Print), parts[1]);
+    }
+
+    // ---- Policies COMPUESTAS (AND) ----
 
     [Fact]
     public void TryParseMany_SingleSegment_ReturnsOne()
@@ -89,7 +136,6 @@ public class PermissionAuthorizationTests
     [Fact]
     public void TryParse_Single_RejectsComposite()
     {
-        // El parse simple (1 solo permiso) NO debe aceptar un nombre compuesto.
         Assert.False(PermissionPolicy.TryParse("Perm:a:View+b:Edit", out _, out _));
     }
 
@@ -105,19 +151,15 @@ public class PermissionAuthorizationTests
     [Fact]
     public async Task Composite_AllRequirementsMet_Succeeds()
     {
-        // Rol con formularios View + Edit -> la policy compuesta (dos requisitos) concede.
-        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
-        {
-            new ModulePermissionDto("formularios", CanView: true, CanCreate: false, CanEdit: true, CanDelete: false)
-        });
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(),
+            [new ModulePermissionDto("formularios", true, false, true, false)]);
         var handler = new PermissionAuthorizationHandler(new FakeCurrentPermissions(eff));
         var reqs = new[]
         {
             new PermissionRequirement("formularios", PermissionAction.View),
             new PermissionRequirement("formularios", PermissionAction.Edit)
         };
-        var user = UserWithTenant();
-        var ctx = new AuthorizationHandlerContext(reqs, user, resource: null);
+        var ctx = new AuthorizationHandlerContext(reqs, UserWithTenant(), resource: null);
 
         await handler.HandleAsync(ctx);
 
@@ -127,20 +169,15 @@ public class PermissionAuthorizationTests
     [Fact]
     public async Task Composite_OneRequirementMissing_Denies()
     {
-        // Rol con formularios View pero SIN Edit -> la policy compuesta (View AND Edit) NO concede,
-        // porque ASP.NET exige que TODOS los requisitos se cumplan.
-        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
-        {
-            new ModulePermissionDto("formularios", CanView: true, CanCreate: false, CanEdit: false, CanDelete: false)
-        });
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(),
+            [new ModulePermissionDto("formularios", true, false, false, false)]);
         var handler = new PermissionAuthorizationHandler(new FakeCurrentPermissions(eff));
         var reqs = new[]
         {
             new PermissionRequirement("formularios", PermissionAction.View),
             new PermissionRequirement("formularios", PermissionAction.Edit)
         };
-        var user = UserWithTenant();
-        var ctx = new AuthorizationHandlerContext(reqs, user, resource: null);
+        var ctx = new AuthorizationHandlerContext(reqs, UserWithTenant(), resource: null);
 
         await handler.HandleAsync(ctx);
 
@@ -148,40 +185,47 @@ public class PermissionAuthorizationTests
     }
 
     private static ClaimsPrincipal UserWithTenant()
-        => new(new ClaimsIdentity(new[] { new Claim("tenant_id", TestIds.Next().ToString()) }, "test"));
+        => new(new ClaimsIdentity([new Claim("tenant_id", TestIds.Next().ToString())], "test"));
 
-    // ---- PermissionAuthorizationHandler ----
+    // ---- PermissionAuthorizationHandler: FAIL-CLOSED ----
 
     private static AuthorizationHandlerContext ContextFor(PermissionRequirement requirement)
-    {
-        var user = new ClaimsPrincipal(new ClaimsIdentity(new[]
-        {
-            new Claim("tenant_id", TestIds.Next().ToString())
-        }, "test"));
-        return new AuthorizationHandlerContext(new[] { requirement }, user, resource: null);
-    }
+        => new([requirement], UserWithTenant(), resource: null);
 
     [Fact]
-    public async Task Handler_Unrestricted_Succeeds()
+    public async Task Handler_SinPermisos_NoConcede()
     {
-        // Sin rol -> Unrestricted (regla opt-in). El handler debe conceder.
+        // El caso que antes concedia por la puerta "Unrestricted": usuario sin roles vigentes.
         var handler = new PermissionAuthorizationHandler(
-            new FakeCurrentPermissions(EffectivePermissions.UnrestrictedAccess()));
-        var requirement = new PermissionRequirement("inventario-items", PermissionAction.Delete);
-        var ctx = ContextFor(requirement);
+            new FakeCurrentPermissions(EffectivePermissions.None));
+        var ctx = ContextFor(new PermissionRequirement("inventario-items", PermissionAction.Delete));
 
         await handler.HandleAsync(ctx);
 
-        Assert.True(ctx.HasSucceeded);
+        Assert.False(ctx.HasSucceeded);
     }
 
     [Fact]
-    public async Task Handler_OwnerAdmin_Succeeds()
+    public async Task Handler_SinPermisos_NoConcedeNingunaDeLasSeisAcciones()
     {
         var handler = new PermissionAuthorizationHandler(
-            new FakeCurrentPermissions(EffectivePermissions.AllowAllPermissions()));
-        var requirement = new PermissionRequirement("cualquier-modulo", PermissionAction.Edit);
-        var ctx = ContextFor(requirement);
+            new FakeCurrentPermissions(EffectivePermissions.None));
+
+        foreach (var accion in PermissionActions.All)
+        {
+            var ctx = ContextFor(new PermissionRequirement("cualquier-modulo", accion));
+            await handler.HandleAsync(ctx);
+            Assert.False(ctx.HasSucceeded);
+        }
+    }
+
+    [Fact]
+    public async Task Handler_ConRol_Concede_CuandoLaMatrizLoPermite()
+    {
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(),
+            [new ModulePermissionDto("inventario-items", true, false, false, false)]);
+        var handler = new PermissionAuthorizationHandler(new FakeCurrentPermissions(eff));
+        var ctx = ContextFor(new PermissionRequirement("inventario-items", PermissionAction.View));
 
         await handler.HandleAsync(ctx);
 
@@ -189,31 +233,12 @@ public class PermissionAuthorizationTests
     }
 
     [Fact]
-    public async Task Handler_WithRole_Grants_WhenMatrixAllows()
+    public async Task Handler_ConRol_Niega_CuandoLaMatrizNoLoPermite()
     {
-        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
-        {
-            new ModulePermissionDto("inventario-items", CanView: true, CanCreate: false, CanEdit: false, CanDelete: false)
-        });
-        var handler = new PermissionAuthorizationHandler(new FakeCurrentPermissions(eff));
-        var requirement = new PermissionRequirement("inventario-items", PermissionAction.View);
-        var ctx = ContextFor(requirement);
-
-        await handler.HandleAsync(ctx);
-
-        Assert.True(ctx.HasSucceeded);
-    }
-
-    [Fact]
-    public async Task Handler_WithRole_Denies_WhenMatrixLacksPermission()
-    {
-        var eff = EffectivePermissions.FromPermissions(TestIds.Next(), new[]
-        {
-            new ModulePermissionDto("inventario-items", CanView: true, CanCreate: false, CanEdit: false, CanDelete: false)
-        });
+        var eff = EffectivePermissions.FromPermissions(TestIds.Next(),
+            [new ModulePermissionDto("inventario-items", true, false, false, false)]);
         var handler = new PermissionAuthorizationHandler(new FakeCurrentPermissions(eff));
 
-        // Ver SI (concede); pero Crear en el mismo modulo NO, y Ver en un modulo ausente NO.
         var denyCreate = ContextFor(new PermissionRequirement("inventario-items", PermissionAction.Create));
         var denyOther = ContextFor(new PermissionRequirement("modulo-desconocido", PermissionAction.View));
 
@@ -224,16 +249,15 @@ public class PermissionAuthorizationTests
         Assert.False(denyOther.HasSucceeded);
     }
 
-    private sealed class FakeCurrentPermissions : ICurrentPermissions
+    private sealed class FakeCurrentPermissions(EffectivePermissions eff) : ICurrentPermissions
     {
-        private readonly EffectivePermissions _eff;
-        public FakeCurrentPermissions(EffectivePermissions eff) => _eff = eff;
-
-        public Task<EffectivePermissions> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(_eff);
-        public Task<bool> IsUnrestrictedAsync(CancellationToken cancellationToken = default) => Task.FromResult(_eff.Unrestricted);
-        public Task<bool> CanViewAsync(string moduleKey, CancellationToken cancellationToken = default) => Task.FromResult(_eff.Can(moduleKey, PermissionAction.View));
-        public Task<bool> CanCreateAsync(string moduleKey, CancellationToken cancellationToken = default) => Task.FromResult(_eff.Can(moduleKey, PermissionAction.Create));
-        public Task<bool> CanEditAsync(string moduleKey, CancellationToken cancellationToken = default) => Task.FromResult(_eff.Can(moduleKey, PermissionAction.Edit));
-        public Task<bool> CanDeleteAsync(string moduleKey, CancellationToken cancellationToken = default) => Task.FromResult(_eff.Can(moduleKey, PermissionAction.Delete));
+        public Task<EffectivePermissions> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(eff);
+        public Task<bool> CanAsync(string moduleKey, PermissionAction action, CancellationToken cancellationToken = default) => Task.FromResult(eff.Can(moduleKey, action));
+        public Task<bool> CanViewAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.View, cancellationToken);
+        public Task<bool> CanCreateAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.Create, cancellationToken);
+        public Task<bool> CanEditAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.Edit, cancellationToken);
+        public Task<bool> CanDeleteAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.Delete, cancellationToken);
+        public Task<bool> CanExportAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.Export, cancellationToken);
+        public Task<bool> CanPrintAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.Print, cancellationToken);
     }
 }

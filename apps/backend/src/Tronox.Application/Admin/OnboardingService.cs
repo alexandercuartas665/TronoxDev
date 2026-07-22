@@ -17,19 +17,22 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IAuditWriter _audit;
     private readonly Tronox.Application.MenuConfig.IMenuProvisioningService _menuProvisioning;
     private readonly Tronox.Application.Archivistica.IClasificacionProvisioningService _clasificacionProvisioning;
+    private readonly Tronox.Application.Roles.IRolProvisioningService _rolProvisioning;
 
     public OnboardingService(
         IApplicationDbContext db,
         IPasswordHasher passwordHasher,
         IAuditWriter audit,
         Tronox.Application.MenuConfig.IMenuProvisioningService menuProvisioning,
-        Tronox.Application.Archivistica.IClasificacionProvisioningService clasificacionProvisioning)
+        Tronox.Application.Archivistica.IClasificacionProvisioningService clasificacionProvisioning,
+        Tronox.Application.Roles.IRolProvisioningService rolProvisioning)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _audit = audit;
         _menuProvisioning = menuProvisioning;
         _clasificacionProvisioning = clasificacionProvisioning;
+        _rolProvisioning = rolProvisioning;
     }
 
     public async Task<OnboardingOutcome> OnboardAsync(OnboardTenantRequest request, long actorUserId, CancellationToken cancellationToken = default)
@@ -141,6 +144,12 @@ public sealed class OnboardingService : IOnboardingService
 
         // ... y CON sus 4 niveles de clasificacion documental (RF01-P.3). Idempotente.
         await _clasificacionProvisioning.EnsureNivelesClasificacionAsync(tenant.Id, cancellationToken);
+
+        // ... y CON sus roles predeterminados (RF05). DE ULTIMO: necesita los niveles (FK
+        // obligatorio) y el menu (de el sale la matriz completa del Super Administrador). Ademas
+        // ancla al Owner recien creado a "Super Administrador": el sistema es FAIL-CLOSED, asi que
+        // sin esa asignacion explicita el administrador del tenant nuevo no podria hacer nada.
+        await _rolProvisioning.EnsureRolesPredeterminadosAsync(tenant.Id, cancellationToken);
 
         return new OnboardingOutcome(true,
             new OnboardingResult(tenant.Id, tenant.Name, admin.Id, admin.Email, subscriptionId),

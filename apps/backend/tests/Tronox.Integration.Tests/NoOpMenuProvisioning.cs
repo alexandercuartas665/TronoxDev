@@ -1,5 +1,6 @@
 using Tronox.Application.Archivistica;
 using Tronox.Application.MenuConfig;
+using Tronox.Application.Roles;
 
 namespace Tronox.Integration.Tests;
 
@@ -29,5 +30,18 @@ public sealed class NoOpMenuProvisioning : IMenuProvisioningService
 public sealed class NoOpClasificacionProvisioning : IClasificacionProvisioningService
 {
     public Task EnsureNivelesClasificacionAsync(long tenantId, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+}
+
+/// <summary>
+/// Doble no-op de <see cref="IRolProvisioningService"/>, mismo criterio que los anteriores.
+///
+/// OJO: no usar en un test que verifique que un tenant NUEVO nace con sus 7 roles predeterminados
+/// (ni con el Owner anclado a "Super Administrador"); ahi hay que inyectar la implementacion real
+/// (<c>RolProvisioningService</c>) o el test pasaria en falso. Ver RolProvisioningTests.
+/// </summary>
+public sealed class NoOpRolProvisioning : IRolProvisioningService
+{
+    public Task EnsureRolesPredeterminadosAsync(long tenantId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 }

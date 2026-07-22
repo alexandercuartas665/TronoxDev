@@ -371,14 +371,21 @@ else
             Tronox.Application.Roles.EffectivePermissions? permissions = null;
             if (long.TryParse(platformUserIdClaim, out var platformUserId))
             {
+                // El tenant se fija de forma AMBIENTAL a partir del claim del AuthenticationState
+                // (que es de donde viene tenantId), no del HttpContext: en un circuito Blazor no
+                // hay HttpContext y el filtro global de EF no encontraria ni el TenantUser ni sus
+                // roles. Con el enforcement FAIL-CLOSED eso ya no "no restringe": ahora seria lo
+                // contrario, la resolucion daria SIN PERMISOS y el menu se podaria entero.
+                using var ambient = Tronox.Web.Auth.AmbientTenantContext.Begin(tenantId, platformUserId);
+
                 var db = scope.ServiceProvider.GetRequiredService<Tronox.Application.Common.IApplicationDbContext>();
                 assignedViewId = await db.TenantUsers
                     .Where(u => u.PlatformUserId == platformUserId)
                     .Select(u => u.MenuViewId)
                     .FirstOrDefaultAsync();
 
-                // Permisos efectivos para FILTRAR el menu por "Ver" (Ola B2, ADR-0033). Owner/Admin y
-                // usuario sin rol -> Unrestricted -> el filtro devuelve el arbol intacto.
+                // Permisos efectivos para FILTRAR el menu por "Ver". FAIL-CLOSED: un usuario sin
+                // roles vigentes resuelve a SIN PERMISOS y el menu queda podado, no intacto.
                 var roles = scope.ServiceProvider.GetRequiredService<Tronox.Application.Roles.IRolService>();
                 permissions = await roles.ResolveEffectivePermissionsAsync(platformUserId);
             }

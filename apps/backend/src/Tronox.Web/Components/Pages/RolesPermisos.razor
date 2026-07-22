@@ -1,12 +1,14 @@
 @page "/roles-permisos"
 @attribute [Authorize(Policy = "Perm:roles-permisos:View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Archivistica
 @using Tronox.Application.Common
 @using Tronox.Application.Roles
 @using Tronox.Application.Tenancy
 @using Tronox.Web.Auth
 @inject IRolService RolesSvc
 @inject ITenantUserService UsersSvc
+@inject INivelClasificacionService NivelesSvc
 @inject ITenantContext TenantCtx
 @inject ICurrentPermissions Perms
 
@@ -181,15 +183,32 @@ else
             <div class="modal-body">
                 <div class="field">
                     <label class="form-label">Nombre *</label>
-                    <input class="form-control" @bind="_fName" placeholder="Ej. Asesor limitado" autocomplete="off" disabled="@_fIsSystem" />
-                    @if (_fIsSystem)
+                    <input class="form-control" @bind="_fName" placeholder="Ej. Asesor limitado" autocomplete="off" disabled="@(!_fAllowRename)" />
+                    @if (_fIsSystem && !_fAllowRename)
                     {
                         <small class="text-muted">El rol de sistema no se puede renombrar.</small>
+                    }
+                    else if (_fIsSystem)
+                    {
+                        <small class="text-muted">Rol tecnico del sistema: se puede renombrar, pero no eliminar.</small>
                     }
                 </div>
                 <div class="field">
                     <label class="form-label">Descripcion</label>
                     <input class="form-control" @bind="_fDescription" placeholder="Para que sirve este rol" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label class="form-label">Nivel de acceso maximo *</label>
+                    <select class="form-control" @bind="_fNivelId" disabled="@_fIsSystem">
+                        @foreach (var n in _niveles.OrderBy(x => x.NivelOrden))
+                        {
+                            <option value="@n.Id">@n.Codigo - @n.Nombre</option>
+                        }
+                    </select>
+                    <small class="text-muted">
+                        Nivel de clasificacion documental mas alto que alcanza a leer este rol.
+                        @(_fIsSystem ? " No se puede cambiar en un rol de sistema." : "")
+                    </small>
                 </div>
                 <div class="field">
                     <label class="rp-check"><input type="checkbox" @bind="_fIsActive" /> Rol activo</label>
@@ -261,19 +280,20 @@ else
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
-    private static readonly PermissionAction[] Actions =
-        new[] { PermissionAction.View, PermissionAction.Create, PermissionAction.Edit, PermissionAction.Delete };
+    // Las SEIS acciones de la matriz (RF05). El orden lo fija el catalogo, no esta pantalla.
+    private static readonly IReadOnlyList<PermissionAction> Actions = PermissionActions.All;
 
     private bool _loading = true;
     private bool _busy;
     private string? _toast;
     private bool _toastOk;
 
-    // Gateo de acciones por permiso (Ola B2, ADR-0033): Owner/Admin/sin-rol ven todo (Unrestricted).
+    // Gateo de acciones por permiso. FAIL-CLOSED (invariante 10): se parte de NEGADO y solo la
+    // matriz efectiva del usuario concede.
     private const string ModuleKey = "roles-permisos";
-    private bool _canCreate = true;
-    private bool _canEdit = true;
-    private bool _canDelete = true;
+    private bool _canCreate;
+    private bool _canEdit;
+    private bool _canDelete;
 
     private List<RolDto> _roles = new();
     private List<TenantUserDto> _users = new();
@@ -283,15 +303,22 @@ else
     private List<MatrixRow> _matrix = new();
 
     // Asignacion en memoria mientras el modal esta abierto (TenantUserId -> RolId elegido).
+    // El selector es simple, asi que representa 0 o 1 rol; los conjuntos con varios roles se
+    // muestran pero se editan reemplazando.
     private Dictionary<long, long?> _assignedRol = new();
+
+    // Niveles de clasificacion del tenant: son el dominio de nivel_acceso_maximo (FK obligatorio).
+    private IReadOnlyList<NivelClasificacionDto> _niveles = Array.Empty<NivelClasificacionDto>();
 
     // Form.
     private bool _formOpen;
     private long? _formId;
     private bool _fIsSystem;
+    private bool _fAllowRename;
     private string _fName = "";
     private string _fDescription = "";
     private bool _fIsActive = true;
+    private long _fNivelId;
     private string? _formError;
 
     private bool _assignOpen;
@@ -304,6 +331,8 @@ else
         _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
 
         _catalog = await RolesSvc.GetModuleCatalogAsync();
+        // Dominio de nivel_acceso_maximo: solo los niveles ACTIVOS se ofrecen al crear un rol.
+        _niveles = await NivelesSvc.ListAsync(soloActivos: true);
         await ReloadRolesAsync();
         _loading = false;
     }
@@ -326,6 +355,8 @@ else
         public bool CanCreate { get; set; }
         public bool CanEdit { get; set; }
         public bool CanDelete { get; set; }
+        public bool CanExport { get; set; }
+        public bool CanPrint { get; set; }
     }
 
     private async Task SelectAsync(long id)
@@ -350,7 +381,9 @@ else
                 CanView = p?.CanView ?? false,
                 CanCreate = p?.CanCreate ?? false,
                 CanEdit = p?.CanEdit ?? false,
-                CanDelete = p?.CanDelete ?? false
+                CanDelete = p?.CanDelete ?? false,
+                CanExport = p?.CanExport ?? false,
+                CanPrint = p?.CanPrint ?? false
             };
         }).ToList();
     }
@@ -361,8 +394,8 @@ else
     {
         var row = _matrix.FirstOrDefault(r => r.Key == key);
         if (row is null) { return; }
-        var target = !(row.CanView && row.CanCreate && row.CanEdit && row.CanDelete);
-        row.CanView = row.CanCreate = row.CanEdit = row.CanDelete = target;
+        var target = !Actions.All(a => Get(row, a));
+        foreach (var a in Actions) { Set(row, a, target); }
     }
 
     private void ToggleColumn(PermissionAction act)
@@ -384,6 +417,8 @@ else
         PermissionAction.Create => r.CanCreate,
         PermissionAction.Edit => r.CanEdit,
         PermissionAction.Delete => r.CanDelete,
+        PermissionAction.Export => r.CanExport,
+        PermissionAction.Print => r.CanPrint,
         _ => false
     };
 
@@ -395,6 +430,8 @@ else
             case PermissionAction.Create: r.CanCreate = v; break;
             case PermissionAction.Edit: r.CanEdit = v; break;
             case PermissionAction.Delete: r.CanDelete = v; break;
+            case PermissionAction.Export: r.CanExport = v; break;
+            case PermissionAction.Print: r.CanPrint = v; break;
         }
     }
 
@@ -406,7 +443,8 @@ else
         {
             var actor = await ResolveSelfIdAsync();
             var permisos = _matrix
-                .Select(r => new ModulePermissionDto(r.Key, r.CanView, r.CanCreate, r.CanEdit, r.CanDelete))
+                .Select(r => new ModulePermissionDto(
+                    r.Key, r.CanView, r.CanCreate, r.CanEdit, r.CanDelete, r.CanExport, r.CanPrint))
                 .ToList();
             var res = await RolesSvc.SavePermisosAsync(_detail.Id, permisos, actor);
             if (res.IsOk)
@@ -428,9 +466,12 @@ else
     {
         _formId = null;
         _fIsSystem = false;
+        _fAllowRename = true;
         _fName = "";
         _fDescription = "";
         _fIsActive = true;
+        // Por defecto, el nivel MENOS restrictivo: un rol nuevo no nace viendo lo Clasificado.
+        _fNivelId = _niveles.OrderBy(n => n.NivelOrden).Select(n => n.Id).FirstOrDefault();
         _formError = null;
         _formOpen = true;
     }
@@ -439,9 +480,11 @@ else
     {
         _formId = d.Id;
         _fIsSystem = d.IsSystem;
+        _fAllowRename = d.CanRename;
         _fName = d.Name;
         _fDescription = d.Description ?? "";
         _fIsActive = d.IsActive;
+        _fNivelId = d.NivelAccesoMaximoId;
         _formError = null;
         _formOpen = true;
     }
@@ -456,13 +499,21 @@ else
             _formError = "El nombre del rol es obligatorio.";
             return;
         }
+        if (_fNivelId == 0)
+        {
+            _formError = "El nivel de acceso maximo es obligatorio.";
+            return;
+        }
         _busy = true;
         try
         {
             var actor = await ResolveSelfIdAsync();
-            var res = await RolesSvc.SaveAsync(_formId, _fName.Trim(),
+            var res = await RolesSvc.SaveAsync(new SaveRolRequest(
+                _formId,
+                _fName.Trim(),
                 string.IsNullOrWhiteSpace(_fDescription) ? null : _fDescription.Trim(),
-                _fIsActive, actor);
+                _fNivelId,
+                _fIsActive ? RolEstado.Activo : RolEstado.Inactivo), actor);
             if (!res.IsOk)
             {
                 _formError = res.Error;
@@ -504,10 +555,10 @@ else
         _assignedRol = new Dictionary<long, long?>();
         foreach (var u in _users)
         {
-            var eff = await RolesSvc.ResolveEffectivePermissionsAsync(u.PlatformUserId);
-            // RolId efectivo solo cuando no es AllowAll; para el selector partimos del rol real
-            // del usuario (via detalle no expuesto): usamos ResolveEffectivePermissions.RolId.
-            _assignedRol[u.Id] = eff.RolId;
+            // Los roles se leen de la puente usuarios_roles. El selector es simple, asi que solo
+            // preselecciona cuando el usuario tiene EXACTAMENTE un rol.
+            var roles = await RolesSvc.GetUserRolesAsync(u.Id);
+            _assignedRol[u.Id] = roles.Count == 1 ? roles[0].RolId : null;
         }
         _assignOpen = true;
     }
@@ -525,7 +576,11 @@ else
         try
         {
             var actor = await ResolveSelfIdAsync();
-            var res = await RolesSvc.AssignRoleToUserAsync(tenantUserId, rolId, actor);
+            // Fija el CONJUNTO de roles del usuario (vacio = ninguno), sin vigencia.
+            var roles = rolId is long rid
+                ? new List<RolAsignacionDto> { new(rid, null, null, null) }
+                : new List<RolAsignacionDto>();
+            var res = await RolesSvc.SetUserRolesAsync(tenantUserId, roles, actor);
             if (res.IsOk)
             {
                 await ReloadRolesAsync();
@@ -541,14 +596,8 @@ else
 
     // ---- Helpers ----
 
-    private static string ActionLabel(PermissionAction a) => a switch
-    {
-        PermissionAction.View => "Ver",
-        PermissionAction.Create => "Crear",
-        PermissionAction.Edit => "Editar",
-        PermissionAction.Delete => "Eliminar",
-        _ => a.ToString()
-    };
+    // La etiqueta vive en el catalogo (PermissionActions), no aqui: es la misma en toda la app.
+    private static string ActionLabel(PermissionAction a) => PermissionActions.Label(a);
 
     private void ShowToast(string message, bool ok) { _toast = message; _toastOk = ok; }
 

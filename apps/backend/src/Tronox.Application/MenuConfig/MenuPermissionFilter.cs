@@ -1,30 +1,31 @@
 using Tronox.Application.Roles;
 using Tronox.Domain.Enums;
 
+
 namespace Tronox.Application.MenuConfig;
 
 /// <summary>
-/// Filtrado PURO (sin IO) del arbol resuelto del menu por el permiso de "Ver" del usuario (Ola B2,
-/// ADR-0033). Poda los nodos Item cuyo Route sea un modulo con View=false en los permisos efectivos.
+/// Filtrado PURO (sin IO) del arbol resuelto del menu por el permiso de "Ver" del usuario.
+/// Poda los nodos Item cuyo Route sea un modulo con View=false en los permisos efectivos.
 /// Una Section o Subgroup queda oculta si tras podar sus hijos ya no le queda ningun descendiente
-/// visible. Los QuickLink y los Item sin Route (o cuyo Route no es un modulo del catalogo) NO se
-/// tocan: no hay matriz que aplicarles. Si el usuario es Unrestricted (Owner/Admin o sin rol) el
-/// arbol se devuelve intacto. Testeable sin base de datos.
+/// visible. Los QuickLink y los Item sin Route NO se tocan: no hay matriz que aplicarles.
+/// Testeable sin base de datos.
+///
+/// FAIL-CLOSED (invariante 10): ya no existe el atajo "si es Unrestricted, devuelve el arbol
+/// intacto". Unos permisos NULOS se tratan como SIN PERMISOS y podan el menu entero, en vez de
+/// mostrarlo completo. Un menu de mas no es cosmetico: revela la estructura documental del tenant.
 /// </summary>
 public static class MenuPermissionFilter
 {
     /// <summary>
-    /// Devuelve una copia del arbol con los modulos sin "Ver" removidos. <paramref name="permissions"/>
-    /// null o Unrestricted -> el arbol se devuelve tal cual (no se filtra nada).
+    /// Devuelve una copia del arbol con los modulos sin "Ver" removidos.
+    /// <paramref name="permissions"/> null -> se filtra contra SIN PERMISOS (fail-closed).
     /// </summary>
     public static IReadOnlyList<MenuNodeDto> Filter(
         IReadOnlyList<MenuNodeDto> roots,
         EffectivePermissions? permissions)
     {
-        if (permissions is null || permissions.Unrestricted)
-        {
-            return roots;
-        }
+        permissions ??= EffectivePermissions.None;
 
         var result = new List<MenuNodeDto>(roots.Count);
         foreach (var node in roots)
@@ -44,10 +45,6 @@ public static class MenuPermissionFilter
         if (menu is null)
         {
             return null;
-        }
-        if (permissions is null || permissions.Unrestricted)
-        {
-            return menu;
         }
         return menu with { Roots = Filter(menu.Roots, permissions) };
     }

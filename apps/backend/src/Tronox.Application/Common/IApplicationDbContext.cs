@@ -34,9 +34,11 @@ public interface IApplicationDbContext
     DbSet<MenuView> MenuViews { get; }
     DbSet<MenuNode> MenuNodes { get; }
 
-    // Roles y matriz de permisos Modulo x Accion (base de RQ01 - RF05).
+    // Roles y matriz de permisos Modulo x Accion (base de RQ01 - RF05). RolPermisos lleva UNA
+    // FILA POR (modulo, accion); UsuariosRoles es la puente multi-rol con vigencia temporal.
     DbSet<Rol> Roles { get; }
     DbSet<RolPermiso> RolPermisos { get; }
+    DbSet<UsuarioRol> UsuariosRoles { get; }
 
     // Configuracion archivistica (base de RQ01 - RF01-P.3 y RF02): niveles de clasificacion
     // documental, sedes, fondos y subfondos. Todas tenant-scoped.

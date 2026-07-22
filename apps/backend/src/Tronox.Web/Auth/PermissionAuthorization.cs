@@ -1,13 +1,12 @@
-using System.Globalization;
-using Tronox.Application.Roles;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
+using Tronox.Domain.Enums;
 
 namespace Tronox.Web.Auth;
 
 /// <summary>
-/// Convencion de nombres de las policies dinamicas de permiso (Ola B2, ADR-0033):
-/// <c>Perm:{moduleKey}:{action}</c> con action in View/Create/Edit/Delete. Ej.:
+/// Convencion de nombres de las policies dinamicas de permiso:
+/// <c>Perm:{moduleKey}:{action}</c> con action in View/Create/Edit/Delete/Export/Print. Ej.:
 /// <c>Perm:inventario-items:View</c>. El <see cref="PermissionPolicyProvider"/> las materializa al
 /// vuelo; el resto de policies (Inventario.Ver, AdmUsuarios.Editar, ...) siguen intactas.
 ///
@@ -112,10 +111,14 @@ public sealed class PermissionRequirement : IAuthorizationRequirement
 }
 
 /// <summary>
-/// Handler del <see cref="PermissionRequirement"/>: concede si el usuario es Unrestricted (Owner/
-/// Admin o sin rol) o si su matriz permite (ModuleKey, Accion). Consulta <see cref="ICurrentPermissions"/>
-/// (que ya aplica la regla opt-in y es fail-open). El gate de tenant se combina en la policy con
+/// Handler del <see cref="PermissionRequirement"/>: concede UNICAMENTE si la matriz efectiva del
+/// usuario permite (ModuleKey, Accion). El gate de tenant se combina en la policy con
 /// RequireClaim("tenant_id").
+///
+/// FAIL-CLOSED (invariante 10): ya NO existe la rama "si el usuario es Unrestricted, concede".
+/// Owner/Admin y los usuarios sin rol pasaban por ahi y obtenian acceso total sin que su matriz
+/// dijera nada. Ahora quien deba poder todo lo puede porque su ROL tiene la matriz completa
+/// (se la da la siembra del alta del tenant), no por una excepcion en el codigo.
 /// </summary>
 public sealed class PermissionAuthorizationHandler : AuthorizationHandler<PermissionRequirement>
 {
@@ -130,12 +133,12 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         AuthorizationHandlerContext context, PermissionRequirement requirement)
     {
         var eff = await _permissions.GetAsync();
-        if (eff.Unrestricted || eff.Can(requirement.ModuleKey, requirement.Action))
+        if (eff.Can(requirement.ModuleKey, requirement.Action))
         {
             context.Succeed(requirement);
         }
         // Si no concede, no llamamos Fail(): dejamos que otros handlers/requisitos decidan; la
-        // ausencia de Succeed ya niega la policy.
+        // ausencia de Succeed ya niega la policy (que es lo correcto: negar por defecto).
     }
 }
 
@@ -161,7 +164,7 @@ public sealed class PermissionPolicyProvider : IAuthorizationPolicyProvider
     public Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
         // Ola 7: soporta policies simples y COMPUESTAS (AND). TryParseMany devuelve 1+ segmentos;
-        // se añade un PermissionRequirement por segmento y ASP.NET exige que TODOS se cumplan (AND).
+        // se agrega un PermissionRequirement por segmento y ASP.NET exige que TODOS se cumplan (AND).
         if (PermissionPolicy.TryParseMany(policyName, out var parts))
         {
             var builder = new AuthorizationPolicyBuilder()

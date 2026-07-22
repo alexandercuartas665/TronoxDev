@@ -33,13 +33,18 @@ public class TenantUser : TenantEntity
     public MenuView? MenuView { get; set; }
 
     /// <summary>
-    /// Rol de permisos (Ola B1) asignado a este usuario. Null = sin rol de permisos finos; el
-    /// enforcement (Ola B2) igual permite todo a Owner/Admin por su TenantRole. FK NO ACTION
-    /// (borrar un rol no arrastra al usuario; la app bloquea el borrado si tiene usuarios).
-    /// Distinto de <see cref="TenantRole"/> (poder organico): ver ADR-0032.
+    /// Roles de permisos asignados a este usuario (RQ01 - RF05, multi-rol).
+    ///
+    /// OJO: ya NO existe un unico "RolId" en el usuario. RF05 exige VARIOS roles por usuario con
+    /// vigencia temporal, asi que la asignacion vive en la tabla puente <see cref="UsuarioRol"/>
+    /// (usuarios_roles). Los permisos efectivos son la UNION de los roles vigentes y el nivel de
+    /// acceso es el MAS ALTO entre ellos; un usuario SIN ningun rol vigente resuelve a SIN
+    /// PERMISOS, nunca a acceso total (invariante 10, FAIL-CLOSED).
+    ///
+    /// Distinto de <see cref="TenantRole"/>, que modela el poder ORGANICO (Owner/Admin/...) y no
+    /// concede por si solo ningun permiso de modulo.
     /// </summary>
-    public long? RolId { get; set; }
-    public Rol? Rol { get; set; }
+    public ICollection<UsuarioRol> Roles { get; set; } = new List<UsuarioRol>();
 
     /// <summary>
     /// Nodo CARGO del arbol organizacional al que se ancla este usuario (ADR-003, Addendum).

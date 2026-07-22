@@ -99,9 +99,11 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<MenuView> MenuViews => Set<MenuView>();
     public DbSet<MenuNode> MenuNodes => Set<MenuNode>();
 
-    // Roles de permisos dinamicos (Ola B1, ADR-0032): matriz Modulo x Accion por tenant.
+    // Roles y permisos (RQ01 - RF05): matriz Modulo x Accion por tenant (una fila por accion)
+    // y asignacion multi-rol usuario <-> rol con vigencia temporal.
     public DbSet<Rol> Roles => Set<Rol>();
     public DbSet<RolPermiso> RolPermisos => Set<RolPermiso>();
+    public DbSet<UsuarioRol> UsuariosRoles => Set<UsuarioRol>();
 
     // Configuracion archivistica (RQ01 - RF01-P.3 y RF02): niveles de clasificacion documental,
     // sedes de la entidad, fondos documentales y subfondos. Todas tenant-scoped.
@@ -346,6 +348,10 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<FondoTipo>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<FondoEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SubfondoEstado>().HaveConversion<string>().HaveMaxLength(20);
+        // Roles y permisos (RQ01 - RF05): estado del rol y accion de la matriz como texto. El
+        // nombre del miembro es contrato de datos (y de las policies "Perm:{modulo}:{accion}").
+        configurationBuilder.Properties<RolEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<PermissionAction>().HaveConversion<string>().HaveMaxLength(20);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -532,9 +538,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             // Asignacion usuario->vista del menu (Ola 1). NO ACTION: borrar una vista no arrastra
             // al usuario por cascada (la app deja MenuViewId en null antes de borrar la vista).
             b.HasOne(x => x.MenuView).WithMany().HasForeignKey(x => x.MenuViewId).OnDelete(DeleteBehavior.Restrict);
-            // Rol de permisos (Ola B1). NO ACTION: borrar un rol no arrastra al usuario por cascada
-            // (la app bloquea el borrado de un rol con usuarios asignados). Ver ADR-0032.
-            b.HasOne(x => x.Rol).WithMany().HasForeignKey(x => x.RolId).OnDelete(DeleteBehavior.Restrict);
+            // Ya no hay "RolId" en el usuario: los roles se asignan por la puente UsuarioRol
+            // (multi-rol con vigencia, RF05). La relacion se configura en UsuarioRol.
             b.HasIndex(x => new { x.TenantId, x.PlatformUserId }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.Email }).IsUnique();
             b.HasIndex(x => x.InvitationToken);
@@ -543,7 +548,6 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             // la cadena de padres. RESTRICT: reorganizar el organigrama nunca borra usuarios.
             b.HasOne(x => x.CargoOrgUnit).WithMany().HasForeignKey(x => x.CargoOrgUnitId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => x.MenuViewId);
-            b.HasIndex(x => x.RolId);
             // Indice para contar de golpe los ocupantes de un cargo (a cuantos usuarios afecta
             // reubicarlo) sin recorrer la tabla.
             b.HasIndex(x => x.CargoOrgUnitId);
@@ -877,25 +881,58 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasIndex(x => new { x.MenuViewId, x.ParentId, x.SortOrder });
         });
 
-        // Roles de permisos dinamicos (Ola B1, ADR-0032): rol por tenant + filas de permiso por modulo.
+        // Roles y permisos (RQ01 - RF05): rol por tenant + filas de permiso por (modulo, accion).
         modelBuilder.Entity<Rol>(b =>
         {
-            b.Property(x => x.Name).HasMaxLength(150).IsRequired();
-            b.Property(x => x.Description).HasMaxLength(600);
+            b.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(300);
+            b.Property(x => x.CodigoSistema).HasMaxLength(40);
+            // nivel_acceso_maximo es OBLIGATORIO (FK NOT NULL) y RESTRICT: un nivel de
+            // clasificacion referenciado por un rol no se puede borrar por cascada, porque
+            // dejaria al rol sin escala contra la que evaluar el acceso a lo Reservado.
+            b.HasOne(x => x.NivelAccesoMaximo).WithMany()
+                .HasForeignKey(x => x.NivelAccesoMaximoId).OnDelete(DeleteBehavior.Restrict);
             // Nombre unico por tenant.
             b.HasIndex(x => new { x.TenantId, x.Name }).IsUnique();
-            b.HasIndex(x => new { x.TenantId, x.IsActive });
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            // Identidad estable de los roles predeterminados: es la llave de la siembra
+            // idempotente, y sobrevive a que el tenant renombre el rol.
+            b.HasIndex(x => new { x.TenantId, x.CodigoSistema }).IsUnique()
+                .HasFilter(isNpgsql ? "codigo_sistema IS NOT NULL" : "[codigo_sistema] IS NOT NULL");
+            b.HasIndex(x => x.NivelAccesoMaximoId);
         });
 
+        // UNA FILA POR (modulo, accion). La spec lo pide explicitamente y prohibe bitmask y JSON:
+        // asi "quien puede exportar el modulo X" es un WHERE y queda auditable fila a fila.
         modelBuilder.Entity<RolPermiso>(b =>
         {
-            b.Property(x => x.ModuleKey).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Modulo).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Accion).HasMaxLength(20).IsRequired();
             // El permiso vive y muere con su rol.
             b.HasOne(x => x.Rol).WithMany()
                 .HasForeignKey(x => x.RolId).OnDelete(DeleteBehavior.Cascade);
-            // Una fila por (rol, modulo).
-            b.HasIndex(x => new { x.RolId, x.ModuleKey }).IsUnique();
+            // Unico por (tenant, rol, modulo, accion), tal cual la spec.
+            b.HasIndex(x => new { x.TenantId, x.RolId, x.Modulo, x.Accion }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.RolId });
+        });
+
+        // Puente multi-rol usuario <-> rol con vigencia temporal (RF05).
+        modelBuilder.Entity<UsuarioRol>(b =>
+        {
+            // La asignacion vive y muere con el usuario del tenant.
+            b.HasOne(x => x.TenantUser).WithMany(u => u.Roles)
+                .HasForeignKey(x => x.TenantUserId).OnDelete(DeleteBehavior.Cascade);
+            // RESTRICT hacia el rol: borrar un rol NO desasigna usuarios en silencio; la app
+            // bloquea el borrado de un rol que tenga asignaciones.
+            b.HasOne(x => x.Rol).WithMany()
+                .HasForeignKey(x => x.RolId).OnDelete(DeleteBehavior.Restrict);
+            // Un usuario no puede tener dos veces el mismo rol (la vigencia se actualiza).
+            b.HasIndex(x => new { x.TenantId, x.TenantUserId, x.RolId }).IsUnique();
+            // Consulta caliente: los roles de un usuario al resolver sus permisos.
+            b.HasIndex(x => new { x.TenantId, x.TenantUserId });
+            b.HasIndex(x => x.RolId);
+            // Barrido de asignaciones por vencer / vencidas.
+            b.HasIndex(x => x.VigenteHasta);
         });
 
         // ---- Configuracion archivistica (RQ01 - RF01-P.3 y RF02) ----
