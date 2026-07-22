@@ -57,7 +57,53 @@ tests de invariantes, no solo compilando.
 
 ---
 
-## INCIDENTE - Poda excesiva de endpoints (en correccion)
+## DEFECTO ABIERTO (ALTA) - La auditoria de creacion pierde el id de la entidad
+
+**Estado: NO corregido. Es lo primero que hay que atacar.**
+
+`AuditWriter.Write` copia el `entityId` en el momento de la llamada:
+
+```csharp
+_db.SuperAdminAuditLogs.Add(new SuperAdminAuditLog { ... EntityId = entityId ... });
+```
+
+Con ids `Guid` generados en la aplicacion, el id ya existia cuando se auditaba. Con ids de
+IDENTIDAD generados por la base, **vale 0 hasta que se ejecuta SaveChanges**. Resultado: toda
+entrada de auditoria de una CREACION queda con `EntityId = 0` y no se puede rastrear hasta el
+registro que documenta.
+
+RNF-04 exige pistas de auditoria inalterables y completas. Una entrada de alta que no apunta a
+nada incumple ese requisito.
+
+**Sitios afectados (10), todos con el patron "auditar antes de guardar":**
+
+| Archivo | Linea aprox. | Accion auditada |
+|---|---|---|
+| `Admin\OnboardingService.cs` | 115 | `tenant.onboard` |
+| `Admin\PaymentAdminService.cs` | 43 | `payment.register` |
+| `Admin\PlanAdminService.cs` | 40 | `plan.create` |
+| `Admin\PlatformBrandingService.cs` | 76 | `platform.branding.save` |
+| `Admin\PlatformOperatorService.cs` | 75 | `platform_operator.create` |
+| `Admin\SubscriptionAdminService.cs` | 44 | `subscription.assign` |
+| `Admin\GoogleAuthConfigService.cs` | 63 | `google.auth.create` |
+| `Roles\RolService.cs` | 107 | `rol.create` |
+| `Tenancy\BusinessUnitService.cs` | 77 | `business-unit.create` |
+| `Tenancy\TenantUserService.cs` | 91 | `tenant-user.invite` |
+
+`Admin\TenantAdminService.cs` (`tenant.create`) YA se corrigio guardando primero y auditando
+despues, y sirve de referencia del arreglo puntual.
+
+**Recomendacion: NO repetir ese arreglo diez veces.** Conviene un arreglo sistemico, por ejemplo
+una sobrecarga `Write(entidad, ...)` que guarde la REFERENCIA a la entidad y resuelva su id en
+el interceptor de `SaveChanges`, cuando ya existe. Asi el patron correcto es el camino facil y
+el defecto no puede reaparecer al escribir el siguiente servicio.
+
+**Anadir ademas un test de regresion** que cree una entidad y afirme que su entrada de auditoria
+lleva un `EntityId` distinto de 0. Hoy no existe: por eso el defecto entro sin ruido.
+
+---
+
+## INCIDENTE - Poda excesiva de endpoints (corregido)
 
 Al podar `Tronox.Api` se borro `ConnectEndpoints.cs` junto con los endpoints de WhatsApp y
 la pasarela de pagos, por asociacion. **No era dominio ajeno: era la AUTENTICACION de la API**

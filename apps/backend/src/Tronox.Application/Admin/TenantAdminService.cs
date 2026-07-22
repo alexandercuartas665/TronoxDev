@@ -36,6 +36,12 @@ public sealed class TenantAdminService : ITenantAdminService
         };
 
         _db.Tenants.Add(tenant);
+
+        // El Id es identity generada por la base (long): hay que persistir ANTES de auditar,
+        // si no el registro de auditoria queda con TenantId/EntityId = 0 y se pierde la
+        // trazabilidad del alta. (Con Guid generado en cliente esto no se notaba.)
+        await _db.SaveChangesAsync(cancellationToken);
+
         _audit.Write(actorUserId, "tenant.create", nameof(Tenant), tenant.Id,
             previousValue: null,
             newValue: new { tenant.Name, tenant.Status, tenant.Kind },

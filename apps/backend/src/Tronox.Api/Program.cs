@@ -105,6 +105,8 @@ app.UseAuthorization();
 
 // API REST versionada de TRONOX. Por ahora solo el grupo de administracion de plataforma;
 // los endpoints /api/v1 de los 17 modulos se agregan con cada modulo, autenticados por API Key.
+app.MapConnectEndpoints();
+app.MapTenantEndpoints();
 app.MapAdminEndpoints();
 
 app.Run();
