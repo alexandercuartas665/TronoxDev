@@ -49,6 +49,14 @@ public static class DependencyInjection
         // El catalogo de modulos se deriva del menu, no de una lista paralela.
         services.AddScoped<Roles.IRolService, Roles.RolService>();
 
+        // --- Configuracion archivistica (base de RF01-P.3 y RF02) ---
+        // Niveles de clasificacion documental (los 4 canonicos los siembra el alta del tenant,
+        // ver IClasificacionProvisioningService en Infrastructure), sedes, fondos y subfondos.
+        services.AddScoped<Archivistica.INivelClasificacionService, Archivistica.NivelClasificacionService>();
+        services.AddScoped<Archivistica.ISedeService, Archivistica.SedeService>();
+        services.AddScoped<Archivistica.IFondoService, Archivistica.FondoService>();
+        services.AddScoped<Archivistica.ISubfondoService, Archivistica.SubfondoService>();
+
         // --- Estructura organizacional (base de RF03/RF04) ---
         services.AddScoped<Organization.IOrgUnitService, Organization.OrgUnitService>();
 

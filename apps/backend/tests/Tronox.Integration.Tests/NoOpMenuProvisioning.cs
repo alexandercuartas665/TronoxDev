@@ -1,3 +1,4 @@
+using Tronox.Application.Archivistica;
 using Tronox.Application.MenuConfig;
 
 namespace Tronox.Integration.Tests;
@@ -13,5 +14,20 @@ namespace Tronox.Integration.Tests;
 public sealed class NoOpMenuProvisioning : IMenuProvisioningService
 {
     public Task EnsureDefaultMenuAsync(long tenantId, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+}
+
+/// <summary>
+/// Doble no-op de <see cref="IClasificacionProvisioningService"/>, mismo criterio que
+/// <see cref="NoOpMenuProvisioning"/>: para tests que construyen los servicios de alta a mano y
+/// NO ejercitan la siembra de los niveles de clasificacion.
+///
+/// OJO: no usar en un test que verifique que un tenant NUEVO nace con sus 4 niveles; ahi hay que
+/// inyectar la implementacion real (<c>ClasificacionProvisioningService</c>) o el test pasaria
+/// en falso. Ver ConfiguracionArchivisticaTests.
+/// </summary>
+public sealed class NoOpClasificacionProvisioning : IClasificacionProvisioningService
+{
+    public Task EnsureNivelesClasificacionAsync(long tenantId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 }

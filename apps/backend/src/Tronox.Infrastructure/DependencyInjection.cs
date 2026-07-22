@@ -61,6 +61,11 @@ public static class DependencyInjection
         // no de un seeder de demo: ningun cliente puede nacer sin menu (ver ADR-001).
         services.AddScoped<Tronox.Application.MenuConfig.IMenuProvisioningService, MenuProvisioningService>();
 
+        // Siembra de los 4 niveles de clasificacion documental por tenant (RF01-P.3). Igual que
+        // el menu: cuelga del ALTA de tenant, no de un seeder de demo.
+        services.AddScoped<Tronox.Application.Archivistica.IClasificacionProvisioningService,
+            ClasificacionProvisioningService>();
+
         // Comprobantes PDF (QuestPDF). Licencia Community: gratis para empresas con ingresos < USD 1M/ano.
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<Application.Common.IReceiptPdfRenderer, Pdf.QuestPdfReceiptRenderer>();

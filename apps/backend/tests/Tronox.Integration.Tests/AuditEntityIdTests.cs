@@ -66,7 +66,7 @@ public sealed class AuditEntityIdTests : IClassFixture<PostgresTenantIsolationFi
         long tenantId;
         await using (var ctx = _fixture.CreateContext(tenantId: null))
         {
-            var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning());
+            var service = new TenantAdminService(ctx, new AuditWriter(ctx), new NoOpMenuProvisioning(), new NoOpClasificacionProvisioning());
             var created = await service.CreateAsync(new CreateTenantRequest("Auditoria Tenant"), actorUserId);
             tenantId = created.Id;
         }

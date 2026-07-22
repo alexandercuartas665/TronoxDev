@@ -16,17 +16,20 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IAuditWriter _audit;
     private readonly Tronox.Application.MenuConfig.IMenuProvisioningService _menuProvisioning;
+    private readonly Tronox.Application.Archivistica.IClasificacionProvisioningService _clasificacionProvisioning;
 
     public OnboardingService(
         IApplicationDbContext db,
         IPasswordHasher passwordHasher,
         IAuditWriter audit,
-        Tronox.Application.MenuConfig.IMenuProvisioningService menuProvisioning)
+        Tronox.Application.MenuConfig.IMenuProvisioningService menuProvisioning,
+        Tronox.Application.Archivistica.IClasificacionProvisioningService clasificacionProvisioning)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _audit = audit;
         _menuProvisioning = menuProvisioning;
+        _clasificacionProvisioning = clasificacionProvisioning;
     }
 
     public async Task<OnboardingOutcome> OnboardAsync(OnboardTenantRequest request, long actorUserId, CancellationToken cancellationToken = default)
@@ -135,6 +138,9 @@ public sealed class OnboardingService : IOnboardingService
         // El tenant nace CON menu: vista "Completo" (por defecto) con el arbol canonico. Sin esto el
         // cliente quedaba sin ninguna vista y sus usuarios no veian nada (bug real detectado en prod).
         await _menuProvisioning.EnsureDefaultMenuAsync(tenant.Id, cancellationToken);
+
+        // ... y CON sus 4 niveles de clasificacion documental (RF01-P.3). Idempotente.
+        await _clasificacionProvisioning.EnsureNivelesClasificacionAsync(tenant.Id, cancellationToken);
 
         return new OnboardingOutcome(true,
             new OnboardingResult(tenant.Id, tenant.Name, admin.Id, admin.Email, subscriptionId),

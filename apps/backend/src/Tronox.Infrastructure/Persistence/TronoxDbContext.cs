@@ -103,6 +103,13 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<Rol> Roles => Set<Rol>();
     public DbSet<RolPermiso> RolPermisos => Set<RolPermiso>();
 
+    // Configuracion archivistica (RQ01 - RF01-P.3 y RF02): niveles de clasificacion documental,
+    // sedes de la entidad, fondos documentales y subfondos. Todas tenant-scoped.
+    public DbSet<NivelClasificacion> NivelesClasificacion => Set<NivelClasificacion>();
+    public DbSet<Sede> Sedes => Set<Sede>();
+    public DbSet<Fondo> Fondos => Set<Fondo>();
+    public DbSet<Subfondo> Subfondos => Set<Subfondo>();
+
     // Directorio General (modulo 000232): terceros (empresas / personas) con perfiles de
     // negocio, contactos embebidos y fichas dinamicas (jsonb). Multi-tenant (filtro global).
     // ---- Gestor de Clientes (000740) ----
@@ -334,6 +341,11 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<ScheduledJobFrequency>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<ScheduledJobChannelType>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<ScheduledJobRunResult>().HaveConversion<string>().HaveMaxLength(40);
+        // Configuracion archivistica (RQ01 - RF01 4.1.2 / RF02): enums como texto acotado.
+        configurationBuilder.Properties<SedeEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FondoTipo>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FondoEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<SubfondoEstado>().HaveConversion<string>().HaveMaxLength(20);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -852,6 +864,63 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             // Una fila por (rol, modulo).
             b.HasIndex(x => new { x.RolId, x.ModuleKey }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.RolId });
+        });
+
+        // ---- Configuracion archivistica (RQ01 - RF01-P.3 y RF02) ----
+
+        // Niveles de clasificacion documental. Se siembran 4 al crear el tenant. Codigo y orden
+        // unicos POR TENANT: el orden es la escala que comparara roles.nivel_acceso_maximo (RF05).
+        modelBuilder.Entity<NivelClasificacion>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
+            b.Property(x => x.Codigo).HasMaxLength(10).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(500);
+            b.Property(x => x.ColorEtiqueta).HasMaxLength(9);
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.NivelOrden }).IsUnique();
+        });
+
+        // Sedes de la entidad. Opcionales. CodigoSede unico POR TENANT (no global).
+        // PaisId/DepartamentoId/CiudadId quedan sin FK hasta que existan los catalogos DIVIPOLA.
+        modelBuilder.Entity<Sede>(b =>
+        {
+            b.Property(x => x.NombreSede).HasMaxLength(200).IsRequired();
+            b.Property(x => x.CodigoSede).HasMaxLength(20).IsRequired();
+            b.Property(x => x.SiglaSede).HasMaxLength(10).IsRequired();
+            b.Property(x => x.Direccion).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Telefono).HasMaxLength(20);
+            b.Property(x => x.CorreoSede).HasMaxLength(150);
+            b.HasIndex(x => new { x.TenantId, x.CodigoSede }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+        });
+
+        // Fondos documentales. CodigoFondo unico POR TENANT (no global): dos entidades distintas
+        // pueden usar el mismo codigo. SedeId NULL = fondo TRANSVERSAL a toda la entidad.
+        // FK a Sede con NO ACTION: inactivar o borrar una sede jamas arrastra sus fondos.
+        modelBuilder.Entity<Fondo>(b =>
+        {
+            b.Property(x => x.CodigoFondo).HasMaxLength(20).IsRequired();
+            b.Property(x => x.NombreFondo).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(500);
+            b.Property(x => x.EntidadOrigen).HasMaxLength(200);
+            b.HasOne(x => x.Sede).WithMany()
+                .HasForeignKey(x => x.SedeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.CodigoFondo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => x.SedeId);
+        });
+
+        // Subfondos. Opcionales. CodigoSubfondo unico DENTRO DEL FONDO, no dentro del tenant.
+        // Restrict: un fondo con subfondos no se borra por cascada (regla 4 de RF02: se sugiere
+        // Inactivar o Cerrar, nunca eliminar).
+        modelBuilder.Entity<Subfondo>(b =>
+        {
+            b.Property(x => x.CodigoSubfondo).HasMaxLength(20).IsRequired();
+            b.Property(x => x.NombreSubfondo).HasMaxLength(200).IsRequired();
+            b.HasOne(x => x.Fondo).WithMany()
+                .HasForeignKey(x => x.FondoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.FondoId, x.CodigoSubfondo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.FondoId });
         });
     }
 

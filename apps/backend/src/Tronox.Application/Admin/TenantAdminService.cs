@@ -10,15 +10,18 @@ public sealed class TenantAdminService : ITenantAdminService
     private readonly IApplicationDbContext _db;
     private readonly IAuditWriter _audit;
     private readonly Tronox.Application.MenuConfig.IMenuProvisioningService _menuProvisioning;
+    private readonly Tronox.Application.Archivistica.IClasificacionProvisioningService _clasificacionProvisioning;
 
     public TenantAdminService(
         IApplicationDbContext db,
         IAuditWriter audit,
-        Tronox.Application.MenuConfig.IMenuProvisioningService menuProvisioning)
+        Tronox.Application.MenuConfig.IMenuProvisioningService menuProvisioning,
+        Tronox.Application.Archivistica.IClasificacionProvisioningService clasificacionProvisioning)
     {
         _db = db;
         _audit = audit;
         _menuProvisioning = menuProvisioning;
+        _clasificacionProvisioning = clasificacionProvisioning;
     }
 
     public async Task<TenantDetail> CreateAsync(CreateTenantRequest request, long actorUserId, CancellationToken cancellationToken = default)
@@ -48,6 +51,11 @@ public sealed class TenantAdminService : ITenantAdminService
         // El tenant nace CON menu: vista "Completo" (por defecto) con el arbol canonico. Sin esto el
         // cliente quedaba sin ninguna vista y sus usuarios no veian nada (bug real detectado en prod).
         await _menuProvisioning.EnsureDefaultMenuAsync(tenant.Id, cancellationToken);
+
+        // El tenant nace tambien CON sus 4 niveles de clasificacion documental (RF01-P.3): son la
+        // escala que RF05 usara para roles.nivel_acceso_maximo. Idempotente, y por la misma razon
+        // que el menu cuelga del alta y no de un seeder.
+        await _clasificacionProvisioning.EnsureNivelesClasificacionAsync(tenant.Id, cancellationToken);
 
         return Map(tenant);
     }

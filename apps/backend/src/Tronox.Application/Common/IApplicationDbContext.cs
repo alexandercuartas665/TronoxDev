@@ -38,6 +38,13 @@ public interface IApplicationDbContext
     DbSet<Rol> Roles { get; }
     DbSet<RolPermiso> RolPermisos { get; }
 
+    // Configuracion archivistica (base de RQ01 - RF01-P.3 y RF02): niveles de clasificacion
+    // documental, sedes, fondos y subfondos. Todas tenant-scoped.
+    DbSet<NivelClasificacion> NivelesClasificacion { get; }
+    DbSet<Sede> Sedes { get; }
+    DbSet<Fondo> Fondos { get; }
+    DbSet<Subfondo> Subfondos { get; }
+
     // Estructura organizacional (base de RQ01 - RF03/RF04).
     DbSet<OrgUnit> OrgUnits { get; }
     DbSet<OrgUnitMember> OrgUnitMembers { get; }
