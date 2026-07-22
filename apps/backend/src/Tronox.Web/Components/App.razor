@@ -1,5 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+@* Los data-* de Velzon controlan el layout (PLAN DE ARRANQUE seccion 3, regla 3): el
+   comportamiento lo maneja velzon/js/layout.js, no se reescribe markup para cambiarlo. *@
+<html lang="es"
+      data-layout="vertical"
+      data-topbar="light"
+      data-sidebar="light"
+      data-sidebar-size="lg"
+      data-sidebar-image="none"
+      data-preloader="disable">
 
 <head>
     <meta charset="utf-8" />
@@ -36,11 +44,23 @@
             };
         })();
     </script>
-    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
-    @* bpmn-js (editor de flujos, ADR-0034): estilos base de diagram-js + iconografia BPMN. *@
-    <link rel="stylesheet" href="lib/bpmnio/diagram-js.css" />
-    <link rel="stylesheet" href="lib/bpmnio/bpmn.css" />
+    @* Config de layout de Velzon: va ANTES de las hojas, como en la plantilla. *@
+    <script src="@Assets["velzon/js/layout.js"]"></script>
+
+    @* --- Plantilla Velzon minimal, en el orden de la plantilla y SIN modificar --- *@
+    <link rel="stylesheet" href="@Assets["velzon/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="@Assets["velzon/css/icons.min.css"]" />
+    <link rel="stylesheet" href="@Assets["velzon/css/app.min.css"]" />
+
+    @* Hoja heredada del backbone: sigue vistiendo las pantallas que aun no se han
+       migrado a Velzon. Se carga despues de app.min.css para no alterarlas. *@
     <link rel="stylesheet" href="@Assets["app.css"]" />
+
+    @* Punto de extension de la plantilla. custom.min.css viene vacio; TODA la
+       personalizacion de marca TRONOX vive en custom.css (regla 2 del PLAN). *@
+    <link rel="stylesheet" href="@Assets["velzon/css/custom.min.css"]" />
+    <link rel="stylesheet" href="@Assets["velzon/css/custom.css"]" />
+
     <link rel="stylesheet" href="@Assets["Tronox.Web.styles.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
@@ -50,8 +70,14 @@
 <body>
     <Routes />
     <script src="_framework/blazor.web.js"></script>
-    @* bpmn-js UMD (expone window.BpmnJS); el modulo interop tronox-bpmn.js se importa on-demand. *@
-    <script src="lib/bpmnio/bpmn-modeler.js"></script>
+
+    @* JS de la plantilla Velzon (mismo set que sus paginas de autenticacion). *@
+    <script src="@Assets["velzon/libs/bootstrap/js/bootstrap.bundle.min.js"]"></script>
+    <script src="@Assets["velzon/libs/simplebar/simplebar.min.js"]"></script>
+    <script src="@Assets["velzon/libs/node-waves/waves.min.js"]"></script>
+    <script src="@Assets["velzon/libs/feather-icons/feather.min.js"]"></script>
+    <script src="@Assets["velzon/js/plugins.js"]"></script>
+
     <script src="js/wompi.js?v=3"></script>
     <script src="js/pipeline-dnd.js?v=3"></script>
     <script src="js/agent-editor.js?v=3"></script>

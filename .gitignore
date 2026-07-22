@@ -89,3 +89,6 @@ appsettings.Development.local.json.bak
 # Llaves de DataProtection en dev (local, no versionar)
 .dpkeys-dev/
 **/.dpkeys-dev/
+
+# Paginas de referencia de la plantilla Velzon (comercial): solo consulta local, NO se versionan.
+apps/web-assets/

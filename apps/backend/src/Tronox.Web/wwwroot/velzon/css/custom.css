@@ -5,3 +5,210 @@ Website: https://themesbrand.com/
 Contact: support@themesbrand.com
 File: Custom Css File
 */
+
+/* =========================================================================
+   TRONOX - capa de marca sobre Velzon.
+   Unico punto de extension permitido (PLAN DE ARRANQUE seccion 3, regla 2).
+   app.min.css y bootstrap.min.css NO se tocan.
+   ========================================================================= */
+
+:root {
+  /* Azul institucional TRONOX (base del degradado del panel de marca). */
+  --tronox-blue-900: #0b3a63;
+  --tronox-blue-700: #10538c;
+  --tronox-blue-500: #1b8fcd;
+}
+
+/* -------------------------------------------------------------------------
+   1. Aislamiento de la hoja heredada del backbone (wwwroot/app.css).
+   app.css se carga despues de app.min.css para no alterar las pantallas que
+   todavia no se migran a Velzon, pero pisa .card/.btn/.form-control/body.
+   Dentro de las paginas de autenticacion devolvemos el control a Velzon.
+   ------------------------------------------------------------------------- */
+.auth-page-wrapper {
+  font-family: var(--vz-body-font-family);
+  color: var(--vz-body-color);
+}
+
+.auth-page-wrapper .card {
+  border: var(--vz-card-border-width) solid var(--vz-card-border-color);
+  border-radius: var(--vz-border-radius);
+  box-shadow: none;
+}
+
+.auth-page-wrapper .btn {
+  border-radius: var(--vz-border-radius);
+  font-size: .8125rem;
+  font-weight: 400;
+}
+
+/* app.css repinta .btn-primary / .btn-outline-secondary / .text-muted con la paleta
+   violeta del backbone. Dentro del login mandan los tokens de Velzon. */
+.auth-page-wrapper .btn-primary {
+  background: var(--vz-primary);
+  border-color: var(--vz-primary);
+  color: #fff;
+}
+
+.auth-page-wrapper .btn-primary:hover,
+.auth-page-wrapper .btn-primary:focus {
+  background: var(--vz-primary-text-emphasis);
+  border-color: var(--vz-primary-text-emphasis);
+  color: #fff;
+}
+
+.auth-page-wrapper .btn-outline-secondary {
+  background: transparent;
+  color: var(--vz-secondary);
+  border-color: var(--vz-secondary);
+}
+
+.auth-page-wrapper .btn-outline-secondary:hover {
+  background: var(--vz-secondary);
+  color: #fff;
+}
+
+.auth-page-wrapper .text-muted {
+  color: var(--vz-secondary-color) !important;
+}
+
+.auth-page-wrapper .form-control {
+  border-radius: var(--vz-border-radius);
+  border-color: var(--vz-input-border-custom);
+  font-size: .875rem;
+}
+
+.auth-page-wrapper .form-control:focus {
+  border-color: var(--vz-input-focus-border);
+  box-shadow: 0 0 0 .15rem rgba(64, 81, 137, .25);
+}
+
+.auth-page-wrapper .form-label {
+  font-size: .8125rem;
+  font-weight: 500;
+  color: var(--vz-body-color);
+}
+
+/* -------------------------------------------------------------------------
+   2. Panel de marca. Velzon apunta .auth-one-bg a assets/images/auth-one-bg.jpg,
+   que es material licenciado y no se versiona en este repo. Se sustituye por
+   el degradado azul institucional pedido en el PLAN seccion 3.1.
+   ------------------------------------------------------------------------- */
+.auth-one-bg {
+  background-image: linear-gradient(135deg, var(--tronox-blue-900) 0%, var(--tronox-blue-700) 55%, var(--tronox-blue-500) 100%);
+  background-position: center;
+  background-size: cover;
+}
+
+/* Textura sutil sobre el degradado, sin imagen externa. */
+.auth-one-bg .bg-overlay {
+  background: radial-gradient(circle at 18% 12%, rgba(255, 255, 255, .16) 0, rgba(255, 255, 255, 0) 42%);
+  opacity: 1;
+}
+
+/* Marca del panel izquierdo. */
+.tronox-auth-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: .625rem;
+  color: #fff;
+  text-decoration: none;
+}
+
+.tronox-auth-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: .5rem;
+  background: rgba(255, 255, 255, .16);
+  border: 1px solid rgba(255, 255, 255, .28);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: .04em;
+}
+
+.tronox-auth-logo-word {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: .16em;
+  line-height: 1;
+}
+
+.tronox-auth-kicker {
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .72);
+}
+
+/* Lista de caracteristicas del panel de marca. */
+.tronox-auth-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tronox-auth-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  color: rgba(255, 255, 255, .88);
+  font-size: .875rem;
+  margin-bottom: 1rem;
+}
+
+.tronox-auth-features li:last-child {
+  margin-bottom: 0;
+}
+
+.tronox-auth-features .tronox-auth-feature-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: .5rem;
+  background: rgba(255, 255, 255, .14);
+  border: 1px solid rgba(255, 255, 255, .22);
+  color: #fff;
+  font-size: 1rem;
+}
+
+.tronox-auth-copyright {
+  font-size: .75rem;
+  color: rgba(255, 255, 255, .6);
+}
+
+/* -------------------------------------------------------------------------
+   3. Chip de tenant del panel derecho.
+   ------------------------------------------------------------------------- */
+.tronox-tenant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .3125rem .75rem;
+  border-radius: 2rem;
+  background: var(--vz-light);
+  border: 1px solid var(--vz-border-color);
+  color: var(--vz-body-color);
+  font-size: .75rem;
+  font-weight: 500;
+}
+
+.tronox-tenant-chip .tronox-tenant-dot {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--vz-success);
+}
+
+/* Boton de certificado digital: hito futuro (RQ05 seccion B), se muestra
+   deshabilitado tras el feature flag Features:FirmaCertificadoDigital. */
+.auth-page-wrapper .btn.tronox-btn-cert:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
