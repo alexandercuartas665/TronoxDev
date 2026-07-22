@@ -79,6 +79,35 @@ declaro. TRONOX adopta **una sola** clasificacion desde el inicio; `Kind` no se 
 - Si mas adelante se quisiera volver a catalogos separados, la vuelta atras es costosa: habria
   que partir el arbol y remapear las referencias de usuarios.
 
+## Addendum (2026-07-22): como se ancla el Usuario al arbol
+
+La decision de arriba dejo un hueco que RF06 no cubre, porque fue escrito asumiendo catalogos
+separados (`dependencia_id` + `cargo_id`). Resolucion aprobada:
+
+**El usuario apunta a UN solo nodo del arbol: su Cargo.** La dependencia NO se almacena en el
+usuario: se deriva subiendo por la cadena de padres hasta el primer nodo con clasificador
+`Dependencia`.
+
+Consecuencias que hay que sostener en la implementacion:
+
+1. La **Capa 2 de permisos** (visibilidad por area documental, RQ01 seccion 3) se resuelve
+   caminando el arbol, no leyendo un campo. Esa resolucion debe ser **logica pura y cacheable**,
+   no una consulta por cada verificacion de acceso.
+2. Mover un nodo Cargo de una dependencia a otra **cambia la visibilidad documental de todos
+   sus ocupantes**, sin que nadie edite esos usuarios. Es potente y es peligroso: toda
+   reubicacion de un Cargo debe quedar en pista de auditoria y avisar a quien la hace cuantos
+   usuarios afecta.
+3. Un usuario cuyo Cargo cuelgue directamente de la raiz (sin Dependencia por encima) no tiene
+   area documental. Debe resolver **fail-closed**: sin visibilidad, no visibilidad total.
+4. El **principio de procedencia** (RF03) exige que el expediente conserve la dependencia
+   VIGENTE AL MOMENTO de producirlo. Como aqui la dependencia es derivada, el expediente debe
+   copiar el `dependencia_id` resuelto en el instante de su creacion. No se recalcula nunca
+   despues, igual que el `trd_detalle_id` (DAT-03).
+
+El punto 4 es el que se olvida con este modelo: si el expediente derivara su dependencia en
+tiempo de lectura, reorganizar el organigrama reescribiria la procedencia de expedientes
+historicos, que es exactamente lo que la normativa archivistica prohibe.
+
 ## Accion pendiente sobre el vault
 
 Actualizar en `OBSIDIAN.TRONOX`:
