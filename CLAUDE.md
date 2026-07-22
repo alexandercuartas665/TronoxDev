@@ -1,237 +1,245 @@
-# CLAUDE.md - Memoria del agente de desarrollo para TRONOX.tareas
+# CLAUDE.md - Memoria del agente de desarrollo de TRONOX SGDEA
 
-> Primera lectura obligatoria para cualquier agente (Claude Code u otro) antes de
-> modificar codigo en este repositorio. Reglas pequenas, concretas y verificables.
-> Convencion del proyecto: **solo ASCII** en archivos nuevos (sin tildes ni enie).
-
----
-
-## 1. Contexto del proyecto
-
-TRONOX - Sistema de Tareas es la **reconstruccion sobre .NET 10** de un gestor de
-**tareas, proyectos, tableros Kanban, flujos de proceso BPMN 2.0, formularios
-dinamicos y reglas de negocio** que hoy corre en WebForms/VB.NET (GestionMovil,
-legacy en `C:\Desarrollo\core`, SOLO referencia). Es un SaaS multi-tenant donde
-**el proceso, el formulario y la regla se configuran sin codigo**.
-
-Pilares:
-
-- **Multi-tenant real**: `TenantId` (Guid v7) + `HasQueryFilter` global + RLS en BD.
-- **DAL dual**: PostgreSQL y SQL Server tras `ITronoxDbContext`, elegido por `Database:Provider`.
-- **Tres motores**: WorkflowEngine (BPMN, bpmn-js), DynamicFormRenderer (EAV -> jsonb), RulesEngine (verbos tipados).
-- **PlatformAdmin** (Super Admin) separado del admin de tenant, con MFA y auditoria inmutable.
-- **Agentes de IA gobernados** (AI Provider Gateway multi-proveedor, cupos por plan).
-
-### Origen del codigo (importante)
-
-Este repo se **clono del backbone `CUBOT.nails`** (a su vez derivado de `cubotcrm.git`,
-la familia SaaS TRONOX) y se renombro `CubotNails.*` -> `Tronox.*`. La columna
-vertebral SaaS (Super Admin, identidad JWT, planes, integraciones, AI Gateway)
-**ya viene funcionando**; lo que se construye nuevo es el **nucleo de tareas,
-tableros y proyectos + los tres motores**, y se ELIMINA el dominio belleza/agenda.
-
-- `origin`   -> https://github.com/alexandercuartas665/TronoxV.git (push del proyecto)
-- `upstream` -> https://github.com/alexandercuartas665/cubotcrm.git (backports del backbone via fetch + cherry-pick)
+> Lectura obligatoria antes de modificar codigo en este repositorio.
+> Convencion del proyecto: **solo ASCII** en archivos de codigo y scripts
+> (`.cs`, `.ps1`, `.sh`, `.sql`). No aplica a HTML/CSS/JS de UI ni a Markdown.
 
 ---
 
-## 2. Fuente de verdad (vault Obsidian)
+## 1. Que es este proyecto
 
-Las especificaciones funcionales viven en:
+**TRONOX SGDEA** - Sistema de Gestion Documental Electronica de Archivo, SaaS multi-tenant
+para entidades publicas colombianas. Cliente: A&D GROUP. Desarrollo: Bitcode.
+
+Es un **producto nuevo (green field)**: no hay sistema legacy que migrar ni ETL de datos.
+Se construye conforme a la normativa del Archivo General de la Nacion (AGN), el Decreto
+1080/2015 y la Ley 1755/2015.
+
+Son 17 modulos (RQ01-RQ17) sobre una plataforma multi-tenant, mas una consola de plataforma
+separada y cuatro portales externos.
+
+### Origen del codigo
+
+Este repo se clono del backbone **ECOREX.tareas** y se renombro `Ecorex.*` -> `Tronox.*`.
+Se heredo la columna vertebral SaaS ya probada (multi-tenant, identidad/JWT, menu
+configurable, roles y permisos, organigrama, registro de modulos, gateway de IA) y se podo
+todo su dominio propio (tareas, Kanban, BPMN, formularios EAV, motor de reglas, CRM,
+WhatsApp, pagos, inventario, scraping).
+
+- `origin`   -> https://github.com/alexandercuartas665/TronoxDev.git (**repositorio PUBLICO**)
+- `backbone` -> `C:\desarrolloia\ecorex.tareas` (solo lectura, para recuperar piezas puntuales)
+
+La historia de git es **huerfana**: TronoxDev arranca en un commit inicial propio. NO hay
+cherry-pick desde el backbone; si hace falta una correccion suya, se copia el cambio a mano.
+
+---
+
+## 2. Fuente de verdad
+
+Las especificaciones funcionales NO viven en este repo. Viven en el vault Obsidian:
 
 ```
-C:\Users\acuartas\OneDrive - Bitcode IT Services S.A.S\Bitcode\13. Proyectos\044. Tareas\OBSIDIAN.tareas
+C:\Users\acuartas\OneDrive - Bitcode IT Services S.A.S\Bitcode\13. Proyectos\042. Tronox\07. Obsidian\TRONOX
 ```
 
-Repo del vault: https://github.com/alexandercuartas665/TronoxV_obsidian.git
-(empezar SIEMPRE por `00 - INDICE.md`).
+Empezar SIEMPRE por `00 - INDICE.md`. Orden de lectura antes de tocar un modulo:
 
-Documentos maestros (leer en este orden):
+1. `04. Notas para desarrollador/TRONOX_Observaciones_Tecnicas_v1.md` - las 23 decisiones
+   cruzadas y las 7 decisiones transversales DAT-01..07. Es el contrato entre modulos.
+2. `02. Inventario de modulos/MAPA_MENU_SISTEMA_TRONOX.md` - navegacion real del sistema.
+3. La spec del modulo que se va a construir (`01. Requerimiento/REQ0XX/`).
+4. `03. Hoja de Ruta desarrollo/` - PLAN DE ARRANQUE y HOJA DE RUTA.
 
-1. `01. Requerimiento/Capa 0 Vision General/Vision y entorno.md` - que es TRONOX Tareas, stack, shell
-2. `01. Requerimiento/Prototipo/00 - Prototipo Final TRONOX.md` - aspecto y navegacion DEFINITIVOS (abrir el HTML)
-3. `03. Hoja de Ruta desarrollo/HOJA DE RUTA DESARROLLO.md` - plan de construccion (contrato de trabajo)
-4. `01. Requerimiento/Capa 1 Gestion de tenant/Gestion de Empresas - Admin multi-tenant.md` - los 9 errores heredados
-5. `01. Requerimiento/Capa 5 Librerias Base/00 - Vision MotherData.md` - DAL dual (origen del concepto)
-6. `04. Notas para desarrollador/Seguridad y Autenticacion multi-tenant.md` - JWT, MFA, policies, RLS
-7. `04. Notas para desarrollador/ADRs - Decisiones de arquitectura.md` - 10 ADRs con su porque
-8. `05. Pruebas/Modelo de pruebas/Estrategia de Testing (.NET 10).md` + `CREDENCIALES - Usuarios y claves.md`
-9. `02. Inventario de modulos/` (INVENTARIO GENERAL + Modelo Entidad-Relacion logico) - plano del ETL
+**No reinterpretar requerimientos de memoria.** Si el codigo debe contradecir la spec, se
+pregunta al usuario, se escribe un ADR en `docs/decisiones/` y se avisa para actualizar el vault.
 
-Antes de implementar un modulo, leer su documento. No reinterpretar requerimientos de memoria.
+> Nota: `04. Notas para desarrollador/ARQ_Aislamiento_MultiTenant.md` describe una arquitectura
+> GCP/Firestore que **contradice** el stack relacional de las 17 specs. Se trata como OBSOLETA.
 
 ---
 
-## 3. Estructura del repositorio
+## 3. Stack
+
+| Capa | Decision |
+|---|---|
+| Plataforma | .NET 10 / ASP.NET Core, Clean Architecture |
+| UI | Blazor Server interactivo sobre la plantilla **Velzon minimal** |
+| Base de datos | **PostgreSQL, motor UNICO.** No hay DAL dual |
+| Binarios | Object storage S3 (MinIO en local). **Nunca BLOB en base de datos** |
+| Cache | Redis (KPIs, menu resuelto por `(tenant_id, menu_vista_id)`) |
+| Colas | RabbitMQ (motor SLA, OCR, eventos de workflow, notificaciones, ETL de analitica) |
+| Seguridad | bcrypt/argon2 (cost >= 12), AES-256 para secretos, SHA-256 integridad, TLS 1.2+ |
+
+---
+
+## 4. LOS 10 INVARIANTES (rechaza tu propio codigo si los rompe)
+
+1. **Aislamiento por tenant (DAT-01).** Toda tabla lleva `tenant_id`, generado solo por la
+   tabla `tenants` (RQ14). Toda query filtra por el. El filtro global de EF se aplica por
+   reflexion **solo a `ITenantScoped`**: tener la columna no basta. El test de aislamiento
+   cross-tenant DEBE fallar si esto se rompe.
+2. **Terceros como fuente unica (DAT-02).** Todo actor externo (ciudadano, remitente,
+   contratista, postulante...) es UN registro en `terceros` (RQ07). Ningun modulo crea
+   tablas propias de personas o empresas externas.
+3. **Inmutabilidad TRD (DAT-03).** Expedientes y documentos conservan el `trd_detalle_id`
+   de la version bajo la que nacieron. Nada se recalcula solo (Acuerdo AGN 002/2014).
+4. **Metadatos sobre RQ02 (DAT-04).** RQ12, RQ15 y RQ17 NO extienden la tabla `expedientes`;
+   usan el motor de metadatos de RQ02 mas tablas de proceso propias que referencian
+   `expediente_id`.
+5. **Contrato de firma estable (RQ05).** `solicitarFirma` / `consultarEstadoFirma` /
+   `cancelarFirma`. Nunca se cambian esas firmas; si falta algo, se agrega.
+6. **Un solo motor SLA (DAT-06).** El contador vive en RQ09. RQ15 solo le pasa el termino
+   legal calculado. El panel de RQ09 es la fuente unica de vencimientos.
+7. **Interruptor maestro de IA (DAT-07).** `tenants.ia_habilitada` manda sobre `ia_config`.
+   En false, ningun elemento de IA se renderiza (ni el icono).
+8. **Sin eliminacion real.** Expedientes, documentos, terceros y dependencias se
+   inactivan/archivan con motivo y auditoria. Unica excepcion: borrador nunca archivado (RQ04).
+9. **Binarios en object storage**, nunca BLOB en base de datos.
+10. **FAIL-CLOSED en permisos.** Un usuario sin rol, o una resolucion de permisos que falla,
+    resuelve a **SIN PERMISOS**. El backbone es fail-open a proposito; TRONOX no puede serlo
+    porque maneja niveles Reservado/Clasificado.
+
+### Dos trampas heredadas del backbone
+
+- **Claims en Blazor interactivo:** la resolucion de permisos debe leer los claims del
+  `AuthenticationState`, **nunca** del `IHttpContextAccessor`. En un circuito interactivo no
+  hay `HttpContext`: los claims salen nulos, la resolucion cae en fail-open y el gateado en
+  pagina no restringe a nadie.
+- **Aprovisionamiento del menu:** debe colgar del camino de ALTA DEL TENANT, no de un seeder.
+  En el backbone solo se sembraba el tenant demo, asi que los clientes creados desde el panel
+  nacian sin menu y sus usuarios no veian nada.
+
+---
+
+## 5. Seguridad (el repositorio es PUBLICO)
+
+- Ninguna credencial, cadena de conexion, clave de API ni contrasena entra al repo.
+  Todo en `.env` local (gitignored) o gestor de secretos.
+- Prohibido MD5/SHA-1 para contrasenas.
+- Secretos por tenant (SMTP, API keys, buzones) cifrados AES-256 en base de datos.
+- OTP en portales externos, reCAPTCHA v3 en formularios publicos, rate limiting en API y login.
+- Console con identidad y clave JWT **separadas** de la app del tenant.
+- Pistas de auditoria append-only (RNF-04): ningun rol puede modificarlas ni borrarlas.
+
+---
+
+## 6. Diseno: Velzon minimal (milimetrico)
+
+Plantilla en `D:\HTML\velzon-minimal`, ya compilada.
+
+1. Se usan las clases y el CSS de Velzon **tal cual** (`bootstrap.min.css`, `app.min.css`,
+   `icons.min.css`, `custom.min.css`).
+2. **PROHIBIDO editar `app.min.css` o `bootstrap.min.css`.** Toda personalizacion de marca
+   TRONOX va EXCLUSIVAMENTE en `assets/css/custom.css`, que la plantilla deja vacio como
+   punto de extension.
+3. El layout se controla por los `data-*` del `<html>` (`data-layout`, `data-topbar`,
+   `data-sidebar`, `data-sidebar-size`, `data-preloader`), no reescribiendo markup.
+   El comportamiento lo maneja `assets/js/layout.js`.
+4. **Cada pantalla nueva PARTE de la pagina equivalente de la plantilla**, no de un HTML
+   en blanco.
+5. No se introducen frameworks CSS adicionales ni componentes de otra libreria.
+
+---
+
+## 7. Estructura del repositorio
 
 ```txt
-TRONOX.tareas/
-+-- apps/
-|   +-- web-prototype/                # prototipo React heredado (SOLO referencia, no es el producto)
-|   +-- backend/
-|       +-- Tronox.sln
-|       +-- src/
-|       |   +-- Tronox.Domain/             (entidades + enums)
-|       |   +-- Tronox.Application/        (servicios, DTOs, casos de uso)
-|       |   +-- Tronox.Infrastructure/     (EF Core, migraciones, integraciones)
-|       |   +-- Tronox.Shared/             (contratos compartidos)
-|       |   +-- Tronox.Api/                (Minimal API + JWT)
-|       |   +-- Tronox.Web/         (CONSOLA UNIFICADA Blazor: PlatformAdmin Y tenant, separados por policies)
-|       |   +-- Tronox.Web/                (Blazor Web App heredado + .Client WASM; rol final por decidir)
-|       |   +-- Tronox.Workers/            (BackgroundServices)
-|       +-- tests/
-|           +-- Tronox.Domain.Tests/
-|           +-- Tronox.Application.Tests/
-|           +-- Tronox.Integration.Tests/  (Testcontainers - requiere Docker)
-+-- deploy/docker/                    # docker-compose, .env.example, preflight, README
-+-- docs/decisiones/                  # ADRs del repo
-+-- PROGRESO.md                       # bitacora de avance por sesion (OBLIGATORIA)
-+-- CLAUDE.md                         # este archivo
+TRONOXdev/
++-- apps/backend/
+|   +-- Tronox.sln
+|   +-- src/
+|   |   +-- Tronox.Domain/          entidades + enums
+|   |   +-- Tronox.Application/     servicios, DTOs, logica pura (permisos, menu, arbol)
+|   |   +-- Tronox.Infrastructure/  EF Core PostgreSQL, migraciones, integraciones
+|   |   +-- Tronox.Web/             app del tenant (Blazor)  [ver ADR-002]
+|   |   +-- Tronox.Api/             /api/v1 con API Key
+|   |   +-- Tronox.Workers/         procesos asincronos (SLA, OCR, notificaciones)
+|   +-- tests/
++-- deploy/docker/                  compose + .env.example + preflight.ps1
++-- docs/decisiones/                ADRs del repo
++-- PROGRESO.md                     bitacora de avance (OBLIGATORIA)
++-- CLAUDE.md                       este archivo
 ```
 
-Pendientes de adaptacion del backbone (ver PROGRESO.md): agregar
-`Tronox.Infrastructure.SqlServer` (DAL dual), eliminar dominio belleza/agenda,
-construir nucleo tareas/tableros/proyectos + motores, menu del Prototipo Final.
+`Tronox.Console` (RQ14) se creara como host nuevo y delgado con identidad propia.
 
 ---
 
-## 4. Stack tecnico
+## 8. Infraestructura local (bloque de puertos DEDICADO)
 
-- **.NET 10**: toda la solucion (13 csproj) apunta a **net10.0** (SDK 10.0.301;
-  migrada el 2026-07-03, ADR-0012, que reemplaza al puente net9 de ADR-0003).
-- Blazor (Server interactivo) para consola. SignalR para tableros/notificaciones en vivo.
-- EF Core **10.0.9** (paquetes ASP.NET Core/Extensions tambien 10.0.9): PostgreSQL
-  (Npgsql.EntityFrameworkCore.PostgreSQL 10.0.2, snake_case via EFCore.NamingConventions
-  10.0.1, jsonb) Y SQL Server (DAL dual). Query filters por tenant. Tool local
-  dotnet-ef 10.0.9. Sin migracion Ef10ModelSync: EF10 no altero el modelo.
-- Redis: cache, locks, rate limiting. RabbitMQ + MassTransit para eventos de negocio.
-- Serilog + OpenTelemetry. Docker para infraestructura local.
-- Clean Architecture + monolito modular preparado para microservicios.
+La maquina corre ~30 contenedores de 8 stacks hermanos. **Ningun contenedor hermano puede
+caerse al levantar TRONOX.**
 
-**Frontend del producto: 100% .NET / Blazor (regla firme).** Prohibido Node/npm/React/Vue/Vite
-para construir o desplegar la UI del producto. E2E con Playwright para .NET.
+| Servicio | Puerto host | Contenedor |
+|---|---|---|
+| PostgreSQL 16 | 5443 | tronox-postgres |
+| Redis | 6390 | tronox-redis |
+| RabbitMQ | 5683 / 15683 | tronox-rabbitmq |
+| MinIO | 9004 / 9005 | tronox-minio |
+| Adminer | 8093 | tronox-adminer |
+| API | 8094 | tronox-api |
+| Web | 8095 | tronox-web |
 
-**Fidelidad visual (regla del usuario): la UI del workspace debe replicar
-MILIMETRICAMENTE el prototipo** cuya FUENTE UNICA es
-`01. Requerimiento/Prototipo/TRONOX.dc.html` del vault (+ `support.js` y las
-capturas de `screenshots/`). OJO: version corregida del 2026-07-04 — el Design
-habia generado 2 archivos y el SPA viejo era erroneo (ya eliminado del vault).
-Toda tarea de UI extrae los tokens exactos de ese HTML (colores hex, tipografia,
-espaciados, rail/sidebar, sombras, radios) y los replica tal cual; ante
-cualquier duda visual gana el prototipo. Regla funcional clave: el "menu rapido"
-del rail y "Administrar actividades" (000636) son EL MISMO sistema de tableros
-(tableros primero -> tablero con filtros por chips, alcances equipo/mias/no
-asignadas y vistas Tablero/Lista/Calendario/Gantt).
-El `web-prototype` React heredado es solo referencia secundaria.
+Proyecto compose `tronox`, red `tronox-net`, puertos parametrizados en `.env` (no versionado).
 
-**Infraestructura local (bloque de puertos DEDICADO, prefijo `tronox-tareas-`):**
+**Correr `deploy/docker/preflight.ps1` ANTES de `docker compose up`.** Tras levantar,
+comparar `docker ps`: el numero de contenedores hermanos NO debe bajar.
 
-| Servicio        | Puerto host | Contenedor                |
-|-----------------|-------------|---------------------------|
-| PostgreSQL 16   | 5442        | tronox-tareas-postgres    |
-| SQL Server 2022 | 1443        | tronox-tareas-sqlserver   |
-| Redis           | 6389        | tronox-tareas-redis       |
-| RabbitMQ        | 5682/15682  | tronox-tareas-rabbitmq    |
-| Adminer         | 8092        | tronox-tareas-adminer     |
-
-Correr `deploy/docker/preflight.ps1` ANTES de `docker compose up -d`.
+Arranque de base de datos idempotente: se espera el healthcheck real (`pg_isready`), solo se
+aplican migraciones pendientes, y **nunca** `EnsureDeleted`/`EnsureCreated` fuera de tests.
 
 ---
 
-## 5. REGLAS INVIOLABLES (los 9 errores heredados que NO se heredan)
+## 9. Convenciones tecnicas
 
-1. **Multi-tenant REAL**: `TenantId` + `HasQueryFilter` global + RLS. PROHIBIDO filtrar
-   a mano por columna. Una query cross-tenant debe ser imposible por construccion.
-2. **DAL dual**: nunca SQL crudo fuera de repositorios por proveedor. Toda prueba de
-   integracion corre en Postgres Y SQL Server (Testcontainers).
-3. **SQL parametrizado** (cero concatenacion). Prohibido `FromSqlRaw` con interpolacion de usuario.
-4. **Transacciones** en toda operacion multi-tabla; rollback total si un paso falla.
-5. **Soft-delete + cascada diferida** (nunca DELETE directo de agregados). Auditoria
-   inmutable (`AdminAuditLog`) en cada accion de PlatformAdmin, dentro de la transaccion.
-6. **Secretos SOLO en `.env` local / Key Vault / DataProtection.** El repo es PUBLICO:
-   nunca commitear credenciales, tokens ni cadenas de conexion.
-7. **db3dev (BD legacy): SOLO LECTURA.** Pedir autorizacion al usuario antes de usarla.
-   La conexion NO esta en el repo (ver nota del vault).
-8. **Concurrencia optimista** (rowversion / xmin) en tareas y flujos.
-9. **Zona horaria del tenant + UTC** para toda fecha; nada de GETDATE() implicito.
+- `BaseEntity` (id, `created_at/by`, `updated_at/by` por interceptor de `SaveChanges`) y
+  `TenantEntity : ITenantScoped`.
+- **Naming en BD:** snake_case; `pk_<tabla>`, `fk_<tabla>_<principal>_<col>`, `ix_<tabla>_<cols>`.
+- **Enums persistidos como string** con longitud acotada, no como entero.
+- **Resultados tipados** (`Ok / NotFound / Invalid / Conflict`) hacia la presentacion, no
+  excepciones crudas.
+- Patron transaccional que **se une a una transaccion existente** en vez de anidar.
+- **Logica pura en Application** (resolver de permisos, filtro de menu, validacion de ciclos,
+  expansion de candidatos): sin EF, testeable sin base de datos.
+- Consecutivos con `SELECT FOR UPDATE` y scope `(tenant, tipo, anio)`.
 
 ---
 
-## 6. Multi-tenancy (regla bloqueante)
+## 10. Checklist antes de cada commit
 
-- Toda entidad de negocio implementa `ITenantScoped { Guid TenantId }`.
-- `HasQueryFilter` global aplicado por reflexion en `OnModelCreating` a toda entidad scoped.
-- RLS en BD como defensa en profundidad (Postgres `CREATE POLICY`; SQL Server `SECURITY POLICY`).
-- Resolucion de tenant: claim JWT `tenant_id` -> subdominio/header -> 400 (nunca default silencioso).
-- PlatformAdmin es el UNICO acceso cross-tenant, via `IPlatformDbContext` auditado, con MFA.
-- **El test de aislamiento cross-tenant DEBE fallar si algo de esto se rompe** y corre
-  en AMBOS motores. Es condicion de merge.
-
----
-
-## 7. Orden de construccion (hoja de ruta del vault)
-
-```
-FASE 0  Setup: clon del backbone, renombrado, docker dedicado, CLAUDE.md, PROGRESO.md   [esta fase]
-FASE 1  Multi-tenancy + Super Admin operativo (PRIMER ENTREGABLE):
-        seeders PlatformAdmin + tenant demo SKY SYSTEM + planes,
-        proveedor SQL Server (DAL dual), test de aislamiento dual  [BLOQUEANTE]
-FASE 2  Auth (JWT + refresh + policies + MFA) y MENU del Prototipo Final (stubs por policy)
-FASE 3  Nucleo operativo: TaskItem -> detalle + worklog -> tableros Kanban SignalR -> proyectos
-FASE 4  Motores: WorkflowEngine (BPMN) -> DynamicFormRenderer (jsonb) -> RulesEngine
-FASE 5  Modulos de sistema: Dependencias (000850) y Modulos web (000109)
-FASE 6  ETL desde db3dev (tenant 01=BITCODE), idempotente, round-trip + conteos
-FASE 7  CI/CD: matriz dual, gates de merge, blue/green
-```
-
-ELIMINAR del backbone (dominio belleza, no aplica): agenda, citas, turnos, asesores,
-disponibilidad, no-show, Wompi de salon. Hacerlo con ADR y en commits separados.
+- [ ] `dotnet build apps/backend/Tronox.sln` verde.
+- [ ] Test de aislamiento cross-tenant en verde.
+- [ ] Ninguna query tenant-scoped sin filtro por `tenant_id`.
+- [ ] Ningun actor externo persistido fuera de `terceros`.
+- [ ] Binarios fuera de la base de datos.
+- [ ] Sin secretos versionados ni en logs.
+- [ ] Borrados son inactivacion/archivado con motivo y auditoria.
+- [ ] Si se toca firma, se respetan los tres contratos de RQ05.
+- [ ] Estilos propios solo en `custom.css`.
+- [ ] Archivos de codigo y scripts en ASCII.
+- [ ] `PROGRESO.md` actualizado. Decision nueva -> ADR en `docs/decisiones/` + avisar al
+      usuario para reflejarla en el vault.
+- [ ] Commits pequenos y descriptivos, en espanol, sin tildes en el mensaje.
 
 ---
 
-## 8. Checklist antes de cada commit
-
-- [ ] `dotnet build` verde en `apps/backend/Tronox.sln`.
-- [ ] `dotnet test` verde en proyectos tocados (Integration.Tests requiere Docker, corre dual).
-- [ ] Test de aislamiento cross-tenant pasa (cuando exista, en AMBOS motores).
-- [ ] Sin secretos versionados; sin credenciales/tokens en logs.
-- [ ] Sin queries tenant-scoped sin filtro global; sin SQL crudo fuera de repos por proveedor.
-- [ ] Operaciones multi-tabla en transaccion; borrados como soft-delete.
-- [ ] Si toca PlatformAdmin: auditoria. Si toca IA: `AiUsageLog`.
-- [ ] Actualizar `PROGRESO.md` (cada sesion) y, si cierra modulo, `INVENTARIO GENERAL.md` del vault.
-- [ ] Decision arquitectonica nueva -> ADR en `docs/decisiones/` + reflejo en el vault.
-- [ ] Archivos nuevos en ASCII.
-- [ ] El CI (`.github/workflows/pr-check.yml`, ADR-0018) corre estos gates en cada PR a main: gitleaks, build Release, dotnet format, tests unitarios y la matriz dual de integracion (PG + SQL Server via Testcontainers).
-
----
-
-## 9. Comandos clave del entorno local
+## 11. Comandos
 
 ```powershell
 # Build / test
-cd C:\DesarrolloIA\TRONOX.tareas\apps\backend
+cd C:\DesarrolloIA\TRONOXdev\apps\backend
 dotnet build Tronox.sln
 dotnet test  Tronox.sln
 
-# Infraestructura local (pre-flight primero)
-cd C:\DesarrolloIA\TRONOX.tareas\deploy\docker
-.\preflight.ps1 ; docker compose up -d ; docker compose ps
+# Infraestructura local (preflight SIEMPRE primero)
+cd C:\DesarrolloIA\TRONOXdev\deploy\docker
+.\preflight.ps1
+docker compose --env-file .env up -d
+docker compose ps
 
-# Migraciones EF (startup-project = Infrastructure, ejecutar desde apps/backend)
+# Migraciones EF (desde apps/backend)
 dotnet ef migrations add NombreMigracion `
   --project src/Tronox.Infrastructure --startup-project src/Tronox.Infrastructure
 dotnet ef database update `
   --project src/Tronox.Infrastructure --startup-project src/Tronox.Infrastructure
-
-# Levantar la consola unificada
-.\start-tronox.ps1        # desde la raiz del repo
 ```
-
----
-
-## 10. Registro de avance (OBLIGATORIO, cada sesion)
-
-- **En este repo**: agregar entrada a `PROGRESO.md` (fecha, agentes, hecho, siguiente,
-  bloqueos, decisiones) y ADRs nuevos en `docs/decisiones/`.
-- **En el vault** (repo aparte, commit + push): INVENTARIO GENERAL al cerrar modulo,
-  ADRs al decidir, `05. Pruebas/Historial de pruebas/00 - Registro de corridas.md` al testear.
