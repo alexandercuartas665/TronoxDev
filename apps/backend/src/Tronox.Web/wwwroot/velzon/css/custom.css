@@ -12,12 +12,486 @@ File: Custom Css File
    app.min.css y bootstrap.min.css NO se tocan.
    ========================================================================= */
 
+/* =========================================================================
+   0. TOKENS DE MARCA TRONOX
+   Fuente: Prototipo REQ001 -> assets/css/tronox.css (paleta Metronic 8 Light).
+   Esta capa es la UNICA fuente de color del sistema. Los tres consumidores
+   (Velzon --vz-*, hoja heredada app.css, y las clases tronox-*) leen de aqui.
+   ========================================================================= */
 :root {
-  /* Azul institucional TRONOX (base del degradado del panel de marca). */
-  --tronox-blue-900: #0b3a63;
-  --tronox-blue-700: #10538c;
-  --tronox-blue-500: #1b8fcd;
+  /* --- Primario / marca --- */
+  --tx-primary:            #009ef7;
+  --tx-primary-active:     #0095e8;
+  --tx-primary-light:      #e8f4fd;
+  --tx-primary-rgb:        0, 158, 247;
+
+  /* --- Superficies --- */
+  --tx-app-bg:             #f5f8fa;
+  --tx-sidebar-bg:         #ffffff;
+  --tx-card-bg:            #ffffff;
+  --tx-header-bg:          #ffffff;
+  --tx-input-bg:           #f5f8fa;
+  --tx-hover-bg:           #fafbfc;
+
+  /* --- Bordes --- */
+  --tx-border:             #e4e6ef;
+  --tx-border-dashed:      #b5b5c3;
+
+  /* --- Escala de texto --- */
+  --tx-text-900:           #181c32;
+  --tx-text-800:           #3f4254;
+  --tx-text-700:           #5e6278;
+  --tx-text-600:           #7e8299;
+  --tx-text-500:           #a1a5b7;
+  --tx-text-400:           #b5b5c3;
+  --tx-text-300:           #e4e6ef;
+  --tx-text-muted:         #a1a5b7;
+
+  /* --- Semanticos --- */
+  --tx-success:            #50cd89;
+  --tx-success-active:     #47be7d;
+  --tx-success-light:      #e8fff3;
+  --tx-warning:            #ffc700;
+  --tx-warning-active:     #f1bc00;
+  --tx-warning-light:      #fff8dd;
+  --tx-danger:             #f1416c;
+  --tx-danger-active:      #d9214e;
+  --tx-danger-light:       #fff5f8;
+  --tx-info:               #7239ea;
+  --tx-info-active:        #5014d0;
+  --tx-info-light:         #f8f5ff;
+
+  /* --- Navy institucional (hero del portal y panel de login) --- */
+  --tx-navy:               #0b1f3a;
+  --tx-navy-2:             #13294b;
+  --tx-navy-3:             #1c3a63;
+  --tx-hero-grad:          linear-gradient(120deg, #0b1f3a 0%, #13294b 55%, #1c3a63 100%);
+
+  /* --- Item de menu activo --- */
+  --tx-menu-active-bg:     #e8f4fd;
+  --tx-menu-active-color:  #009ef7;
+
+  /* --- Radios --- */
+  --tx-radius:             0.625rem;
+  --tx-radius-sm:          0.375rem;
+  --tx-radius-lg:          0.85rem;
+
+  /* --- Metricas del shell --- */
+  --tx-sidebar-width:      280px;
+  --tx-topbar-height:      65px;
+
+  /* --- Tipografia ---
+     Inter, con pila de respaldo del sistema. Ver seccion 0.b sobre por que NO
+     se carga desde un CDN. */
+  --tx-font-sans: "Inter", "Inter var", "Segoe UI Variable Text", "Segoe UI",
+                  system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+
+  /* Alias historicos del panel de login (seccion 2). */
+  --tronox-blue-900: var(--tx-navy);
+  --tronox-blue-700: var(--tx-navy-2);
+  --tronox-blue-500: var(--tx-navy-3);
 }
+
+/* -------------------------------------------------------------------------
+   0.b TIPOGRAFIA - decision: NO se enlaza Google Fonts.
+   El prototipo carga Inter desde fonts.googleapis.com. Este sistema es para
+   entidades publicas y se despliega en redes que pueden estar cerradas a
+   Internet; ademas una peticion a un tercero en cada carga filtra IP y
+   User-Agent de funcionarios (dato personal). Un CDN externo es por tanto un
+   punto de fallo y un riesgo de privacidad.
+   Se declara Inter como PRIMERA opcion (se usa si esta instalada en el equipo
+   o cuando se agreguen los .woff2 auto-alojados) y detras una pila del sistema
+   de metrica muy proxima. Para auto-alojar basta con dejar los ficheros en
+   wwwroot/velzon/fonts/ y anadir aqui los @font-face; no cambia nada mas.
+   ------------------------------------------------------------------------- */
+html, body {
+  font-family: var(--tx-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Velzon fija los titulares con :is(h1..h6){font-family:"Open Sans"} y ofrece
+   .ff-secondary con la misma familia: heredar de body no basta. */
+:is(.h1, .h2, .h3, .h4, .h5, .h6, h1, h2, h3, h4, h5, h6),
+.ff-secondary,
+.btn, .form-control, .form-select, .table {
+  font-family: var(--tx-font-sans);
+}
+
+/* -------------------------------------------------------------------------
+   0.c PUENTE A VELZON (--vz-*)
+   ------------------------------------------------------------------------- */
+:root {
+  --vz-primary:               var(--tx-primary);
+  --vz-primary-rgb:           var(--tx-primary-rgb);
+  --vz-primary-text-emphasis: var(--tx-primary-active);
+  --vz-primary-bg-subtle:     var(--tx-primary-light);
+  --vz-primary-border-subtle: #b8e0fb;
+
+  --vz-success:               var(--tx-success);
+  --vz-warning:               var(--tx-warning);
+  --vz-danger:                var(--tx-danger);
+  --vz-info:                  var(--tx-info);
+
+  --vz-link-color:            var(--tx-primary);
+  --vz-link-hover-color:      var(--tx-primary-active);
+
+  --vz-body-bg:               var(--tx-app-bg);
+  --vz-body-color:            var(--tx-text-700);
+  --vz-border-color:          var(--tx-border);
+  --vz-secondary-color:       var(--tx-text-muted);
+  --vz-light:                 var(--tx-input-bg);
+
+  --vz-font-sans-serif:       var(--tx-font-sans);
+  --vz-body-font-family:      var(--tx-font-sans);
+  --vz-border-radius:         var(--tx-radius);
+
+  --vz-input-border-custom:   var(--tx-border);
+  --vz-input-focus-border:    var(--tx-primary);
+  --vz-input-bg:              var(--tx-input-bg);
+}
+
+/* Bootstrap 5.3 compila .btn-primary con hexadecimales fijos en sus propias
+   variables locales (--vz-btn-*): reasignar --vz-primary no basta. */
+.btn-primary {
+  --vz-btn-bg:                var(--tx-primary);
+  --vz-btn-border-color:      var(--tx-primary);
+  --vz-btn-hover-bg:          var(--tx-primary-active);
+  --vz-btn-hover-border-color:var(--tx-primary-active);
+  --vz-btn-active-bg:         var(--tx-primary-active);
+  --vz-btn-active-border-color: var(--tx-primary-active);
+  --vz-btn-disabled-bg:       var(--tx-primary);
+  --vz-btn-disabled-border-color: var(--tx-primary);
+  --vz-btn-focus-shadow-rgb:  var(--tx-primary-rgb);
+}
+
+.btn-outline-primary {
+  --vz-btn-color:             var(--tx-primary);
+  --vz-btn-border-color:      var(--tx-primary);
+  --vz-btn-hover-bg:          var(--tx-primary);
+  --vz-btn-hover-border-color:var(--tx-primary);
+  --vz-btn-active-bg:         var(--tx-primary);
+  --vz-btn-active-border-color: var(--tx-primary);
+}
+
+/* -------------------------------------------------------------------------
+   0.d PUENTE A LA HOJA HEREDADA (wwwroot/app.css)
+   app.css NO se puede retirar: contiene TODO el layout del shell
+   (.tronox-shell, .tronox-sidebar, .tronox-rail, .tronox-topbar,
+   .tronox-content, .tronox-nav-*, .tronox-acc-*). Lo que si se puede es
+   apoderarse de sus tokens: se carga ANTES que custom.css, asi que
+   redefinir aqui sus variables :root reviste todo el shell sin tocarla.
+   ------------------------------------------------------------------------- */
+:root {
+  /* Set 1 de app.css (originalmente oklch violeta). */
+  --background:         var(--tx-app-bg);
+  --foreground:         var(--tx-text-900);
+  --card:               var(--tx-card-bg);
+  --primary:            var(--tx-primary);
+  --primary-foreground: #ffffff;
+  --primary-soft:       var(--tx-primary-light);
+  --muted:              var(--tx-input-bg);
+  --muted-foreground:   var(--tx-text-600);
+  --accent-foreground:  var(--tx-primary);
+  --gold:               var(--tx-warning);
+  --gold-foreground:    var(--tx-text-900);
+  --destructive:        var(--tx-danger);
+  --warning:            var(--tx-warning);
+  --warning-foreground: var(--tx-text-900);
+  --success:            var(--tx-success);
+  --border:             var(--tx-border);
+  --sidebar:            var(--tx-sidebar-bg);
+  --sidebar-border:     var(--tx-border);
+  --radius:             var(--tx-radius-lg);
+  --shadow-soft:        0 1px 2px rgba(24, 28, 50, .04), 0 1px 3px rgba(24, 28, 50, .05);
+  --shadow-card:        0 0 20px rgba(24, 28, 50, .03);
+  --gradient-violet:    linear-gradient(135deg, var(--tx-primary) 0%, var(--tx-primary-active) 100%);
+
+  /* Set 2 de app.css (originalmente la paleta negra/gris del backbone). */
+  --bg:        var(--tx-app-bg);
+  --surface:   var(--tx-card-bg);
+  --surface-2: var(--tx-app-bg);
+  --surface-3: var(--tx-input-bg);
+  --ink:       var(--tx-text-900);
+  --ink-2:     var(--tx-text-700);
+  --ink-3:     var(--tx-text-500);
+  --line:      var(--tx-border);
+  --line-2:    var(--tx-text-400);
+  --brand:     var(--tx-primary);
+  --brand-2:   var(--tx-primary-active);
+  --brand-soft:var(--tx-primary-light);
+  --on-brand:  #ffffff;
+  --glow:      rgba(var(--tx-primary-rgb), .18);
+
+  --t-blue:   var(--tx-primary);   --t-blue-bg:   var(--tx-primary-light);
+  --t-rose:   var(--tx-danger);    --t-rose-bg:   var(--tx-danger-light);
+  --t-green:  var(--tx-success);   --t-green-bg:  var(--tx-success-light);
+  --t-amber:  #c79000;             --t-amber-bg:  var(--tx-warning-light);
+  --t-violet: var(--tx-info);      --t-violet-bg: var(--tx-info-light);
+  --t-slate:  var(--tx-text-600);  --t-slate-bg:  var(--tx-input-bg);
+
+  --ok:     var(--tx-success);
+  --warn:   #c79000;
+  --danger: var(--tx-danger);
+
+  --glass:  rgba(255, 255, 255, .82);
+  --sh-sm:  0 1px 2px rgba(24, 28, 50, .05);
+  --sh-md:  0 0 20px rgba(24, 28, 50, .04);
+  --sh-lg:  0 18px 50px -12px rgba(24, 28, 50, .18);
+  --rad:    var(--tx-radius-lg);
+}
+
+/* .ws-tenant vuelve a declarar el set 2 en app.css; hay que repetirlo con la
+   misma especificidad o el workspace del tenant recupera el negro. */
+.ws-tenant {
+  --brand:     var(--tx-primary);
+  --brand-2:   var(--tx-primary-active);
+  --brand-soft:var(--tx-primary-light);
+  --on-brand:  #ffffff;
+  --ink:       var(--tx-text-900);
+  --ink-2:     var(--tx-text-700);
+  --ink-3:     var(--tx-text-500);
+  --line:      var(--tx-border);
+  --line-2:    var(--tx-text-400);
+  --surface:   var(--tx-card-bg);
+  --surface-2: var(--tx-app-bg);
+  --surface-3: var(--tx-input-bg);
+  --glow:      rgba(var(--tx-primary-rgb), .18);
+  --glass:     rgba(255, 255, 255, .82);
+}
+
+/* app.css pinta el enlace del workspace con --ink (texto casi negro). */
+.ws-tenant a,
+.ws-tenant .btn-link { color: var(--tx-primary); }
+
+/* =========================================================================
+   0.e SHELL - ajustes de forma que las variables no cubren
+   (app.css los deja escritos como literales).
+   ========================================================================= */
+
+/* Fondo real de la aplicacion: app.css lo ata a --background, ya reasignado,
+   pero el contenedor del shell es blanco por herencia del backbone. */
+body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
+
+/* --- Barra lateral: 280px como el prototipo (app.css deja 268 / 272). --- */
+.tronox-sidebar,
+.ws-tenant .tronox-sidebar {
+  width: var(--tx-sidebar-width);
+  background: var(--tx-sidebar-bg);
+  border-right: 1px solid var(--tx-border);
+}
+
+/* --- Barra superior: 65px, opaca blanca como el prototipo. --- */
+.tronox-topbar,
+.ws-tenant .tronox-topbar {
+  height: var(--tx-topbar-height);
+  background: var(--tx-header-bg);
+  border-bottom: 1px solid var(--tx-border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 1px 4px rgba(24, 28, 50, .04);
+}
+
+/* --- Rail de iconos: superficie y activo en primario. --- */
+.tronox-rail {
+  background: var(--tx-sidebar-bg);
+  border-right: 1px solid var(--tx-border);
+}
+.tronox-rail-btn { color: var(--tx-text-500); border-radius: var(--tx-radius); }
+.tronox-rail-btn:hover {
+  background: var(--tx-primary-light);
+  color: var(--tx-primary);
+  box-shadow: none;
+}
+.tronox-rail-btn.active { background: var(--tx-primary); color: #fff; }
+
+/* --- Logo del sidebar. --- */
+.tronox-logo { background: var(--tx-hero-grad); border-radius: var(--tx-radius); }
+.tronox-brand-name span { color: var(--tx-primary); }
+.tronox-brand,
+.tronox-user { border-color: var(--tx-border); }
+
+/* Tile del tenant: en el prototipo la identidad es azul, no negra. */
+.tronox-tenant-tile {
+  background: var(--tx-primary);
+  color: #fff;
+  border-radius: var(--tx-radius);
+}
+.tronox-ws-row:hover { background: var(--tx-input-bg); }
+
+/* --- Buscador del sidebar. --- */
+.tronox-search {
+  background: var(--tx-input-bg);
+  border-color: var(--tx-border);
+  border-radius: var(--tx-radius);
+}
+
+/* =========================================================================
+   0.f MENU LATERAL - item activo del prototipo:
+   fondo #e8f4fd + texto #009ef7 + guia izquierda.
+   app.css los pinta en gris (--surface-3 / --ink); aqui mandan los tokens.
+   ========================================================================= */
+.tronox-nav-link,
+.tronox-acc-item,
+.tronox-acc-sub > summary,
+.tronox-acc > summary {
+  border-radius: var(--tx-radius);
+  color: var(--tx-text-700);
+}
+
+.tronox-nav-link:hover,
+.tronox-acc-item:hover,
+.tronox-acc > summary:hover,
+.tronox-acc-sub > summary:hover {
+  background: var(--tx-primary-light);
+  color: var(--tx-primary);
+}
+
+.tronox-nav-link.active,
+.tronox-acc-item.active {
+  position: relative;
+  background: var(--tx-menu-active-bg);
+  color: var(--tx-menu-active-color);
+  font-weight: 600;
+}
+
+.tronox-nav-link.active svg,
+.tronox-acc-item.active svg { color: var(--tx-menu-active-color); opacity: 1; }
+
+/* Guia vertical del item activo (prototipo: 3px, radio 0 3px 3px 0). */
+.tronox-acc-item.active::before {
+  content: "";
+  position: absolute;
+  left: -12px; top: 50%;
+  transform: translateY(-50%);
+  width: 3px; height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--tx-primary);
+}
+
+.tronox-nav-link.active .tronox-nav-code,
+.tronox-acc-item.active .code { color: var(--tx-primary); opacity: .85; }
+
+/* Etiquetas de seccion del menu. */
+.tronox-nav-label {
+  color: var(--tx-text-400);
+  font-size: 10px;
+  letter-spacing: 1.3px;
+}
+
+.tronox-acc-body { border-left-color: var(--tx-border); }
+.tronox-acc-count,
+.tronox-acc-chev { color: var(--tx-text-500); }
+.tronox-nav-badge {
+  background: var(--tx-primary-light);
+  color: var(--tx-primary);
+}
+
+/* app.css vuelve a declarar el menu bajo .ws-tenant (especificidad 0,3,0), que
+   gana a los selectores de arriba y devuelve el activo al gris del backbone
+   (--surface-3 / --ink). Hay que repetir el bloque con el mismo alcance. */
+.ws-tenant .tronox-nav-link { color: var(--tx-text-700); border-radius: var(--tx-radius); }
+.ws-tenant .tronox-nav-link svg { color: var(--tx-text-600); }
+
+.ws-tenant .tronox-nav-link:hover {
+  background: var(--tx-primary-light);
+  color: var(--tx-primary);
+}
+.ws-tenant .tronox-nav-link:hover svg { color: var(--tx-primary); }
+
+.ws-tenant .tronox-nav-link.active {
+  background: var(--tx-menu-active-bg);
+  color: var(--tx-menu-active-color);
+}
+.ws-tenant .tronox-nav-link.active svg { color: var(--tx-menu-active-color); }
+.ws-tenant .tronox-nav-link.active .tronox-nav-code { color: var(--tx-primary); }
+
+/* Contador del quick-link: era un pastilla negra. */
+.ws-tenant .tronox-nav-badge {
+  background: var(--tx-primary);
+  color: #fff;
+}
+
+.ws-tenant .tronox-nav-label { color: var(--tx-text-400); }
+.ws-tenant .tronox-search { border-color: var(--tx-border); background: var(--tx-input-bg); }
+.ws-tenant .tronox-search:hover { border-color: var(--tx-primary); }
+.ws-tenant .tronox-avatar { background: var(--tx-primary); color: #fff; }
+
+/* =========================================================================
+   0.g COMPONENTES DE CONTENIDO - /inicio y paginas de modulo.
+   app.css los define con el radio y la sombra del backbone.
+   ========================================================================= */
+.tronox-content .card,
+.card {
+  background: var(--tx-card-bg);
+  border: 1px solid var(--tx-border);
+  border-radius: var(--tx-radius-lg);
+  box-shadow: 0 0 20px rgba(24, 28, 50, .03);
+}
+
+.module-icon,
+.coming-soon-icon {
+  background: var(--tx-primary-light);
+  color: var(--tx-primary);
+  border-radius: var(--tx-radius);
+}
+.module-eyebrow span { color: var(--tx-primary); }
+.page-title { color: var(--tx-text-900); }
+.page-title span { color: var(--tx-primary); }
+.page-sub { color: var(--tx-text-600); }
+.coming-soon { border-color: var(--tx-border-dashed); background: var(--tx-card-bg); }
+.coming-soon p { color: var(--tx-text-600); }
+
+.text-muted { color: var(--tx-text-muted) !important; }
+
+/* Formularios: fondo gris del prototipo, foco azul. */
+.form-control,
+.form-select {
+  background-color: var(--tx-input-bg);
+  border-color: var(--tx-border);
+  border-radius: var(--tx-radius);
+  color: var(--tx-text-900);
+}
+.form-control:focus,
+.form-select:focus,
+.ws-tenant .form-control:focus {
+  background-color: var(--tx-card-bg);
+  border-color: var(--tx-primary);
+  box-shadow: 0 0 0 3px rgba(var(--tx-primary-rgb), .12);
+}
+.form-control::placeholder { color: var(--tx-text-400); }
+
+/* Botones: radio y peso del prototipo. El primario del workspace deja de ser
+   negro (app.css .ws-tenant .btn-primary) y pasa al azul de marca. */
+.btn { border-radius: var(--tx-radius); font-weight: 600; }
+.btn-primary,
+.ws-tenant .btn-primary {
+  background: var(--tx-primary);
+  border-color: var(--tx-primary);
+  color: #fff;
+  border-radius: var(--tx-radius);
+  box-shadow: none;
+}
+.btn-primary:hover, .btn-primary:focus,
+.ws-tenant .btn-primary:hover, .ws-tenant .btn-primary:focus {
+  background: var(--tx-primary-active);
+  border-color: var(--tx-primary-active);
+  color: #fff;
+  opacity: 1;
+}
+
+/* Tablas con la cabecera del prototipo. */
+.table th {
+  background: var(--tx-input-bg);
+  color: var(--tx-text-500);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  font-size: 11px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--tx-border);
+}
+.table td { color: var(--tx-text-700); border-color: var(--tx-border); }
+.table tbody tr:hover td { background: var(--tx-hover-bg); }
 
 /* -------------------------------------------------------------------------
    1. Aislamiento de la hoja heredada del backbone (wwwroot/app.css).
@@ -79,14 +553,21 @@ File: Custom Css File
 }
 
 .auth-page-wrapper .form-control:focus {
-  border-color: var(--vz-input-focus-border);
-  box-shadow: 0 0 0 .15rem rgba(64, 81, 137, .25);
+  border-color: var(--tx-primary);
+  box-shadow: 0 0 0 3px rgba(var(--tx-primary-rgb), .12);
 }
 
 .auth-page-wrapper .form-label {
   font-size: .8125rem;
   font-weight: 500;
   color: var(--vz-body-color);
+}
+
+/* Velzon trae .auth-bg-cover con un degradado fijo (azul #25a0e2 -> verde agua
+   #00bd9d) escrito como literal, no como variable: reasignar --vz-primary no lo
+   alcanza. Se lleva al navy institucional del prototipo. */
+.auth-bg-cover {
+  background: linear-gradient(-45deg, var(--tx-navy) 0%, var(--tx-navy-2) 55%, var(--tx-navy-3) 100%);
 }
 
 /* -------------------------------------------------------------------------

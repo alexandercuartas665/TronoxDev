@@ -17,6 +17,19 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Static web assets (manifiesto de compilacion) SIEMPRE que exista, no solo en Development.
+// ASP.NET Core solo llama a UseStaticWebAssets() cuando el entorno es Development. Los archivos
+// del framework (_framework/blazor.web.js) y el bundle de CSS aislado NO viven en wwwroot: viven
+// en el paquete microsoft.aspnetcore.app.internal.assets y en obj/, y se localizan por ese
+// manifiesto. Si la app arranca desde bin/ con el entorno en Production -por ejemplo al lanzarla
+// con un comando que no propaga ASPNETCORE_ENVIRONMENT- el manifiesto no se carga, el proveedor de
+// archivos queda reducido a wwwroot y /_framework/blazor.web.js responde 500 (FileNotFound). Sin
+// ese script no arranca ningun circuito interactivo y las paginas con prerender:false salen vacias.
+// En una app PUBLICADA esta llamada es inocua: dotnet publish copia los assets dentro de wwwroot y
+// no genera *.staticwebassets.runtime.json, asi que UseStaticWebAssets() no encuentra manifiesto y
+// no hace nada.
+builder.WebHost.UseStaticWebAssets();
+
 // Override local NO versionado (gitignored: appsettings.*.local.json) para apuntar el dev a una
 // BD propia (p.ej. la de la nube dev/staging) sin poner la credencial en el repo publico. Si el
 // archivo no existe, no pasa nada; la conexion sigue saliendo de TRONOX_DB_CONNECTION / appsettings.

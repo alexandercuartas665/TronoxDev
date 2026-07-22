@@ -1,0 +1,233 @@
+@page "/inicio"
+@attribute [Authorize(Policy = "TenantMember")]
+@rendermode InteractiveServer
+@inject IServiceScopeFactory ScopeFactory
+@inject ITenantAdminService TenantsSvc
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.EntityFrameworkCore
+@using Tronox.Application.MenuConfig
+@using Tronox.Domain.Enums
+
+@* Destino del usuario de tenant tras autenticarse (Program.cs redirige aqui). Panel de
+   entrada honesto: identifica al usuario y su entidad, y resume LO QUE REALMENTE HAY
+   -el menu resuelto desde la base de datos y podado por permisos-. No hay KPIs de
+   negocio porque todavia no existe ningun modulo que los produzca; cuando RQ02/RQ09
+   entreguen datos reales, este panel es el lugar donde se publican. *@
+
+<PageTitle>Inicio - TRONOX SGDEA</PageTitle>
+
+<div class="module-head">
+    <div>
+        <div class="module-eyebrow">
+            <div class="module-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/></svg>
+            </div>
+            <span>@(_tenantName ?? "Mi entidad")</span>
+        </div>
+        <h1 class="page-title" style="margin-top:12px;">Inicio</h1>
+        <p class="page-sub" style="margin-bottom:0;">
+            @if (!string.IsNullOrWhiteSpace(_userName))
+            {
+                <text>Sesion iniciada como <strong>@_userName</strong>@(_roleLabel is null ? "" : $" ({_roleLabel})").</text>
+            }
+            else
+            {
+                <text>Espacio de trabajo del sistema de gestion documental.</text>
+            }
+        </p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_menuError)
+{
+    <div class="coming-soon">
+        <h3>No fue posible resolver el menu</h3>
+        <p>
+            El arbol de navegacion no pudo leerse desde la base de datos. El menu lateral
+            puede aparecer vacio hasta que se corrija. Revise que la entidad tenga una vista
+            de menu por defecto y que el usuario tenga al menos un rol vigente.
+        </p>
+    </div>
+}
+else if (_visibleItems == 0)
+{
+    <div class="coming-soon">
+        <h3>Sin opciones visibles</h3>
+        <p>
+            Su usuario no tiene permiso de <strong>Ver</strong> sobre ninguna opcion del menu,
+            por lo que el sistema no le muestra ninguna pantalla. Solicite la asignacion de un
+            rol al administrador de su entidad.
+        </p>
+    </div>
+}
+else
+{
+    @* Conteos REALES leidos del arbol resuelto y ya filtrado por permisos (los mismos
+       nodos que pinta el sidebar). No son metricas de negocio: son lo que este usuario
+       puede abrir hoy. *@
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-label">Secciones</div>
+            <div class="kpi-value">@_visibleSections</div>
+            <div class="kpi-hint">Grupos del menu lateral</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Subgrupos</div>
+            <div class="kpi-value">@_visibleSubgroups</div>
+            <div class="kpi-hint">Agrupaciones anidadas</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Pantallas</div>
+            <div class="kpi-value">@_visibleItems</div>
+            <div class="kpi-hint">Opciones que usted puede abrir</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Accesos directos</div>
+            <div class="kpi-value">@_visibleQuickLinks</div>
+            <div class="kpi-hint">Enlaces rapidos del menu</div>
+        </div>
+    </div>
+
+    <div class="coming-soon" style="text-align:left;">
+        <h3>Estado del sistema</h3>
+        <p>
+            La navegacion ya se sirve desde la base de datos (vista de menu
+            <strong>@(_menuViewName ?? "por defecto")</strong>) y se poda segun los permisos de
+            su rol. <strong>Los modulos funcionales todavia no estan construidos:</strong> al
+            abrir una opcion vera la ficha del modulo con la leyenda de pendiente. Lo que si
+            esta operativo es la plataforma base: identidad y sesion, estructura organizacional,
+            roles y permisos, y la configuracion del propio menu.
+        </p>
+    </div>
+
+    @if (_sections.Count > 0)
+    {
+        <div class="module-head" style="margin-top:24px;">
+            <div>
+                <h2 class="page-title" style="font-size:1.15rem;margin:0;">Sus secciones</h2>
+                <p class="page-sub" style="margin:6px 0 0;">Las mismas del menu lateral, con el numero de opciones visibles.</p>
+            </div>
+        </div>
+        <ul style="list-style:none;margin:0;padding:0;display:grid;gap:8px;">
+            @foreach (var section in _sections)
+            {
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid rgba(128,128,128,.25);border-radius:10px;">
+                    <span style="font-weight:600;">@section.Name</span>
+                    <span style="opacity:.7;font-size:.85rem;white-space:nowrap;">@LeafCount(section) opciones</span>
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private bool _menuError;
+
+    private string? _tenantName;
+    private string? _userName;
+    private string? _roleLabel;
+    private string? _menuViewName;
+
+    private int _visibleSections;
+    private int _visibleSubgroups;
+    private int _visibleItems;
+    private int _visibleQuickLinks;
+    private List<MenuNodeDto> _sections = new();
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null) { _loading = false; return; }
+        var state = await AuthState;
+
+        _userName = state.User.Identity?.Name;
+        _roleLabel = state.User.FindFirst("tenant_role")?.Value;
+
+        // El tenant sale del claim del AuthenticationState, NUNCA del IHttpContextAccessor:
+        // en un circuito interactivo no hay HttpContext (trampa heredada del backbone).
+        var tenantClaim = state.User.FindFirst("tenant_id")?.Value;
+        var userClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!long.TryParse(tenantClaim, out var tenantId)) { _loading = false; return; }
+
+        try { _tenantName = (await TenantsSvc.GetAsync(tenantId))?.Name; }
+        catch { /* sin nombre: se muestra el generico */ }
+
+        await LoadMenuSummaryAsync(tenantId, userClaim);
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Resuelve el mismo arbol que pinta el sidebar (vista asignada al usuario o la IsDefault
+    /// del tenant) y lo poda por permisos efectivos, para contar exactamente lo que el usuario ve.
+    /// FAIL-CLOSED: si la resolucion falla, no se inventan conteos; se muestra el aviso de error.
+    /// </summary>
+    private async Task LoadMenuSummaryAsync(long tenantId, string? platformUserIdClaim)
+    {
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var menuSvc = scope.ServiceProvider.GetRequiredService<IMenuConfigService>();
+
+            long? assignedViewId = null;
+            Tronox.Application.Roles.EffectivePermissions? permissions = null;
+            if (long.TryParse(platformUserIdClaim, out var platformUserId))
+            {
+                using var ambient = Tronox.Web.Auth.AmbientTenantContext.Begin(tenantId, platformUserId);
+
+                var db = scope.ServiceProvider.GetRequiredService<Tronox.Application.Common.IApplicationDbContext>();
+                assignedViewId = await db.TenantUsers
+                    .Where(u => u.PlatformUserId == platformUserId)
+                    .Select(u => u.MenuViewId)
+                    .FirstOrDefaultAsync();
+
+                var roles = scope.ServiceProvider.GetRequiredService<Tronox.Application.Roles.IRolService>();
+                permissions = await roles.ResolveEffectivePermissionsAsync(platformUserId);
+            }
+
+            var resolved = await menuSvc.GetMenuForTenantUserAsync(tenantId, assignedViewId);
+            var menu = MenuPermissionFilter.Filter(resolved, permissions);
+            if (menu is null) { _menuError = true; return; }
+
+            _menuViewName = menu.MenuViewName;
+            _sections = menu.Roots.Where(n => n.Kind == MenuNodeKind.Section).ToList();
+            _visibleQuickLinks = menu.Roots.Count(n => n.Kind == MenuNodeKind.QuickLink);
+            CountTree(menu.Roots);
+        }
+        catch
+        {
+            _menuError = true;
+        }
+    }
+
+    private void CountTree(IReadOnlyList<MenuNodeDto> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            switch (node.Kind)
+            {
+                case MenuNodeKind.Section: _visibleSections++; break;
+                case MenuNodeKind.Subgroup: _visibleSubgroups++; break;
+                case MenuNodeKind.Item: _visibleItems++; break;
+            }
+            if (node.Children.Count > 0) { CountTree(node.Children); }
+        }
+    }
+
+    /// <summary>Opciones (hojas) visibles bajo una seccion, incluyendo las de sus subgrupos.</summary>
+    private static int LeafCount(MenuNodeDto node)
+    {
+        var total = 0;
+        foreach (var child in node.Children)
+        {
+            if (child.Kind == MenuNodeKind.Item) { total++; }
+            total += LeafCount(child);
+        }
+        return total;
+    }
+}
