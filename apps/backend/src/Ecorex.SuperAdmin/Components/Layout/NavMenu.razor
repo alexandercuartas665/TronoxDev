@@ -387,29 +387,10 @@ else
             // Poda los modulos (Item con Route) sin permiso de Ver; oculta secciones que quedan vacias.
             _menu = Ecorex.Application.MenuConfig.MenuPermissionFilter.Filter(resolved, permissions);
 
-            // Ola 4: si alguna seccion es "grupo de procesos" (IsProcessGroup), cargar el catalogo
-            // de Conceptos y armar el arbol dinamico categoria -> subcategorias TIPO PROCESO
-            // (las que tienen un flujo vinculado). Mismo scope aislado.
-            if (_menu is not null && _menu.Roots.Any(n => n.Kind == MenuNodeKind.Section && n.IsProcessGroup))
-            {
-                var catalogo = scope.ServiceProvider.GetRequiredService<Ecorex.Application.Actividades.IActividadCatalogoService>();
-                var cats = await catalogo.ListCategoriasAsync(includeArchived: false);
-                var subs = await catalogo.ListSubcategoriasAsync(includeArchived: false);
-                // Ola C1 (D3): flujos PUBLICADOS de este tenant (el contexto ya esta tenant-scoped).
-                // Una hoja cuyo flujo no este aqui se muestra igual, pero con chip "borrador".
-                var procDb = scope.ServiceProvider.GetRequiredService<Ecorex.Application.Common.IApplicationDbContext>();
-                var publicados = (await procDb.WorkflowDefinitions
-                        .Where(w => w.IsPublished && !w.IsArchived)
-                        .Select(w => w.Id)
-                        .ToListAsync()).ToHashSet();
-                _procesoCats = cats
-                    .Select(c => new ProcesoCat(c.Nombre, "proc-" + c.Id.ToString("N")[..8],
-                        subs.Where(s => s.CategoriaId == c.Id && s.WorkflowDefinitionId != null && !s.IsArchived)
-                            .Select(s => new ProcesoSub(s.Id, s.Nombre,
-                                Publicado: s.WorkflowDefinitionId is Guid wf && publicados.Contains(wf))).ToList()))
-                    .Where(pc => pc.Subs.Count > 0)
-                    .ToList();
-            }
+            // La expansion dinamica de "grupos de procesos" del backbone dependia del catalogo de
+            // Conceptos y del motor BPMN, ambos fuera del alcance de TRONOX. Los menus dinamicos que
+            // si aplican (Contratos/Convenios de RQ12 y Personal/Procesos de RQ17) se construyen desde
+            // las series de la TRD y se implementan con su modulo.
         }
         catch { /* sin menu configurado: el bloque tenant no renderiza (fallback seguro) */ }
     }

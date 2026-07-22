@@ -430,9 +430,4 @@ public sealed class RolesTests_Postgres
     public RolesTests_Postgres(PostgresTenantIsolationFixture fixture) : base(fixture) { }
 }
 
-/// <summary>Matriz dual, motor SQL Server (contenedor efimero mssql/server:2022-latest).</summary>
-public sealed class RolesTests_SqlServer
-    : RolesTestsBase, IClassFixture<SqlServerTenantIsolationFixture>
-{
-    public RolesTests_SqlServer(SqlServerTenantIsolationFixture fixture) : base(fixture) { }
-}
+// La variante SQL Server de la matriz dual se elimina: TRONOX usa PostgreSQL como motor unico.

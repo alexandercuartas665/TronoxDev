@@ -43,12 +43,6 @@ builder.Services.Configure<JwtSettings>(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddScoped<ITenantContext, HttpContextTenantContext>();
-builder.Services.AddSingleton<Ecorex.Application.Tenancy.IAgentAssetReader, Ecorex.Api.Auth.NullAgentAssetReader>();
-// La difusion en vivo de registros de formulario es SignalR y vive en la consola Blazor; este host
-// no tiene hub, asi que se registra el no-op (mismo patron que NoOpTaskBroadcaster). Sin esto el
-// contenedor de DI no puede construir FormResponseService y la API entera no arranca.
-builder.Services.AddSingleton<Ecorex.Application.Tenancy.IFormRecordBroadcaster,
-    Ecorex.Application.Tenancy.NoOpFormRecordBroadcaster>();
 
 JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 builder.Services
@@ -99,11 +93,9 @@ if (app.Environment.IsDevelopment())
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<Ecorex.Infrastructure.Persistence.EcorexDbContext>();
+        // Solo se aplican migraciones pendientes: nunca EnsureDeleted/EnsureCreated fuera de tests.
+        // Si la base ya existe, no se recrea (PLAN DE ARRANQUE 5.3).
         await db.Database.MigrateAsync();
-        var seeder = scope.ServiceProvider.GetRequiredService<Ecorex.Infrastructure.Persistence.DatabaseSeeder>();
-        await seeder.SeedAsync();
-        // Nucleo de tareas/proyectos demo (FASE 3, ADR-0013). Idempotente, solo Development.
-        await seeder.EnsureTaskCoreDemoAsync();
     }
 }
 
@@ -111,11 +103,9 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapConnectEndpoints();
+// API REST versionada de TRONOX. Por ahora solo el grupo de administracion de plataforma;
+// los endpoints /api/v1 de los 17 modulos se agregan con cada modulo, autenticados por API Key.
 app.MapAdminEndpoints();
-app.MapTenantEndpoints();
-app.MapChatEndpoints();
-app.MapWompiEndpoints();
 
 app.Run();
 

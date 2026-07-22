@@ -62,31 +62,5 @@ public sealed class PostgresTenantIsolationFixture : TenantIsolationDbFixture
     }
 }
 
-/// <summary>
-/// Fixture SQL Server: contenedor efimero mcr.microsoft.com/mssql/server:2022-latest via
-/// Testcontainers.MsSql. Usa SqlServerEcorexDbContext con MigrationsAssembly propio
-/// (Ecorex.Infrastructure.SqlServer), igual que DependencyInjection en produccion.
-/// </summary>
-public sealed class SqlServerTenantIsolationFixture : TenantIsolationDbFixture
-{
-    private readonly MsSqlContainer _db = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
-        .Build();
-
-    protected override Task StartContainerAsync() => _db.StartAsync();
-
-    public override async Task DisposeAsync() => await _db.DisposeAsync();
-
-    public override EcorexDbContext CreateContext(Guid? tenantId)
-    {
-        var tenantContext = new FixedTenantContext(tenantId);
-        var options = new DbContextOptionsBuilder<SqlServerEcorexDbContext>()
-            .UseSqlServer(
-                _db.GetConnectionString(),
-                sql => sql.MigrationsAssembly("Ecorex.Infrastructure.SqlServer"))
-            .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new AuditableTenantInterceptor(tenantContext, TimeProvider.System))
-            .Options;
-
-        return new SqlServerEcorexDbContext(options, tenantContext);
-    }
-}
+// La fixture de SQL Server del backbone se elimina: TRONOX usa PostgreSQL como motor unico,
+// asi que el test de aislamiento cross-tenant corre contra un solo proveedor real (DAT-01).

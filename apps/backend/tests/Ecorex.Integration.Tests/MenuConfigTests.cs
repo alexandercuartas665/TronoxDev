@@ -320,12 +320,4 @@ public sealed class MenuConfigTests_Postgres
     }
 }
 
-/// <summary>Matriz dual, motor SQL Server (contenedor efimero mssql/server:2022-latest).</summary>
-public sealed class MenuConfigTests_SqlServer
-    : MenuConfigTestsBase, IClassFixture<SqlServerTenantIsolationFixture>
-{
-    public MenuConfigTests_SqlServer(SqlServerTenantIsolationFixture fixture)
-        : base(fixture)
-    {
-    }
-}
+// La variante SQL Server de la matriz dual se elimina: TRONOX usa PostgreSQL como motor unico.

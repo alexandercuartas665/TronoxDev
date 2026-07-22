@@ -9,9 +9,9 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddScoped<ITenantContext, SystemTenantContext>();
 
-builder.Services.AddHostedService<RecurringBillingWorker>();
-// Limpieza diaria del TTL del historial de reglas (FASE 4 ola 3, ADR-0016).
-builder.Services.AddHostedService<RuleLogTtlCleanupWorker>();
+// Host de procesos asincronos de TRONOX. Los workers de las 17 specs (motor SLA de RQ09, cola
+// de OCR, eventos de workflow de RQ11, notificaciones y ETL nocturno de RQ13) se registran aqui
+// a medida que se construya cada modulo. Los del backbone no aplican a este dominio.
 
 var host = builder.Build();
 host.Run();

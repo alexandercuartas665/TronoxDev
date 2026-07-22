@@ -200,9 +200,4 @@ public sealed class TenantUserAdminTests_Postgres
     public TenantUserAdminTests_Postgres(PostgresTenantIsolationFixture fixture) : base(fixture) { }
 }
 
-/// <summary>Matriz dual, motor SQL Server (contenedor efimero mssql/server:2022-latest).</summary>
-public sealed class TenantUserAdminTests_SqlServer
-    : TenantUserAdminTestsBase, IClassFixture<SqlServerTenantIsolationFixture>
-{
-    public TenantUserAdminTests_SqlServer(SqlServerTenantIsolationFixture fixture) : base(fixture) { }
-}
+// La variante SQL Server de la matriz dual se elimina: TRONOX usa PostgreSQL como motor unico.
