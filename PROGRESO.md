@@ -15,10 +15,45 @@ Bitacora de entregables y decisiones. Fuente de verdad funcional: vault Obsidian
 | 0.1 | Clonar backbone + recablear remotos | HECHO |
 | 0.2 | Renombrar `Ecorex.*` -> `Tronox.*` + reestructura de hosts | HECHO (build verde) |
 | 0.3 | Podar dominio ajeno | HECHO (queda barrido de residuos) |
-| 0.4 | Ids `Guid` -> `BIGINT` (ADR-001 / DAT-01) | EN CURSO |
+| 0.4 | Ids `Guid` -> `BIGINT` (ADR-001 / DAT-01) | HECHO (build verde) |
 | 0.5 | Docker: bloque de puertos propio + MinIO + preflight | HECHO (5 servicios healthy, 30 hermanos intactos) |
-| 0.6 | Migracion inicial limpia PostgreSQL | PENDIENTE (depende de 0.4) |
-| 0.7 | Test de aislamiento cross-tenant en verde | PENDIENTE (el test existe; falta ejecutarlo) |
+| 0.6 | Migracion inicial limpia PostgreSQL | HECHO (29 tablas, `tenant_id bigint NOT NULL`, idempotente) |
+| 0.7 | Test de aislamiento cross-tenant en verde | HECHO (6/6 ejecutados, incluida la guarda estructural) |
+
+---
+
+## INCIDENTE - El filtro de tenant estuvo desactivado (resuelto)
+
+**Que paso.** Durante la poda (0.3) se filtraron los bloques `modelBuilder.Entity<X>(...)`
+del DbContext por balance de parentesis, conservando solo las entidades vivas. Ese filtro
+tambien elimino la linea:
+
+```csharp
+modelBuilder.Entity<TEntity>().HasQueryFilter(e => e.TenantId == _tenantContext.TenantId);
+```
+
+porque estaba dentro del metodo generico `ApplyTenantFilter<TEntity>` y `TEntity` no figuraba
+en la lista de entidades a conservar. El metodo quedo **con el cuerpo vacio**.
+
+**Por que es grave.** La solucion siguio compilando en verde, la aplicacion habria arrancado
+sin un solo error, y **toda consulta habria devuelto filas de todos los tenants**. El
+aislamiento multi-tenant (DAT-01), que es el invariante numero uno del sistema, estuvo
+desactivado durante varios commits sin ninguna senal.
+
+**Como se detecto.** Al ejecutar por primera vez `TenantIsolationTests` (entregable 0.7):
+2 de 3 fallaron. Sin ese test, el defecto habria llegado a produccion.
+
+**Correccion.** Linea restaurada, con un comentario "NO BORRAR" que explica el riesgo.
+
+**Refuerzo anadido.** Nuevo `TenantFilterGuardTests` que valida la ESTRUCTURA del modelo, no
+solo el comportamiento: falla si alguna entidad `ITenantScoped` se queda sin filtro global, si
+`tenant_id` fuera nullable, o si el modelo se quedara sin entidades scoped. **Se verifico que
+la guarda realmente detecta el fallo** desactivando el filtro a proposito y confirmando que
+la prueba se pone en rojo.
+
+**Leccion.** Las transformaciones masivas de codigo por patron textual pueden desactivar en
+silencio una defensa de seguridad. Todo cambio de este tipo debe cerrarse EJECUTANDO los
+tests de invariantes, no solo compilando.
 | 0.8 | Plantilla Velzon integrada | PARCIAL (assets copiados; falta aplicarla al layout) |
 | 0.9 | `CLAUDE.md` reescrito para TRONOX | HECHO |
 
