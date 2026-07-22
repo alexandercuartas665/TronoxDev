@@ -74,7 +74,7 @@ public sealed class BusinessUnitService : IBusinessUnitService
             IsActive = true
         };
         _db.BusinessUnits.Add(u);
-        _audit.Write(actorUserId, "business-unit.create", nameof(BusinessUnit), u.Id, null, new { u.Name }, tenantId);
+        _audit.Write(actorUserId, "business-unit.create", nameof(BusinessUnit), u, null, new { u.Name }, tenantId);
         await _db.SaveChangesAsync(cancellationToken);
         return new BusinessUnitDto(u.Id, u.Name, u.Color, u.ModalKind, u.SortOrder, u.IsActive);
     }
@@ -88,7 +88,7 @@ public sealed class BusinessUnitService : IBusinessUnitService
         u.Name = name;
         u.Color = string.IsNullOrWhiteSpace(request.Color) ? u.Color : request.Color.Trim();
         u.ModalKind = request.ModalKind;
-        _audit.Write(actorUserId, "business-unit.update", nameof(BusinessUnit), u.Id, null, new { u.Name }, u.TenantId);
+        _audit.Write(actorUserId, "business-unit.update", nameof(BusinessUnit), u, null, new { u.Name }, u.TenantId);
         await _db.SaveChangesAsync(cancellationToken);
         return new BusinessUnitDto(u.Id, u.Name, u.Color, u.ModalKind, u.SortOrder, u.IsActive);
     }
@@ -107,7 +107,7 @@ public sealed class BusinessUnitService : IBusinessUnitService
         var u = await _db.BusinessUnits.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (u is null) { return false; }
         _db.BusinessUnits.Remove(u);
-        _audit.Write(actorUserId, "business-unit.delete", nameof(BusinessUnit), u.Id, new { u.Name }, null, u.TenantId);
+        _audit.Write(actorUserId, "business-unit.delete", nameof(BusinessUnit), u, new { u.Name }, null, u.TenantId);
         await _db.SaveChangesAsync(cancellationToken);
         return true;
     }

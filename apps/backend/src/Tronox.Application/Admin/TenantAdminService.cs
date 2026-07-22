@@ -37,15 +37,11 @@ public sealed class TenantAdminService : ITenantAdminService
 
         _db.Tenants.Add(tenant);
 
-        // El Id es identity generada por la base (long): hay que persistir ANTES de auditar,
-        // si no el registro de auditoria queda con TenantId/EntityId = 0 y se pierde la
-        // trazabilidad del alta. (Con Guid generado en cliente esto no se notaba.)
-        await _db.SaveChangesAsync(cancellationToken);
-
-        _audit.Write(actorUserId, "tenant.create", nameof(Tenant), tenant.Id,
+        // Se audita la ENTIDAD, no su id: el Id es identity generada por la base y aqui vale 0.
+        // El asiento se resuelve e inserta cuando el id real existe, en la misma transaccion.
+        _audit.Write(actorUserId, "tenant.create", nameof(Tenant), tenant,
             previousValue: null,
-            newValue: new { tenant.Name, tenant.Status, tenant.Kind },
-            tenantId: tenant.Id);
+            newValue: new { tenant.Name, tenant.Status, tenant.Kind });
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -101,7 +97,7 @@ public sealed class TenantAdminService : ITenantAdminService
         }
 
         tenant.Status = request.Status;
-        _audit.Write(actorUserId, "tenant.change-status", nameof(Tenant), tenant.Id,
+        _audit.Write(actorUserId, "tenant.change-status", nameof(Tenant), tenant,
             previousValue: new { Status = previousStatus },
             newValue: new { Status = request.Status },
             tenantId: tenant.Id,
@@ -130,7 +126,7 @@ public sealed class TenantAdminService : ITenantAdminService
         tenant.Email = Normalize(request.Email);
         tenant.LogoUrl = string.IsNullOrWhiteSpace(request.LogoUrl) ? tenant.LogoUrl : request.LogoUrl.Trim();
 
-        _audit.Write(actorUserId, "tenant.profile.update", nameof(Tenant), tenant.Id,
+        _audit.Write(actorUserId, "tenant.profile.update", nameof(Tenant), tenant,
             previousValue: null,
             newValue: new { tenant.Name, tenant.LegalName, tenant.TaxId, tenant.Country, tenant.Currency, tenant.City, tenant.Address, tenant.Phone, tenant.Email, HasLogo = tenant.LogoUrl is not null },
             tenantId: tenant.Id);

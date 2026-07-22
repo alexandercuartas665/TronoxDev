@@ -57,9 +57,41 @@ tests de invariantes, no solo compilando.
 
 ---
 
-## DEFECTO ABIERTO (ALTA) - La auditoria de creacion pierde el id de la entidad
+## DEFECTO CORREGIDO (era ALTA) - La auditoria de creacion perdia el id de la entidad
 
-**Estado: NO corregido. Es lo primero que hay que atacar.**
+**Estado: CORREGIDO el 2026-07-22, con test de regresion verificado en rojo.**
+
+**Arreglo aplicado (sistemico, no diez parches).** Se anadio a `IApplicationDbContext` la
+primitiva `DeferUntilIdsAssigned(Action)`, implementada en `TronoxDbContext.SaveChangesAsync`:
+si hay trabajo diferido, vacia la cola, aplica join-or-begin de transaccion, guarda, ejecuta las
+acciones ya con los ids reales, vuelve a guardar si hizo falta y confirma. Sin trabajo diferido
+delega tal cual, asi que no cuesta nada en el 99% de los guardados.
+
+`IAuditWriter` gana la sobrecarga preferente que recibe la **entidad** en vez de un `long?`. Esa
+forma no inserta el asiento de inmediato: lo construye (serializando ya los valores) y difiere la
+resolucion del id, de modo que el asiento se INSERTA una sola vez ya correcto. Nada de UPDATE
+posterior, que es lo que exige el caracter append-only de RNF-04.
+
+Migrados **30 sitios**, no solo los 10 de altas: la forma por entidad queda como norma tambien en
+updates y deletes, para que sea el patron por defecto y no una excepcion que haya que recordar.
+El unico que conserva la forma por id es `RolService` (`rol.save-permisos`), donde legitimamente
+solo llega un `rolId` por parametro. `TenantAdminService` se alineo y volvio a un solo guardado.
+
+Aparecieron **dos sitios afectados que no estaban en la lista original**: `EmailConfigService`
+(`email.config.create`) y `AiServerConfigService` (`ai.provider.create`). Ambos con forma
+"get-or-create", donde el asiento quedaba a 0 solo la primera vez: facil de no ver en pruebas
+manuales.
+
+**Riesgo residual conocido.** La sobrecarga por `long?` sigue existiendo y el compilador no impide
+usarla en un alta. Esta documentada como excepcion. Cerrar del todo esa puerta (analizador Roslyn,
+o marcarla `[Obsolete]` cuando no queden usos legitimos) queda como mejora futura.
+
+**Propiedad del diseno a conocer.** La resolucion diferida se dispara en el siguiente
+`SaveChangesAsync` del contexto. Un servicio que auditara y retornara SIN guardar dejaria el
+asiento en cola. Se revisaron los 30 sitios y ninguno lo hace; el comportamiento anterior tenia
+el mismo riesgo.
+
+### Registro historico del defecto
 
 `AuditWriter.Write` copia el `entityId` en el momento de la llamada:
 

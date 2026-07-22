@@ -61,7 +61,7 @@ public sealed class GoogleAuthConfigService : IGoogleAuthConfigService
         }
 
         _audit.Write(actorUserId, isNew ? "google.auth.create" : "google.auth.update",
-            nameof(GoogleAuthConfig), cfg.Id, previousValue: null, newValue: new { cfg.ClientId, cfg.IsEnabled });
+            nameof(GoogleAuthConfig), cfg, previousValue: null, newValue: new { cfg.ClientId, cfg.IsEnabled });
 
         await _db.SaveChangesAsync(cancellationToken);
     }

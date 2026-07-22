@@ -123,6 +123,113 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     /// <summary>Hay una transaccion abierta (los casos de uso anidados se unen a ella).</summary>
     public bool HasActiveTransaction => Database.CurrentTransaction is not null;
 
+    // ---- Trabajo diferido hasta que los ids de identidad existan (IApplicationDbContext) ----
+    //
+    // El Id es BIGINT de identidad: la base lo genera al insertar y EF lo materializa DURANTE
+    // SaveChanges. Cualquier dato derivado de un id recien creado (p.ej. el EntityId de un
+    // asiento de auditoria de un alta) es incalculable antes de guardar y quedaria en 0.
+    // Estas acciones se ejecutan justo despues del primer guardado y lo que produzcan se
+    // persiste en un segundo guardado, ambos en la MISMA transaccion.
+    private readonly List<Action> _deferredUntilIdsAssigned = [];
+
+    public void DeferUntilIdsAssigned(Action work) => _deferredUntilIdsAssigned.Add(work);
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        if (_deferredUntilIdsAssigned.Count == 0)
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+
+        // Se vacia la cola ANTES de guardar: si algo falla, no queda trabajo huerfano que se
+        // dispare en un SaveChanges posterior (el rollback ya deshizo el alta que lo motivo).
+        var pending = _deferredUntilIdsAssigned.ToArray();
+        _deferredUntilIdsAssigned.Clear();
+
+        // Patron join-or-begin: si el caso de uso ya abrio transaccion, los dos guardados van
+        // dentro de ella; si no, el contexto abre la suya para que sean atomicos.
+        var ownTransaction = Database.CurrentTransaction is null
+            ? await Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        try
+        {
+            var affected = await base.SaveChangesAsync(cancellationToken);
+
+            foreach (var work in pending)
+            {
+                work();
+            }
+
+            if (ChangeTracker.HasChanges())
+            {
+                affected += await base.SaveChangesAsync(cancellationToken);
+            }
+
+            if (ownTransaction is not null)
+            {
+                await ownTransaction.CommitAsync(cancellationToken);
+            }
+
+            return affected;
+        }
+        catch
+        {
+            if (ownTransaction is not null)
+            {
+                await ownTransaction.RollbackAsync(cancellationToken);
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (ownTransaction is not null)
+            {
+                await ownTransaction.DisposeAsync();
+            }
+        }
+    }
+
+    /// <summary>Version sincrona con la misma semantica de resolucion diferida.</summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        if (_deferredUntilIdsAssigned.Count == 0)
+        {
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        var pending = _deferredUntilIdsAssigned.ToArray();
+        _deferredUntilIdsAssigned.Clear();
+
+        var ownTransaction = Database.CurrentTransaction is null ? Database.BeginTransaction() : null;
+        try
+        {
+            var affected = base.SaveChanges(acceptAllChangesOnSuccess);
+
+            foreach (var work in pending)
+            {
+                work();
+            }
+
+            if (ChangeTracker.HasChanges())
+            {
+                affected += base.SaveChanges(acceptAllChangesOnSuccess);
+            }
+
+            ownTransaction?.Commit();
+            return affected;
+        }
+        catch
+        {
+            ownTransaction?.Rollback();
+            throw;
+        }
+        finally
+        {
+            ownTransaction?.Dispose();
+        }
+    }
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         // Todos los enums se persisten como texto (legibles y estables ante reordenamientos).

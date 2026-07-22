@@ -40,7 +40,7 @@ public sealed class PaymentAdminService : IPaymentAdminService
         };
 
         _db.TenantPayments.Add(payment);
-        _audit.Write(actorUserId, "payment.register", nameof(TenantPayment), payment.Id,
+        _audit.Write(actorUserId, "payment.register", nameof(TenantPayment), payment,
             previousValue: null,
             newValue: new { payment.Amount, payment.Currency, payment.Status },
             tenantId: request.TenantId);

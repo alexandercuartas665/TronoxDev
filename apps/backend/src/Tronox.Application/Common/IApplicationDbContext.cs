@@ -68,4 +68,19 @@ public interface IApplicationDbContext
     /// uso anidado se una a la transaccion del llamador en vez de intentar abrir otra.
     /// </summary>
     bool HasActiveTransaction { get; }
+
+    /// <summary>
+    /// Registra trabajo que solo puede ejecutarse cuando los ids de identidad YA existen.
+    /// El Id de toda entidad es BIGINT de identidad generado por la base: antes de SaveChanges
+    /// vale 0, y EF lo asigna DURANTE SaveChanges (un interceptor SavingChanges todavia veria 0).
+    ///
+    /// Las acciones registradas se ejecutan al final del SaveChanges en curso, cuando los ids
+    /// reales ya estan materializados, y lo que produzcan se persiste en un segundo guardado
+    /// DENTRO de la misma transaccion: si el llamador ya abrio una, se usa esa; si no, el
+    /// contexto abre una propia para que ambos guardados sean atomicos.
+    ///
+    /// Uso tipico: escribir la pista de auditoria de un alta (ver IAuditWriter), donde el
+    /// EntityId del asiento no se conoce hasta despues del INSERT.
+    /// </summary>
+    void DeferUntilIdsAssigned(Action work);
 }

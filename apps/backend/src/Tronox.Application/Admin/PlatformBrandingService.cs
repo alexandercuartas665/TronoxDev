@@ -73,7 +73,7 @@ public sealed class PlatformBrandingService : IPlatformBrandingService
         row.LoginHeadline = request.LoginHeadline?.Trim();
         row.LoginSubtext = request.LoginSubtext?.Trim();
 
-        _audit.Write(actorUserId, "platform.branding.save", nameof(PlatformBranding), row.Id,
+        _audit.Write(actorUserId, "platform.branding.save", nameof(PlatformBranding), row,
             previousValue: null,
             newValue: new { row.PlatformName, HasLogo = row.LoginLogoUrl is not null });
 

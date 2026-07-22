@@ -420,6 +420,14 @@ public abstract class RolesTestsBase
         {
             // Los tests no persisten auditoria; el interceptor ya estampa tenant/fechas.
         }
+
+        public void Write(long actorUserId, string actionName, string entityName,
+            Tronox.Domain.Common.BaseEntity entity,
+            object? previousValue, object? newValue, long? tenantId = null, string? reason = null,
+            AuditActorType actorType = AuditActorType.Human)
+        {
+            // Idem: la forma diferida se verifica en AuditEntityIdTests con el AuditWriter real.
+        }
     }
 }
 

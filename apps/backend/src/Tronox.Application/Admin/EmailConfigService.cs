@@ -81,7 +81,7 @@ public sealed class EmailConfigService : IEmailConfigService
 
         // Auditoria SIN la clave.
         _audit.Write(actorUserId, isNew ? "email.config.create" : "email.config.update",
-            nameof(EmailConfig), cfg.Id,
+            nameof(EmailConfig), cfg,
             previousValue: null, newValue: new { cfg.SmtpHost, cfg.SmtpPort, cfg.FromEmail, cfg.IsEnabled });
 
         await _db.SaveChangesAsync(cancellationToken);

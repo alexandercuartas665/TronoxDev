@@ -112,10 +112,10 @@ public sealed class OnboardingService : IOnboardingService
                 _db.TenantSubscriptions.Add(subscription);
             }
 
-            _audit.Write(actorUserId, "tenant.onboard", nameof(Tenant), tenant.Id,
+            // Se audita la ENTIDAD, no su id: el id lo genera la base al insertar (aqui vale 0).
+            _audit.Write(actorUserId, "tenant.onboard", nameof(Tenant), tenant,
                 previousValue: null,
-                newValue: new { tenant.Name, AdminEmail = email, HasSubscription = subscription is not null },
-                tenantId: tenant.Id);
+                newValue: new { tenant.Name, AdminEmail = email, HasSubscription = subscription is not null });
 
             await _db.SaveChangesAsync(cancellationToken);
             subscriptionId = subscription?.Id;

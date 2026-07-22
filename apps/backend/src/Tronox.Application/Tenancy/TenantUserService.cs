@@ -88,7 +88,7 @@ public sealed class TenantUserService : ITenantUserService
         };
         _db.TenantUsers.Add(tenantUser);
 
-        _audit.Write(actorUserId, "tenant-user.invite", nameof(TenantUser), tenantUser.Id,
+        _audit.Write(actorUserId, "tenant-user.invite", nameof(TenantUser), tenantUser,
             previousValue: null,
             newValue: new { email, request.Role },
             tenantId: tenantId);
@@ -109,7 +109,7 @@ public sealed class TenantUserService : ITenantUserService
         if (previous != role)
         {
             tenantUser.TenantRole = role;
-            _audit.Write(actorUserId, "tenant-user.change-role", nameof(TenantUser), tenantUser.Id,
+            _audit.Write(actorUserId, "tenant-user.change-role", nameof(TenantUser), tenantUser,
                 previousValue: new { Role = previous },
                 newValue: new { Role = role },
                 tenantId: tenantUser.TenantId);
@@ -131,7 +131,7 @@ public sealed class TenantUserService : ITenantUserService
         if (previous != status)
         {
             tenantUser.Status = status;
-            _audit.Write(actorUserId, "tenant-user.set-status", nameof(TenantUser), tenantUser.Id,
+            _audit.Write(actorUserId, "tenant-user.set-status", nameof(TenantUser), tenantUser,
                 previousValue: new { Status = previous },
                 newValue: new { Status = status },
                 tenantId: tenantUser.TenantId);
@@ -176,7 +176,7 @@ public sealed class TenantUserService : ITenantUserService
         }
 
         // Auditoria SIN la clave (solo el hecho y si reactivo la cuenta).
-        _audit.Write(actorUserId, "tenant-user.reset-password", nameof(TenantUser), tenantUser.Id,
+        _audit.Write(actorUserId, "tenant-user.reset-password", nameof(TenantUser), tenantUser,
             previousValue: null,
             newValue: new { Reactivated = reactivated },
             tenantId: tenantUser.TenantId);
@@ -204,7 +204,7 @@ public sealed class TenantUserService : ITenantUserService
         if (previous != normalized)
         {
             platformUser.DisplayName = normalized;
-            _audit.Write(actorUserId, "tenant-user.update-profile", nameof(TenantUser), tenantUser.Id,
+            _audit.Write(actorUserId, "tenant-user.update-profile", nameof(TenantUser), tenantUser,
                 previousValue: new { DisplayName = previous },
                 newValue: new { DisplayName = normalized },
                 tenantId: tenantUser.TenantId);

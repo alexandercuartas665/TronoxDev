@@ -52,7 +52,7 @@ public sealed class AiServerConfigService : IAiServerConfigService
 
         // Auditoria SIN la API key.
         _audit.Write(actorUserId, isNew ? "ai.provider.create" : "ai.provider.update",
-            nameof(AiProviderConfig), config.Id,
+            nameof(AiProviderConfig), config,
             previousValue: null, newValue: new { config.Provider, config.Model, config.IsEnabled });
 
         await _db.SaveChangesAsync(cancellationToken);

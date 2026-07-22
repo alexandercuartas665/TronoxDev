@@ -37,7 +37,7 @@ public sealed class PlanAdminService : IPlanAdminService
         };
 
         _db.SaasPlans.Add(plan);
-        _audit.Write(actorUserId, "plan.create", nameof(SaasPlan), plan.Id,
+        _audit.Write(actorUserId, "plan.create", nameof(SaasPlan), plan,
             previousValue: null,
             newValue: new { plan.Name, plan.MonthlyPrice, plan.YearlyPrice, LimitCount = plan.Limits.Count });
 
@@ -73,7 +73,7 @@ public sealed class PlanAdminService : IPlanAdminService
             .ToList();
         _db.SaasPlanLimits.AddRange(newLimits);
 
-        _audit.Write(actorUserId, "plan.update", nameof(SaasPlan), plan.Id,
+        _audit.Write(actorUserId, "plan.update", nameof(SaasPlan), plan,
             previousValue: null,
             newValue: new { plan.Name, plan.MonthlyPrice, plan.YearlyPrice, LimitCount = newLimits.Count });
 
@@ -115,7 +115,7 @@ public sealed class PlanAdminService : IPlanAdminService
         if (previous != isActive)
         {
             plan.IsActive = isActive;
-            _audit.Write(actorUserId, "plan.set-active", nameof(SaasPlan), plan.Id,
+            _audit.Write(actorUserId, "plan.set-active", nameof(SaasPlan), plan,
                 previousValue: new { IsActive = previous },
                 newValue: new { IsActive = isActive });
             await _db.SaveChangesAsync(cancellationToken);

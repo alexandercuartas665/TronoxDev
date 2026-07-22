@@ -72,7 +72,7 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
         };
         _db.PlatformUsers.Add(op);
 
-        _audit.Write(actorUserId, "platform_operator.create", nameof(PlatformUser), op.Id,
+        _audit.Write(actorUserId, "platform_operator.create", nameof(PlatformUser), op,
             previousValue: null,
             newValue: new { op.Email, op.DisplayName, Role = request.Role.ToString() });
 
@@ -93,7 +93,7 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
         op.PlatformRole = request.Role;
         op.Status = request.Status;
 
-        _audit.Write(actorUserId, "platform_operator.update", nameof(PlatformUser), op.Id,
+        _audit.Write(actorUserId, "platform_operator.update", nameof(PlatformUser), op,
             previousValue: previous,
             newValue: new { op.DisplayName, Role = request.Role.ToString(), Status = request.Status.ToString() });
 
@@ -111,7 +111,7 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
 
         op.PasswordHash = _passwordHasher.Hash(request.NewPassword);
 
-        _audit.Write(actorUserId, "platform_operator.change_password", nameof(PlatformUser), op.Id,
+        _audit.Write(actorUserId, "platform_operator.change_password", nameof(PlatformUser), op,
             previousValue: null,
             newValue: new { op.Email });
 
@@ -149,14 +149,14 @@ public sealed class PlatformOperatorService : IPlatformOperatorService
         if (hasTenantMembership)
         {
             op.PlatformRole = null;
-            _audit.Write(actorUserId, "platform_operator.revoke_role", nameof(PlatformUser), op.Id,
+            _audit.Write(actorUserId, "platform_operator.revoke_role", nameof(PlatformUser), op,
                 previousValue: new { Role = op.PlatformRole?.ToString() },
                 newValue: null);
         }
         else
         {
             _db.PlatformUsers.Remove(op);
-            _audit.Write(actorUserId, "platform_operator.delete", nameof(PlatformUser), op.Id,
+            _audit.Write(actorUserId, "platform_operator.delete", nameof(PlatformUser), op,
                 previousValue: new { op.Email, Role = op.PlatformRole?.ToString() },
                 newValue: null);
         }

@@ -80,7 +80,7 @@ public sealed class RolService : IRolService
             entity.Name = trimmed;
             entity.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
             entity.IsActive = isActive;
-            _audit.Write(actorUserId, "rol.update", nameof(Rol), entity.Id,
+            _audit.Write(actorUserId, "rol.update", nameof(Rol), entity,
                 previousValue: prev,
                 newValue: new { entity.Name, entity.Description, entity.IsActive },
                 tenantId: entity.TenantId);
@@ -104,7 +104,7 @@ public sealed class RolService : IRolService
                 IsSystem = false
             };
             _db.Roles.Add(entity);
-            _audit.Write(actorUserId, "rol.create", nameof(Rol), entity.Id,
+            _audit.Write(actorUserId, "rol.create", nameof(Rol), entity,
                 previousValue: null,
                 newValue: new { entity.Name, entity.Description, entity.IsActive },
                 tenantId: entity.TenantId);
@@ -141,7 +141,7 @@ public sealed class RolService : IRolService
             var permisos = await _db.RolPermisos.Where(p => p.RolId == id).ToListAsync(cancellationToken);
             _db.RolPermisos.RemoveRange(permisos);
             _db.Roles.Remove(entity);
-            _audit.Write(actorUserId, "rol.delete", nameof(Rol), entity.Id,
+            _audit.Write(actorUserId, "rol.delete", nameof(Rol), entity,
                 previousValue: new { entity.Name },
                 newValue: null,
                 tenantId: entity.TenantId);
@@ -330,7 +330,7 @@ public sealed class RolService : IRolService
         if (previous != rolId)
         {
             user.RolId = rolId;
-            _audit.Write(actorUserId, "tenant-user.assign-rol", nameof(TenantUser), user.Id,
+            _audit.Write(actorUserId, "tenant-user.assign-rol", nameof(TenantUser), user,
                 previousValue: new { RolId = previous },
                 newValue: new { RolId = rolId },
                 tenantId: user.TenantId);

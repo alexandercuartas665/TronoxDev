@@ -41,7 +41,7 @@ public sealed class SubscriptionAdminService : ISubscriptionAdminService
         };
 
         _db.TenantSubscriptions.Add(subscription);
-        _audit.Write(actorUserId, "subscription.assign", nameof(TenantSubscription), subscription.Id,
+        _audit.Write(actorUserId, "subscription.assign", nameof(TenantSubscription), subscription,
             previousValue: null,
             newValue: new { subscription.PlanId, subscription.BillingFrequency, subscription.CurrentPeriodEndsAt },
             tenantId: request.TenantId);
@@ -99,7 +99,7 @@ public sealed class SubscriptionAdminService : ISubscriptionAdminService
         };
         _db.TenantSubscriptions.Add(subscription);
 
-        _audit.Write(actorUserId, "subscription.change", nameof(TenantSubscription), subscription.Id,
+        _audit.Write(actorUserId, "subscription.change", nameof(TenantSubscription), subscription,
             previousValue: current is null ? null : new { current.PlanId, current.BillingFrequency, current.CurrentPeriodEndsAt },
             newValue: new { subscription.PlanId, subscription.BillingFrequency, subscription.CurrentPeriodEndsAt, isUpgrade },
             tenantId: tenantId);
