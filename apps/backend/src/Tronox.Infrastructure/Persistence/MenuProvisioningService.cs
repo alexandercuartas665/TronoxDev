@@ -53,6 +53,9 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
                 .AnyAsync(n => n.MenuViewId == vista.Id && n.Kind == MenuNodeKind.Item, cancellationToken);
             if (yaTieneItems)
             {
+                // El arbol ya esta: no se recrea nada (respeto a la personalizacion del tenant).
+                // Lo unico que se hace es RELLENAR el icono de los nodos que lo tengan vacio.
+                await BackfillIconKeysAsync(tenantId, cancellationToken);
                 return;
             }
         }
@@ -131,17 +134,62 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
                 var ordenItem = 0;
                 foreach (var item in grupo.Items)
                 {
-                    Nodo(MenuNodeKind.Item, item.Nombre, null, item.Ruta, item.CodigoRf, nodoGrupo, ordenItem++);
+                    Nodo(MenuNodeKind.Item, item.Nombre, item.Icono, item.Ruta, item.CodigoRf, nodoGrupo, ordenItem++);
                 }
             }
 
             // Items sueltos colgados directamente de la seccion (ej. SISTEMA).
             foreach (var item in seccion.Items)
             {
-                Nodo(MenuNodeKind.Item, item.Nombre, null, item.Ruta, item.CodigoRf, nodoSeccion, ordenHijo++);
+                Nodo(MenuNodeKind.Item, item.Nombre, item.Icono, item.Ruta, item.CodigoRf, nodoSeccion, ordenHijo++);
             }
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Rellena <c>icon_key</c> en los nodos del tenant que lo tengan NULL o vacio, emparejando por
+    /// <c>Route</c> contra el arbol canonico.
+    ///
+    /// POR QUE ES "SOLO DONDE ESTE VACIO": los tenants creados antes de que el catalogo llevara
+    /// icono en los items nacieron con 93 pantallas sin icono, y todas pintaban el mismo cuadrado
+    /// generico. Reasignar el icono canonico a TODOS los nodos arreglaria eso pero PISARIA el icono
+    /// que el tenant hubiera elegido en el editor de vistas del menu, que es justamente la
+    /// personalizacion que el aprovisionamiento idempotente promete no tocar. Rellenar el hueco es
+    /// reparador; sobrescribir seria destructivo.
+    ///
+    /// Un nodo creado por el tenant con una ruta que no existe en el catalogo se queda como esta.
+    /// </summary>
+    public async Task<int> BackfillIconKeysAsync(long tenantId, CancellationToken cancellationToken = default)
+    {
+        var sinIcono = await _db.MenuNodes
+            .IgnoreQueryFilters()
+            .Where(n => n.TenantId == tenantId
+                        && n.Route != null
+                        && (n.IconKey == null || n.IconKey == ""))
+            .ToListAsync(cancellationToken);
+
+        if (sinIcono.Count == 0)
+        {
+            return 0;
+        }
+
+        var rellenados = 0;
+        foreach (var nodo in sinIcono)
+        {
+            if (MenuCatalogo.IconosPorRuta.TryGetValue(nodo.Route!, out var icono))
+            {
+                nodo.IconKey = icono;
+                rellenados++;
+            }
+        }
+
+        if (rellenados > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        return rellenados;
     }
 }

@@ -16,6 +16,9 @@ public sealed class NoOpMenuProvisioning : IMenuProvisioningService
 {
     public Task EnsureDefaultMenuAsync(long tenantId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
+
+    public Task<int> BackfillIconKeysAsync(long tenantId, CancellationToken cancellationToken = default)
+        => Task.FromResult(0);
 }
 
 /// <summary>

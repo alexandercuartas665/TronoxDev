@@ -693,3 +693,68 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
   opacity: .55;
   cursor: not-allowed;
 }
+
+/* -------------------------------------------------------------------------
+   Logo TRONOX del panel izquierdo del login (PLAN seccion 3.1: "Logo TRONOX
+   sobre degradado azul"). El activo es cuadrado 1080x1080 con la marca arriba
+   y el logotipo en blanco debajo, asi que se fija SOLO el ancho y la altura
+   queda en auto: nunca se deforma. La escala sigue el bloque de marca de
+   auth-signin-cover.html (logo pequeno arriba a la izquierda, separado del
+   contenido por el mismo mb-4 de la plantilla).
+   ------------------------------------------------------------------------- */
+.tronox-auth-logo-img {
+  display: block;
+  width: 7.5rem;
+  height: auto;
+  max-width: 100%;
+}
+
+@media (max-width: 991.98px) {
+  .tronox-auth-logo-img {
+    width: 6rem;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Iconos del menu configurable. ADR-001 fija la clave de icono como clase
+   Bootstrap Icons ("bi-*"), asi que MenuIcons ya no emite <svg> sino <i>: las
+   reglas de tamano que app.css aplicaba a "svg" no lo alcanzan y hay que dar
+   la medida aqui. Se replican los 17px del icono de seccion para que el
+   cambio de SVG a fuente no altere el ritmo vertical del sidebar.
+   ------------------------------------------------------------------------- */
+.tronox-mi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* Los items hoja y los subgrupos llevan un icono algo menor que la seccion,
+   igual que en el prototipo: la jerarquia se lee por tamano, no solo por
+   sangria. */
+.tronox-acc-item .tronox-mi,
+.tronox-acc-sub > summary .tronox-mi {
+  width: 15px;
+  height: 15px;
+  font-size: 13.5px;
+  opacity: .85;
+}
+
+.tronox-acc-item.active .tronox-mi {
+  opacity: 1;
+}
+
+/* El icono de los enlaces sueltos de primer nivel (Inicio) ocupaba el hueco de
+   un <svg> de 17px; se conserva con la misma alineacion. */
+.tronox-nav-link > .tronox-mi {
+  opacity: .85;
+}
+
+.tronox-nav-link.active > .tronox-mi {
+  opacity: 1;
+  color: var(--primary);
+}

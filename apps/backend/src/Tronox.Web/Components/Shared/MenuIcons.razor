@@ -1,78 +1,127 @@
 @* ===================================================================================
-   Catalogo COMPARTIDO de iconos del menu configurable (IconKey -> SVG). Fuente unica
-   de verdad para: (1) el sidebar data-driven (NavMenu.razor), (2) el arbol y el selector
-   de iconos del editor (ConfiguracionMenu.razor) y (3) la vista previa del editor. Asi un
-   icono elegido en el editor renderiza IDENTICO en el sidebar. Los trazos son los mismos
-   del prototipo TRONOX.dc.html (stroke currentColor, viewBox 24). Una clave desconocida
-   cae a un icono neutro para no romper el render.
+   Catalogo COMPARTIDO de iconos del menu configurable. Fuente unica de verdad para:
+   (1) el sidebar data-driven (NavMenu.razor), (2) el arbol y el selector de iconos del
+   editor (ConfiguracionMenu.razor) y (3) la vista previa del editor. Asi un icono elegido
+   en el editor renderiza IDENTICO en el sidebar.
+
+   ADR-001: la clave de icono es una CLASE DE BOOTSTRAP ICONS ("bi-*"), la misma familia
+   que usa el prototipo TRONOX. Nunca se guarda un SVG en base de datos, solo la clave.
+   Por eso este componente ya no dibuja trazos: emite <i class="bi bi-x"></i> y deja que
+   la fuente (wwwroot/vendor/bootstrap-icons, MIT) lo pinte. Velzon trae remixicon,
+   boxicons, materialdesign y lineawesome, pero NO Bootstrap Icons: se anadio aparte.
+
+   Compatibilidad: las claves cortas heredadas del backbone ("home", "gear", "layout"...)
+   se siguen resolviendo via Alias, para no romper vistas de menu ya guardadas por un
+   tenant. Una clave desconocida cae a un icono neutro para no romper el render.
    =================================================================================== *@
 
 @code {
-    /// <summary>Claves de icono ofrecidas en el selector grid del editor (orden estable).</summary>
+    /// <summary>Icono neutro cuando la clave falta o no se reconoce.</summary>
+    public const string ClaveGenerica = "bi-app";
+
+    /// <summary>
+    /// Claves cortas heredadas del backbone -> clase Bootstrap Icons equivalente. Solo existen
+    /// para no romper los nodos que un tenant guardo antes de ADR-001; el selector ya ofrece
+    /// claves "bi-*" directamente.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> Alias =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["home"] = "bi-house",
+            ["megaphone"] = "bi-megaphone",
+            ["list"] = "bi-list-ul",
+            ["briefcase"] = "bi-briefcase",
+            ["automation"] = "bi-diagram-2",
+            ["robot"] = "bi-robot",
+            ["cube"] = "bi-box-seam",
+            ["check-square"] = "bi-check2-square",
+            ["users"] = "bi-people",
+            ["crm"] = "bi-person-vcard",
+            ["gear"] = "bi-gear",
+            ["folder"] = "bi-folder",
+            ["chart"] = "bi-bar-chart",
+            ["flow"] = "bi-diagram-3",
+            ["form"] = "bi-ui-checks-grid",
+            ["rule"] = "bi-shield-lock",
+            ["bell"] = "bi-bell",
+            ["shield"] = "bi-shield-check",
+            ["file"] = "bi-file-earmark-text",
+            ["tag"] = "bi-tags",
+            ["link"] = "bi-link-45deg",
+            ["database"] = "bi-hdd-stack",
+            ["layout"] = "bi-grid-1x2",
+            ["sparkles"] = "bi-stars"
+        };
+
+    /// <summary>
+    /// Claves ofrecidas en el selector grid del editor (orden estable). Son las que usa el arbol
+    /// canonico (MenuCatalogo) mas las de uso general, para que el tenant reencuentre en el
+    /// selector el mismo icono que ve en el sidebar.
+    /// </summary>
     public static readonly IReadOnlyList<string> Keys = new[]
     {
-        "home", "megaphone", "list", "briefcase", "automation", "robot", "cube",
-        "check-square", "users", "crm", "gear", "folder", "chart", "flow", "form",
-        "rule", "bell", "shield", "file", "tag", "link", "database", "layout", "sparkles"
+        "bi-house", "bi-grid-1x2", "bi-sliders", "bi-gear", "bi-building", "bi-buildings",
+        "bi-diagram-3", "bi-person-badge", "bi-person-lock", "bi-people", "bi-person-circle",
+        "bi-person-plus", "bi-person-vcard", "bi-shield-lock", "bi-shield-check", "bi-envelope-at",
+        "bi-calendar3", "bi-calendar-x", "bi-hash", "bi-stars", "bi-bank", "bi-archive",
+        "bi-clock-history", "bi-collection", "bi-list-ul", "bi-list-task", "bi-list-nested",
+        "bi-table", "bi-tags", "bi-box-seam", "bi-cloud-arrow-up", "bi-folder", "bi-folder2-open",
+        "bi-folder-symlink", "bi-bookmarks", "bi-journals", "bi-journal-text",
+        "bi-file-earmark-text", "bi-file-earmark-plus", "bi-file-earmark-richtext",
+        "bi-file-earmark-medical", "bi-file-earmark-ruled", "bi-file-earmark-bar-graph", "bi-files",
+        "bi-share", "bi-check2-square", "bi-check-circle", "bi-x-circle", "bi-hourglass-split",
+        "bi-send", "bi-pen", "bi-ui-checks-grid", "bi-inbox", "bi-inboxes", "bi-envelope",
+        "bi-envelope-open", "bi-diagram-2", "bi-flag", "bi-activity", "bi-speedometer2",
+        "bi-box-arrow-in-down", "bi-box-arrow-up", "bi-arrow-left-right", "bi-arrow-down-up",
+        "bi-megaphone", "bi-chat-left-text", "bi-globe", "bi-briefcase", "bi-clipboard-check",
+        "bi-cash-coin", "bi-graph-up", "bi-bar-chart", "bi-tools", "bi-bell", "bi-grid",
+        "bi-hdd-stack", "bi-app"
     };
+
+    /// <summary>
+    /// Resuelve una clave almacenada a la clase Bootstrap Icons que se debe pintar. Acepta ya sea
+    /// una clase "bi-*", una clave corta heredada, o nada (icono neutro). Solo deja pasar
+    /// caracteres de clase CSS: la clave viene de base de datos y termina en un atributo class.
+    /// </summary>
+    public static string Resolve(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return ClaveGenerica;
+        }
+
+        var k = key.Trim();
+        if (Alias.TryGetValue(k, out var alias))
+        {
+            return alias;
+        }
+
+        if (!k.StartsWith("bi-", StringComparison.OrdinalIgnoreCase))
+        {
+            return ClaveGenerica;
+        }
+
+        foreach (var c in k)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
+            {
+                return ClaveGenerica;
+            }
+        }
+
+        return k.ToLowerInvariant();
+    }
+
+    /// <summary>True si la clave se reconoce (es decir, NO cae en el icono generico).</summary>
+    public static bool IsKnown(string? key) => Resolve(key) != ClaveGenerica;
 
     /// <summary>Etiqueta legible para el tooltip del selector (ASCII).</summary>
-    public static string Label(string key) => key switch
+    public static string Label(string key)
     {
-        "home" => "Inicio",
-        "megaphone" => "Anuncios",
-        "list" => "Lista / procesos",
-        "briefcase" => "Negocio",
-        "automation" => "Automatizacion",
-        "robot" => "IA",
-        "cube" => "Inventario",
-        "check-square" => "Actividades",
-        "users" => "Equipo",
-        "crm" => "CRM",
-        "gear" => "Sistema",
-        "folder" => "Carpeta",
-        "chart" => "Reportes",
-        "flow" => "Flujos",
-        "form" => "Formularios",
-        "rule" => "Reglas",
-        "bell" => "Notificaciones",
-        "shield" => "Seguridad",
-        "file" => "Documentos",
-        "tag" => "Etiquetas",
-        "link" => "Dependencias",
-        "database" => "Datos",
-        "layout" => "Tableros",
-        "sparkles" => "Agentes",
-        _ => key
-    };
+        var k = Resolve(key);
+        return k.StartsWith("bi-", StringComparison.Ordinal) ? k[3..].Replace('-', ' ') : k;
+    }
 
-    /// <summary>SVG del icono para una clave. Reutilizado por sidebar, arbol, selector y preview.</summary>
-    public static RenderFragment Render(string? key) => key switch
-    {
-        "home" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/></svg>,
-        "megaphone" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4a1 1 0 0 0 1 1h2l4 4V5L7 9H5a1 1 0 0 0-1 1Z"/><path d="M15 9a3.5 3.5 0 0 1 0 6"/></svg>,
-        "list" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h12M9 12h12M9 18h12"/><path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/></svg>,
-        "briefcase" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
-        "automation" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="6" rx="1.4"/><rect x="16" y="15" width="6" height="6" rx="1.4"/><path d="M5 9v3a4 4 0 0 0 4 4h7"/></svg>,
-        "robot" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4H8"/><path d="M2 14h2M20 14h2M9 13v2M15 13v2"/></svg>,
-        "cube" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z"/><path d="m3 7 9 5 9-5M12 12v10"/></svg>,
-        "check-square" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg>,
-        "users" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M22 21v-2a4 4 0 0 0-3-3.85"/></svg>,
-        "crm" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M22 21v-2a4 4 0 0 0-3-3.85"/></svg>,
-        "gear" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 15H2.5a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 11 3V2.9a2 2 0 1 1 4 0V3a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7h.1a2 2 0 1 1 0 4H21a1.6 1.6 0 0 0-1.6 1Z"/></svg>,
-        "folder" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z"/></svg>,
-        "chart" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/></svg>,
-        "flow" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.4"/><rect x="15" y="15" width="6" height="6" rx="1.4"/><rect x="15" y="3" width="6" height="6" rx="1.4"/><path d="M6 9v3a3 3 0 0 0 3 3h6M18 9v6"/></svg>,
-        "form" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>,
-        "rule" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V6a3 3 0 0 1 6 0v5"/><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M12 15v2"/></svg>,
-        "bell" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
-        "shield" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>,
-        "file" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 15h6"/></svg>,
-        "tag" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.3 9.3a1 1 0 0 0 1.4 0l8.6-8.6a1 1 0 0 0 0-1.4Z"/><circle cx="7" cy="7" r="1.4"/></svg>,
-        "link" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>,
-        "database" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>,
-        "layout" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h6"/></svg>,
-        "sparkles" => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></svg>,
-        _ => @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/></svg>
-    };
+    /// <summary>Icono para una clave. Reutilizado por sidebar, arbol, selector y preview.</summary>
+    public static RenderFragment Render(string? key) => @<i class="bi @Resolve(key) tronox-mi" aria-hidden="true"></i>;
 }

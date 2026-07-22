@@ -52,6 +52,12 @@
     <link rel="stylesheet" href="@Assets["velzon/css/icons.min.css"]" />
     <link rel="stylesheet" href="@Assets["velzon/css/app.min.css"]" />
 
+    @* Bootstrap Icons (MIT, v1.11.3), la misma familia que el prototipo TRONOX y la que
+       ADR-001 fija como clave de icono del menu ("bi-*"). Velzon minimal trae remixicon,
+       boxicons, materialdesign y lineawesome, pero NO Bootstrap Icons: por eso se vendoriza
+       aparte en wwwroot/vendor en lugar de tocar icons.min.css de la plantilla. *@
+    <link rel="stylesheet" href="@Assets["vendor/bootstrap-icons/bootstrap-icons.min.css"]" />
+
     @* Hoja heredada del backbone: sigue vistiendo las pantallas que aun no se han
        migrado a Velzon. Se carga despues de app.min.css para no alterarlas. *@
     <link rel="stylesheet" href="@Assets["app.css"]" />
@@ -63,7 +69,9 @@
 
     <link rel="stylesheet" href="@Assets["Tronox.Web.styles.css"]" />
     <ImportMap />
-    <link rel="icon" type="image/png" href="favicon.png" />
+    @* Marca del cliente (logos oficiales del prototipo en wwwroot/marca), no la de la
+       plantilla comercial. Sustituye al favicon heredado del backbone. *@
+    <link rel="icon" type="image/png" href="marca/tronox-icon.png" />
     <HeadOutlet />
 </head>
 

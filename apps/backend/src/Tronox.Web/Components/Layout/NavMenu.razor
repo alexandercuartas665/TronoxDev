@@ -162,6 +162,7 @@ else
                             var subSlug = child.Route ?? child.Id.ToString();
                             <details class="tronox-acc-sub" data-acc="@subSlug" open="@IsGroupOpen(subSlug)">
                                 <summary>
+                                    <span class="tronox-acc-ico">@MenuIcons.Render(child.IconKey)</span>
                                     <span class="tronox-acc-name">@child.Name</span>
                                     <span class="tronox-acc-count">@child.VisibleChildCount</span>
                                     <svg class="tronox-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
@@ -170,6 +171,7 @@ else
                                     @foreach (var leaf in child.Children.Where(n => n.Kind == MenuNodeKind.Item))
                                     {
                                         <NavLink class="tronox-acc-item" href="@leaf.Route">
+                                            <span class="tronox-acc-ico">@MenuIcons.Render(leaf.IconKey)</span>
                                             <span class="lbl">@leaf.Name</span>
                                         </NavLink>
                                     }
@@ -179,6 +181,7 @@ else
                         else
                         {
                             <NavLink class="tronox-acc-item" href="@child.Route">
+                                <span class="tronox-acc-ico">@MenuIcons.Render(child.IconKey)</span>
                                 <span class="lbl">@child.Name</span>
                             </NavLink>
                         }

@@ -158,4 +158,70 @@ public sealed class MenuCatalogoTests
             Assert.Equal(ruta.Trim(), ruta);
         }
     }
+
+    /// <summary>
+    /// NINGUN nodo del arbol canonico puede quedarse sin clave de icono.
+    ///
+    /// POR QUE ESTE TEST: los 93 items del catalogo nacieron sin icono y en el sidebar todas las
+    /// pantallas pintaban el mismo cuadrado generico, mientras el prototipo tiene un icono por
+    /// pantalla. Era el mayor delator visual del sistema. El compilador ya obliga a pasar el icono
+    /// (ItemSemilla.Icono no es opcional), pero no impide pasar "" ni un valor que no sea una clase
+    /// Bootstrap Icons. Esto ultimo es lo que se blinda aqui, para que la proxima pantalla que
+    /// alguien anada no vuelva a nacer sin icono.
+    /// </summary>
+    [Fact]
+    public void Catalogo_NingunNodoSeQuedaSinIcono()
+    {
+        var sinIcono = new List<string>();
+
+        void Revisar(string que, string ruta, string? icono)
+        {
+            // ADR-001: la clave de icono es una clase Bootstrap Icons (bi-*), nunca un SVG.
+            if (string.IsNullOrWhiteSpace(icono)
+                || !icono.StartsWith("bi-", StringComparison.Ordinal)
+                || icono.Length <= 3
+                || icono.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-'))
+            {
+                sinIcono.Add($"{que} '{ruta}' -> '{icono}'");
+            }
+        }
+
+        Revisar("QuickLink", MenuCatalogo.Inicio.Ruta, MenuCatalogo.IconoInicio);
+
+        foreach (var seccion in MenuCatalogo.Secciones)
+        {
+            Revisar("Seccion", seccion.Slug, seccion.Icono);
+
+            foreach (var grupo in seccion.Grupos)
+            {
+                Revisar("Grupo", grupo.Slug, grupo.Icono);
+            }
+        }
+
+        foreach (var item in MenuCatalogo.TodosLosItems())
+        {
+            Revisar("Item", item.Ruta, item.Icono);
+        }
+
+        Assert.True(sinIcono.Count == 0,
+            "Nodos del catalogo canonico sin clave de icono valida:" + Environment.NewLine
+            + string.Join(Environment.NewLine, sinIcono));
+    }
+
+    /// <summary>
+    /// El mapa Ruta -> icono tiene que cubrir el arbol ENTERO: es lo que usa
+    /// MenuProvisioningService.BackfillIconKeysAsync para rellenar el icono de los tenants que ya
+    /// nacieron sin el. Si una ruta no estuviera en el mapa, ese nodo se quedaria con el cuadrado
+    /// generico para siempre.
+    /// </summary>
+    [Fact]
+    public void Catalogo_ElMapaDeIconosCubreTodoElArbol()
+    {
+        Assert.Equal(MenuCatalogo.TotalNodos, MenuCatalogo.IconosPorRuta.Count);
+
+        foreach (var ruta in MenuCatalogo.RutasDeItem)
+        {
+            Assert.True(MenuCatalogo.IconosPorRuta.ContainsKey(ruta), $"Ruta sin icono en el mapa: {ruta}");
+        }
+    }
 }

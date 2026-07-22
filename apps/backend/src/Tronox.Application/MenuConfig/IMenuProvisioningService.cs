@@ -17,4 +17,12 @@ public interface IMenuProvisioningService
     /// NINGUNA vista de menu. Idempotente: si ya tiene vistas, no hace nada.
     /// </summary>
     Task EnsureDefaultMenuAsync(long tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rellena la clave de icono de los nodos del tenant que la tengan vacia, emparejando por ruta
+    /// contra el arbol canonico. NO pisa el icono que el tenant haya elegido: solo llena huecos.
+    /// Existe para los tenants creados antes de que los items del catalogo llevaran icono.
+    /// Devuelve cuantos nodos se rellenaron.
+    /// </summary>
+    Task<int> BackfillIconKeysAsync(long tenantId, CancellationToken cancellationToken = default);
 }

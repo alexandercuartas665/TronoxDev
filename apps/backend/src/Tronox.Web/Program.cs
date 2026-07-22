@@ -153,6 +153,44 @@ builder.Services.AddScoped<Tronox.Web.Services.CircuitFormGate>();
 
 var app = builder.Build();
 
+// -----------------------------------------------------------------------------------------
+// Relleno del icono del menu para los tenants YA EXISTENTES.
+//
+// El arbol canonico no llevaba icono en los items, asi que todo tenant creado hasta ahora tiene
+// sus 93 pantallas con icon_key vacio y el sidebar las pinta a todas con el mismo cuadrado
+// generico. El aprovisionamiento es idempotente y no vuelve a pasar por esos tenants (ya tienen
+// items), asi que sin este paso el arreglo solo alcanzaria a los tenants nuevos.
+//
+// Solo RELLENA donde esta vacio: jamas pisa el icono que el tenant haya elegido en el editor de
+// vistas del menu, que es la personalizacion que el aprovisionamiento promete respetar.
+// Es best-effort: si la base no esta disponible, la aplicacion arranca igual.
+// -----------------------------------------------------------------------------------------
+try
+{
+    using var iconScope = app.Services.CreateScope();
+    var iconDb = iconScope.ServiceProvider.GetRequiredService<TronoxDbContext>();
+    var iconProvisioning = iconScope.ServiceProvider
+        .GetRequiredService<Tronox.Application.MenuConfig.IMenuProvisioningService>();
+
+    var tenantIds = await iconDb.Tenants.IgnoreQueryFilters().Select(t => t.Id).ToListAsync();
+    var rellenados = 0;
+    foreach (var tenantId in tenantIds)
+    {
+        rellenados += await iconProvisioning.BackfillIconKeysAsync(tenantId);
+    }
+
+    if (rellenados > 0)
+    {
+        app.Logger.LogInformation(
+            "Menu: se relleno la clave de icono de {Nodos} nodos en {Tenants} tenants.",
+            rellenados, tenantIds.Count);
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Menu: no se pudo rellenar la clave de icono de los nodos existentes.");
+}
+
 // Detras del proxy de Railway (TLS en el borde, HTTP al contenedor): leer
 // X-Forwarded-Proto/For para que Request.Scheme sea "https". Asi las cookies
 // seguras del login y UseHttpsRedirection funcionan sin bucles de redireccion.
