@@ -28,16 +28,17 @@ public abstract class OrgAndModuleRegistryTestsBase
     public async Task OrgUnitTree_CrudAndCycleRejected()
     {
         var seed = await SeedTenantAsync("Org Arbol");
+        var fondoId = await SeedFondoAsync(seed.TenantId, "F-ARB");
         await using var ctx = _fixture.CreateContext(seed.TenantId);
-        var service = new OrgUnitService(ctx, new TestTenantContext(seed.TenantId, seed.PlatformUserId));
+        var service = NewService(ctx, seed);
 
-        // Crear raiz > hija > nieta, con responsable y miembro.
-        var root = (await service.CreateAsync(new SaveOrgUnitRequest(
-            "Direccion General", OrgUnitKind.Area, ResponsibleTenantUserId: seed.TenantUserId))).Value!;
-        var child = (await service.CreateAsync(new SaveOrgUnitRequest(
-            "Tecnologia", OrgUnitKind.Area, ParentId: root.Id))).Value!;
-        var grandChild = (await service.CreateAsync(new SaveOrgUnitRequest(
-            "Desarrollo", OrgUnitKind.Team, ParentId: child.Id))).Value!;
+        // Crear raiz > hija > nieta (todas Dependencia), con responsable y miembro.
+        var root = (await service.CreateAsync(Dependencia(
+            "Direccion General", "DG", fondoId, responsibleTenantUserId: seed.TenantUserId), Actor)).Value!;
+        var child = (await service.CreateAsync(Dependencia(
+            "Tecnologia", "TIC", fondoId, parentId: root.Id), Actor)).Value!;
+        var grandChild = (await service.CreateAsync(Dependencia(
+            "Desarrollo", "DEV", fondoId, parentId: child.Id), Actor)).Value!;
 
         var addMember = await service.AddMemberAsync(grandChild.Id, seed.TenantUserId, "Desarrollador");
         Assert.True(addMember.IsOk, addMember.Error);
@@ -59,32 +60,33 @@ public abstract class OrgAndModuleRegistryTestsBase
         Assert.Equal(1, grandChildNode.MemberCount);
         Assert.Equal(seed.TenantUserId, rootNode.ResponsibleTenantUserId);
 
-        // KPIs: 3 dependencias, 2 areas, 1 usuario asignado (responsable + miembro = mismo usuario).
+        // KPIs: 3 nodos activos, los 3 Dependencia, 1 usuario asignado (responsable + miembro
+        // son el mismo usuario).
         var kpis = await service.GetKpisAsync();
         Assert.Equal(3, kpis.TotalUnits);
-        Assert.Equal(2, kpis.Areas);
+        Assert.Equal(3, kpis.Dependencias);
         Assert.Equal(1, kpis.AssignedUsers);
 
         // Update valido: renombrar y mover la nieta bajo la raiz.
-        var moved = await service.UpdateAsync(grandChild.Id, new SaveOrgUnitRequest(
-            "Desarrollo Core", OrgUnitKind.Team, ParentId: root.Id));
+        var moved = await service.UpdateAsync(grandChild.Id, Dependencia(
+            "Desarrollo Core", "DEV", fondoId, parentId: root.Id), Actor);
         Assert.True(moved.IsOk, moved.Error);
         Assert.Equal(root.Id, moved.Value!.ParentId);
 
         // CICLO rechazado: la raiz no puede colgar de su descendiente (error tipado Invalid).
-        var cycle = await service.UpdateAsync(root.Id, new SaveOrgUnitRequest(
-            "Direccion General", OrgUnitKind.Area, ParentId: child.Id));
+        var cycle = await service.UpdateAsync(root.Id, Dependencia(
+            "Direccion General", "DG", fondoId, parentId: child.Id), Actor);
         Assert.Equal(OrgServiceStatus.Invalid, cycle.Status);
         Assert.Contains("ciclo", cycle.Error, StringComparison.OrdinalIgnoreCase);
         // Auto-referencia tambien rechazada.
-        var selfParent = await service.UpdateAsync(root.Id, new SaveOrgUnitRequest(
-            "Direccion General", OrgUnitKind.Area, ParentId: root.Id));
+        var selfParent = await service.UpdateAsync(root.Id, Dependencia(
+            "Direccion General", "DG", fondoId, parentId: root.Id), Actor);
         Assert.Equal(OrgServiceStatus.Invalid, selfParent.Status);
 
         // Archivar: bloqueado si tiene hijas activas; permitido en hoja. Nunca DELETE fisico.
-        var archiveBlocked = await service.SetArchivedAsync(root.Id, archived: true);
+        var archiveBlocked = await service.SetArchivedAsync(root.Id, archived: true, Actor);
         Assert.Equal(OrgServiceStatus.Invalid, archiveBlocked.Status);
-        var archiveLeaf = await service.SetArchivedAsync(moved.Value.Id, archived: true);
+        var archiveLeaf = await service.SetArchivedAsync(moved.Value.Id, archived: true, Actor);
         Assert.True(archiveLeaf.IsOk, archiveLeaf.Error);
         Assert.Equal(2, (await service.GetKpisAsync()).TotalUnits);
         Assert.Equal(3, await ctx.OrgUnits.CountAsync()); // sigue en base (soft-delete)
@@ -99,10 +101,12 @@ public abstract class OrgAndModuleRegistryTestsBase
         var seedB = await SeedTenantAsync("Org Tenant B");
         var moduleId = await SeedModuleDefinitionAsync("000850", "Dependencias");
 
+        var fondoA = await SeedFondoAsync(seedA.TenantId, "F-A");
+
         await using (var ctxA = _fixture.CreateContext(seedA.TenantId))
         {
-            var orgA = new OrgUnitService(ctxA, new TestTenantContext(seedA.TenantId, seedA.PlatformUserId));
-            var created = await orgA.CreateAsync(new SaveOrgUnitRequest("Solo de A", OrgUnitKind.Area));
+            var orgA = NewService(ctxA, seedA);
+            var created = await orgA.CreateAsync(Dependencia("Solo de A", "SA", fondoA), Actor);
             Assert.True(created.IsOk, created.Error);
 
             var registryA = new ModuleRegistryService(ctxA, new TestTenantContext(seedA.TenantId, seedA.PlatformUserId));
@@ -117,7 +121,7 @@ public abstract class OrgAndModuleRegistryTestsBase
             Assert.Empty(await ctxB.OrgUnitMembers.ToListAsync());
             Assert.Empty(await ctxB.TenantModules.ToListAsync());
 
-            var orgB = new OrgUnitService(ctxB, new TestTenantContext(seedB.TenantId, seedB.PlatformUserId));
+            var orgB = NewService(ctxB, seedB);
             Assert.Empty(await orgB.GetTreeAsync());
             Assert.Equal(0, (await orgB.GetKpisAsync()).TotalUnits);
         }
@@ -228,6 +232,42 @@ public abstract class OrgAndModuleRegistryTestsBase
 
     // ---- Helpers ----
 
+    /// <summary>Actor de la pista de auditoria en los tests.</summary>
+    private static readonly long Actor = TestIds.Next();
+
+    private static OrgUnitService NewService(IApplicationDbContext ctx, SeedData seed)
+        => new(ctx, new TestTenantContext(seed.TenantId, seed.PlatformUserId), new NoOpAuditWriter());
+
+    /// <summary>
+    /// Nodo Dependencia valido: fondo, codigo y vigencia son OBLIGATORIOS en este clasificador
+    /// (RF03), asi que el helper los rellena para que cada test hable solo de lo suyo.
+    /// </summary>
+    private static SaveOrgUnitRequest Dependencia(
+        string nombre, string codigo, long fondoId, long? parentId = null, long? responsibleTenantUserId = null)
+        => new(
+            nombre,
+            OrgUnitClassifier.Dependencia,
+            ParentId: parentId,
+            ResponsibleTenantUserId: responsibleTenantUserId,
+            FondoId: fondoId,
+            Codigo: codigo,
+            VigenteDesde: new DateOnly(2024, 1, 1));
+
+    private async Task<long> SeedFondoAsync(long tenantId, string codigo)
+    {
+        await using var ctx = _fixture.CreateContext(tenantId);
+        var fondo = new Fondo
+        {
+            TenantId = tenantId,
+            CodigoFondo = codigo,
+            NombreFondo = $"Fondo {codigo}",
+            FechaApertura = new DateOnly(2020, 1, 1)
+        };
+        ctx.Fondos.Add(fondo);
+        await ctx.SaveChangesAsync();
+        return fondo.Id;
+    }
+
     private async Task<SeedData> SeedTenantAsync(string name)
     {
         var tenantId = TestIds.Next();
@@ -291,6 +331,23 @@ public abstract class OrgAndModuleRegistryTestsBase
     {
         public long? TenantId { get; } = tenantId;
         public long? UserId { get; } = userId;
+    }
+
+    /// <summary>La escritura real de auditoria se verifica aparte (AuditEntityIdTests).</summary>
+    private sealed class NoOpAuditWriter : IAuditWriter
+    {
+        public void Write(long actorUserId, string actionName, string entityName, long? entityId,
+            object? previousValue, object? newValue, long? tenantId = null, string? reason = null,
+            AuditActorType actorType = AuditActorType.Human)
+        {
+        }
+
+        public void Write(long actorUserId, string actionName, string entityName,
+            Tronox.Domain.Common.BaseEntity entity,
+            object? previousValue, object? newValue, long? tenantId = null, string? reason = null,
+            AuditActorType actorType = AuditActorType.Human)
+        {
+        }
     }
 }
 

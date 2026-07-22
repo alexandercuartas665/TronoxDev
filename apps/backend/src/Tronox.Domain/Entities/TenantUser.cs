@@ -41,6 +41,21 @@ public class TenantUser : TenantEntity
     public long? RolId { get; set; }
     public Rol? Rol { get; set; }
 
+    /// <summary>
+    /// Nodo CARGO del arbol organizacional al que se ancla este usuario (ADR-003, Addendum).
+    ///
+    /// El usuario apunta a UN SOLO nodo: su Cargo. La DEPENDENCIA NO SE ALMACENA AQUI: se
+    /// deriva subiendo por la cadena de padres hasta el primer nodo con clasificador
+    /// Dependencia (ver OrgUnitTree.ResolveDependenciaId, logica pura y cacheable).
+    ///
+    /// FAIL-CLOSED: null, o un Cargo sin ninguna Dependencia por encima, resuelve a SIN
+    /// dependencia y por tanto SIN visibilidad documental. Nunca a visibilidad total.
+    ///
+    /// FK NO ACTION: mover o archivar el organigrama jamas borra usuarios en cascada.
+    /// </summary>
+    public long? CargoOrgUnitId { get; set; }
+    public OrgUnit? CargoOrgUnit { get; set; }
+
     /// <summary>Token de invitacion para que el asesor complete su registro (clave + foto). Null si ya activo.</summary>
     public string? InvitationToken { get; set; }
     public DateTimeOffset? InvitationExpiresAt { get; set; }

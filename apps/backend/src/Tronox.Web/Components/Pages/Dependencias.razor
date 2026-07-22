@@ -7,6 +7,7 @@
 @using Tronox.Domain.Enums
 @inject IOrgUnitService OrgSvc
 @inject ITenantUserService UsersSvc
+@inject Tronox.Application.Common.ITenantContext Tenant
 
 
 <PageTitle>Dependencias - TRONOX.tareas</PageTitle>
@@ -61,8 +62,8 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
             </div>
         </div>
-        <div class="kpi-value">@(_kpis?.Areas ?? 0)</div>
-        <div class="kpi-label">Areas</div>
+        <div class="kpi-value">@(_kpis?.Dependencias ?? 0)</div>
+        <div class="kpi-label">Dependencias</div>
     </div>
 </div>
 
@@ -142,7 +143,7 @@ else
                 <div class="org-detail-path">@_selectedPath</div>
                 <h2 class="org-detail-title">@_selected.Name</h2>
                 <div style="display:flex;gap:8px;margin:8px 0 14px;flex-wrap:wrap;">
-                    <span class="tk-status st-pending">@KindLabel(_selected.Kind)</span>
+                    <span class="tk-status st-pending">@ClassifierLabel(_selected.Classifier)</span>
                     <span class="tk-status @(_selected.IsArchived ? "st-closed" : "st-done")">@(_selected.IsArchived ? "Archivada" : "Activa")</span>
                 </div>
                 @if (!string.IsNullOrWhiteSpace(_selected.Description))
@@ -241,13 +242,6 @@ else
                             <option value="@OrgUnitClassifier.Dependencia">Dependencia</option>
                             <option value="@OrgUnitClassifier.Cargo">Cargo</option>
                             <option value="@OrgUnitClassifier.Funcionario">Funcionario</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6 field">
-                        <label class="form-label">Tipo</label>
-                        <select class="form-control" @bind="_fKind">
-                            <option value="@OrgUnitKind.Area">Area</option>
-                            <option value="@OrgUnitKind.Team">Equipo</option>
                         </select>
                     </div>
                 </div>
@@ -371,7 +365,6 @@ else
     private bool _showEditor;
     private OrgUnitDto? _editing;
     private string _fName = "";
-    private OrgUnitKind _fKind = OrgUnitKind.Area;
     private OrgUnitClassifier _fClassifier = OrgUnitClassifier.Dependencia;
     private string _fTenantUserId = "";
     private string _fParentId = "";
@@ -511,7 +504,7 @@ else
         if (_selected is null) { return; }
         _busy = true;
         _detailError = null;
-        var result = await OrgSvc.SetArchivedAsync(_selected.Id, !_selected.IsArchived);
+        var result = await OrgSvc.SetArchivedAsync(_selected.Id, !_selected.IsArchived, Tenant.UserId ?? 0);
         if (!result.IsOk)
         {
             _detailError = result.Error;
@@ -529,7 +522,6 @@ else
     {
         _editing = unit;
         _fName = unit?.Name ?? "";
-        _fKind = unit?.Kind ?? OrgUnitKind.Area;
         _fClassifier = unit?.Classifier ?? OrgUnitClassifier.Dependencia;
         _fTenantUserId = unit?.TenantUserId?.ToString() ?? "";
         _fParentId = (unit?.ParentId ?? presetParentId)?.ToString() ?? "";
@@ -544,18 +536,29 @@ else
     {
         _busy = true;
         _editorError = null;
+        // ADR-003: un solo arbol, un solo clasificador. Los atributos propios de Dependencia
+        // (fondo, codigo, vigencias) y de Cargo (nivel jerarquico, codigos) se conservan tal
+        // como estan en el nodo; el formulario completo de esos campos es trabajo de UI aparte.
         var request = new SaveOrgUnitRequest(
             _fName,
-            _fKind,
+            _fClassifier,
             long.TryParse(_fParentId, out var parentId) ? parentId : null,
             long.TryParse(_fResponsibleId, out var responsibleId) ? responsibleId : null,
             _fDescription,
             _fSortOrder,
-            _fClassifier,
-            long.TryParse(_fTenantUserId, out var occupantId) ? occupantId : null);
+            long.TryParse(_fTenantUserId, out var occupantId) ? occupantId : null,
+            FondoId: _editing?.FondoId,
+            Codigo: _editing?.Codigo,
+            VigenteDesde: _editing?.VigenteDesde,
+            VigenteHasta: _editing?.VigenteHasta,
+            SucesoraId: _editing?.SucesoraId,
+            CodigoCargo: _editing?.CodigoCargo,
+            CodigoDafp: _editing?.CodigoDafp,
+            NivelJerarquico: _editing?.NivelJerarquico);
+        var actorUserId = Tenant.UserId ?? 0;
         var result = _editing is null
-            ? await OrgSvc.CreateAsync(request)
-            : await OrgSvc.UpdateAsync(_editing.Id, request);
+            ? await OrgSvc.CreateAsync(request, actorUserId)
+            : await OrgSvc.UpdateAsync(_editing.Id, request, actorUserId);
         if (!result.IsOk)
         {
             _editorError = result.Error;
@@ -573,8 +576,6 @@ else
     }
 
     // ---- Helpers de presentacion ----
-
-    private static string KindLabel(OrgUnitKind kind) => kind == OrgUnitKind.Area ? "Area" : "Equipo";
 
     private static string ClassifierLabel(OrgUnitClassifier classifier) => classifier switch
     {

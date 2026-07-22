@@ -23,4 +23,13 @@ public sealed record OrgResult<T>(OrgServiceStatus Status, T? Value, string? Err
     public static OrgResult<T> NotFound(string? error = null) => new(OrgServiceStatus.NotFound, default, error ?? "No encontrado.");
     public static OrgResult<T> Invalid(string error) => new(OrgServiceStatus.Invalid, default, error);
     public static OrgResult<T> Conflict(string error) => new(OrgServiceStatus.Conflict, default, error);
+
+    /// <summary>
+    /// Reetiqueta un resultado de FALLO a otro tipo de valor, conservando estado y mensaje.
+    /// Permite escribir la validacion una sola vez y devolverla desde metodos que retornan
+    /// DTOs distintos. Un Ok no se puede reetiquetar (no habria valor que trasladar).
+    /// </summary>
+    public OrgResult<TOther> To<TOther>() => Status == OrgServiceStatus.Ok
+        ? throw new InvalidOperationException("Solo se reetiquetan resultados de fallo.")
+        : new OrgResult<TOther>(Status, default, Error);
 }

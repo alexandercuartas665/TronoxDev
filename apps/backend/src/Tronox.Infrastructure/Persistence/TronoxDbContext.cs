@@ -299,8 +299,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<RuleStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleTriggerKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleExecutionStatus>().HaveConversion<string>().HaveMaxLength(40);
-        configurationBuilder.Properties<OrgUnitKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<OrgUnitClassifier>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<NivelJerarquico>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<ModuleArea>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TaskBoardStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TaskBoardKind>().HaveConversion<string>().HaveMaxLength(40);
@@ -538,8 +538,15 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasIndex(x => new { x.TenantId, x.PlatformUserId }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.Email }).IsUnique();
             b.HasIndex(x => x.InvitationToken);
+            // Anclaje del usuario al arbol organizacional (ADR-003, Addendum): apunta a UN
+            // solo nodo, su CARGO. La dependencia NO se almacena aqui: se DERIVA subiendo por
+            // la cadena de padres. RESTRICT: reorganizar el organigrama nunca borra usuarios.
+            b.HasOne(x => x.CargoOrgUnit).WithMany().HasForeignKey(x => x.CargoOrgUnitId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => x.MenuViewId);
             b.HasIndex(x => x.RolId);
+            // Indice para contar de golpe los ocupantes de un cargo (a cuantos usuarios afecta
+            // reubicarlo) sin recorrer la tabla.
+            b.HasIndex(x => x.CargoOrgUnitId);
         });
 
         modelBuilder.Entity<TenantConfiguration>(b =>
@@ -684,21 +691,46 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
 
         // ---- Modulos de sistema (FASE 5, ADR-0017) ----
 
+        // Estructura organizacional: UN SOLO arbol con clasificador por nodo (ADR-003).
         modelBuilder.Entity<OrgUnit>(b =>
         {
-            b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
             b.Property(x => x.Description).HasMaxLength(600);
-            // Self-FK del arbol con NO ACTION: una unidad con hijos no se borra en cascada
-            // (y las unidades nunca se borran fisicamente: se archivan).
+            b.Property(x => x.Codigo).HasMaxLength(20);
+            b.Property(x => x.CodigoCargo).HasMaxLength(20);
+            b.Property(x => x.CodigoDafp).HasMaxLength(20);
+            // Self-FK del arbol con ON DELETE RESTRICT: un nodo con hijos no se borra en
+            // cascada (y los nodos nunca se borran fisicamente: se archivan).
             b.HasOne(x => x.Parent).WithMany()
                 .HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
-            // Clasificador de asignacion por nodo (ADR-0035): default Dependencia para las
-            // filas heredadas; TenantUserId solo se usa cuando Classifier=Funcionario.
+            // Sucesora para fusiones y reestructuraciones (RF03): tambien autorreferencial y
+            // RESTRICT, la sucesora jamas arrastra a la sucedida.
+            b.HasOne(x => x.Sucesora).WithMany()
+                .HasForeignKey(x => x.SucesoraId).OnDelete(DeleteBehavior.Restrict);
+            // Fondo del que cuelga la dependencia. La columna es NULLABLE porque solo aplica a
+            // nodos Dependencia; que sea OBLIGATORIA para ese clasificador lo impone
+            // OrgStructureRules (no se puede expresar como NOT NULL en una tabla compartida).
+            b.HasOne(x => x.Fondo).WithMany()
+                .HasForeignKey(x => x.FondoId).OnDelete(DeleteBehavior.Restrict);
             b.Property(x => x.Classifier).HasDefaultValue(OrgUnitClassifier.Dependencia);
             b.HasIndex(x => new { x.TenantId, x.ParentId });
             b.HasIndex(x => new { x.TenantId, x.IsArchived });
+            b.HasIndex(x => new { x.TenantId, x.Classifier });
             b.HasIndex(x => x.ResponsibleTenantUserId);
             b.HasIndex(x => x.TenantUserId);
+            b.HasIndex(x => x.FondoId);
+            b.HasIndex(x => x.SucesoraId);
+            // Codigo unico ENTRE HERMANOS dentro del tenant, NO global: el mismo codigo puede
+            // repetirse bajo padres distintos. Van DOS indices filtrados porque en SQL dos
+            // parent_id NULL no colisionan entre si, asi que las raices necesitan el suyo.
+            b.HasIndex(x => new { x.TenantId, x.ParentId, x.Codigo }).IsUnique()
+                .HasFilter(isNpgsql
+                    ? "codigo IS NOT NULL AND parent_id IS NOT NULL"
+                    : "[codigo] IS NOT NULL AND [parent_id] IS NOT NULL");
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique()
+                .HasFilter(isNpgsql
+                    ? "codigo IS NOT NULL AND parent_id IS NULL"
+                    : "[codigo] IS NOT NULL AND [parent_id] IS NULL");
         });
 
         modelBuilder.Entity<OrgUnitMember>(b =>

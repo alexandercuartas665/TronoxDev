@@ -6,19 +6,30 @@ using Microsoft.EntityFrameworkCore;
 namespace Tronox.Application.Organization;
 
 /// <summary>
-/// Implementacion de IOrgUnitService (ADR-0017). El aislamiento por tenant lo garantiza el
-/// filtro global; la validacion de ciclos del arbol es pura (OrgUnitTree.WouldCreateCycle)
-/// sobre el mapa Id -&gt; ParentId de las unidades del tenant.
+/// Estructura organizacional (RQ01 - RF03/RF04, ADR-003). El aislamiento por tenant lo
+/// garantiza el filtro global; toda la logica de arbol es PURA (OrgUnitTree) sobre el mapa de
+/// nodos del tenant, de modo que se puede testear sin base de datos y cachear.
+///
+/// Reglas de negocio implementadas aqui:
+/// 1. fondo_id OBLIGATORIO en nodos Dependencia; ignorado (persistido null) en los demas.
+/// 2. codigo UNICO ENTRE HERMANOS bajo el mismo padre dentro del tenant, NO global.
+/// 3. Nunca hay borrado fisico: se archiva, y archivar exige no tener descendientes activos.
+/// 4. Validacion de ciclos FAIL-CLOSED (un arbol ya corrupto se reporta como ciclo).
+/// 5. La dependencia de un usuario se DERIVA del arbol; no se almacena en el usuario.
+/// 6. Toda alta, modificacion, archivado y reubicacion de Cargo queda en la pista de
+///    auditoria, auditando la ENTIDAD (no el id: en las altas el id todavia vale 0).
 /// </summary>
 public sealed class OrgUnitService : IOrgUnitService
 {
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
+    private readonly IAuditWriter _audit;
 
-    public OrgUnitService(IApplicationDbContext db, ITenantContext tenantContext)
+    public OrgUnitService(IApplicationDbContext db, ITenantContext tenantContext, IAuditWriter audit)
     {
         _db = db;
         _tenantContext = tenantContext;
+        _audit = audit;
     }
 
     // ---- Arbol / consulta ----
@@ -38,24 +49,17 @@ public sealed class OrgUnitService : IOrgUnitService
             {
                 return [];
             }
-            return children.Select(u => new OrgUnitNodeDto(
-                u.Id, u.Name, u.Kind, u.ParentId, u.ResponsibleTenantUserId, u.ResponsibleName,
-                u.Description, u.SortOrder, u.IsArchived, u.MemberCount,
-                BuildChildren(u.Id), u.Classifier, u.TenantUserId, u.OccupantName)).ToList();
+            return children.Select(u => ToNode(u, BuildChildren(u.Id))).ToList();
         }
 
         // Raices: sin padre O con padre fuera del conjunto visible (ej. padre archivado
-        // cuando includeArchived = false): asi ninguna unidad visible queda huerfana.
+        // cuando includeArchived = false): asi ningun nodo visible queda huerfano.
         var visibleIds = units.Select(u => u.Id).ToHashSet();
-        var roots = units
+        return units
             .Where(u => u.ParentId is null || !visibleIds.Contains(u.ParentId.Value))
             .OrderBy(u => u.SortOrder).ThenBy(u => u.Name)
-            .Select(u => new OrgUnitNodeDto(
-                u.Id, u.Name, u.Kind, u.ParentId, u.ResponsibleTenantUserId, u.ResponsibleName,
-                u.Description, u.SortOrder, u.IsArchived, u.MemberCount,
-                BuildChildren(u.Id), u.Classifier, u.TenantUserId, u.OccupantName))
+            .Select(u => ToNode(u, BuildChildren(u.Id)))
             .ToList();
-        return roots;
     }
 
     public async Task<IReadOnlyList<OrgUnitDto>> ListAsync(
@@ -65,12 +69,8 @@ public sealed class OrgUnitService : IOrgUnitService
         var nameById = units.ToDictionary(u => u.Id, u => u.Name);
         return units
             .OrderBy(u => u.SortOrder).ThenBy(u => u.Name)
-            .Select(u => new OrgUnitDto(
-                u.Id, u.Name, u.Kind, u.ParentId,
-                u.ParentId is long pid && nameById.TryGetValue(pid, out var pname) ? pname : null,
-                u.ResponsibleTenantUserId, u.ResponsibleName, u.Description,
-                u.SortOrder, u.IsArchived, u.MemberCount,
-                u.Classifier, u.TenantUserId, u.OccupantName))
+            .Select(u => ToFlat(
+                u, u.ParentId is long pid && nameById.TryGetValue(pid, out var pname) ? pname : null))
             .ToList();
     }
 
@@ -78,19 +78,16 @@ public sealed class OrgUnitService : IOrgUnitService
     {
         var unit = await _db.OrgUnits.AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
-        if (unit is null)
-        {
-            return null;
-        }
-        return await ToDtoAsync(unit, cancellationToken);
+        return unit is null ? null : await ToDtoAsync(unit, cancellationToken);
     }
 
     public async Task<OrgKpisDto> GetKpisAsync(CancellationToken cancellationToken = default)
     {
         var totalUnits = await _db.OrgUnits.CountAsync(u => !u.IsArchived, cancellationToken);
-        var areas = await _db.OrgUnits.CountAsync(u => !u.IsArchived && u.Kind == OrgUnitKind.Area, cancellationToken);
+        var dependencias = await _db.OrgUnits.CountAsync(
+            u => !u.IsArchived && u.Classifier == OrgUnitClassifier.Dependencia, cancellationToken);
 
-        // Usuarios asignados: miembros + responsables de unidades activas, sin duplicar.
+        // Usuarios asignados: miembros + responsables de nodos activos, sin duplicar.
         var memberUsers = await _db.OrgUnitMembers
             .Where(m => !m.OrgUnit!.IsArchived)
             .Select(m => m.TenantUserId)
@@ -101,109 +98,189 @@ public sealed class OrgUnitService : IOrgUnitService
             .ToListAsync(cancellationToken);
         var assignedUsers = memberUsers.Concat(responsibleUsers).Distinct().Count();
 
-        return new OrgKpisDto(totalUnits, assignedUsers, areas);
+        return new OrgKpisDto(totalUnits, assignedUsers, dependencias);
     }
 
     // ---- CRUD ----
 
     public async Task<OrgResult<OrgUnitDto>> CreateAsync(
-        SaveOrgUnitRequest request, CancellationToken cancellationToken = default)
+        SaveOrgUnitRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         if (_tenantContext.TenantId is not long tenantId)
         {
             return OrgResult<OrgUnitDto>.Invalid("No hay tenant activo.");
         }
-        var error = await ValidateAsync(request, cancellationToken);
-        if (error is not null)
+        var validation = await ValidateAsync(request, unitId: null, cancellationToken);
+        if (validation is not null)
         {
-            return OrgResult<OrgUnitDto>.Invalid(error);
-        }
-        if (request.ParentId is long parentId
-            && !await _db.OrgUnits.AnyAsync(u => u.Id == parentId, cancellationToken))
-        {
-            return OrgResult<OrgUnitDto>.NotFound("La unidad padre no existe.");
+            return validation.To<OrgUnitDto>();
         }
 
-        var unit = new OrgUnit
-        {
-            TenantId = tenantId,
-            Name = request.Name.Trim(),
-            Kind = request.Kind,
-            ParentId = request.ParentId,
-            ResponsibleTenantUserId = request.ResponsibleTenantUserId,
-            Description = Normalize(request.Description),
-            SortOrder = request.SortOrder,
-            Classifier = request.Classifier,
-            // TenantUserId solo aplica a Funcionario; para Dependencia/Cargo se ignora.
-            TenantUserId = request.Classifier == OrgUnitClassifier.Funcionario ? request.TenantUserId : null
-        };
+        var unit = new OrgUnit { TenantId = tenantId };
+        Apply(unit, request);
         _db.OrgUnits.Add(unit);
+        // Forma PREFERENTE de auditoria: la ENTIDAD, no el id (en un alta el id vale 0 hasta
+        // que EF lo materializa durante SaveChanges).
+        _audit.Write(actorUserId, "orgunit.create", nameof(OrgUnit), unit,
+            previousValue: null,
+            newValue: Snapshot(unit),
+            tenantId: unit.TenantId);
         await _db.SaveChangesAsync(cancellationToken);
         return OrgResult<OrgUnitDto>.Ok(await ToDtoAsync(unit, cancellationToken));
     }
 
     public async Task<OrgResult<OrgUnitDto>> UpdateAsync(
-        long unitId, SaveOrgUnitRequest request, CancellationToken cancellationToken = default)
+        long unitId, SaveOrgUnitRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
         var unit = await _db.OrgUnits.FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
         if (unit is null)
         {
-            return OrgResult<OrgUnitDto>.NotFound("La dependencia no existe.");
+            return OrgResult<OrgUnitDto>.NotFound("El nodo del organigrama no existe.");
         }
-        var error = await ValidateAsync(request, cancellationToken);
-        if (error is not null)
+        var validation = await ValidateAsync(request, unitId, cancellationToken);
+        if (validation is not null)
         {
-            return OrgResult<OrgUnitDto>.Invalid(error);
+            return validation.To<OrgUnitDto>();
         }
 
-        if (request.ParentId != unit.ParentId && request.ParentId is long newParentId)
+        if (request.ParentId != unit.ParentId)
         {
-            if (newParentId == unitId)
+            var cycle = await ValidateParentMoveAsync(unitId, request.ParentId, cancellationToken);
+            if (cycle is not null)
             {
-                return OrgResult<OrgUnitDto>.Invalid("Una dependencia no puede ser su propio padre.");
-            }
-            if (!await _db.OrgUnits.AnyAsync(u => u.Id == newParentId, cancellationToken))
-            {
-                return OrgResult<OrgUnitDto>.NotFound("La unidad padre no existe.");
-            }
-            // Validacion de ciclos: el padre propuesto no puede ser descendiente de la unidad.
-            var parentByUnit = await _db.OrgUnits.AsNoTracking()
-                .Select(u => new { u.Id, u.ParentId })
-                .ToDictionaryAsync(u => u.Id, u => u.ParentId, cancellationToken);
-            if (OrgUnitTree.WouldCreateCycle(unitId, newParentId, parentByUnit))
-            {
-                return OrgResult<OrgUnitDto>.Invalid(
-                    "El padre seleccionado crearia un ciclo: una dependencia no puede ser su propio ancestro.");
+                return cycle.To<OrgUnitDto>();
             }
         }
+        if (request.SucesoraId == unitId)
+        {
+            return OrgResult<OrgUnitDto>.Invalid("Una dependencia no puede ser su propia sucesora.");
+        }
 
-        unit.Name = request.Name.Trim();
-        unit.Kind = request.Kind;
-        unit.ParentId = request.ParentId;
-        unit.ResponsibleTenantUserId = request.ResponsibleTenantUserId;
-        unit.Description = Normalize(request.Description);
-        unit.SortOrder = request.SortOrder;
-        unit.Classifier = request.Classifier;
-        unit.TenantUserId = request.Classifier == OrgUnitClassifier.Funcionario ? request.TenantUserId : null;
+        var prev = Snapshot(unit);
+        Apply(unit, request);
+        _audit.Write(actorUserId, "orgunit.update", nameof(OrgUnit), unit,
+            previousValue: prev,
+            newValue: Snapshot(unit),
+            tenantId: unit.TenantId);
         await _db.SaveChangesAsync(cancellationToken);
         return OrgResult<OrgUnitDto>.Ok(await ToDtoAsync(unit, cancellationToken));
     }
 
     public async Task<OrgResult<bool>> SetArchivedAsync(
-        long unitId, bool archived, CancellationToken cancellationToken = default)
+        long unitId, bool archived, long actorUserId, string? motivo = null,
+        CancellationToken cancellationToken = default)
     {
         var unit = await _db.OrgUnits.FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
         if (unit is null)
         {
-            return OrgResult<bool>.NotFound("La dependencia no existe.");
+            return OrgResult<bool>.NotFound("El nodo del organigrama no existe.");
         }
+        // Invariante 8: nunca borrado fisico. Y archivar exige no tener descendientes ACTIVOS.
         if (archived && await _db.OrgUnits.AnyAsync(u => u.ParentId == unitId && !u.IsArchived, cancellationToken))
         {
-            return OrgResult<bool>.Invalid("La dependencia tiene sub-dependencias activas; archivalas primero.");
+            return OrgResult<bool>.Invalid("El nodo tiene descendientes activos; archivalos primero.");
         }
+        var prev = unit.IsArchived;
         unit.IsArchived = archived;
+        _audit.Write(actorUserId, archived ? "orgunit.archivar" : "orgunit.restaurar", nameof(OrgUnit), unit,
+            previousValue: new { IsArchived = prev },
+            newValue: new { unit.IsArchived },
+            tenantId: unit.TenantId,
+            reason: motivo);
         await _db.SaveChangesAsync(cancellationToken);
         return OrgResult<bool>.Ok(true);
+    }
+
+    // ---- Resolver de dependencia (ADR-003, Addendum) ----
+
+    public async Task<long?> ResolveDependenciaAsync(long orgUnitId, CancellationToken cancellationToken = default)
+        => OrgUnitTree.ResolveDependenciaId(orgUnitId, await LoadNodeRefsAsync(cancellationToken));
+
+    public async Task<long?> ResolveDependenciaForUserAsync(
+        long tenantUserId, CancellationToken cancellationToken = default)
+    {
+        var cargoId = await _db.TenantUsers.AsNoTracking()
+            .Where(tu => tu.Id == tenantUserId)
+            .Select(tu => tu.CargoOrgUnitId)
+            .FirstOrDefaultAsync(cancellationToken);
+        // FAIL-CLOSED: sin Cargo anclado no hay area documental; nunca "todo".
+        return cargoId is long cargo
+            ? OrgUnitTree.ResolveDependenciaId(cargo, await LoadNodeRefsAsync(cancellationToken))
+            : null;
+    }
+
+    public async Task<OrgResult<MoveCargoResultDto>> MoveCargoAsync(
+        long unitId, long? newParentId, long actorUserId, string? motivo = null,
+        CancellationToken cancellationToken = default)
+    {
+        var unit = await _db.OrgUnits.FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
+        if (unit is null)
+        {
+            return OrgResult<MoveCargoResultDto>.NotFound("El nodo del organigrama no existe.");
+        }
+        if (unit.Classifier != OrgUnitClassifier.Cargo)
+        {
+            return OrgResult<MoveCargoResultDto>.Invalid(
+                "Esta operacion reubica nodos Cargo; usa la edicion normal para los demas nodos.");
+        }
+
+        var nodes = await LoadNodeRefsAsync(cancellationToken);
+        var parentClassifier = newParentId is long np && nodes.TryGetValue(np, out var parentNode)
+            ? (OrgUnitClassifier?)parentNode.Classifier
+            : null;
+        if (newParentId is not null && parentClassifier is null)
+        {
+            return OrgResult<MoveCargoResultDto>.NotFound("El nodo padre no existe.");
+        }
+        var structureError = OrgStructureRules.ValidateParent(OrgUnitClassifier.Cargo, parentClassifier);
+        if (structureError is not null)
+        {
+            return OrgResult<MoveCargoResultDto>.Invalid(structureError);
+        }
+
+        var parentByUnit = nodes.ToDictionary(kv => kv.Key, kv => kv.Value.ParentId);
+        if (OrgUnitTree.WouldCreateCycle(unitId, newParentId, parentByUnit))
+        {
+            return OrgResult<MoveCargoResultDto>.Invalid(
+                "El padre seleccionado crearia un ciclo: un nodo no puede ser su propio ancestro.");
+        }
+
+        var previousParentId = unit.ParentId;
+        var previousDependenciaId = OrgUnitTree.ResolveDependenciaId(unitId, nodes);
+
+        // Cuantos usuarios cambian de visibilidad documental SIN que nadie los edite: los
+        // anclados a este Cargo o a cualquier nodo del subarbol que se mueve con el.
+        var affected = await CountAffectedUsersAsync(unitId, parentByUnit, cancellationToken);
+
+        // Simular el arbol resultante (puro) para reportar la dependencia destino.
+        var moved = nodes[unitId] with { ParentId = newParentId };
+        var after = new Dictionary<long, OrgUnitTree.NodeRef>(nodes) { [unitId] = moved };
+        var newDependenciaId = OrgUnitTree.ResolveDependenciaId(unitId, after);
+
+        unit.ParentId = newParentId;
+        _audit.Write(actorUserId, "orgunit.mover_cargo", nameof(OrgUnit), unit,
+            previousValue: new { ParentId = previousParentId, DependenciaId = previousDependenciaId },
+            newValue: new { ParentId = newParentId, DependenciaId = newDependenciaId, UsuariosAfectados = affected },
+            tenantId: unit.TenantId,
+            reason: motivo);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return OrgResult<MoveCargoResultDto>.Ok(new MoveCargoResultDto(
+            unitId, previousParentId, newParentId, previousDependenciaId, newDependenciaId, affected));
+    }
+
+    public async Task<int> CountAffectedUsersAsync(long unitId, CancellationToken cancellationToken = default)
+    {
+        var parentByUnit = await LoadParentMapAsync(cancellationToken);
+        return await CountAffectedUsersAsync(unitId, parentByUnit, cancellationToken);
+    }
+
+    private async Task<int> CountAffectedUsersAsync(
+        long unitId, IReadOnlyDictionary<long, long?> parentByUnit, CancellationToken cancellationToken)
+    {
+        var subtree = OrgUnitTree.DescendantsAndSelf(unitId, parentByUnit).ToList();
+        return await _db.TenantUsers
+            .CountAsync(tu => tu.CargoOrgUnitId != null && subtree.Contains(tu.CargoOrgUnitId.Value), cancellationToken);
     }
 
     // ---- Miembros ----
@@ -240,7 +317,7 @@ public sealed class OrgUnitService : IOrgUnitService
         var unit = await _db.OrgUnits.AsNoTracking().FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
         if (unit is null)
         {
-            return OrgResult<OrgUnitMemberDto>.NotFound("La dependencia no existe.");
+            return OrgResult<OrgUnitMemberDto>.NotFound("El nodo del organigrama no existe.");
         }
         // El usuario debe ser miembro del MISMO tenant (el filtro global lo garantiza).
         var tenantUser = await _db.TenantUsers.AsNoTracking()
@@ -252,7 +329,7 @@ public sealed class OrgUnitService : IOrgUnitService
         if (await _db.OrgUnitMembers.AnyAsync(
                 m => m.OrgUnitId == unitId && m.TenantUserId == tenantUserId, cancellationToken))
         {
-            return OrgResult<OrgUnitMemberDto>.Conflict("El usuario ya es miembro de la dependencia.");
+            return OrgResult<OrgUnitMemberDto>.Conflict("El usuario ya es miembro del nodo.");
         }
         var trimmedRole = Normalize(role);
         if (trimmedRole is { Length: > 100 })
@@ -285,7 +362,7 @@ public sealed class OrgUnitService : IOrgUnitService
         {
             return OrgResult<bool>.NotFound("El miembro no existe.");
         }
-        // Si el miembro era el jefe/responsable, tambien limpiar el responsable de la unidad.
+        // Si el miembro era el jefe/responsable, tambien limpiar el responsable del nodo.
         if (member.IsResponsible)
         {
             var unit = await _db.OrgUnits.FirstOrDefaultAsync(u => u.Id == member.OrgUnitId, cancellationToken);
@@ -310,12 +387,12 @@ public sealed class OrgUnitService : IOrgUnitService
         var unit = await _db.OrgUnits.FirstOrDefaultAsync(u => u.Id == member.OrgUnitId, cancellationToken);
         if (unit is null)
         {
-            return OrgResult<bool>.NotFound("La dependencia no existe.");
+            return OrgResult<bool>.NotFound("El nodo del organigrama no existe.");
         }
 
         if (isResponsible)
         {
-            // A lo sumo un jefe/responsable por unidad: desmarcar a los demas.
+            // A lo sumo un jefe/responsable por nodo: desmarcar a los demas.
             var others = await _db.OrgUnitMembers
                 .Where(m => m.OrgUnitId == member.OrgUnitId && m.Id != member.Id && m.IsResponsible)
                 .ToListAsync(cancellationToken);
@@ -324,7 +401,6 @@ public sealed class OrgUnitService : IOrgUnitService
                 o.IsResponsible = false;
             }
             member.IsResponsible = true;
-            // Reconciliar con el responsable de la unidad (fuente del Encargado por defecto).
             unit.ResponsibleTenantUserId = member.TenantUserId;
         }
         else
@@ -335,7 +411,7 @@ public sealed class OrgUnitService : IOrgUnitService
                 unit.ResponsibleTenantUserId = null;
             }
         }
-        // Una sola SaveChanges = una transaccion (miembros + unidad atomicos).
+        // Una sola SaveChanges = una transaccion (miembros + nodo atomicos).
         await _db.SaveChangesAsync(cancellationToken);
         return OrgResult<bool>.Ok(true);
     }
@@ -343,9 +419,23 @@ public sealed class OrgUnitService : IOrgUnitService
     // ---- Internos ----
 
     private sealed record UnitMeta(
-        long Id, string Name, OrgUnitKind Kind, long? ParentId, long? ResponsibleTenantUserId,
+        long Id, string Name, OrgUnitClassifier Classifier, long? ParentId, long? ResponsibleTenantUserId,
         string? ResponsibleName, string? Description, int SortOrder, bool IsArchived, int MemberCount,
-        OrgUnitClassifier Classifier, long? TenantUserId, string? OccupantName);
+        long? TenantUserId, string? OccupantName, long? FondoId, string? FondoNombre, string? Codigo,
+        DateOnly? VigenteDesde, DateOnly? VigenteHasta, long? SucesoraId,
+        string? CodigoCargo, string? CodigoDafp, NivelJerarquico? NivelJerarquico);
+
+    private static OrgUnitNodeDto ToNode(UnitMeta u, IReadOnlyList<OrgUnitNodeDto> children) => new(
+        u.Id, u.Name, u.Classifier, u.ParentId, u.ResponsibleTenantUserId, u.ResponsibleName,
+        u.Description, u.SortOrder, u.IsArchived, u.MemberCount, children,
+        u.TenantUserId, u.OccupantName, u.FondoId, u.Codigo, u.VigenteDesde, u.VigenteHasta,
+        u.SucesoraId, u.CodigoCargo, u.CodigoDafp, u.NivelJerarquico);
+
+    private static OrgUnitDto ToFlat(UnitMeta u, string? parentName) => new(
+        u.Id, u.Name, u.Classifier, u.ParentId, parentName, u.ResponsibleTenantUserId, u.ResponsibleName,
+        u.Description, u.SortOrder, u.IsArchived, u.MemberCount, u.TenantUserId, u.OccupantName,
+        u.FondoId, u.FondoNombre, u.Codigo, u.VigenteDesde, u.VigenteHasta, u.SucesoraId,
+        u.CodigoCargo, u.CodigoDafp, u.NivelJerarquico);
 
     private async Task<List<UnitMeta>> LoadUnitsWithMetaAsync(bool includeArchived, CancellationToken cancellationToken)
     {
@@ -359,14 +449,22 @@ public sealed class OrgUnitService : IOrgUnitService
             {
                 u.Id,
                 u.Name,
-                u.Kind,
+                u.Classifier,
                 u.ParentId,
                 u.ResponsibleTenantUserId,
                 u.Description,
                 u.SortOrder,
                 u.IsArchived,
-                u.Classifier,
                 u.TenantUserId,
+                u.FondoId,
+                u.Codigo,
+                u.VigenteDesde,
+                u.VigenteHasta,
+                u.SucesoraId,
+                u.CodigoCargo,
+                u.CodigoDafp,
+                u.NivelJerarquico,
+                FondoNombre = _db.Fondos.Where(f => f.Id == u.FondoId).Select(f => f.NombreFondo).FirstOrDefault(),
                 MemberCount = _db.OrgUnitMembers.Count(m => m.OrgUnitId == u.Id),
                 ResponsibleName = _db.TenantUsers
                     .Where(tu => tu.Id == u.ResponsibleTenantUserId)
@@ -381,90 +479,193 @@ public sealed class OrgUnitService : IOrgUnitService
             })
             .ToListAsync(cancellationToken);
         return rows.Select(r => new UnitMeta(
-            r.Id, r.Name, r.Kind, r.ParentId, r.ResponsibleTenantUserId, r.ResponsibleName,
-            r.Description, r.SortOrder, r.IsArchived, r.MemberCount,
-            r.Classifier, r.TenantUserId, r.OccupantName)).ToList();
+            r.Id, r.Name, r.Classifier, r.ParentId, r.ResponsibleTenantUserId, r.ResponsibleName,
+            r.Description, r.SortOrder, r.IsArchived, r.MemberCount, r.TenantUserId, r.OccupantName,
+            r.FondoId, r.FondoNombre, r.Codigo, r.VigenteDesde, r.VigenteHasta, r.SucesoraId,
+            r.CodigoCargo, r.CodigoDafp, r.NivelJerarquico)).ToList();
     }
+
+    /// <summary>
+    /// Mapa Id -&gt; nodo de TODO el arbol del tenant (incluidos los archivados: la cadena de
+    /// ancestros de un nodo activo puede pasar por uno archivado, y cortarla ahi daria una
+    /// dependencia equivocada). Es la entrada del resolver puro.
+    /// </summary>
+    private async Task<Dictionary<long, OrgUnitTree.NodeRef>> LoadNodeRefsAsync(CancellationToken cancellationToken)
+        => await _db.OrgUnits.AsNoTracking()
+            .Select(u => new OrgUnitTree.NodeRef(u.Id, u.ParentId, u.Classifier))
+            .ToDictionaryAsync(n => n.Id, cancellationToken);
+
+    private async Task<Dictionary<long, long?>> LoadParentMapAsync(CancellationToken cancellationToken)
+        => await _db.OrgUnits.AsNoTracking()
+            .Select(u => new { u.Id, u.ParentId })
+            .ToDictionaryAsync(u => u.Id, u => u.ParentId, cancellationToken);
 
     private async Task<OrgUnitDto> ToDtoAsync(OrgUnit unit, CancellationToken cancellationToken)
     {
         var parentName = unit.ParentId is long parentId
             ? await _db.OrgUnits.AsNoTracking().Where(u => u.Id == parentId).Select(u => u.Name).FirstOrDefaultAsync(cancellationToken)
             : null;
-        var responsibleName = unit.ResponsibleTenantUserId is long responsibleId
-            ? await _db.TenantUsers.AsNoTracking()
-                .Where(tu => tu.Id == responsibleId)
-                .Join(_db.PlatformUsers, tu => tu.PlatformUserId, pu => pu.Id, (tu, pu) => pu.DisplayName ?? tu.Email)
-                .FirstOrDefaultAsync(cancellationToken)
+        var fondoNombre = unit.FondoId is long fondoId
+            ? await _db.Fondos.AsNoTracking().Where(f => f.Id == fondoId).Select(f => f.NombreFondo).FirstOrDefaultAsync(cancellationToken)
             : null;
+        var responsibleName = await DisplayNameAsync(unit.ResponsibleTenantUserId, cancellationToken);
+        var occupantName = await DisplayNameAsync(unit.TenantUserId, cancellationToken);
         var memberCount = await _db.OrgUnitMembers.CountAsync(m => m.OrgUnitId == unit.Id, cancellationToken);
-        var occupantName = unit.TenantUserId is long occupantId
-            ? await _db.TenantUsers.AsNoTracking()
-                .Where(tu => tu.Id == occupantId)
-                .Join(_db.PlatformUsers, tu => tu.PlatformUserId, pu => pu.Id, (tu, pu) => pu.DisplayName ?? tu.Email)
-                .FirstOrDefaultAsync(cancellationToken)
-            : null;
+
         return new OrgUnitDto(
-            unit.Id, unit.Name, unit.Kind, unit.ParentId, parentName,
+            unit.Id, unit.Name, unit.Classifier, unit.ParentId, parentName,
             unit.ResponsibleTenantUserId, responsibleName, unit.Description,
-            unit.SortOrder, unit.IsArchived, memberCount,
-            unit.Classifier, unit.TenantUserId, occupantName);
+            unit.SortOrder, unit.IsArchived, memberCount, unit.TenantUserId, occupantName,
+            unit.FondoId, fondoNombre, unit.Codigo, unit.VigenteDesde, unit.VigenteHasta,
+            unit.SucesoraId, unit.CodigoCargo, unit.CodigoDafp, unit.NivelJerarquico);
     }
 
-    private async Task<string?> ValidateAsync(SaveOrgUnitRequest request, CancellationToken cancellationToken)
+    private async Task<string?> DisplayNameAsync(long? tenantUserId, CancellationToken cancellationToken)
+        => tenantUserId is long id
+            ? await _db.TenantUsers.AsNoTracking()
+                .Where(tu => tu.Id == id)
+                .Join(_db.PlatformUsers, tu => tu.PlatformUserId, pu => pu.Id, (tu, pu) => pu.DisplayName ?? tu.Email)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+    /// <summary>
+    /// Escribe la request sobre la entidad. Los atributos que NO corresponden al clasificador
+    /// se persisten en NULL: un Cargo jamas guarda fondo_id, y una Dependencia jamas guarda
+    /// nivel jerarquico.
+    /// </summary>
+    private static void Apply(OrgUnit unit, SaveOrgUnitRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
+        var esDependencia = request.Classifier == OrgUnitClassifier.Dependencia;
+        var esCargo = request.Classifier == OrgUnitClassifier.Cargo;
+
+        unit.Name = request.Name.Trim();
+        unit.Classifier = request.Classifier;
+        unit.ParentId = request.ParentId;
+        unit.ResponsibleTenantUserId = request.ResponsibleTenantUserId;
+        unit.Description = Normalize(request.Description);
+        unit.SortOrder = request.SortOrder;
+        unit.TenantUserId = request.Classifier == OrgUnitClassifier.Funcionario ? request.TenantUserId : null;
+
+        unit.FondoId = esDependencia ? request.FondoId : null;
+        unit.Codigo = esDependencia ? Normalize(request.Codigo)?.ToUpperInvariant() : null;
+        unit.VigenteDesde = esDependencia ? request.VigenteDesde : null;
+        unit.VigenteHasta = esDependencia ? request.VigenteHasta : null;
+        unit.SucesoraId = esDependencia ? request.SucesoraId : null;
+
+        unit.CodigoCargo = esCargo ? Normalize(request.CodigoCargo) : null;
+        unit.CodigoDafp = esCargo ? Normalize(request.CodigoDafp) : null;
+        unit.NivelJerarquico = esCargo ? request.NivelJerarquico : null;
+    }
+
+    private static object Snapshot(OrgUnit u) => new
+    {
+        u.Name, u.Classifier, u.ParentId, u.FondoId, u.Codigo, u.VigenteDesde, u.VigenteHasta,
+        u.SucesoraId, u.CodigoCargo, u.CodigoDafp, u.NivelJerarquico, u.TenantUserId,
+        u.ResponsibleTenantUserId, u.IsArchived
+    };
+
+    /// <summary>Validacion completa del alta/edicion. Null = valido.</summary>
+    private async Task<OrgResult<bool>?> ValidateAsync(
+        SaveOrgUnitRequest request, long? unitId, CancellationToken cancellationToken)
+    {
+        // 1. Reglas PURAS por clasificador (sin base de datos).
+        var error = OrgStructureRules.ValidateNode(
+            request.Classifier, request.Name, request.Description, request.FondoId, request.Codigo,
+            request.VigenteDesde, request.VigenteHasta, request.CodigoCargo, request.CodigoDafp,
+            request.NivelJerarquico, request.TenantUserId);
+        if (error is not null)
         {
-            return "El nombre es obligatorio.";
+            return OrgResult<bool>.Invalid(error);
         }
-        if (request.Name.Trim().Length > 150)
+
+        // 2. Referencias que deben existir DENTRO del tenant (el filtro global lo garantiza).
+        if (request.ParentId is long parentId
+            && !await _db.OrgUnits.AnyAsync(u => u.Id == parentId, cancellationToken))
         {
-            return "El nombre no puede superar 150 caracteres.";
+            return OrgResult<bool>.NotFound("El nodo padre no existe.");
         }
-        if (request.Description is { } description && description.Trim().Length > 600)
+        if (request.Classifier == OrgUnitClassifier.Dependencia
+            && request.FondoId is long fondoId
+            && !await _db.Fondos.AnyAsync(f => f.Id == fondoId, cancellationToken))
         {
-            return "La descripcion no puede superar 600 caracteres.";
+            return OrgResult<bool>.NotFound("El fondo documental no existe.");
         }
         if (request.ResponsibleTenantUserId is long responsibleId
             && !await _db.TenantUsers.AnyAsync(tu => tu.Id == responsibleId, cancellationToken))
         {
-            return "El responsable no pertenece al tenant.";
+            return OrgResult<bool>.NotFound("El responsable no pertenece al tenant.");
+        }
+        if (request.Classifier == OrgUnitClassifier.Funcionario
+            && request.TenantUserId is long occupantId
+            && !await _db.TenantUsers.AnyAsync(tu => tu.Id == occupantId, cancellationToken))
+        {
+            return OrgResult<bool>.NotFound("El usuario ocupante no pertenece al tenant.");
+        }
+        if (request.Classifier == OrgUnitClassifier.Dependencia && request.SucesoraId is long sucesoraId)
+        {
+            var sucesora = await _db.OrgUnits.AsNoTracking()
+                .Where(u => u.Id == sucesoraId)
+                .Select(u => (OrgUnitClassifier?)u.Classifier)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (sucesora is null)
+            {
+                return OrgResult<bool>.NotFound("La dependencia sucesora no existe.");
+            }
+            if (sucesora != OrgUnitClassifier.Dependencia)
+            {
+                return OrgResult<bool>.Invalid("La sucesora de una dependencia debe ser otra Dependencia.");
+            }
         }
 
-        // Coherencia del clasificador de asignacion por nodo (ADR-0035). Jerarquia suave:
-        // un Cargo cuelga de una Dependencia (o raiz); un Funcionario cuelga de un Cargo y
-        // exige TenantUserId (el usuario que ocupa el puesto, del mismo tenant).
-        var parentClassifier = request.ParentId is long parentUnitId
+        // 3. Coherencia estructural padre -> hijo.
+        var parentClassifier = request.ParentId is long pid
             ? await _db.OrgUnits.AsNoTracking()
-                .Where(u => u.Id == parentUnitId)
+                .Where(u => u.Id == pid)
                 .Select(u => (OrgUnitClassifier?)u.Classifier)
                 .FirstOrDefaultAsync(cancellationToken)
             : null;
-
-        switch (request.Classifier)
+        var structureError = OrgStructureRules.ValidateParent(request.Classifier, parentClassifier);
+        if (structureError is not null)
         {
-            case OrgUnitClassifier.Cargo:
-                if (parentClassifier is OrgUnitClassifier.Cargo or OrgUnitClassifier.Funcionario)
-                {
-                    return "Un Cargo debe colgar de una Dependencia (o ser raiz).";
-                }
-                break;
-            case OrgUnitClassifier.Funcionario:
-                if (request.TenantUserId is not long occupantId)
-                {
-                    return "Un Funcionario requiere el usuario del tenant que ocupa el puesto.";
-                }
-                if (!await _db.TenantUsers.AnyAsync(tu => tu.Id == occupantId, cancellationToken))
-                {
-                    return "El usuario ocupante no pertenece al tenant.";
-                }
-                if (parentClassifier is not null and not OrgUnitClassifier.Cargo)
-                {
-                    return "Un Funcionario debe colgar de un Cargo.";
-                }
-                break;
+            return OrgResult<bool>.Invalid(structureError);
         }
+
+        // 4. Codigo UNICO ENTRE HERMANOS dentro del tenant (NO global): el mismo codigo puede
+        //    repetirse bajo padres distintos.
+        if (request.Classifier == OrgUnitClassifier.Dependencia && Normalize(request.Codigo) is string codigo)
+        {
+            var upper = codigo.ToUpperInvariant();
+            var duplicated = await _db.OrgUnits.AsNoTracking().AnyAsync(
+                u => u.Codigo == upper && u.ParentId == request.ParentId && (unitId == null || u.Id != unitId),
+                cancellationToken);
+            if (duplicated)
+            {
+                return OrgResult<bool>.Conflict(
+                    $"Ya existe una dependencia con el codigo '{upper}' bajo el mismo padre.");
+            }
+        }
+
         return null;
+    }
+
+    private async Task<OrgResult<bool>?> ValidateParentMoveAsync(
+        long unitId, long? newParentId, CancellationToken cancellationToken)
+    {
+        if (newParentId is not long newParent)
+        {
+            return null;
+        }
+        if (newParent == unitId)
+        {
+            return OrgResult<bool>.Invalid("Un nodo no puede ser su propio padre.");
+        }
+        // Validacion de ciclos FAIL-CLOSED: el padre propuesto no puede ser descendiente del
+        // nodo, y un arbol ya corrupto se reporta como ciclo en vez de colgar el listado.
+        var parentByUnit = await LoadParentMapAsync(cancellationToken);
+        return OrgUnitTree.WouldCreateCycle(unitId, newParent, parentByUnit)
+            ? OrgResult<bool>.Invalid(
+                "El padre seleccionado crearia un ciclo: un nodo no puede ser su propio ancestro.")
+            : null;
     }
 
     private static string? Normalize(string? value)

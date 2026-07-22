@@ -57,7 +57,10 @@ public static class DependencyInjection
         services.AddScoped<Archivistica.IFondoService, Archivistica.FondoService>();
         services.AddScoped<Archivistica.ISubfondoService, Archivistica.SubfondoService>();
 
-        // --- Estructura organizacional (base de RF03/RF04) ---
+        // --- Estructura organizacional: UN SOLO arbol con clasificador (RF03/RF04, ADR-003) ---
+        // La logica de arbol (ciclos, resolver de dependencia, subarbol afectado) es PURA y
+        // estatica en Organization.OrgUnitTree / OrgStructureRules: no se registra ni se
+        // inyecta, se testea sin base de datos y se puede cachear por tenant.
         services.AddScoped<Organization.IOrgUnitService, Organization.OrgUnitService>();
 
         // --- Registro de modulos por tenant ---
