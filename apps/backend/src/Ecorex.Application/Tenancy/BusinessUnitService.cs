@@ -106,9 +106,6 @@ public sealed class BusinessUnitService : IBusinessUnitService
     {
         var u = await _db.BusinessUnits.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (u is null) { return false; }
-        // Desvincula los leads de esta unidad (no se borran).
-        var leads = await _db.Leads.Where(l => l.BusinessUnitId == id).ToListAsync(cancellationToken);
-        foreach (var l in leads) { l.BusinessUnitId = null; }
         _db.BusinessUnits.Remove(u);
         _audit.Write(actorUserId, "business-unit.delete", nameof(BusinessUnit), u.Id, new { u.Name }, null, u.TenantId);
         await _db.SaveChangesAsync(cancellationToken);

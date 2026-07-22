@@ -271,24 +271,15 @@ public sealed class RolService : IRolService
     }
 
     /// <summary>
-    /// Agrega los sub-permisos NOMBRADOS de modulos que los declaran (hoy: Directorio General,
-    /// 000232) al catalogo de la matriz de roles, SOLO si el modulo padre esta presente. Asi la
-    /// matriz puede listar acciones finas (crear-empresa / crear-cliente / crear-sospechoso) como
-    /// filas propias, resolubles por EffectivePermissions.Can(key, Create). No altera el
-    /// enforcement: Owner/Admin y usuarios sin rol siguen Unrestricted.
+    /// Punto de extension para sub-permisos NOMBRADOS: acciones finas que un modulo declara como
+    /// filas propias de la matriz de roles (ej. futuro "expedientes:cerrar" de RQ03), resolubles
+    /// por EffectivePermissions.Can(key, accion) sin tocar el motor de enforcement.
+    ///
+    /// Se agregan SOLO si su modulo padre esta presente en el catalogo derivado del menu, para no
+    /// listar acciones de modulos que el tenant no tiene. Hoy TRONOX no declara ninguno todavia:
+    /// el catalogo pasa sin modificar. Cuando un modulo los declare, se suman aqui.
     /// </summary>
-    private static IReadOnlyList<ModuloInfo> WithSubPermisos(IReadOnlyList<ModuloInfo> catalog)
-    {
-        var tieneDirectorio = catalog.Any(m =>
-            string.Equals(m.Key, Directorio.DirectorioSubPermisos.ModuleRoute, StringComparison.Ordinal));
-        if (!tieneDirectorio)
-        {
-            return catalog;
-        }
-        var extended = new List<ModuloInfo>(catalog);
-        extended.AddRange(Directorio.DirectorioSubPermisos.Entradas);
-        return extended;
-    }
+    private static IReadOnlyList<ModuloInfo> WithSubPermisos(IReadOnlyList<ModuloInfo> catalog) => catalog;
 
     public async Task<EffectivePermissions> ResolveEffectivePermissionsAsync(
         Guid platformUserId, CancellationToken cancellationToken = default)

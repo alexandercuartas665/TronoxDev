@@ -9,13 +9,11 @@ public sealed class SubscriptionAdminService : ISubscriptionAdminService
 {
     private readonly IApplicationDbContext _db;
     private readonly IAuditWriter _audit;
-    private readonly IRecurringBillingService _recurring;
 
-    public SubscriptionAdminService(IApplicationDbContext db, IAuditWriter audit, IRecurringBillingService recurring)
+    public SubscriptionAdminService(IApplicationDbContext db, IAuditWriter audit)
     {
         _db = db;
         _audit = audit;
-        _recurring = recurring;
     }
 
     public async Task<SubscriptionDetail?> AssignAsync(AssignSubscriptionRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -114,20 +112,8 @@ public sealed class SubscriptionAdminService : ISubscriptionAdminService
                 "Plan actualizado. Aplica de inmediato y el nuevo valor se cobrara en la proxima fecha de corte.");
         }
 
-        // Upgrade: se cobra el plan nuevo completo de inmediato.
-        if (subscription.AutoRenew && subscription.WompiPaymentSourceId is not null)
-        {
-            var charge = await _recurring.ChargeNowAsync(tenantId, actorUserId, cancellationToken);
-            if (charge.Ok)
-            {
-                // ChargeNowAsync opera sobre la misma instancia rastreada y pudo renovar la fecha de corte.
-                return new ChangePlanResult(Map(subscription), IsUpgrade: true, ChargedNow: true, RequiresPayment: false,
-                    "Plan actualizado y cobrado con tu metodo de pago.");
-            }
-            return new ChangePlanResult(Map(subscription), IsUpgrade: true, ChargedNow: false, RequiresPayment: true,
-                $"Plan actualizado, pero el cobro automatico no se completo ({charge.Error}). Usa 'Pagar ahora' para finalizar.");
-        }
-
+        // Upgrade: TRONOX no procesa cobros dentro de la plataforma (ninguna spec lo define).
+        // El cambio de plan queda aplicado y el pago se gestiona fuera de banda.
         return new ChangePlanResult(Map(subscription), IsUpgrade: true, ChargedNow: false, RequiresPayment: true,
             "Plan actualizado. Usa 'Pagar ahora' para completar el pago del plan nuevo.");
     }
