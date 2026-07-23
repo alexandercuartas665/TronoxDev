@@ -1,3 +1,17 @@
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+@{
+    // Tema activo renderizado POR EL SERVIDOR desde la cookie 'tronox_theme'. Es lo que hace
+    // que la navegacion mejorada de Blazor NO pierda el tema ni haya parpadeo: cada respuesta
+    // (carga completa o navegacion) ya trae el atributo correcto en <html>, asi que el morph
+    // del DOM nunca lo quita. La cookie la escribe js/tronox-theme.js al elegir un tema.
+    // Fallback: si no hay cookie, classic-light (azul corporativo), igual que el snippet del head.
+    var temasValidos = new[] { "classic-light", "fresh-light", "deep-dark", "aurora-dark", "metronic" };
+    var temaCookie = HttpContextAccessor.HttpContext?.Request.Cookies["tronox_theme"];
+    var temaId = temasValidos.Contains(temaCookie) ? temaCookie! : "classic-light";
+    // 'metronic' es el :root base de custom.css: se activa QUITANDO el atributo (queda null).
+    string? temaAttr = temaId == "metronic" ? null : temaId;
+    string? bsThemeAttr = (temaId == "deep-dark" || temaId == "aurora-dark") ? "dark" : null;
+}
 <!DOCTYPE html>
 @* Los data-* de Velzon controlan el layout (PLAN DE ARRANQUE seccion 3, regla 3): el
    comportamiento lo maneja velzon/js/layout.js, no se reescribe markup para cambiarlo. *@
@@ -7,7 +21,9 @@
       data-sidebar="light"
       data-sidebar-size="lg"
       data-sidebar-image="none"
-      data-preloader="disable">
+      data-preloader="disable"
+      data-tronox-theme="@temaAttr"
+      data-bs-theme="@bsThemeAttr">
 
 <head>
     <meta charset="utf-8" />
@@ -23,11 +39,25 @@
         (function () {
             var IDS = ['classic-light', 'fresh-light', 'deep-dark', 'aurora-dark', 'metronic'];
             var DARK = { 'deep-dark': 1, 'aurora-dark': 1 };
+            // FUENTE DE VERDAD: la cookie 'tronox_theme' (la misma que lee App.razor en el
+            // servidor). Asi cliente y servidor SIEMPRE coinciden y la navegacion mejorada no
+            // pierde el tema ni parpadea. localStorage es solo para MIGRAR una eleccion vieja
+            // (sesiones antes de la cookie) y sembrar la cookie una vez.
+            function ck(n) { var m = document.cookie.match('(?:^|; )' + n + '=([^;]*)'); return m ? m[1] : null; }
             var id = 'classic-light';
-            try {
-                var v = localStorage.getItem('tronox_theme');
-                if (IDS.indexOf(v) >= 0) { id = v; }
-            } catch (e) { /* sin storage: tema por defecto */ }
+            var cookieId = ck('tronox_theme');
+            if (IDS.indexOf(cookieId) >= 0) {
+                id = cookieId;
+            } else {
+                try {
+                    var v = localStorage.getItem('tronox_theme');
+                    if (IDS.indexOf(v) >= 0) {
+                        id = v;
+                        // Migrar la eleccion vieja a la cookie para que el servidor la vea desde ya.
+                        document.cookie = 'tronox_theme=' + v + ';path=/;max-age=31536000;samesite=lax';
+                    }
+                } catch (e) { /* sin storage: tema por defecto */ }
+            }
             // 'metronic' es el :root base de custom.css: se activa quitando el atributo.
             if (id !== 'metronic') { document.documentElement.setAttribute('data-tronox-theme', id); }
             if (DARK[id]) { document.documentElement.setAttribute('data-bs-theme', 'dark'); }

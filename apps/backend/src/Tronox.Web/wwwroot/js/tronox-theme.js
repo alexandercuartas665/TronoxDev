@@ -32,13 +32,26 @@
     return THEMES[0];
   }
 
+  function cookieVal(n) {
+    var m = document.cookie.match("(?:^|; )" + n + "=([^;]*)");
+    return m ? m[1] : null;
+  }
+
+  function isKnown(v) {
+    for (var i = 0; i < THEMES.length; i++) { if (THEMES[i].id === v) { return true; } }
+    return false;
+  }
+
   function current() {
+    // FUENTE DE VERDAD: la cookie (la misma que lee el servidor en App.razor). localStorage
+    // es solo respaldo por si la cookie no existiera. Un valor desconocido cae al por defecto.
+    var c = cookieVal(KEY);
+    if (isKnown(c)) { return c; }
     try {
       var v = localStorage.getItem(KEY);
-      // Solo se acepta un id conocido: un valor viejo o corrupto cae al tema por defecto.
-      for (var i = 0; i < THEMES.length; i++) { if (THEMES[i].id === v) { return v; } }
-      return DEFAULT;
-    } catch (e) { return DEFAULT; }
+      if (isKnown(v)) { return v; }
+    } catch (e) { /* sin storage */ }
+    return DEFAULT;
   }
 
   function apply(id) {
@@ -59,6 +72,10 @@
     current: current,
     set: function (id) {
       try { localStorage.setItem(KEY, id); } catch (e) { /* sin storage: solo esta sesion */ }
+      // Cookie ADEMAS de localStorage: es la que lee App.razor en el SERVIDOR para
+      // renderizar data-tronox-theme en <html>. Asi la navegacion mejorada nunca pierde
+      // el tema ni parpadea (el atributo ya viene en cada respuesta del servidor).
+      try { document.cookie = KEY + "=" + id + ";path=/;max-age=31536000;samesite=lax"; } catch (e) { }
       apply(id);
       mark(id);
       // Ver la nota de cabecera: la recarga es lo que deja el shell entero repintado.
@@ -128,4 +145,9 @@
     new MutationObserver(function () { build(); })
       .observe(document.documentElement, { childList: true, subtree: true });
   }
+
+  // Red de seguridad: tras una navegacion mejorada, reaplicar el tema por si el atributo
+  // se perdiera. Con App.razor renderizando data-tronox-theme desde la cookie esto casi
+  // nunca hace falta, pero cubre el caso de una cookie ausente (solo localStorage).
+  document.addEventListener("enhancedload", function () { apply(current()); build(); });
 })();
