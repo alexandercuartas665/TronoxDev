@@ -122,7 +122,7 @@ public sealed class MenuProvisioningTests : IClassFixture<PostgresTenantIsolatio
         Assert.Equal(1, nodos.Count(n => n.Kind == MenuNodeKind.QuickLink));
         Assert.Equal(MenuCatalogo.Secciones.Count, nodos.Count(n => n.Kind == MenuNodeKind.Section));
         Assert.Equal(
-            MenuCatalogo.Secciones.Sum(s => s.Grupos.Count),
+            MenuCatalogo.TotalSubgrupos,
             nodos.Count(n => n.Kind == MenuNodeKind.Subgroup));
         Assert.Equal(MenuCatalogo.RutasDeItem.Count, nodos.Count(n => n.Kind == MenuNodeKind.Item));
 
@@ -326,6 +326,113 @@ public sealed class MenuProvisioningTests : IClassFixture<PostgresTenantIsolatio
                 MenuCatalogo.RutasDeItem.Count * PermissionActions.All.Count,
                 await ContarMatrizAsync(read, tenantId, RolCatalogo.CodigoSuperAdministrador));
         }
+    }
+
+    /// <summary>
+    /// Reconciliacion con el prototipo: un tenant con la vista INTACTA de la version ANTERIOR (arbol
+    /// de 117 nodos, sin tocar por el tenant) se re-siembra con el arbol canonico vigente, y tras
+    /// rellenar la matriz el Super Administrador vuelve a cubrir todas las rutas.
+    /// </summary>
+    [Fact]
+    public async Task Reconciliar_ReSiembraLaVistaIntactaDeLaVersionAnterior()
+    {
+        var tenantId = await AltaDeTenantAsync("Alta Reconciliable");
+
+        // Se sustituye el arbol nuevo por una vista "antigua" INTACTA: quick link + una seccion con
+        // items cuyas rutas pertenecen todas a la huella anterior.
+        await SembrarVistaAntiguaAsync(tenantId, foranea: false);
+
+        bool reconciliado;
+        await using (var ctx = _fixture.CreateContext(tenantId))
+        {
+            reconciliado = await new MenuProvisioningService(ctx).ReconciliarVistaPredeterminadaAsync(tenantId);
+            await new RolProvisioningService(ctx).EnsureRolesPredeterminadosAsync(tenantId);
+        }
+
+        Assert.True(reconciliado);
+
+        await using var read = _fixture.CreateContext(tenantId);
+        var nodos = await NodosAsync(read, tenantId);
+        Assert.Equal(MenuCatalogo.TotalNodos, nodos.Count);
+        Assert.Equal(1, await read.MenuViews.IgnoreQueryFilters().CountAsync(v => v.TenantId == tenantId));
+
+        var rutas = nodos.Where(n => n.Kind == MenuNodeKind.Item).Select(n => n.Route!);
+        Assert.Equal(
+            MenuCatalogo.RutasDeItem.OrderBy(r => r, StringComparer.Ordinal),
+            rutas.OrderBy(r => r, StringComparer.Ordinal));
+
+        Assert.Equal(
+            MenuCatalogo.RutasDeItem.Count * PermissionActions.All.Count,
+            await ContarMatrizAsync(read, tenantId, RolCatalogo.CodigoSuperAdministrador));
+    }
+
+    /// <summary>
+    /// La reconciliacion NO reconstruye una vista personalizada: basta un nodo con clave ajena a la
+    /// huella anterior (uno creado por el tenant en el editor) para que se respete tal cual.
+    /// </summary>
+    [Fact]
+    public async Task Reconciliar_NoTocaUnaVistaConNodosPropios()
+    {
+        var tenantId = await AltaDeTenantAsync("Alta No Reconciliable");
+
+        // Vista "antigua" pero con UN nodo propio del tenant (ruta fuera de la huella anterior).
+        await SembrarVistaAntiguaAsync(tenantId, foranea: true);
+
+        int nodosAntes;
+        await using (var read0 = _fixture.CreateContext(tenantId))
+        {
+            nodosAntes = (await NodosAsync(read0, tenantId)).Count;
+        }
+
+        bool reconciliado;
+        await using (var ctx = _fixture.CreateContext(tenantId))
+        {
+            reconciliado = await new MenuProvisioningService(ctx).ReconciliarVistaPredeterminadaAsync(tenantId);
+        }
+
+        Assert.False(reconciliado);
+
+        await using var read = _fixture.CreateContext(tenantId);
+        // No se reconstruyo: sigue el mismo numero de nodos y el nodo propio del tenant permanece.
+        Assert.Equal(nodosAntes, (await NodosAsync(read, tenantId)).Count);
+        Assert.True(await read.MenuNodes.IgnoreQueryFilters()
+            .AnyAsync(n => n.TenantId == tenantId && n.Route == "modulo/mi-pantalla-propia"));
+    }
+
+    /// <summary>
+    /// Reemplaza el arbol de la vista predeterminada por una vista de la VERSION ANTERIOR: quick link
+    /// "inicio", una seccion "configuracion" y unos items con rutas de la huella anterior. Si
+    /// <paramref name="foranea"/> es true, agrega ademas un item con ruta ajena a la huella (simula
+    /// un nodo creado por el tenant en el editor).
+    /// </summary>
+    private async Task SembrarVistaAntiguaAsync(long tenantId, bool foranea)
+    {
+        await using var ctx = _fixture.CreateContext(tenantId);
+        var vista = await ctx.MenuViews.IgnoreQueryFilters()
+            .FirstAsync(v => v.TenantId == tenantId && v.IsDefault);
+
+        var viejos = await ctx.MenuNodes.IgnoreQueryFilters()
+            .Where(n => n.TenantId == tenantId && n.MenuViewId == vista.Id)
+            .ToListAsync();
+        ctx.MenuNodes.RemoveRange(viejos);
+        await ctx.SaveChangesAsync();
+
+        var quick = new MenuNode { TenantId = tenantId, MenuViewId = vista.Id, Kind = MenuNodeKind.QuickLink, Name = "Inicio", Route = "inicio", IconKey = "bi-house", SortOrder = 0 };
+        var seccion = new MenuNode { TenantId = tenantId, MenuViewId = vista.Id, Kind = MenuNodeKind.Section, Name = "CONFIGURACION", Route = "configuracion", IconKey = "bi-sliders", SortOrder = 1 };
+        ctx.MenuNodes.AddRange(quick, seccion);
+        await ctx.SaveChangesAsync();
+
+        var rutasViejas = new[] { "modulo/datos-entidad", "modulo/sedes", "dependencias", "roles-permisos" };
+        var orden = 0;
+        foreach (var ruta in rutasViejas)
+        {
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = vista.Id, ParentId = seccion.Id, Kind = MenuNodeKind.Item, Name = ruta, Route = ruta, IconKey = "bi-dot", SortOrder = orden++ });
+        }
+        if (foranea)
+        {
+            ctx.MenuNodes.Add(new MenuNode { TenantId = tenantId, MenuViewId = vista.Id, ParentId = seccion.Id, Kind = MenuNodeKind.Item, Name = "Mi Pantalla Propia", Route = "modulo/mi-pantalla-propia", IconKey = "bi-star", SortOrder = orden++ });
+        }
+        await ctx.SaveChangesAsync();
     }
 
     /// <summary>Aislamiento (DAT-01): sembrar el tenant A no toca al tenant B.</summary>

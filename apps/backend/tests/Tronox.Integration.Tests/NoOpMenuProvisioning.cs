@@ -22,6 +22,9 @@ public sealed class NoOpMenuProvisioning : IMenuProvisioningService
 
     public Task<int> BackfillCanonicalNamesAsync(long tenantId, CancellationToken cancellationToken = default)
         => Task.FromResult(0);
+
+    public Task<bool> ReconciliarVistaPredeterminadaAsync(long tenantId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
 }
 
 /// <summary>

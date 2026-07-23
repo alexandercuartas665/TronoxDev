@@ -8,6 +8,20 @@
 @using Tronox.Application.MenuConfig
 @using Tronox.Domain.Enums
 
+@* Enlace de pantalla del sidebar (prototipo .menu-sub-link). Se define una sola vez para
+   reutilizarlo tanto en las pantallas directas del modulo como en las de una sub-seccion. *@
+@{
+    RenderFragment<MenuNodeDto> SubLink = leaf =>
+        @<NavLink class="tx-menu-sub-link" href="@leaf.Route">
+            @MenuIcons.Render(leaf.IconKey)
+            <span class="msl-label">@leaf.Name</span>
+            @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
+            {
+                <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
+            }
+        </NavLink>;
+}
+
 @if (_showAdmin)
 {
     @* Consola de plataforma: marca configurable (Super Admin -> Marca) con icono de tablero. *@
@@ -118,16 +132,23 @@ else
                                 </summary>
                                 <div class="tx-menu-modscreens">
                                     <div class="tx-menu-sub">
-                                        @foreach (var leaf in child.Children.Where(n => n.Kind == MenuNodeKind.Item))
+                                        @* Pantallas del modulo. Un hijo Subgroup es una sub-seccion del
+                                           prototipo (ej. req001 General/Organizacional/Sistema): se pinta
+                                           como encabezado interno y debajo van sus pantallas. *@
+                                        @foreach (var node in child.Children)
                                         {
-                                            <NavLink class="tx-menu-sub-link" href="@leaf.Route">
-                                                @MenuIcons.Render(leaf.IconKey)
-                                                <span class="msl-label">@leaf.Name</span>
-                                                @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
+                                            if (node.Kind == MenuNodeKind.Subgroup)
+                                            {
+                                                <div class="tx-menu-subsection">@node.Name</div>
+                                                @foreach (var leaf in node.Children.Where(n => n.Kind == MenuNodeKind.Item))
                                                 {
-                                                    <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
+                                                    @SubLink(leaf)
                                                 }
-                                            </NavLink>
+                                            }
+                                            else if (node.Kind == MenuNodeKind.Item)
+                                            {
+                                                @SubLink(node)
+                                            }
                                         }
                                     </div>
                                 </div>

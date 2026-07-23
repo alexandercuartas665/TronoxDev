@@ -18,6 +18,7 @@ public class MenuConfigRulesTests
     [InlineData(MenuNodeKind.Section, null)]        // seccion en primer nivel: OK
     [InlineData(MenuNodeKind.QuickLink, null)]      // enlace rapido en primer nivel: OK
     [InlineData(MenuNodeKind.Subgroup, MenuNodeKind.Section)]  // subgrupo bajo seccion: OK
+    [InlineData(MenuNodeKind.Subgroup, MenuNodeKind.Subgroup)] // subgrupo bajo subgrupo (sub-seccion de modulo, ej. req001): OK
     [InlineData(MenuNodeKind.Item, MenuNodeKind.Section)]      // item bajo seccion: OK
     [InlineData(MenuNodeKind.Item, MenuNodeKind.Subgroup)]     // item bajo subgrupo: OK
     public void Validate_AllowsCoherentNesting(MenuNodeKind kind, MenuNodeKind? parent)
@@ -29,7 +30,6 @@ public class MenuConfigRulesTests
     [InlineData(MenuNodeKind.Section, MenuNodeKind.Section)]   // seccion no cuelga de nadie
     [InlineData(MenuNodeKind.QuickLink, MenuNodeKind.Section)] // enlace rapido no cuelga
     [InlineData(MenuNodeKind.Subgroup, MenuNodeKind.Item)]     // subgrupo no cuelga de item
-    [InlineData(MenuNodeKind.Subgroup, MenuNodeKind.Subgroup)] // subgrupo no cuelga de subgrupo
     [InlineData(MenuNodeKind.Item, MenuNodeKind.Item)]         // item no cuelga de item
     [InlineData(MenuNodeKind.Item, null)]                      // item no puede ser raiz
     public void Validate_RejectsIncoherentNesting(MenuNodeKind kind, MenuNodeKind? parent)

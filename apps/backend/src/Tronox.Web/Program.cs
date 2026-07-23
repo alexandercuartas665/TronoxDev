@@ -172,11 +172,27 @@ try
     var iconProvisioning = iconScope.ServiceProvider
         .GetRequiredService<Tronox.Application.MenuConfig.IMenuProvisioningService>();
 
+    var rolProvisioning = iconScope.ServiceProvider
+        .GetRequiredService<Tronox.Application.Roles.IRolProvisioningService>();
+
     var tenantIds = await iconDb.Tenants.IgnoreQueryFilters().Select(t => t.Id).ToListAsync();
     var rellenados = 0;
     var renombrados = 0;
+    var reconciliados = 0;
     foreach (var tenantId in tenantIds)
     {
+        // Re-alineacion con el prototipo: el arbol del menu cambio de ESTRUCTURA (nodos nuevos,
+        // movidos, con rutas distintas), no solo de rotulo/icono. Un tenant cuya vista sigue
+        // INTACTA se re-siembra con el arbol vigente; si la personalizo, no se toca. Tras
+        // re-sembrar hay que rellenar la matriz de permisos con las rutas nuevas (RolProvisioning
+        // es idempotente y solo agrega los pares que falten).
+        var reconciliado = await iconProvisioning.ReconciliarVistaPredeterminadaAsync(tenantId);
+        if (reconciliado)
+        {
+            reconciliados++;
+            await rolProvisioning.EnsureRolesPredeterminadosAsync(tenantId);
+        }
+
         rellenados += await iconProvisioning.BackfillIconKeysAsync(tenantId);
         // Misma politica para el ROTULO: los tenants existentes conservan los nombres de
         // agrupacion previos a la alineacion con el prototipo. Solo se renombra el nodo que aun
@@ -185,11 +201,11 @@ try
         renombrados += await iconProvisioning.BackfillCanonicalNamesAsync(tenantId);
     }
 
-    if (rellenados > 0 || renombrados > 0)
+    if (rellenados > 0 || renombrados > 0 || reconciliados > 0)
     {
         app.Logger.LogInformation(
-            "Menu: {Iconos} nodos con icono rellenado y {Nombres} renombrados al catalogo canonico en {Tenants} tenants.",
-            rellenados, renombrados, tenantIds.Count);
+            "Menu: {Reconciliados} vistas re-sembradas al prototipo, {Iconos} nodos con icono rellenado y {Nombres} renombrados en {Tenants} tenants.",
+            reconciliados, rellenados, renombrados, tenantIds.Count);
     }
 }
 catch (Exception ex)

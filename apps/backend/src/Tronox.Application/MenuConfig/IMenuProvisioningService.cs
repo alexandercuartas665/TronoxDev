@@ -32,4 +32,18 @@ public interface IMenuProvisioningService
     /// Devuelve cuantos nodos se rellenaron.
     /// </summary>
     Task<int> BackfillIconKeysAsync(long tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Re-alinea la vista predeterminada de un tenant EXISTENTE con el arbol canonico vigente cuando
+    /// esa vista sigue INTACTA (el tenant no la personalizo en el editor). Necesario porque el arbol
+    /// cambio de estructura al alinearse con el prototipo (nodos nuevos, movidos, con rutas distintas):
+    /// el aprovisionamiento idempotente no re-siembra un tenant que ya tiene items, asi que sin este
+    /// paso los tenants creados con la version anterior conservarian el arbol viejo.
+    ///
+    /// SEGURO: solo re-siembra si la vista es PRISTINA (un unico perfil, sin usuarios con vista
+    /// asignada, todos los nodos con nombre/icono/visibilidad canonicos y sin rutas ajenas al
+    /// catalogo). Si el tenant toco cualquier cosa, no se reconstruye nada. Devuelve true si
+    /// re-sembro. La matriz de permisos la vuelve a rellenar el aprovisionamiento de roles.
+    /// </summary>
+    Task<bool> ReconciliarVistaPredeterminadaAsync(long tenantId, CancellationToken cancellationToken = default);
 }

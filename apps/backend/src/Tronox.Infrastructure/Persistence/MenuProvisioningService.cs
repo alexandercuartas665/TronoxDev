@@ -89,7 +89,8 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
             }
         }
 
-        MenuNode Nodo(MenuNodeKind kind, string nombre, string? icono, string? ruta, string? codigoRf, MenuNode? padre, int orden)
+        MenuNode Nodo(MenuNodeKind kind, string nombre, string? icono, string? ruta, string? codigoRf,
+            MenuNode? padre, int orden, MenuNodeState estado)
         {
             var nodo = new MenuNode
             {
@@ -101,7 +102,7 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
                 IconKey = icono,
                 LegacyCode = codigoRf,
                 Route = ruta,
-                State = MenuNodeState.Ready,
+                State = estado,
                 IsVisible = true,
                 SortOrder = orden
             };
@@ -109,12 +110,32 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
             return nodo;
         }
 
+        // Un grupo (modulo o sub-seccion anidada) se siembra recursivamente: primero sus items
+        // directos, luego sus sub-grupos. El ESTADO (listo/prototipo/spec) vive en el nodo del
+        // grupo; los items nacen SIEMPRE Ready para no salir de la matriz de permisos.
+        void SembrarGrupo(MenuCatalogo.GrupoSemilla grupo, MenuNode padre, int orden)
+        {
+            var nodoGrupo = Nodo(MenuNodeKind.Subgroup, grupo.Nombre, grupo.Icono, grupo.Slug,
+                grupo.CodigoRf, padre, orden, grupo.Estado);
+
+            var ordenHijo = 0;
+            foreach (var item in grupo.Items)
+            {
+                Nodo(MenuNodeKind.Item, item.Nombre, item.Icono, item.Ruta, item.CodigoRf,
+                    nodoGrupo, ordenHijo++, MenuNodeState.Ready);
+            }
+            foreach (var sub in grupo.Subgrupos ?? [])
+            {
+                SembrarGrupo(sub, nodoGrupo, ordenHijo++);
+            }
+        }
+
         // El Id de la vista lo asigna la base al insertar (BIGINT identidad), asi que aqui todavia
         // vale 0: se enlaza por la propiedad de navegacion y EF resuelve la FK y el orden de insercion.
         if (!existentes.ContainsKey(MenuCatalogo.Inicio.Ruta))
         {
             Nodo(MenuNodeKind.QuickLink, MenuCatalogo.Inicio.Nombre, MenuCatalogo.IconoInicio,
-                MenuCatalogo.Inicio.Ruta, null, null, 0);
+                MenuCatalogo.Inicio.Ruta, null, null, 0, MenuNodeState.Ready);
         }
 
         var ordenSeccion = 1;
@@ -123,31 +144,116 @@ public sealed class MenuProvisioningService : IMenuProvisioningService
             if (!existentes.TryGetValue(seccion.Slug, out var nodoSeccion))
             {
                 nodoSeccion = Nodo(MenuNodeKind.Section, seccion.Nombre, seccion.Icono,
-                    seccion.Slug, null, null, ordenSeccion);
+                    seccion.Slug, null, null, ordenSeccion, MenuNodeState.Ready);
             }
             ordenSeccion++;
 
             var ordenHijo = 0;
             foreach (var grupo in seccion.Grupos)
             {
-                var nodoGrupo = Nodo(MenuNodeKind.Subgroup, grupo.Nombre, grupo.Icono,
-                    grupo.Slug, grupo.CodigoRf, nodoSeccion, ordenHijo++);
-
-                var ordenItem = 0;
-                foreach (var item in grupo.Items)
-                {
-                    Nodo(MenuNodeKind.Item, item.Nombre, item.Icono, item.Ruta, item.CodigoRf, nodoGrupo, ordenItem++);
-                }
+                SembrarGrupo(grupo, nodoSeccion, ordenHijo++);
             }
 
-            // Items sueltos colgados directamente de la seccion (ej. SISTEMA).
+            // Items sueltos colgados directamente de la seccion (si el catalogo los tuviera).
             foreach (var item in seccion.Items)
             {
-                Nodo(MenuNodeKind.Item, item.Nombre, item.Icono, item.Ruta, item.CodigoRf, nodoSeccion, ordenHijo++);
+                Nodo(MenuNodeKind.Item, item.Nombre, item.Icono, item.Ruta, item.CodigoRf,
+                    nodoSeccion, ordenHijo++, MenuNodeState.Ready);
             }
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Re-siembra la vista predeterminada del tenant con el arbol canonico vigente SOLO si esa vista
+    /// sigue intacta. Ver la doc de la interfaz para la garantia de seguridad.
+    /// </summary>
+    public async Task<bool> ReconciliarVistaPredeterminadaAsync(
+        long tenantId, CancellationToken cancellationToken = default)
+    {
+        var vistas = await _db.MenuViews
+            .IgnoreQueryFilters()
+            .Where(v => v.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+
+        // Mas de una vista = el tenant creo perfiles: no se toca nada.
+        if (vistas.Count != 1)
+        {
+            return false;
+        }
+        var vista = vistas[0];
+        if (!vista.IsDefault)
+        {
+            return false;
+        }
+
+        // Algun usuario con una vista asignada explicitamente = personalizacion: no se toca.
+        var hayAsignaciones = await _db.TenantUsers
+            .IgnoreQueryFilters()
+            .AnyAsync(u => u.TenantId == tenantId && u.MenuViewId != null, cancellationToken);
+        if (hayAsignaciones)
+        {
+            return false;
+        }
+
+        var nodos = await _db.MenuNodes
+            .IgnoreQueryFilters()
+            .Where(n => n.TenantId == tenantId && n.MenuViewId == vista.Id)
+            .ToListAsync(cancellationToken);
+
+        if (nodos.Count == 0)
+        {
+            return false; // sin nodos: lo repara EnsureDefaultMenuAsync, no esto.
+        }
+
+        // Ya alineada con el catalogo vigente (mismo conjunto de rutas de item): nada que hacer.
+        var rutasActuales = nodos
+            .Where(n => n.Kind == MenuNodeKind.Item && !string.IsNullOrEmpty(n.Route))
+            .Select(n => n.Route!)
+            .ToHashSet(StringComparer.Ordinal);
+        var rutasCanonicas = MenuCatalogo.RutasDeItem.ToHashSet(StringComparer.Ordinal);
+        if (rutasActuales.SetEquals(rutasCanonicas)
+            && nodos.Count == MenuCatalogo.TotalNodos)
+        {
+            return false;
+        }
+
+        // INTACTA DE LA VERSION ANTERIOR: toda clave de nodo (Route de item, Slug de seccion/
+        // subgrupo, o el quick link) pertenece a la huella del arbol previo. Si el tenant creo un
+        // nodo propio, su clave no estara en la huella y la vista se deja tal cual (no se reconstruye).
+        if (!EsVistaIntactaAnterior(nodos))
+        {
+            return false;
+        }
+
+        // Reconstruccion: se borran los nodos de la vista y se re-siembra el arbol vigente. La vista
+        // (y su Id) se conservan, asi que las asignaciones por defecto siguen apuntando a ella.
+        _db.MenuNodes.RemoveRange(nodos);
+        await _db.SaveChangesAsync(cancellationToken);
+        await EnsureDefaultMenuAsync(tenantId, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Una vista es INTACTA-DE-LA-VERSION-ANTERIOR si TODA clave de nodo (Route de item, Slug de
+    /// seccion/subgrupo) pertenece a la huella del arbol previo (MenuCatalogo.HuellaVistaAnterior).
+    /// Basta un nodo con clave ajena a esa huella -uno creado por el tenant en el editor- para que
+    /// deje de serlo y la vista NO se reconstruya. Es version-independiente: las rutas no cambian
+    /// con los rellenos de icono/nombre.
+    /// </summary>
+    private static bool EsVistaIntactaAnterior(IReadOnlyList<MenuNode> nodos)
+    {
+        foreach (var nodo in nodos)
+        {
+            var clave = nodo.Route;
+            if (string.IsNullOrEmpty(clave) || !MenuCatalogo.HuellaVistaAnterior.Contains(clave))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

@@ -6,33 +6,33 @@ namespace Tronox.Application.Tests;
 /// <summary>
 /// Tests PUROS del arbol canonico del menu (MenuCatalogo), sin base de datos.
 ///
-/// Cubren el criterio de RF09 5.9.5.3 (validacion de anidamiento) sobre la SEMILLA misma: el arbol
-/// que se siembra en cada alta de tenant no puede contener una combinacion invalida (una Seccion
-/// dentro de un Item, un Subgrupo colgando de un Item...). Y cubren las exclusiones que fija el
-/// MAPA del vault: RQ16 sin menu propio, RQ14 y los portales externos fuera del menu interno.
+/// Cubren el criterio de RF09 5.9.5.3 (validacion de anidamiento) sobre la SEMILLA misma y la
+/// fidelidad con el PROTOTIPO unificado (Prototipo/assets/js/tronox-shell.js), que es la fuente de
+/// verdad de la navegacion del tenant: mismos grupos, mismos modulos (incluidas Capa IA y Console) y
+/// mismas pantallas.
 /// </summary>
 public sealed class MenuCatalogoTests
 {
     [Fact]
-    public void Catalogo_TieneLasSieteSeccionesDelMapa()
+    public void Catalogo_TieneLosSieteGruposDelPrototipo()
     {
         Assert.Equal(
             new[]
             {
-                "configuracion", "gestion-documental", "correspondencia",
-                "ciudadano-terceros", "procesos", "analitica", "sistema"
+                "configuracion", "gestion-documental", "gestion-tramite",
+                "ciudadano-terceros", "procesos-especializados", "inteligencia-analitica", "plataforma"
             },
             MenuCatalogo.Secciones.Select(s => s.Slug));
     }
 
     /// <summary>
     /// EL test de RF09 5.9.5.3 sobre la semilla: cada nodo del arbol canonico se valida contra las
-    /// reglas de anidamiento con el Kind de su padre real.
+    /// reglas de anidamiento con el Kind de su padre real. Incluye las sub-secciones anidadas
+    /// (Subgroup dentro de Subgroup) que introdujo la alineacion con el prototipo.
     /// </summary>
     [Fact]
     public void Catalogo_CumpleLasReglasDeAnidamientoDeRF09()
     {
-        // El enlace suelto de primer nivel no tiene padre.
         Assert.Null(MenuNodeKindRules.Validate(MenuNodeKind.QuickLink, null));
 
         foreach (var seccion in MenuCatalogo.Secciones)
@@ -47,15 +47,27 @@ public sealed class MenuCatalogoTests
 
             foreach (var grupo in seccion.Grupos)
             {
-                Assert.Null(MenuNodeKindRules.Validate(MenuNodeKind.Subgroup, MenuNodeKind.Section));
-                Assert.NotEmpty(grupo.Items);
-
-                foreach (var item in grupo.Items)
-                {
-                    Assert.Null(MenuNodeKindRules.Validate(MenuNodeKind.Item, MenuNodeKind.Subgroup));
-                    Assert.False(string.IsNullOrWhiteSpace(item.Ruta), $"Item sin ruta: {item.Nombre}");
-                }
+                ValidarGrupo(grupo, MenuNodeKind.Section);
             }
+        }
+    }
+
+    private static void ValidarGrupo(MenuCatalogo.GrupoSemilla grupo, MenuNodeKind padre)
+    {
+        Assert.Null(MenuNodeKindRules.Validate(MenuNodeKind.Subgroup, padre));
+        // Un grupo debe traer algo: items propios o sub-grupos.
+        Assert.True(grupo.Items.Count > 0 || (grupo.Subgrupos?.Count ?? 0) > 0,
+            $"Grupo vacio: {grupo.Nombre}");
+
+        foreach (var item in grupo.Items)
+        {
+            Assert.Null(MenuNodeKindRules.Validate(MenuNodeKind.Item, MenuNodeKind.Subgroup));
+            Assert.False(string.IsNullOrWhiteSpace(item.Ruta), $"Item sin ruta: {item.Nombre}");
+        }
+
+        foreach (var sub in grupo.Subgrupos ?? [])
+        {
+            ValidarGrupo(sub, MenuNodeKind.Subgroup);
         }
     }
 
@@ -80,69 +92,91 @@ public sealed class MenuCatalogoTests
     {
         var slugs = MenuCatalogo.Secciones
             .Select(s => s.Slug)
-            .Concat(MenuCatalogo.Secciones.SelectMany(s => s.Grupos).Select(g => g.Slug))
+            .Concat(MenuCatalogo.TodosLosGrupos().Select(g => g.Slug))
             .ToList();
 
         Assert.Equal(slugs.Count, slugs.Distinct(StringComparer.Ordinal).Count());
     }
 
     /// <summary>
-    /// El MAPA es explicito: la Capa IA "no tiene menu propio, se inserta en otros modulos". Su
-    /// unica presencia es el item de configuracion dentro de RQ01.
+    /// El slug de un grupo/seccion no puede colisionar con la ruta de un item: comparten el espacio
+    /// de claves de IconosPorRuta/NombresPorRuta y del reconciliador de vistas.
     /// </summary>
     [Fact]
-    public void RQ16_NoTieneSeccionNiGrupoPropio_SoloElItemDeConfiguracionEnRQ01()
+    public void Catalogo_LasClavesDeGrupoYDeItemNoColisionan()
     {
-        Assert.DoesNotContain(MenuCatalogo.Secciones.SelectMany(s => s.Grupos), g => g.CodigoRf == "RQ16");
-
-        var itemsIa = MenuCatalogo.Secciones
-            .SelectMany(s => s.Grupos)
-            .SelectMany(g => g.Items.Select(i => (Grupo: g, Item: i)))
-            .Where(x => x.Item.CodigoRf == "RQ16")
-            .ToList();
-
-        var unico = Assert.Single(itemsIa);
-        Assert.Equal("configuracion-general", unico.Grupo.Slug);
-    }
-
-    /// <summary>
-    /// RQ14 (TRONOX Console) es una aplicacion de plataforma con identidad propia, no un modulo del
-    /// tenant; los portales externos viven fuera del SGDEA interno. Ninguno entra en este arbol.
-    /// </summary>
-    [Fact]
-    public void Catalogo_NoIncluyeConsoleNiPortalesExternos()
-    {
-        var codigos = MenuCatalogo.Secciones
-            .SelectMany(s => s.Grupos)
-            .SelectMany(g => new[] { g.CodigoRf }.Concat(g.Items.Select(i => i.CodigoRf)))
-            .Concat(MenuCatalogo.Secciones.SelectMany(s => s.Items).Select(i => i.CodigoRf))
-            .ToList();
-
-        Assert.DoesNotContain("RQ14", codigos);
+        var slugs = MenuCatalogo.Secciones.Select(s => s.Slug)
+            .Concat(MenuCatalogo.TodosLosGrupos().Select(g => g.Slug))
+            .ToHashSet(StringComparer.Ordinal);
 
         foreach (var ruta in MenuCatalogo.RutasDeItem)
         {
-            Assert.DoesNotContain("console", ruta, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("verificador", ruta, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("sede-electronica", ruta, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(ruta, slugs);
         }
     }
 
     /// <summary>
-    /// El arbol tiene que traer modulos de verdad: es la precondicion de la matriz de permisos.
-    /// Un catalogo con secciones y sin items reproduce el defecto que este entregable corrige
-    /// (matriz vacia + fail-closed = tenant inusable).
+    /// El prototipo trae la Capa IA Transversal (RQ16) como MODULO propio bajo Inteligencia y
+    /// Analitica, no como un item suelto de configuracion. Se reproduce tal cual.
     /// </summary>
+    [Fact]
+    public void RQ16_EsUnModuloPropioDeInteligenciaYAnalitica()
+    {
+        var seccion = MenuCatalogo.Secciones.Single(s => s.Slug == "inteligencia-analitica");
+        var capaIa = Assert.Single(seccion.Grupos, g => g.CodigoRf == "RQ16");
+        Assert.Equal("req016", capaIa.Slug);
+        Assert.NotEmpty(capaIa.Items);
+    }
+
+    /// <summary>
+    /// El prototipo incluye la TRONOX Console (RQ14) bajo el grupo Plataforma: se reproduce (decision
+    /// del cliente de parquedad literal con el prototipo).
+    /// </summary>
+    [Fact]
+    public void Catalogo_IncluyeConsoleBajoPlataforma()
+    {
+        var plataforma = MenuCatalogo.Secciones.Single(s => s.Slug == "plataforma");
+        var console = Assert.Single(plataforma.Grupos, g => g.CodigoRf == "RQ14");
+        Assert.Equal("req014", console.Slug);
+        Assert.NotEmpty(console.Items);
+    }
+
+    /// <summary>REQ001 es un unico modulo con tres sub-secciones anidadas, como en el prototipo.</summary>
+    [Fact]
+    public void REQ001_EsUnModuloConTresSubSecciones()
+    {
+        var config = MenuCatalogo.Secciones.Single(s => s.Slug == "configuracion");
+        var req001 = Assert.Single(config.Grupos, g => g.Slug == "req001");
+
+        Assert.Empty(req001.Items); // no cuelga items directos: todo va en sub-secciones.
+        Assert.Equal(
+            new[] { "General", "Organizacional", "Sistema" },
+            (req001.Subgrupos ?? []).Select(g => g.Nombre));
+    }
+
+    /// <summary>
+    /// El estado del modulo (punto de color del sidebar) mapea el `estado` del prototipo, y NO todos
+    /// los modulos quedan en Ready: hay listos, en desarrollo y especificados.
+    /// </summary>
+    [Fact]
+    public void Catalogo_LosModulosTienenEstadosVariados()
+    {
+        var modulos = MenuCatalogo.Secciones.SelectMany(s => s.Grupos).ToList();
+        Assert.Contains(modulos, g => g.Estado == MenuNodeState.Ready);          // listo
+        Assert.Contains(modulos, g => g.Estado == MenuNodeState.InDevelopment);  // prototipo (req005)
+        Assert.Contains(modulos, g => g.Estado == MenuNodeState.Disabled);       // spec
+    }
+
+    /// <summary>El arbol trae modulos de verdad: es la precondicion de la matriz de permisos.</summary>
     [Fact]
     public void Catalogo_TraeModulosSuficientesParaLaMatriz()
     {
         Assert.True(MenuCatalogo.RutasDeItem.Count > 50,
             $"El arbol canonico solo trae {MenuCatalogo.RutasDeItem.Count} items.");
 
-        // TotalNodos = 1 quick-link + secciones + grupos + items.
         Assert.Equal(
             1 + MenuCatalogo.Secciones.Count
-              + MenuCatalogo.Secciones.Sum(s => s.Grupos.Count)
+              + MenuCatalogo.TotalSubgrupos
               + MenuCatalogo.RutasDeItem.Count,
             MenuCatalogo.TotalNodos);
     }
@@ -159,16 +193,7 @@ public sealed class MenuCatalogoTests
         }
     }
 
-    /// <summary>
-    /// NINGUN nodo del arbol canonico puede quedarse sin clave de icono.
-    ///
-    /// POR QUE ESTE TEST: los 93 items del catalogo nacieron sin icono y en el sidebar todas las
-    /// pantallas pintaban el mismo cuadrado generico, mientras el prototipo tiene un icono por
-    /// pantalla. Era el mayor delator visual del sistema. El compilador ya obliga a pasar el icono
-    /// (ItemSemilla.Icono no es opcional), pero no impide pasar "" ni un valor que no sea una clase
-    /// Bootstrap Icons. Esto ultimo es lo que se blinda aqui, para que la proxima pantalla que
-    /// alguien anada no vuelva a nacer sin icono.
-    /// </summary>
+    /// <summary>NINGUN nodo del arbol canonico puede quedarse sin clave de icono valida (bi-*).</summary>
     [Fact]
     public void Catalogo_NingunNodoSeQuedaSinIcono()
     {
@@ -176,7 +201,6 @@ public sealed class MenuCatalogoTests
 
         void Revisar(string que, string ruta, string? icono)
         {
-            // ADR-001: la clave de icono es una clase Bootstrap Icons (bi-*), nunca un SVG.
             if (string.IsNullOrWhiteSpace(icono)
                 || !icono.StartsWith("bi-", StringComparison.Ordinal)
                 || icono.Length <= 3
@@ -191,11 +215,11 @@ public sealed class MenuCatalogoTests
         foreach (var seccion in MenuCatalogo.Secciones)
         {
             Revisar("Seccion", seccion.Slug, seccion.Icono);
+        }
 
-            foreach (var grupo in seccion.Grupos)
-            {
-                Revisar("Grupo", grupo.Slug, grupo.Icono);
-            }
+        foreach (var grupo in MenuCatalogo.TodosLosGrupos())
+        {
+            Revisar("Grupo", grupo.Slug, grupo.Icono);
         }
 
         foreach (var item in MenuCatalogo.TodosLosItems())
@@ -208,12 +232,7 @@ public sealed class MenuCatalogoTests
             + string.Join(Environment.NewLine, sinIcono));
     }
 
-    /// <summary>
-    /// El mapa Ruta -> icono tiene que cubrir el arbol ENTERO: es lo que usa
-    /// MenuProvisioningService.BackfillIconKeysAsync para rellenar el icono de los tenants que ya
-    /// nacieron sin el. Si una ruta no estuviera en el mapa, ese nodo se quedaria con el cuadrado
-    /// generico para siempre.
-    /// </summary>
+    /// <summary>El mapa Ruta -> icono cubre el arbol ENTERO (lo usa BackfillIconKeysAsync).</summary>
     [Fact]
     public void Catalogo_ElMapaDeIconosCubreTodoElArbol()
     {
