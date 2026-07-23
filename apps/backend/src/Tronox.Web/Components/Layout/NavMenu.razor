@@ -23,33 +23,30 @@
             }
         </div>
         <div>
-            @if (string.IsNullOrWhiteSpace(_brandName) || _brandName == "TRONOX.tareas")
+            @if (string.IsNullOrWhiteSpace(_brandName) || _brandName == "TRONOX SGDEA")
             {
-                <div class="tronox-brand-name">TRONOX<span>.tareas</span></div>
+                <div class="tronox-brand-name">TRONOX<span> SGDEA</span></div>
             }
             else
             {
                 <div class="tronox-brand-name">@_brandName</div>
             }
-            <div class="tronox-brand-sub">@(_brandTagline ?? "Sistema de Tareas")</div>
+            <div class="tronox-brand-sub">@(_brandTagline ?? "Gestion Documental")</div>
         </div>
     </div>
 }
 else
 {
-    @* Cabecera del workspace (fuente TRONOX.dc.html): tile 36px radio 11 con fondo
-       var(--ink) + inicial, nombre 14.5/700 y "{plan} (punto medio) TRONOX" (el nombre del plan
-       ya trae la palabra "Plan"; separador punto medio como el prototipo). *@
-    <div class="tronox-ws-head">
-        <div class="tronox-ws-row" title="@(_tenantName ?? "Mi empresa")">
-            <div class="tronox-tenant-tile">@TenantInitial</div>
-            <div style="flex:1;min-width:0;">
-                <div class="tronox-tenant-name">@(_tenantName ?? "Mi empresa")</div>
-                <div class="tronox-tenant-sub">@(_planName is null ? "TRONOX Sistema de Tareas" : $"{_planName} \u00b7 TRONOX")</div>
-            </div>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
-        </div>
-    </div>
+    @* Cabecera del sidebar del workspace: logo TRONOX + "SGDEA" (prototipo .sidebar-logo).
+       El nombre del tenant ya NO va aqui: se movio al chip del pie (prototipo .sidebar-tenant),
+       igual que en la referencia. *@
+    <a class="tx-sb-logo" href="inicio">
+        <span class="tx-sb-logo-mark"><img src="marca/tronox-icon.png" alt="TRONOX" /></span>
+        <span class="tx-sb-logo-text">
+            <span class="tx-sb-logo-word">TRONOX</span>
+            <span class="tx-sb-logo-sub">SGDEA</span>
+        </span>
+    </a>
 }
 
 @* Buscador global del prototipo (Cmd/Ctrl+K). Placeholder: se activa junto con el contenido real. *@
@@ -63,144 +60,94 @@ else
 {
     <div class="tronox-agency">
         <div class="lbl">Plataforma</div>
-        <div class="name">TRONOX.tareas</div>
+        <div class="name">TRONOX SGDEA</div>
         <div class="meta">Consola de gobierno</div>
     </div>
 }
 
-<nav class="tronox-nav">
+<nav class="tronox-nav tx-sb-nav">
     @if (_showTenant && _menu is not null)
     {
         @* ===== Menu DATA-DRIVEN (Ola 1 del menu por perfil): el arbol resuelto viene de
                IMenuConfigService.GetMenuForTenantUserAsync segun la vista del usuario (o la
-               IsDefault). El LOOK es identico al del prototipo: quick-links, label "Modulos",
-               secciones acordeon con icono/contador/chevron, items con codigo legacy y el
-               subgrupo anidado. data-acc = slug del nodo (Route) para persistir apertura. ===== *@
+               IsDefault). Se filtra por permiso de "Ver" antes de llegar aqui.
+
+               JERARQUIA VISUAL DEL PROTOTIPO (aplanada):
+                 Seccion  -> encabezado de grupo NO colapsable (.tx-menu-section, eyebrow gris).
+                 Modulo   -> item DIRECTAMENTE visible bajo la seccion. Con hijos = disclosure
+                             (.tx-menu-mod, <details> con chevron + punto de estado); sin hijos =
+                             enlace hoja (.tx-menu-link con icono). Los tres tipos de nodo del
+                             modelo (Seccion/Subgrupo/Item) se conservan; solo cambia como se pinta.
+                 Pantalla -> subitem bajo el modulo (.tx-menu-sub-link).
+               data-acc = slug del nodo (Route) para persistir apertura del modulo. ===== *@
         @foreach (var quick in _menu.Roots.Where(n => n.Kind == MenuNodeKind.QuickLink))
         {
-            <NavLink class="tronox-nav-link" href="@quick.Route">
-                @MenuIcons.Render(quick.IconKey)
-                <span>@quick.Name</span>
-                @if (string.Equals(quick.Route, "anuncios", StringComparison.Ordinal))
-                {
-                    @* Placeholder del contador de no leidos: se conecta cuando exista el modulo. *@
-                    <span class="tronox-nav-badge" title="Anuncios sin leer (placeholder)">0</span>
-                }
-            </NavLink>
+            <div class="tx-menu-item">
+                <NavLink class="tx-menu-link" href="@quick.Route" Match="@(quick.Route == "inicio" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                    <span class="tx-menu-icon">@MenuIcons.Render(quick.IconKey)</span>
+                    <span class="tx-menu-title">@quick.Name</span>
+                    @if (string.Equals(quick.Route, "anuncios", StringComparison.Ordinal))
+                    {
+                        <span class="tx-menu-badge" title="Anuncios sin leer (placeholder)">0</span>
+                    }
+                </NavLink>
+            </div>
         }
-
-        <div class="tronox-nav-label">Modulos</div>
 
         @foreach (var section in _menu.Roots.Where(n => n.Kind == MenuNodeKind.Section))
         {
-            var slug = section.Route ?? section.Id.ToString();
-            <details class="tronox-acc @SectionTone(slug)" data-acc="@slug" open="@IsGroupOpen(slug)">
-                <summary>
-                    <span class="tronox-acc-ico">@MenuIcons.Render(section.IconKey)</span>
-                    <span class="tronox-acc-name">@section.Name</span>
-                    @if (section.IsProcessGroup)
-                    {
-                        <span title="Este grupo despliega los procesos (actividades tipo proceso)" style="margin-left:6px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:1px 6px;border-radius:999px;background:rgba(124,92,255,.16);color:#7c5cff;">procesos</span>
-                    }
-                    <span class="tronox-acc-count">@section.VisibleChildCount</span>
-                    <svg class="tronox-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </summary>
-                <div class="tronox-acc-body">
-                    @* Ola 4: grupo dinamico "Mis Procesos" -> categoria -> subcategoria (proceso,
-                       con flujo) desde el catalogo de Conceptos. Click abre el wizard con la
-                       categoria/subcategoria fijadas (crear-actividad?sub=). *@
-                    @if (section.IsProcessGroup)
-                    {
-                        @* Las categorias-proceso dinamicas van agrupadas bajo un nodo "Procesos". *@
-                        <details class="tronox-acc-sub" data-acc="grp-procesos" open="@IsGroupOpen("grp-procesos")">
-                            <summary>
-                                <span class="tronox-acc-name">Procesos</span>
-                                <span class="tronox-acc-count">@_procesoCats.Count</span>
-                                <svg class="tronox-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                            </summary>
-                            <div class="tronox-acc-sub-body">
-                                @foreach (var pc in _procesoCats)
-                                {
-                                    <details class="tronox-acc-sub" data-acc="@pc.Slug" open="@IsGroupOpen(pc.Slug)">
-                                        <summary>
-                                            <span class="tronox-acc-name">@pc.Nombre</span>
-                                            <span class="tronox-acc-count">@pc.Subs.Count</span>
-                                            <svg class="tronox-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                                        </summary>
-                                        <div class="tronox-acc-sub-body">
-                                            @foreach (var s in pc.Subs)
-                                            {
-                                                <NavLink class="tronox-acc-item" href="@($"actividades?sub={s.Id}")">
-                                                    <span class="lbl">@s.Nombre</span>
-                                                    @if (!s.Publicado)
-                                                    {
-                                                        @* Ola C1 (D3): el flujo del concepto aun esta en borrador. Se
-                                                           muestra igual (se avisa, no se oculta); el chip lo advierte. *@
-                                                        <span class="code" title="El flujo de este proceso aun no esta publicado" style="background:var(--t-amber-bg, rgba(245,158,11,.16));color:var(--t-amber, #f59e0b)">borrador</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="code" title="Actividad tipo proceso">proc</span>
-                                                    }
-                                                </NavLink>
-                                            }
-                                        </div>
-                                    </details>
-                                }
-                                @if (_procesoCats.Count == 0)
-                                {
-                                    <div style="padding:8px 12px;font-size:11.5px;color:var(--ink-3)">Sin actividades tipo proceso. Vincula un flujo a una subcategoria en Conceptos.</div>
-                                }
-                            </div>
-                        </details>
-                    }
+            <div class="tx-menu-group">
+                @* Seccion = encabezado de grupo, no colapsable (eyebrow del prototipo). *@
+                <div class="tx-menu-section">@section.Name</div>
+                <div class="tx-menu-groupitems">
                     @foreach (var child in section.Children)
                     {
                         if (child.Kind == MenuNodeKind.Subgroup)
                         {
+                            @* Modulo con pantallas: disclosure visible bajo la seccion. Abre solo
+                               si contiene la ruta activa; el toggle del usuario se persiste. *@
                             var subSlug = child.Route ?? child.Id.ToString();
-                            <details class="tronox-acc-sub" data-acc="@subSlug" open="@IsGroupOpen(subSlug)">
-                                <summary>
-                                    <span class="tronox-acc-ico">@MenuIcons.Render(child.IconKey)</span>
-                                    <span class="tronox-acc-name">@child.Name</span>
-                                    @if (!string.IsNullOrWhiteSpace(child.LegacyCode))
-                                    {
-                                        @* Codigo del requerimiento del modulo (prototipo: mod.req). *@
-                                        <span class="menu-rf menu-rf-mod" title="@child.LegacyCode">@child.LegacyCode</span>
-                                    }
-                                    <span class="tronox-acc-count">@child.VisibleChildCount</span>
-                                    <svg class="tronox-acc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            <details class="tx-menu-item tx-menu-mod" data-acc="@subSlug" open="@IsGroupOpen(subSlug)">
+                                @* Prototipo: la fila del modulo es caret + nombre + punto de estado.
+                                   El codigo REQ/RF solo se rotula en las pantallas (menu-sub-link),
+                                   no en el modulo: meterlo aqui recortaba los nombres largos. *@
+                                <summary class="tx-menu-modtoggle" title="@child.Name">
+                                    <svg class="tx-menu-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                    <span class="tx-menu-title">@child.Name</span>
+                                    <span class="tx-menu-state @StateDot(child.State)" title="@StateTitle(child.State)"></span>
                                 </summary>
-                                <div class="tronox-acc-sub-body">
-                                    @foreach (var leaf in child.Children.Where(n => n.Kind == MenuNodeKind.Item))
-                                    {
-                                        <NavLink class="tronox-acc-item" href="@leaf.Route">
-                                            <span class="tronox-acc-ico">@MenuIcons.Render(leaf.IconKey)</span>
-                                            <span class="lbl">@leaf.Name</span>
-                                            @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
-                                            {
-                                                @* Badge de codigo del prototipo (.menu-rf en tronox-shell.js). *@
-                                                <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
-                                            }
-                                        </NavLink>
-                                    }
+                                <div class="tx-menu-modscreens">
+                                    <div class="tx-menu-sub">
+                                        @foreach (var leaf in child.Children.Where(n => n.Kind == MenuNodeKind.Item))
+                                        {
+                                            <NavLink class="tx-menu-sub-link" href="@leaf.Route">
+                                                @MenuIcons.Render(leaf.IconKey)
+                                                <span class="msl-label">@leaf.Name</span>
+                                                @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
+                                                {
+                                                    <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
+                                                }
+                                            </NavLink>
+                                        }
+                                    </div>
                                 </div>
                             </details>
                         }
                         else
                         {
-                            <NavLink class="tronox-acc-item" href="@child.Route">
-                                <span class="tronox-acc-ico">@MenuIcons.Render(child.IconKey)</span>
-                                <span class="lbl">@child.Name</span>
-                                @if (!string.IsNullOrWhiteSpace(child.LegacyCode))
-                                {
-                                    <span class="menu-rf" title="@child.LegacyCode">@child.LegacyCode</span>
-                                }
-                            </NavLink>
+                            @* Modulo sin pantallas (item suelto de la seccion): enlace hoja con
+                               icono (prototipo .menu-link) + punto de estado. *@
+                            <div class="tx-menu-item">
+                                <NavLink class="tx-menu-link" href="@child.Route">
+                                    <span class="tx-menu-icon">@MenuIcons.Render(child.IconKey)</span>
+                                    <span class="tx-menu-title">@child.Name</span>
+                                    <span class="tx-menu-state @StateDot(child.State)" title="@StateTitle(child.State)"></span>
+                                </NavLink>
+                            </div>
                         }
                     }
                 </div>
-            </details>
+            </div>
         }
     }
 
@@ -273,17 +220,30 @@ else
     }
 </nav>
 
-<div class="tronox-user">
-    @* El color AVPAL del prototipo solo aplica al workspace; el admin conserva su avatar dorado. *@
-    <div class="tronox-avatar" style="@(_showAdmin ? null : $"background:{AvatarBg}")">@_avatar</div>
-    <div style="min-width:0;">
-        <div class="nm">@(_userName ?? "Usuario")</div>
-        <div class="rl">@_roleLabel</div>
+@if (_showAdmin)
+{
+    <div class="tronox-user">
+        <div class="tronox-avatar">@_avatar</div>
+        <div style="min-width:0;">
+            <div class="nm">@(_userName ?? "Usuario")</div>
+            <div class="rl">@_roleLabel</div>
+        </div>
     </div>
-    @* El antiguo toggle claro/oscuro (clase html.dark del backbone) lo sustituye el
-       selector de paletas del prototipo: un boton flotante con las 5 opciones, de las
-       cuales dos (Deep Dark y Aurora Dark) son los temas oscuros. Ver js/tronox-theme.js. *@
-</div>
+}
+else
+{
+    @* Pie del sidebar: chip del tenant (prototipo .sidebar-tenant). Sustituye a la ficha de
+       usuario del backbone; la identidad del funcionario vive en la barra superior. *@
+    <div class="tx-sb-tenant">
+        <div class="tx-tenant-badge" title="@(_tenantName ?? "Mi empresa")">
+            <div class="tx-tenant-logo">@TenantInitial</div>
+            <div style="flex:1;min-width:0;">
+                <div class="tx-tenant-name">@(_tenantName ?? "Mi empresa")</div>
+                <div class="tx-tenant-plan">@(_planName ?? "Plan Institucional")</div>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -427,13 +387,29 @@ else
         catch { /* sin menu configurado: el bloque tenant no renderiza (fallback seguro) */ }
     }
 
-    /// <summary>Arbol dinamico de "Mis Procesos" (Ola 4): categorias con sus subcategorias tipo proceso.</summary>
-    private List<ProcesoCat> _procesoCats = new();
-    private sealed record ProcesoCat(string Nombre, string Slug, List<ProcesoSub> Subs);
-    private sealed record ProcesoSub(long Id, string Nombre, bool Publicado);
-
-    /// <summary>Inicial del tenant para el tile cuadrado del header (prototipo: "S" de SKY SYSTEM).</summary>
+    /// <summary>Inicial del tenant para el chip del pie (prototipo: "S" de SKY SYSTEM).</summary>
     private string TenantInitial => string.IsNullOrWhiteSpace(_tenantName) ? "E" : _tenantName.Trim()[..1].ToUpperInvariant();
+
+    /// <summary>
+    /// Punto de estado por modulo (prototipo .menu-state: verde=listo, ambar=prototipo, gris=spec).
+    /// Se mapea al estado REAL del nodo (menu_nodes.state) para que signifique algo, en vez de pintar
+    /// N puntos verdes iguales: Ready->listo, InDevelopment->prototipo, Disabled->spec. La semilla
+    /// actual nace toda en Ready, asi que hoy salen verdes; el punto cobra sentido cuando el editor
+    /// del menu (RF09) marque modulos en desarrollo o deshabilitados.
+    /// </summary>
+    private static string StateDot(MenuNodeState state) => state switch
+    {
+        MenuNodeState.InDevelopment => "prototipo",
+        MenuNodeState.Disabled => "spec",
+        _ => "listo",
+    };
+
+    private static string StateTitle(MenuNodeState state) => state switch
+    {
+        MenuNodeState.InDevelopment => "En desarrollo",
+        MenuNodeState.Disabled => "Deshabilitado",
+        _ => "Listo",
+    };
 
     /// <summary>
     /// Estado inicial (server-side) de cada acordeon de MODULOS: abierto SOLO si contiene la
@@ -491,32 +467,6 @@ else
             {
                 yield return deeper;
             }
-        }
-    }
-
-    // Tono cromatico del acordeon por slug (clases del prototipo: tv/tr/tb/ts). Mismo mapa que el
-    // fuente TRONOX.dc.html; los slugs desconocidos caen a "ts" (neutro).
-    private static string SectionTone(string slug) => slug switch
-    {
-        "misproc" => "tv",
-        "nego" => "tr",
-        "auto" or "ia" => "tb",
-        _ => "ts",
-    };
-
-    // Paleta AVPAL del prototipo (avatares con color solido mate): (char0 + char1) % 8.
-    private static readonly string[] AvatarPalette =
-    [
-        "#E0876B", "#7E78E6", "#3FA39B", "#5B8DEF", "#C77FD0", "#D9A441", "#5FAE6E", "#E07A9B"
-    ];
-
-    private string AvatarBg
-    {
-        get
-        {
-            if (string.IsNullOrEmpty(_avatar)) { return AvatarPalette[0]; }
-            var sum = _avatar[0] + (_avatar.Length > 1 ? _avatar[1] : 0);
-            return AvatarPalette[sum % AvatarPalette.Length];
         }
     }
 

@@ -8,8 +8,8 @@ namespace Tronox.Domain.Entities;
 /// </summary>
 public class PlatformBranding : BaseEntity
 {
-    /// <summary>Nombre visible de la plataforma (ej. "TRONOX.tareas").</summary>
-    public string PlatformName { get; set; } = "TRONOX.tareas";
+    /// <summary>Nombre visible de la plataforma (ej. "TRONOX SGDEA").</summary>
+    public string PlatformName { get; set; } = "TRONOX SGDEA";
 
     /// <summary>Bajada corta bajo el nombre (ej. "CRM Conversacional").</summary>
     public string? Tagline { get; set; }

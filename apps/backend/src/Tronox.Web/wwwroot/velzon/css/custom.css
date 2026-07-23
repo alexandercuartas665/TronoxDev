@@ -954,3 +954,192 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
 .tp-opt .tp-name small { display: block; font-size: 10.5px; font-weight: 500; color: var(--tx-text-500); }
 .tp-opt .tp-check { font-size: 14px; color: var(--tx-primary); opacity: 0; }
 .tp-opt.active .tp-check { opacity: 1; }
+
+/* =========================================================================
+   SIDEBAR APLANADO (prototipo: assets/css/tronox.css, bloque SIDEBAR).
+   Portado 1:1 desde la referencia: seccion = eyebrow NO colapsable, modulo =
+   item directamente visible (disclosure con punto de estado), pantalla =
+   subitem. Todo bajo .tronox-sidebar para NO colisionar con las clases
+   .menu-link / .menu-title de Velzon (app.min.css) ni con .tronox-acc de la
+   hoja heredada (app.css). Colores desde los tokens --tx-* (los reviste cada
+   uno de los 5 temas), asi el conmutador de paletas sigue funcionando.
+   ========================================================================= */
+
+/* --- Cabecera: logo TRONOX + SGDEA (prototipo .sidebar-logo). --- */
+.tronox-sidebar .tx-sb-logo {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 20px;
+  height: var(--tx-topbar-height);
+  border-bottom: 1px solid var(--tx-border);
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.tronox-sidebar .tx-sb-logo-mark {
+  width: 38px; height: 38px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.tronox-sidebar .tx-sb-logo-mark img { width: 100%; height: 100%; object-fit: contain; }
+.tronox-sidebar .tx-sb-logo-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tronox-sidebar .tx-sb-logo-word {
+  font-size: 18px; font-weight: 800; letter-spacing: .5px; line-height: 1;
+  color: var(--tx-text-900);
+}
+.tronox-sidebar .tx-sb-logo-sub {
+  font-size: 10px; letter-spacing: 1.5px; line-height: 1;
+  color: var(--tx-text-500);
+}
+
+/* --- El <nav> es la columna con scroll (ya lo hace .tronox-nav en app.css). --- */
+.tronox-sidebar .tx-sb-nav { padding: 8px 12px 16px; }
+
+/* --- Quick-link (Inicio) y modulo sin pantallas: enlace hoja con icono. --- */
+.tronox-sidebar .tx-menu-item { padding: 1px 0; }
+
+.tronox-sidebar .tx-menu-link {
+  position: relative;
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 12px;
+  border-radius: var(--tx-radius);
+  color: var(--tx-text-700);
+  text-decoration: none; font-size: 13px; font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.tronox-sidebar .tx-menu-link::before {
+  content: ""; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 0; border-radius: 0 3px 3px 0;
+  background: var(--tx-primary); transition: height .18s ease;
+}
+.tronox-sidebar .tx-menu-link:hover {
+  background: var(--tx-menu-active-bg); color: var(--tx-menu-active-color);
+}
+.tronox-sidebar .tx-menu-link.active {
+  background: var(--tx-menu-active-bg); color: var(--tx-menu-active-color); font-weight: 600;
+}
+.tronox-sidebar .tx-menu-link.active::before { height: 22px; }
+
+.tronox-sidebar .tx-menu-icon {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--tx-input-bg);
+  color: var(--tx-text-600);
+  transition: background .15s, color .15s;
+}
+.tronox-sidebar .tx-menu-icon .tronox-mi { width: 16px; height: 16px; font-size: 15px; opacity: 1; }
+.tronox-sidebar .tx-menu-link:hover .tx-menu-icon { color: var(--tx-menu-active-color); }
+.tronox-sidebar .tx-menu-link.active .tx-menu-icon { background: var(--tx-primary); color: #fff; }
+
+.tronox-sidebar .tx-menu-title {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tronox-sidebar .tx-menu-badge {
+  font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 7px;
+  background: var(--tx-primary-light); color: var(--tx-primary);
+}
+
+/* --- Seccion = encabezado de grupo, NO colapsable (eyebrow gris del prototipo). --- */
+.tronox-sidebar .tx-menu-group { margin-top: 2px; }
+.tronox-sidebar .tx-menu-section {
+  padding: 16px 12px 6px;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.3px;
+  color: var(--tx-text-400);
+  white-space: nowrap;
+}
+
+/* --- Modulo con pantallas: disclosure (details) directamente visible. --- */
+.tronox-sidebar .tx-menu-mod { margin: 0; }
+.tronox-sidebar .tx-menu-modtoggle {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 12px;
+  border-radius: var(--tx-radius);
+  color: var(--tx-text-700);
+  font-size: 12.5px; font-weight: 500;
+  cursor: pointer; list-style: none;
+  transition: background .15s, color .15s;
+}
+.tronox-sidebar .tx-menu-modtoggle::-webkit-details-marker { display: none; }
+.tronox-sidebar .tx-menu-modtoggle::marker { content: ""; }
+.tronox-sidebar .tx-menu-modtoggle:hover { background: var(--tx-hover-bg); color: var(--tx-menu-active-color); }
+.tronox-sidebar .tx-menu-caret {
+  width: 11px; height: 11px; flex-shrink: 0;
+  color: var(--tx-text-500);
+  transform: rotate(-90deg); transition: transform .18s ease;
+}
+.tronox-sidebar .tx-menu-mod[open] > .tx-menu-modtoggle .tx-menu-caret { transform: rotate(0deg); }
+.tronox-sidebar .tx-menu-mod[open] > .tx-menu-modtoggle { color: var(--tx-text-900); font-weight: 600; }
+
+/* Punto de estado a la derecha del modulo (verde/ambar/gris). */
+.tronox-sidebar .tx-menu-state {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; opacity: .9;
+  background: var(--tx-text-300);
+}
+.tronox-sidebar .tx-menu-state.listo { background: var(--tx-success); }
+.tronox-sidebar .tx-menu-state.prototipo { background: var(--tx-warning); }
+.tronox-sidebar .tx-menu-state.spec { background: var(--tx-text-300); }
+
+/* --- Pantalla = subitem bajo el modulo (.menu-sub-link del prototipo). --- */
+.tronox-sidebar .tx-menu-sub { margin: 1px 0 6px; }
+.tronox-sidebar .tx-menu-sub-link {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 12px 6px 40px;
+  border-radius: var(--tx-radius);
+  color: var(--tx-text-600);
+  text-decoration: none; font-size: 12px; font-weight: 500;
+  transition: background .15s, color .15s;
+}
+.tronox-sidebar .tx-menu-sub-link:hover { background: var(--tx-hover-bg); color: var(--tx-menu-active-color); }
+.tronox-sidebar .tx-menu-sub-link.active { color: var(--tx-menu-active-color); font-weight: 600; }
+.tronox-sidebar .tx-menu-sub-link .tronox-mi { width: 16px; height: 16px; font-size: 13.5px; opacity: .75; flex-shrink: 0; }
+.tronox-sidebar .tx-menu-sub-link.active .tronox-mi { opacity: 1; }
+.tronox-sidebar .tx-menu-sub-link .msl-label {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tronox-sidebar .tx-menu-sub-link .menu-rf {
+  flex-shrink: 0;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .2px; line-height: 1.5;
+  color: var(--tx-text-400); background: var(--tx-input-bg);
+  padding: 1px 5px; border-radius: 4px;
+}
+.tronox-sidebar .tx-menu-sub-link.active .menu-rf { color: var(--tx-primary); background: var(--tx-primary-light); }
+
+/* Codigo REQ del modulo (junto al punto de estado). */
+.tronox-sidebar .tx-menu-modtoggle .menu-rf,
+.tronox-sidebar .tx-menu-link .menu-rf {
+  flex-shrink: 0;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .2px; line-height: 1.5;
+  color: var(--tx-text-400); background: var(--tx-input-bg);
+  padding: 1px 5px; border-radius: 4px;
+}
+
+/* --- Pie: chip del tenant (prototipo .sidebar-tenant). --- */
+.tronox-sidebar .tx-sb-tenant {
+  padding: 12px 14px;
+  border-top: 1px solid var(--tx-border);
+  flex-shrink: 0;
+}
+.tronox-sidebar .tx-tenant-badge {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--tx-radius);
+  background: var(--tx-input-bg);
+  border: 1px solid var(--tx-border);
+}
+.tronox-sidebar .tx-tenant-logo {
+  width: 30px; height: 30px; flex-shrink: 0;
+  border-radius: var(--tx-radius-sm);
+  background: var(--tx-primary-light); color: var(--tx-primary);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12px;
+}
+.tronox-sidebar .tx-tenant-name {
+  font-size: 12.5px; font-weight: 700; color: var(--tx-text-900);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tronox-sidebar .tx-tenant-plan {
+  font-size: 10.5px; color: var(--tx-text-500);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}

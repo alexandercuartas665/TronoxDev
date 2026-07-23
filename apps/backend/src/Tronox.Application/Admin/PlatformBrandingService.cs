@@ -14,8 +14,8 @@ public sealed record PlatformBrandingDto(
 {
     /// <summary>Valores por defecto cuando aun no se ha configurado la marca.</summary>
     public static PlatformBrandingDto Default => new(
-        "TRONOX.tareas",
-        "Sistema de Tareas",
+        "TRONOX SGDEA",
+        "Gestion Documental",
         null,
         "Organiza tu operacion",
         "Gestiona tareas, proyectos, flujos BPMN, formularios y reglas configurables sin codigo, todo en un solo lugar.");
@@ -58,7 +58,7 @@ public sealed class PlatformBrandingService : IPlatformBrandingService
 
     public async Task SaveAsync(SaveBrandingRequest request, long actorUserId, CancellationToken cancellationToken = default)
     {
-        var name = string.IsNullOrWhiteSpace(request.PlatformName) ? "TRONOX.tareas" : request.PlatformName.Trim();
+        var name = string.IsNullOrWhiteSpace(request.PlatformName) ? "TRONOX SGDEA" : request.PlatformName.Trim();
 
         var row = await _db.PlatformBrandings.FirstOrDefaultAsync(cancellationToken);
         if (row is null)

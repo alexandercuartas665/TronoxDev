@@ -25,7 +25,7 @@
             <label for="tronox-nav-toggle" class="tronox-hamburger" aria-label="Abrir menu">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
             </label>
-            <span class="tronox-topbar-brand">TRONOX<span>.tareas</span></span>
+            <span class="tronox-topbar-brand">TRONOX<span> SGDEA</span></span>
 
             <AuthorizeView>
                 <Authorized>
@@ -37,20 +37,14 @@
                                 onclick="window.tronoxSidebar && window.tronoxSidebar.toggle()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
                         </button>
-                        @* Breadcrumb del prototipo: Equipos / {tenant} / {seccion}. *@
+                        @* Migas del dominio TRONOX: {tenant} / {seccion}. Se retiro "Equipos"
+                           (vocabulario de ECOREX, no del SGDEA). *@
                         <nav class="tronox-topbar-crumb" aria-label="Ubicacion">
-                            <span>Equipos</span>
-                            <span class="sep">/</span>
                             <span>@(_tenantName ?? "Mi empresa")</span>
                             <span class="sep">/</span>
                             <span class="cur">@SectionLabel</span>
                         </nav>
                         <span style="flex:1;"></span>
-                        @* Boton Compartir del prototipo: placeholder deshabilitado hasta que exista la funcion. *@
-                        <button type="button" class="tronox-share" title="Proximamente" disabled>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5"/></svg>
-                            Compartir
-                        </button>
                         <NavLink class="tronox-bell" href="notificaciones" title="Notificaciones">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
                             @if (_unread > 0)
@@ -105,7 +99,7 @@
     // Cierra el menu movil al tocar un enlace de navegacion (complementa el cierre por overlay
     // y el reseteo en navegaciones de pagina completa).
     document.addEventListener('click', function (e) {
-        if (e.target.closest && e.target.closest('.tronox-nav-link, .tronox-acc-item')) {
+        if (e.target.closest && e.target.closest('.tronox-nav-link, .tronox-acc-item, .tx-menu-link, .tx-menu-sub-link')) {
             var t = document.getElementById('tronox-nav-toggle');
             if (t) t.checked = false;
         }
