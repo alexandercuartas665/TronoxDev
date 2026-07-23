@@ -1,0 +1,63 @@
+# Stack de PRODUCCION de TRONOX SGDEA en el host compartido 10.0.0.3 (vmi3330253).
+#
+# Convive con Visal, ECOREX, DokTrino, n8n, vaultwarden, cotizador, bookstack y otros.
+# REGLAS para no chocar con los vecinos (igual que hacen Visal/ECOREX/DokTrino):
+#   - Proyecto Compose propio: se levanta con  docker compose -p tronox ...  (o el top-level name).
+#   - Contenedores con nombre propio: tronox-app, tronox-postgres-prod.
+#   - Postgres INTERNO: sin 'ports:' publicado (solo la red interna del stack).
+#   - La app publica UN solo puerto: 5680 (patron 5380 Visal / 5480 ECOREX / 5580 DokTrino).
+#   - Volumen propio con prefijo del proyecto: tronox_pgdata.
+#
+# El Caddy externo (en otra maquina) termina TLS y hace reverse_proxy a http://10.0.0.3:5680.
+#
+# Solo se despliega Postgres + app: los modulos que usan MinIO/Redis/RabbitMQ aun no existen.
+# Se agregan a este compose cuando esos modulos se construyan.
+
+name: tronox
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tronox-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - tronox_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - tronox-net
+    # SIN 'ports:' -> Postgres queda solo en la red interna, como Visal/ECOREX.
+
+  app:
+    image: tronox-web:prod
+    container_name: tronox-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # La app escucha en 8080 dentro del contenedor (ASPNETCORE_URLS ya viene en la imagen).
+      TRONOX_DB_CONNECTION: "Host=tronox-postgres-prod;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      # Aplica migraciones pendientes al arrancar. Idempotente: si no hay pendientes, no hace nada.
+      TRONOX_RUN_MIGRATIONS: "true"
+    ports:
+      - "5680:8080"
+    networks:
+      - tronox-net
+
+volumes:
+  tronox_pgdata:
+
+networks:
+  tronox-net:
+    name: tronox-net-prod
+    driver: bridge
