@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+tests/
+*.user
+
+# NUNCA meter overrides locales de configuracion en la imagen: contienen la cadena
+# de conexion de DESARROLLO y Program.cs los carga incondicionalmente. Si viajan a la
+# imagen, la app de produccion intentaria conectar a la BD de dev (localhost:5443).
+**/appsettings.*.local.json
