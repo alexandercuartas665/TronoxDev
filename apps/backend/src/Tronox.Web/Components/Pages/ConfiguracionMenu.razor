@@ -192,8 +192,9 @@ else
                                 <MenuIconPicker @bind-Value="_pIconKey" />
                             </div>
                             <div class="field">
-                                <label class="form-label">Codigo (legacy)</label>
-                                <input class="form-control" @bind="_pLegacyCode" maxlength="40" placeholder="Ej. 000636" />
+                                <label class="form-label">Código RF</label>
+                                <input class="form-control" @bind="_pLegacyCode" maxlength="40" placeholder="Ej. RF01" />
+                                <small class="text-muted">Badge de trazabilidad a la spec del módulo (ADR-001). No participa en los permisos: esos dependen solo de la ruta.</small>
                             </div>
                             @if (_selected.Kind is MenuNodeKind.Item or MenuNodeKind.QuickLink)
                             {
