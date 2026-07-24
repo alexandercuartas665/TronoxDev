@@ -1,10 +1,25 @@
 @page "/"
-@attribute [Authorize(Policy = "PlatformOperator")]
+@attribute [Authorize]
 @inject ITenantAdminService TenantsSvc
 @inject IPlanAdminService PlansSvc
+@inject NavigationManager Nav
+
+@* RAIZ DEL SISTEMA. Antes exigia la policy PlatformOperator (claim platform_role), asi que un
+   usuario de tenant que llegara a "/" no pasaba la autorizacion y Routes.razor lo mandaba al
+   login: seguia autenticado, pero parecia que se le cerraba la sesion.
+
+   Ahora "/" solo exige ESTAR AUTENTICADO y reparte por rol:
+     - operador de plataforma (platform_role) -> esta consola de gobierno;
+     - usuario de tenant (tenant_id)          -> /inicio, el panel de su workspace;
+     - autenticado sin ninguno de los dos     -> /acceso-denegado (fail-closed: no se le inventa
+       un destino ni se le concede la consola).
+
+   El super administrador no pierde nada: sigue teniendo platform_role, asi que ve este panel. *@
 
 <PageTitle>Dashboard - TRONOX SGDEA</PageTitle>
 
+@if (_isPlatformOperator)
+{
 <div class="module-head">
     <div>
         <div class="module-eyebrow">
@@ -59,15 +74,36 @@ else
         </div>
     </div>
 }
+}
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private bool _loading = true;
+    private bool _isPlatformOperator;
     private int _totalTenants;
     private int _activeTenants;
     private int _totalPlans;
 
     protected override async Task OnInitializedAsync()
     {
+        if (AuthState is null)
+        {
+            return;
+        }
+        var state = await AuthState;
+        _isPlatformOperator = state.User.FindFirst("platform_role") is not null;
+
+        if (!_isPlatformOperator)
+        {
+            // Usuario de tenant -> su panel. Autenticado sin tenant ni rol de plataforma ->
+            // acceso denegado (fail-closed): no se le abre la consola de gobierno "por si acaso".
+            var destino = state.User.FindFirst("tenant_id") is not null ? "inicio" : "acceso-denegado";
+            Nav.NavigateTo(destino, replace: true);
+            return;
+        }
+
+        // Solo el operador de plataforma consulta el gobierno multi-tenant.
         var tenants = await TenantsSvc.ListAsync();
         var plans = await PlansSvc.ListAsync();
         _totalTenants = tenants.Count;

@@ -312,6 +312,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<RuleExecutionStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<OrgUnitClassifier>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<NivelJerarquico>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<TipoDocumento>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ModuleArea>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TaskBoardStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TaskBoardKind>().HaveConversion<string>().HaveMaxLength(40);
@@ -563,6 +564,20 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             // Indice para contar de golpe los ocupantes de un cargo (a cuantos usuarios afecta
             // reubicarlo) sin recorrer la tabla.
             b.HasIndex(x => x.CargoOrgUnitId);
+
+            // ---- Datos personales del funcionario (RF06 5.6.1) ----
+            b.Property(x => x.NumeroDocumento).HasMaxLength(20);
+            b.Property(x => x.Nombres).HasMaxLength(100);
+            b.Property(x => x.Apellidos).HasMaxLength(100);
+            b.Property(x => x.FirmaImagenPath).HasMaxLength(500);
+            // Sede del funcionario: NO ACTION, inactivar una sede no arrastra usuarios.
+            b.HasOne(x => x.Sede).WithMany().HasForeignKey(x => x.SedeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.SedeId);
+            // Documento UNICO POR TENANT (criterio 5.6.1). Indice FILTRADO: las filas anteriores a
+            // RF06 no tienen documento, y sin el filtro todas colisionarian entre si en NULL.
+            b.HasIndex(x => new { x.TenantId, x.NumeroDocumento })
+                .IsUnique()
+                .HasFilter(isNpgsql ? "numero_documento IS NOT NULL" : "[numero_documento] IS NOT NULL");
         });
 
         modelBuilder.Entity<TenantConfiguration>(b =>

@@ -132,7 +132,15 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
     protected override async Task HandleRequirementAsync(
         AuthorizationHandlerContext context, PermissionRequirement requirement)
     {
-        var eff = await _permissions.GetAsync();
+        // Se resuelve con el principal que el framework ya trae en el contexto, NO releyendo el
+        // AuthenticationState. Motivo: la autorizacion de una pagina enrutable de Blazor se evalua
+        // dos veces -en el middleware de la peticion HTTP y despues en el AuthorizeRouteView del
+        // circuito- y en la primera todavia no hay AuthenticationState. Al pedirlo alli, el
+        // proveedor lanzaba, la resolucion caia en su rama fail-closed y la pagina denegaba a
+        // usuarios que SI tenian el permiso en su matriz (sintoma: el menu mostraba la opcion y al
+        // hacer clic el sistema respondia 302 al AccessDeniedPath). context.User es la misma
+        // identidad en los dos mundos.
+        var eff = await _permissions.GetForAsync(context.User);
         if (eff.Can(requirement.ModuleKey, requirement.Action))
         {
             context.Succeed(requirement);

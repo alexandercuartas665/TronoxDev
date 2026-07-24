@@ -180,6 +180,16 @@ public sealed class OrgUnitService : IOrgUnitService
         {
             return OrgResult<bool>.Invalid("El nodo tiene descendientes activos; archivalos primero.");
         }
+        // RF04 criterio 3: un CARGO asignado a usuarios ACTIVOS no sale del catalogo.
+        if (archived && unit.Classifier == OrgUnitClassifier.Cargo)
+        {
+            var enUso = await CountUsuariosActivosEnCargoAsync(unitId, cancellationToken);
+            var cargoError = OrgStructureRules.ValidateArchivarCargo(enUso);
+            if (cargoError is not null)
+            {
+                return OrgResult<bool>.Invalid(cargoError);
+            }
+        }
         var prev = unit.IsArchived;
         unit.IsArchived = archived;
         _audit.Write(actorUserId, archived ? "orgunit.archivar" : "orgunit.restaurar", nameof(OrgUnit), unit,
@@ -274,6 +284,12 @@ public sealed class OrgUnitService : IOrgUnitService
         var parentByUnit = await LoadParentMapAsync(cancellationToken);
         return await CountAffectedUsersAsync(unitId, parentByUnit, cancellationToken);
     }
+
+    public async Task<int> CountUsuariosActivosEnCargoAsync(
+        long cargoOrgUnitId, CancellationToken cancellationToken = default)
+        => await _db.TenantUsers.CountAsync(
+            tu => tu.CargoOrgUnitId == cargoOrgUnitId && tu.Status == PlatformUserStatus.Active,
+            cancellationToken);
 
     private async Task<int> CountAffectedUsersAsync(
         long unitId, IReadOnlyDictionary<long, long?> parentByUnit, CancellationToken cancellationToken)

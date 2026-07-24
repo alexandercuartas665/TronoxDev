@@ -167,4 +167,22 @@ public class OrgStructureRulesTests
         Assert.Null(OrgStructureRules.ValidateParent(OrgUnitClassifier.Funcionario, OrgUnitClassifier.Cargo));
         Assert.NotNull(OrgStructureRules.ValidateParent(OrgUnitClassifier.Funcionario, OrgUnitClassifier.Dependencia));
     }
+
+    // ---- RF04 criterio 3: un cargo con usuarios ACTIVOS no sale del catalogo ----
+
+    [Fact]
+    public void Cargo_SinUsuariosActivos_SePuedeInactivar()
+    {
+        Assert.Null(OrgStructureRules.ValidateArchivarCargo(0));
+    }
+
+    [Fact]
+    public void Cargo_ConUsuariosActivos_NoSePuedeInactivar_YElMensajeDiceCuantos()
+    {
+        var error = OrgStructureRules.ValidateArchivarCargo(3);
+        Assert.NotNull(error);
+        // El mensaje tiene que ser accionable: cuantos son y que hacer con ellos.
+        Assert.Contains("3", error);
+        Assert.Contains("Reasignalos", error, StringComparison.OrdinalIgnoreCase);
+    }
 }

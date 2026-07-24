@@ -64,6 +64,12 @@ public interface IOrgUnitService
     /// <summary>Cuenta los usuarios que quedarian afectados por mover el nodo (sin moverlo).</summary>
     Task<int> CountAffectedUsersAsync(long unitId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Usuarios ACTIVOS anclados a ese nodo Cargo. Es lo que impide sacarlo del catalogo
+    /// (RF04 criterio 3); la pantalla de Cargos lo usa para avisar antes de intentarlo.
+    /// </summary>
+    Task<int> CountUsuariosActivosEnCargoAsync(long cargoOrgUnitId, CancellationToken cancellationToken = default);
+
     // ---- Miembros ----
 
     Task<IReadOnlyList<OrgUnitMemberDto>> ListMembersAsync(long unitId, CancellationToken cancellationToken = default);

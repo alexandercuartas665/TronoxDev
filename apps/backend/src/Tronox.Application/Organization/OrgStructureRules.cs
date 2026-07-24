@@ -110,6 +110,22 @@ public static class OrgStructureRules
     }
 
     /// <summary>
+    /// Criterio 3 de RF04: un cargo ASIGNADO A USUARIOS ACTIVOS no puede salir del catalogo.
+    ///
+    /// En TRONOX "sacar del catalogo" es ARCHIVAR, nunca un DELETE (invariante 8 y ADR-003): un
+    /// cargo archivado deja de ofrecerse en el alta de funcionarios, y esa desaparicion es
+    /// exactamente lo que la spec protege. Los usuarios INACTIVOS no bloquean: sus documentos ya
+    /// llevan el cargo copiado como metadato y no hay nada que reasignar.
+    ///
+    /// Pura y sin base de datos: recibe la cuenta ya hecha.
+    /// </summary>
+    public static string? ValidateArchivarCargo(int usuariosActivos)
+        => usuariosActivos > 0
+            ? $"No se puede inactivar el cargo: {usuariosActivos} usuario(s) activo(s) lo tienen "
+              + "asignado. Reasignalos a otro cargo (o inactiva esos usuarios) y vuelve a intentarlo."
+            : null;
+
+    /// <summary>
     /// Coherencia estructural padre -&gt; hijo. Jerarquia SUAVE (la profundidad de dependencias
     /// es ilimitada, asi que una Dependencia puede colgar de otra Dependencia o ser raiz):
     /// solo se prohibe lo que romperia el resolver de dependencia.

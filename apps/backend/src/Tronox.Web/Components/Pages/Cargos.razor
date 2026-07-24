@@ -1,0 +1,477 @@
+@page "/cargos"
+@attribute [Authorize(Policy = "Perm:modulo/cargos:View")]
+@* La llave de permisos es la RUTA del item del menu (RF09 5.9.3), que en la semilla es
+   "modulo/cargos". La pagina real vive en /cargos y a ella se llega por la promocion de
+   Modulo.razor, de modo que funciona en TODOS los tenants sin tocar su menu en base de datos. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Archivistica
+@using Tronox.Application.Organization
+@using Tronox.Application.Tenancy
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IOrgUnitService OrgSvc
+@inject IEntidadService EntidadSvc
+@inject ITenantUserService UsersSvc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ01 - RF04 (Catalogo de Cargos).
+
+   NO hay un modelo nuevo de cargos: esta pantalla es la VISTA DE CATALOGO de los nodos con
+   clasificador Cargo del arbol organizacional unico (ADR-003). Crear un cargo aqui crea un nodo
+   Cargo; inactivarlo lo archiva. La pantalla de Dependencias sigue mostrando el mismo dato dentro
+   del organigrama.
+
+   REGLA DE ORO de RF04: el cargo es METADATO ORGANIZACIONAL y NO controla permisos. Los permisos
+   salen unicamente de la matriz de RF05. *@
+
+<PageTitle>Catálogo de Cargos - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-cargos">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración Organizacional</span>
+        <span class="sep">/</span>
+        <span class="cur">Catálogo de Cargos</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-person-badge"></i><span>RQ01 &middot; RF04</span></div>
+            <h1 class="tx-ent-title">Catálogo de Cargos</h1>
+            <p class="tx-ent-sub">
+                Lista maestra de cargos de la entidad. Es <strong>global por tenant</strong>: cualquier
+                dependencia puede asignar cualquier cargo a sus funcionarios. El cargo es
+                <strong>metadato organizacional</strong>, no otorga permisos.
+            </p>
+        </div>
+        @if (_canCreate)
+        {
+            <div>
+                <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenEditor(null))">
+                    <i class="bi bi-plus-lg"></i> Nuevo cargo
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_pageError is not null)
+    {
+        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+    }
+    @if (_pageOk is not null)
+    {
+        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+    }
+
+    @* ===== KPIs ===== *@
+    <div class="tx-dep-kpis">
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon"><i class="bi bi-person-badge"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_cargos.Count(c => !c.IsArchived)</div>
+                <div class="tx-dep-kpi-lbl">Cargos activos</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-slate"><i class="bi bi-archive"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_cargos.Count(c => c.IsArchived)</div>
+                <div class="tx-dep-kpi-lbl">Inactivos</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-green"><i class="bi bi-people"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_ocupantes.Values.Sum()</div>
+                <div class="tx-dep-kpi-lbl">Funcionarios con cargo</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-violet"><i class="bi bi-layers"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_cargos.Where(c => !c.IsArchived).Select(c => c.NivelJerarquico).Distinct().Count()</div>
+                <div class="tx-dep-kpi-lbl">Niveles en uso</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tx-ent-card">
+        <div class="tx-dep-toolbar">
+            <div class="tx-dep-search">
+                <i class="bi bi-search"></i>
+                <input class="tx-ent-input" placeholder="Buscar por nombre o código..."
+                       value="@_search" @oninput="@(e => _search = e.Value?.ToString() ?? "")" />
+            </div>
+            <select class="tx-ent-input" style="max-width:190px" @bind="_filtroNivel">
+                <option value="">Todos los niveles</option>
+                @foreach (var n in Enum.GetValues<NivelJerarquico>())
+                {
+                    <option value="@n">@NivelLabel(n)</option>
+                }
+            </select>
+            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" checked="@_verInactivos"
+                       @onchange="@(async e => { _verInactivos = (bool)e.Value!; await LoadAsync(); })" />
+                Ver inactivos
+            </label>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="tx-ent-card-body"><em>Cargando catálogo...</em></div>
+        }
+        else if (Filtrados().Count == 0)
+        {
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-empty">
+                    <i class="bi bi-person-badge"></i>
+                    <div>
+                        @if (_cargos.Count == 0)
+                        {
+                            <span><strong>Todavía no hay cargos</strong><br />Crea el primero para poder vincular funcionarios (RF06).</span>
+                        }
+                        else
+                        {
+                            <span>Ningún cargo coincide con el filtro.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="tx-ent-table-wrap">
+                <table class="tx-ent-table">
+                    <thead>
+                        <tr>
+                            <th>Cargo</th>
+                            <th>Código</th>
+                            @if (_esEntidadPublica)
+                            {
+                                <th>Código DAFP</th>
+                            }
+                            <th>Nivel jerárquico</th>
+                            <th>Dependencia</th>
+                            <th>Funcionarios</th>
+                            <th>Estado</th>
+                            <th class="right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in Filtrados())
+                        {
+                            <tr>
+                                <td><strong>@c.Name</strong></td>
+                                <td class="mono">@(c.CodigoCargo ?? "--")</td>
+                                @if (_esEntidadPublica)
+                                {
+                                    <td class="mono">@(c.CodigoDafp ?? "--")</td>
+                                }
+                                <td>
+                                    <span class="tx-ent-badge sm violet">@NivelLabel(c.NivelJerarquico)</span>
+                                </td>
+                                <td>
+                                    @if (c.ParentName is string dep)
+                                    {
+                                        @dep
+                                    }
+                                    else
+                                    {
+                                        <span class="muted" title="Un cargo sin dependencia por encima deja a sus ocupantes sin área documental (fail-closed).">
+                                            Sin dependencia
+                                        </span>
+                                    }
+                                </td>
+                                <td>@OcupantesDe(c.Id)</td>
+                                <td>
+                                    <span class="tx-ent-badge sm @(c.IsArchived ? "off" : "ok")">
+                                        @(c.IsArchived ? "Inactivo" : "Activo")
+                                    </span>
+                                </td>
+                                <td class="right">
+                                    @if (_canEdit)
+                                    {
+                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenEditor(c))">Editar</button>
+                                    }
+                                    @if (_canDelete)
+                                    {
+                                        @if (c.IsArchived)
+                                        {
+                                            <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetArchivadoAsync(c, false))" disabled="@_busy">Reactivar</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetArchivadoAsync(c, true))" disabled="@_busy"
+                                                    title="@(OcupantesDe(c.Id) > 0 ? "Tiene funcionarios activos: primero reasígnalos" : "Inactivar el cargo")">
+                                                Inactivar
+                                            </button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="tx-ent-hint">
+        <i class="bi bi-shield-lock"></i>
+        El cargo <strong>no controla permisos</strong> (RF04): un cargo Directivo no otorga por sí mismo
+        ninguna facultad. Los permisos vienen únicamente de la matriz de Roles y permisos (RF05).
+        Un cargo tampoco se elimina: se <strong>inactiva</strong>, y no puede inactivarse mientras
+        tenga funcionarios activos.
+    </div>
+
+    @* ===== Modal crear/editar ===== *@
+    @if (_showEditor)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showEditor = false)">
+            <div class="modal-dialog" style="max-width:620px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_editing is null ? "Nuevo cargo" : $"Editar {_editing.Name}")</h3>
+                    <button class="modal-close" @onclick="@(() => _showEditor = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-cargos">
+                    <div class="tx-ent-field">
+                        <label>Nombre del cargo <span class="req">*</span></label>
+                        <input class="tx-ent-input" @bind="_fNombre" maxlength="200"
+                               placeholder="Ej. Profesional Universitario Grado 11" />
+                    </div>
+
+                    <div class="tx-ent-grid @(_esEntidadPublica ? "c3" : "c2")">
+                        <div class="tx-ent-field">
+                            <label>Nivel jerárquico <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_fNivel">
+                                @foreach (var n in Enum.GetValues<NivelJerarquico>())
+                                {
+                                    <option value="@n">@NivelLabel(n)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Código del cargo <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input mono" @bind="_fCodigo" maxlength="20" placeholder="219-11" />
+                        </div>
+                        @if (_esEntidadPublica)
+                        {
+                            @* Criterio 4 de RF04: el codigo DAFP solo se muestra si la entidad es Publica. *@
+                            <div class="tx-ent-field">
+                                <label>Código DAFP <span class="opt">(opcional)</span></label>
+                                <input class="tx-ent-input mono" @bind="_fCodigoDafp" maxlength="20" />
+                            </div>
+                        }
+                    </div>
+
+                    <div class="tx-ent-field">
+                        <label>Dependencia <span class="opt">(define el área documental de sus ocupantes)</span></label>
+                        <select class="tx-ent-input" @bind="_fParentId">
+                            <option value="">(Catálogo general, sin dependencia)</option>
+                            @foreach (var d in _dependencias)
+                            {
+                                <option value="@d.Id">@(d.Codigo is null ? d.Name : $"{d.Codigo} - {d.Name}")</option>
+                            }
+                        </select>
+                        <div class="tx-ent-hint">
+                            El catálogo es global: cualquier dependencia puede usar cualquier cargo. Pero la
+                            <strong>dependencia de un funcionario se deriva de su cargo</strong> (ADR-003), así que un
+                            cargo sin dependencia deja a sus ocupantes <strong>sin área documental</strong> y por
+                            tanto sin poder activarse.
+                        </div>
+                    </div>
+
+                    @if (_editorError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_editorError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showEditor = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveAsync" disabled="@_busy">
+                        @(_editing is null ? "Crear cargo" : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private const string ModuleKey = "modulo/cargos";
+
+    private bool _loading = true;
+    private bool _busy;
+    private bool _verInactivos;
+    private string _search = "";
+    private string _filtroNivel = "";
+    private string? _pageError;
+    private string? _pageOk;
+
+    // Gateo por permiso (fail-closed: se parte de NEGADO, invariante 10).
+    private bool _canCreate;
+    private bool _canEdit;
+    private bool _canDelete;
+
+    /// <summary>Criterio 4 de RF04: el codigo DAFP solo aplica a entidades Publicas.</summary>
+    private bool _esEntidadPublica;
+
+    private IReadOnlyList<OrgUnitDto> _cargos = [];
+    private IReadOnlyList<OrgUnitDto> _dependencias = [];
+    /// <summary>Cargo -> funcionarios ACTIVOS anclados a el (lo que impide inactivarlo).</summary>
+    private Dictionary<long, int> _ocupantes = new();
+
+    // ---- Editor ----
+    private bool _showEditor;
+    private OrgUnitDto? _editing;
+    private string _fNombre = "";
+    private NivelJerarquico _fNivel = NivelJerarquico.Profesional;
+    private string? _fCodigo;
+    private string? _fCodigoDafp;
+    private string _fParentId = "";
+    private string? _editorError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+
+        try
+        {
+            _esEntidadPublica = (await EntidadSvc.GetAsync())?.TipoEntidad == TipoEntidad.Publica;
+        }
+        catch
+        {
+            // Sin entidad registrada todavia: se oculta el codigo DAFP (es lo conservador).
+            _esEntidadPublica = false;
+        }
+
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        var todos = await OrgSvc.ListAsync(includeArchived: true);
+        _cargos = todos
+            .Where(u => u.Classifier == OrgUnitClassifier.Cargo && (_verInactivos || !u.IsArchived))
+            .OrderBy(u => u.Name)
+            .ToList();
+        _dependencias = todos
+            .Where(u => u.Classifier == OrgUnitClassifier.Dependencia && !u.IsArchived)
+            .OrderBy(u => u.Codigo).ThenBy(u => u.Name)
+            .ToList();
+
+        // Los funcionarios se leen UNA vez y se agrupan en memoria: una consulta por fila del
+        // catalogo seria N+1 sobre una pantalla que existe justamente para verlos todos.
+        var funcionarios = await UsersSvc.ListFuncionariosAsync();
+        _ocupantes = funcionarios
+            .Where(f => f.CargoOrgUnitId is not null && f.Status == PlatformUserStatus.Active)
+            .GroupBy(f => f.CargoOrgUnitId!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private int OcupantesDe(long cargoId) => _ocupantes.TryGetValue(cargoId, out var n) ? n : 0;
+
+    private IReadOnlyList<OrgUnitDto> Filtrados()
+    {
+        var q = _search.Trim();
+        return _cargos
+            .Where(c => q.Length == 0
+                        || c.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                        || (c.CodigoCargo ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                        || (c.CodigoDafp ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Where(c => _filtroNivel.Length == 0 || c.NivelJerarquico?.ToString() == _filtroNivel)
+            .ToList();
+    }
+
+    private void OpenEditor(OrgUnitDto? cargo)
+    {
+        _editing = cargo;
+        _fNombre = cargo?.Name ?? "";
+        _fNivel = cargo?.NivelJerarquico ?? NivelJerarquico.Profesional;
+        _fCodigo = cargo?.CodigoCargo;
+        _fCodigoDafp = cargo?.CodigoDafp;
+        _fParentId = cargo?.ParentId?.ToString() ?? "";
+        _editorError = null;
+        _pageOk = null;
+        _pageError = null;
+        _showEditor = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _editorError = null;
+        try
+        {
+            var request = new SaveOrgUnitRequest(
+                _fNombre,
+                OrgUnitClassifier.Cargo,
+                ParentId: long.TryParse(_fParentId, out var parentId) ? parentId : null,
+                // Se arrastran los campos que esta pantalla no edita para no borrarlos al guardar:
+                // el mismo nodo se administra tambien desde el organigrama (Dependencias).
+                ResponsibleTenantUserId: _editing?.ResponsibleTenantUserId,
+                Description: _editing?.Description,
+                SortOrder: _editing?.SortOrder ?? 0,
+                // Solo los atributos del clasificador Cargo: el servicio anula el resto.
+                CodigoCargo: _fCodigo,
+                // Si la entidad no es Publica el campo ni se muestra ni se envia (criterio 4).
+                CodigoDafp: _esEntidadPublica ? _fCodigoDafp : null,
+                NivelJerarquico: _fNivel);
+
+            var actor = Tenant.UserId ?? 0;
+            var result = _editing is null
+                ? await OrgSvc.CreateAsync(request, actor)
+                : await OrgSvc.UpdateAsync(_editing.Id, request, actor);
+
+            if (!result.IsOk)
+            {
+                _editorError = result.Error;
+                return;
+            }
+            _showEditor = false;
+            _pageOk = _editing is null ? "Cargo creado." : "Cargo actualizado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetArchivadoAsync(OrgUnitDto cargo, bool archivar)
+    {
+        _busy = true;
+        _pageError = null;
+        _pageOk = null;
+        try
+        {
+            // Nunca hay DELETE: inactivar = archivar (invariante 8). El servicio rechaza inactivar
+            // un cargo con funcionarios ACTIVOS (criterio 3 de RF04) y devuelve el motivo.
+            var result = await OrgSvc.SetArchivedAsync(
+                cargo.Id, archivar, Tenant.UserId ?? 0,
+                motivo: archivar ? "Inactivacion desde el catalogo de cargos (RF04)" : "Reactivacion del cargo (RF04)");
+            if (!result.IsOk)
+            {
+                _pageError = result.Error;
+                return;
+            }
+            _pageOk = archivar ? "Cargo inactivado." : "Cargo reactivado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private static string NivelLabel(NivelJerarquico? nivel) => nivel switch
+    {
+        NivelJerarquico.Directivo => "Directivo",
+        NivelJerarquico.Asesor => "Asesor",
+        NivelJerarquico.Profesional => "Profesional",
+        NivelJerarquico.Tecnico => "Técnico",
+        NivelJerarquico.Asistencial => "Asistencial",
+        _ => "--"
+    };
+}

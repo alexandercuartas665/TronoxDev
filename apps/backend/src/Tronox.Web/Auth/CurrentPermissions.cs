@@ -28,6 +28,25 @@ public interface ICurrentPermissions
     /// <summary>Permisos efectivos del usuario actual (resueltos y cacheados en el scope).</summary>
     Task<EffectivePermissions> GetAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Permisos efectivos de un principal EXPLICITO. La usa el handler de autorizacion, que
+    /// recibe el <c>ClaimsPrincipal</c> ya resuelto por el framework
+    /// (<c>AuthorizationHandlerContext.User</c>) y por tanto no depende de que exista un
+    /// AuthenticationState todavia.
+    ///
+    /// POR QUE HACE FALTA: <see cref="GetAsync"/> lee el AuthenticationState, que solo existe
+    /// cuando ya hay componentes renderizando. La autorizacion de una pagina enrutable de Blazor
+    /// tambien se evalua ANTES, en el middleware de autorizacion de la peticion HTTP, y ahi el
+    /// proveedor de AuthenticationState todavia no tiene estado y lanza. Con el fail-closed eso
+    /// se traducia en DENEGAR a un usuario que si tenia el permiso en su matriz: la pagina
+    /// respondia 302 a AccessDeniedPath (que ademas apuntaba a /login) y parecia un cierre de
+    /// sesion. Pasando el principal explicito, la misma matriz se resuelve igual en la peticion y
+    /// en el circuito, sin tocar el IHttpContextAccessor (trampa de ADR-004).
+    ///
+    /// FAIL-CLOSED igual que el resto: principal nulo, anonimo o sin claim de tenant -> SIN PERMISOS.
+    /// </summary>
+    Task<EffectivePermissions> GetForAsync(ClaimsPrincipal? user, CancellationToken cancellationToken = default);
+
     Task<bool> CanAsync(string moduleKey, PermissionAction action, CancellationToken cancellationToken = default);
     Task<bool> CanViewAsync(string moduleKey, CancellationToken cancellationToken = default);
     Task<bool> CanCreateAsync(string moduleKey, CancellationToken cancellationToken = default);
@@ -47,7 +66,11 @@ public sealed class CurrentPermissions : ICurrentPermissions
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IServiceProvider _services;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private EffectivePermissions? _cached;
+    // Memoizacion por IDENTIDAD (tenant, usuario) y no una sola variable: en la misma peticion se
+    // puede resolver primero por principal explicito (handler de autorizacion) y despues por
+    // AuthenticationState (pagina/menu). Es siempre el mismo usuario, pero cachear "lo ultimo que
+    // se pidio" seria fragil.
+    private readonly Dictionary<(long TenantId, long UserId), EffectivePermissions> _cached = new();
 
     public CurrentPermissions(IServiceScopeFactory scopeFactory, IServiceProvider services)
     {
@@ -57,53 +80,71 @@ public sealed class CurrentPermissions : ICurrentPermissions
 
     public async Task<EffectivePermissions> GetAsync(CancellationToken cancellationToken = default)
     {
-        if (_cached is not null)
+        (long? TenantId, long? UserId) identity;
+        try
         {
-            return _cached;
+            identity = await ResolveIdentityAsync();
+        }
+        catch
+        {
+            // FAIL-CLOSED: sin identidad resoluble no se concede nada.
+            return EffectivePermissions.None;
+        }
+        return await ResolveAsync(identity, cancellationToken);
+    }
+
+    public Task<EffectivePermissions> GetForAsync(
+        ClaimsPrincipal? user, CancellationToken cancellationToken = default)
+        => ResolveAsync(ReadIdentity(user), cancellationToken);
+
+    private async Task<EffectivePermissions> ResolveAsync(
+        (long? TenantId, long? UserId) identity, CancellationToken cancellationToken)
+    {
+        // Sin usuario, o sin tenant, no hay matriz que resolver: SIN PERMISOS.
+        // (Aqui el backbone devolvia acceso total. Ese era el agujero.)
+        if (identity.UserId is not long userId || identity.TenantId is not long tid)
+        {
+            return EffectivePermissions.None;
         }
 
+        var key = (tid, userId);
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            _cached ??= await ResolveAsync(cancellationToken);
-            return _cached;
+            if (_cached.TryGetValue(key, out var hit))
+            {
+                return hit;
+            }
+
+            EffectivePermissions resolved;
+            try
+            {
+                // Scope propio: DbContext aislado del circuito Blazor (patron de NavMenu).
+                await using var scope = _scopeFactory.CreateAsyncScope();
+
+                // El TenantUser es tenant-scoped: sin tenant en el contexto el filtro global no lo
+                // encuentra. En un circuito Blazor no hay HttpContext, asi que el tenant se fija de
+                // forma ambiental a partir del claim del principal (unica fuente de identidad aqui).
+                using var ambient = AmbientTenantContext.Begin(tid, userId);
+
+                var roles = scope.ServiceProvider.GetRequiredService<IRolService>();
+                resolved = await roles.ResolveEffectivePermissionsAsync(userId, cancellationToken);
+            }
+            catch
+            {
+                // FAIL-CLOSED: si la resolucion falla, NO se concede nada. Una resolucion de
+                // permisos que revienta es justo el momento en el que no se puede asumir buena fe.
+                // No se cachea el fallo: un error transitorio de base no debe dejar al usuario sin
+                // permisos durante toda la peticion.
+                return EffectivePermissions.None;
+            }
+
+            _cached[key] = resolved;
+            return resolved;
         }
         finally
         {
             _gate.Release();
-        }
-    }
-
-    private async Task<EffectivePermissions> ResolveAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var (tenantId, platformUserId) = await ResolveIdentityAsync();
-
-            // Sin usuario, o sin tenant, no hay matriz que resolver: SIN PERMISOS.
-            // (Aqui el backbone devolvia acceso total. Ese era el agujero.)
-            if (platformUserId is not long userId || tenantId is not long tid)
-            {
-                return EffectivePermissions.None;
-            }
-
-            // Scope propio: DbContext aislado del circuito Blazor (patron de NavMenu).
-            await using var scope = _scopeFactory.CreateAsyncScope();
-
-            // El TenantUser es tenant-scoped: sin tenant en el contexto el filtro global no lo
-            // encuentra. En una peticion HTTP el tenant saldria del HttpContext, pero en un
-            // circuito Blazor no hay HttpContext, asi que se fija de forma ambiental a partir del
-            // claim del AuthenticationState (unica fuente de identidad aqui, ver abajo).
-            using var ambient = AmbientTenantContext.Begin(tid, userId);
-
-            var roles = scope.ServiceProvider.GetRequiredService<IRolService>();
-            return await roles.ResolveEffectivePermissionsAsync(userId, cancellationToken);
-        }
-        catch
-        {
-            // FAIL-CLOSED: si la resolucion falla, NO se concede nada. Una resolucion de permisos
-            // que revienta es justo el momento en el que no se puede asumir buena fe.
-            return EffectivePermissions.None;
         }
     }
 
@@ -133,8 +174,18 @@ public sealed class CurrentPermissions : ICurrentPermissions
         }
 
         var state = await authProvider.GetAuthenticationStateAsync();
-        var user = state.User;
-        if (!long.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        return ReadIdentity(state.User);
+    }
+
+    /// <summary>
+    /// Lee (tenant, usuario) de los CLAIMS de un principal. Es la unica forma de obtener la
+    /// identidad en esta clase: da igual si el principal viene del AuthenticationState (circuito)
+    /// o del contexto de autorizacion de la peticion; en ambos casos son los mismos claims de la
+    /// cookie, y en ninguno se concede nada por si mismo (la matriz sigue decidiendo).
+    /// </summary>
+    private static (long? TenantId, long? UserId) ReadIdentity(ClaimsPrincipal? user)
+    {
+        if (user is null || !long.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
         {
             return (null, null);
         }

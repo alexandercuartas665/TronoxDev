@@ -30,4 +30,42 @@ public interface ITenantUserService
     /// vacio lo deja sin nombre). Audita. Devuelve null si el usuario no existe en el tenant.
     /// </summary>
     Task<TenantUserDto?> UpdateProfileAsync(long tenantUserId, string? displayName, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ------------------------------------------------------------------------------------
+    // RQ01 - RF06 (Gestion de Usuarios / Funcionarios). Es el MISMO TenantUser de arriba con
+    // sus datos personales y organizacionales; no hay un modelo paralelo de personas.
+    // ------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Funcionarios del tenant con cargo, DEPENDENCIA DERIVADA (ADR-003, Addendum), sede y roles.
+    /// </summary>
+    Task<IReadOnlyList<FuncionarioDto>> ListFuncionariosAsync(CancellationToken cancellationToken = default);
+
+    Task<FuncionarioDto?> GetFuncionarioAsync(long tenantUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Alta o edicion de un funcionario. Valida los datos personales (FuncionarioRules), la
+    /// UNICIDAD del documento y del correo dentro del tenant, y que cargo y sede existan.
+    ///
+    /// El alta NUNCA nace Activa: queda Invitada hasta que <see cref="SetFuncionarioEstadoAsync"/>
+    /// compruebe que tiene dependencia, cargo y rol (criterio 2 de 5.6.3).
+    /// </summary>
+    Task<TenancyResult<FuncionarioDto>> SaveFuncionarioAsync(
+        SaveFuncionarioRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cambia el estado de la cuenta (5.6.2) con motivo y auditoria. Pasar a ACTIVO exige
+    /// dependencia + cargo + al menos un rol. Inactivar CONSERVA documentos y auditoria
+    /// (criterio 4): nunca hay eliminacion real.
+    /// </summary>
+    Task<TenancyResult<FuncionarioDto>> SetFuncionarioEstadoAsync(
+        long tenantUserId, PlatformUserStatus estado, string? motivo, long actorUserId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Guarda la RUTA de la imagen de firma manuscrita (invariante 9: nunca los bytes en base de
+    /// datos). Pasar null la quita.
+    /// </summary>
+    Task<TenancyResult<FuncionarioDto>> SetFirmaImagenAsync(
+        long tenantUserId, string? rutaSegura, long actorUserId, CancellationToken cancellationToken = default);
 }

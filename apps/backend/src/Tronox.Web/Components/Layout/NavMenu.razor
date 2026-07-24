@@ -9,17 +9,40 @@
 @using Tronox.Domain.Enums
 
 @* Enlace de pantalla del sidebar (prototipo .menu-sub-link). Se define una sola vez para
-   reutilizarlo tanto en las pantallas directas del modulo como en las de una sub-seccion. *@
+   reutilizarlo tanto en las pantallas directas del modulo como en las de una sub-seccion.
+
+   SOLO SE GENERA <a> SI EL NODO ES PANTALLA Y TIENE RUTA (ver EsPantallaNavegable). Un nodo
+   agrupador -Seccion o Grupo/modulo- NUNCA se pinta como enlace: su Route existe porque es la
+   LLAVE DE PERMISOS (RF09 5.9.3) y de ella se deriva el catalogo de modulos de RF05, pero no
+   corresponde a ninguna pagina. Cuando el sidebar los hacia navegables, el clic terminaba en un
+   404 (o, peor, en "/" si la ruta venia vacia) y de ahi al login. *@
 @{
     RenderFragment<MenuNodeDto> SubLink = leaf =>
-        @<NavLink class="tx-menu-sub-link" href="@leaf.Route">
-            @MenuIcons.Render(leaf.IconKey)
-            <span class="msl-label">@leaf.Name</span>
-            @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
-            {
-                <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
-            }
-        </NavLink>;
+        @<text>
+        @if (EsPantallaNavegable(leaf))
+        {
+            <NavLink class="tx-menu-sub-link" href="@leaf.Route">
+                @MenuIcons.Render(leaf.IconKey)
+                <span class="msl-label">@leaf.Name</span>
+                @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
+                {
+                    <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
+                }
+            </NavLink>
+        }
+        else
+        {
+            @* Pantalla sin ruta: se muestra, pero no navega (no hay destino que abrir). *@
+            <span class="tx-menu-sub-link is-static" title="Sin pantalla asociada">
+                @MenuIcons.Render(leaf.IconKey)
+                <span class="msl-label">@leaf.Name</span>
+                @if (!string.IsNullOrWhiteSpace(leaf.LegacyCode))
+                {
+                    <span class="menu-rf" title="@leaf.LegacyCode">@leaf.LegacyCode</span>
+                }
+            </span>
+        }
+        </text>;
 }
 
 @if (_showAdmin)
@@ -94,7 +117,7 @@ else
                              modelo (Seccion/Subgrupo/Item) se conservan; solo cambia como se pinta.
                  Pantalla -> subitem bajo el modulo (.tx-menu-sub-link).
                data-acc = slug del nodo (Route) para persistir apertura del modulo. ===== *@
-        @foreach (var quick in _menu.Roots.Where(n => n.Kind == MenuNodeKind.QuickLink))
+        @foreach (var quick in _menu.Roots.Where(n => n.Kind == MenuNodeKind.QuickLink && EsPantallaNavegable(n)))
         {
             <div class="tx-menu-item">
                 <NavLink class="tx-menu-link" href="@quick.Route" Match="@(quick.Route == "inicio" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
@@ -154,16 +177,29 @@ else
                                 </div>
                             </details>
                         }
-                        else
+                        else if (EsPantallaNavegable(child))
                         {
-                            @* Modulo sin pantallas (item suelto de la seccion): enlace hoja con
-                               icono (prototipo .menu-link) + punto de estado. *@
+                            @* Pantalla suelta de la seccion: enlace hoja con icono
+                               (prototipo .menu-link) + punto de estado. *@
                             <div class="tx-menu-item">
                                 <NavLink class="tx-menu-link" href="@child.Route">
                                     <span class="tx-menu-icon">@MenuIcons.Render(child.IconKey)</span>
                                     <span class="tx-menu-title">@child.Name</span>
                                     <span class="tx-menu-state @StateDot(child.State)" title="@StateTitle(child.State)"></span>
                                 </NavLink>
+                            </div>
+                        }
+                        else
+                        {
+                            @* Agrupador vacio (Seccion/Grupo sin pantallas visibles) o pantalla sin
+                               ruta: se rotula, NO se enlaza. Su Route -si la tiene- es llave de
+                               permisos, no destino de navegacion. *@
+                            <div class="tx-menu-item">
+                                <span class="tx-menu-link is-static" title="@child.Name">
+                                    <span class="tx-menu-icon">@MenuIcons.Render(child.IconKey)</span>
+                                    <span class="tx-menu-title">@child.Name</span>
+                                    <span class="tx-menu-state @StateDot(child.State)" title="@StateTitle(child.State)"></span>
+                                </span>
                             </div>
                         }
                     }
@@ -268,6 +304,21 @@ else
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>
+    /// Un nodo del menu es NAVEGABLE solo si es una PANTALLA (Item o QuickLink) y tiene ruta.
+    ///
+    /// Los nodos Section y Subgroup son AGRUPADORES: la seccion es un encabezado y el modulo es un
+    /// desplegable. Tienen Route (los slugs "configuracion", "req001", "req001-organizacional"...)
+    /// porque esa ruta es la LLAVE DE PERMISOS del nodo (RF09 5.9.3) y de las rutas de item se
+    /// deriva el catalogo de modulos de RF05; pero NO existe ninguna pagina que las atienda. Si el
+    /// sidebar las convierte en enlaces, el clic da 404 -y una ruta vacia da "/", que hasta ahora
+    /// exigia platform_role y terminaba expulsando al login-. Por eso la ruta se CONSERVA como
+    /// llave y lo que se corrige es el sidebar: aqui no se genera <a> para esos tipos de nodo.
+    /// </summary>
+    private static bool EsPantallaNavegable(MenuNodeDto node)
+        => (node.Kind == MenuNodeKind.Item || node.Kind == MenuNodeKind.QuickLink)
+           && !string.IsNullOrWhiteSpace(node.Route);
 
     // El menu se arma por rol: el operador de plataforma (platform_role) ve el grupo
     // Super Admin SaaS y previsualiza el workspace del tenant; el usuario de empresa

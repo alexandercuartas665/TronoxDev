@@ -20,7 +20,7 @@
 
 <PageTitle>Dependencias - TRONOX SGDEA</PageTitle>
 
-<div class="tx-dep">
+<div class="tx-mod tx-dep">
 
     <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
         <a href="/inicio">Inicio</a>
@@ -365,7 +365,7 @@
                     <h3>@(_editing is null ? "Nueva unidad organizacional" : $"Editar {_editing.Name}")</h3>
                     <button class="modal-close" @onclick="@(() => _showEditor = false)">&times;</button>
                 </div>
-                <div class="modal-body tx-dep">
+                <div class="modal-body tx-mod tx-dep">
                     <div class="tx-ent-grid c2">
                         <div class="tx-ent-field">
                             <label>Clasificación <span class="req">*</span></label>

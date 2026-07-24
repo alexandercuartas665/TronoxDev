@@ -1,8 +1,27 @@
+@* NO AUTENTICADO != NO AUTORIZADO.
+
+   Antes los dos casos caian en <RedirectToLogin />, asi que a un usuario CON SESION VALIDA al que
+   le faltaba un permiso el sistema lo mandaba al login: parecia un cierre de sesion y no habia
+   forma de distinguirlo de una sesion expirada.
+
+   Ahora:
+     - sin identidad          -> /login (es lo correcto: hay que autenticarse).
+     - autenticado sin permiso -> pantalla de ACCESO DENEGADO que explica que falta y como se resuelve.
+
+   FAIL-CLOSED (invariante 10) intacto: denegar sigue siendo denegar. Lo unico que cambia es el
+   mensaje que ve el usuario. *@
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
-            <NotAuthorized>
-                <RedirectToLogin />
+            <NotAuthorized Context="authState">
+                @if (authState.User.Identity?.IsAuthenticated == true)
+                {
+                    <AccesoDenegadoView />
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
             </NotAuthorized>
         </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

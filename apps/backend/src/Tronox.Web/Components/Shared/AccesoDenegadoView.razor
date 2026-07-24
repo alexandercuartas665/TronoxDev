@@ -1,0 +1,75 @@
+@inject NavigationManager Nav
+@* Cuerpo comun de "acceso denegado" (403), compartido por la pagina /acceso-denegado y por el
+   bloque <NotAuthorized> de Routes.razor.
+
+   POR QUE EXISTE: hasta ahora "no autenticado" y "no autorizado" terminaban los dos en /login
+   (Routes.razor redirigia y la cookie tenia AccessDeniedPath="/login"). Para el usuario eso se
+   veia como un cierre de sesion sorpresivo: seguia autenticado, pero le faltaba un permiso.
+
+   FAIL-CLOSED (invariante 10): esta pantalla NO concede nada. La decision sigue siendo DENEGAR;
+   lo unico que cambia es el MENSAJE. Se explica que falta un permiso y con que rol se resuelve
+   (ADR-004: quien puede verlo todo lo puede porque su rol tiene la matriz, no por excepcion). *@
+
+<div class="tx-denied">
+    <div class="tx-denied-card">
+        <div class="tx-denied-icon"><i class="bi bi-shield-lock"></i></div>
+
+        <h1 class="tx-denied-title">No tienes permiso para esta pantalla</h1>
+
+        <p class="tx-denied-sub">
+            Tu sesión sigue <strong>activa</strong>: esto no es un cierre de sesión. Lo que falta es un
+            <strong>permiso</strong> sobre este módulo.
+        </p>
+
+        @if (!string.IsNullOrWhiteSpace(RutaSolicitada))
+        {
+            <div class="tx-denied-route">
+                <span class="lbl">Ruta solicitada</span>
+                <code>@RutaSolicitada</code>
+            </div>
+        }
+
+        <div class="tx-denied-help">
+            <div class="h">¿Cómo se resuelve?</div>
+            <ol>
+                <li>
+                    Un <strong>Super Administrador</strong> del tenant debe asignarte un rol en
+                    <em>Configuración &rsaquo; Organizacional &rsaquo; Usuarios / Funcionarios</em>.
+                </li>
+                <li>
+                    Ese rol debe tener marcada la acción <strong>Ver</strong> del módulo en la matriz de
+                    <em>Roles y permisos</em> (RF05).
+                </li>
+                <li>
+                    Un usuario <strong>sin ningún rol vigente</strong> queda sin permisos a propósito
+                    (fail-closed): el sistema nunca concede acceso por omisión.
+                </li>
+            </ol>
+        </div>
+
+        <div class="tx-denied-actions">
+            <a class="tx-denied-btn primary" href="/inicio"><i class="bi bi-house"></i> Ir al inicio</a>
+            <form method="post" action="/auth/logout" class="m-0">
+                <button type="submit" class="tx-denied-btn"><i class="bi bi-box-arrow-right"></i> Cerrar sesión</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Ruta que el usuario intento abrir. Si no se pasa, se toma la del navegador (es el caso del
+    /// bloque NotAuthorized de Routes.razor, que se renderiza sobre la misma URL denegada).
+    /// </summary>
+    [Parameter] public string? Ruta { get; set; }
+
+    private string? RutaSolicitada => string.IsNullOrWhiteSpace(Ruta)
+        ? RelativaActual()
+        : Ruta;
+
+    private string? RelativaActual()
+    {
+        var rel = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+        return string.IsNullOrWhiteSpace(rel) ? null : "/" + rel;
+    }
+}

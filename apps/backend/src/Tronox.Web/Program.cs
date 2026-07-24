@@ -54,7 +54,11 @@ builder.Services
     .AddCookie(options =>
     {
         options.LoginPath = "/login";
-        options.AccessDeniedPath = "/login";
+        // NO AUTENTICADO != NO AUTORIZADO. Antes las dos rutas apuntaban a /login, asi que a un
+        // usuario CON sesion valida al que le faltaba un permiso el sistema lo expulsaba al login
+        // y parecia un cierre de sesion. La denegacion sigue siendo denegacion (fail-closed,
+        // invariante 10); lo que cambia es que ahora se explica.
+        options.AccessDeniedPath = "/acceso-denegado";
         // 30 dias deslizantes: con "Recordar sesion" marcado la cookie es persistente (IsPersistent)
         // y dura hasta 30 dias renovandose en cada visita; sin marcar es cookie de sesion (muere al
         // cerrar el navegador). Antes eran 8h, lo que obligaba a re-loguear con frecuencia.

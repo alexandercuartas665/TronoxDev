@@ -61,7 +61,58 @@ public class TenantUser : TenantEntity
     public long? CargoOrgUnitId { get; set; }
     public OrgUnit? CargoOrgUnit { get; set; }
 
+    // ---- Datos personales del funcionario (RQ01 - RF06 seccion 5.6.1) ----
+    //
+    // Son NULLABLE en base de datos y OBLIGATORIOS por regla de negocio (FuncionarioRules), igual
+    // que la ubicacion de Entidad: las filas creadas antes de RF06 (invitaciones del backbone) no
+    // pueden quedar imposibles de guardar, pero la pantalla de RF06 los exige.
+
+    /// <summary>Tipo de documento de identidad (CC / CE / Pasaporte / NIT).</summary>
+    public TipoDocumento? TipoDocumento { get; set; }
+
+    /// <summary>Numero de documento (20). UNICO POR TENANT (indice unico filtrado).</summary>
+    public string? NumeroDocumento { get; set; }
+
+    /// <summary>Nombres del funcionario (100).</summary>
+    public string? Nombres { get; set; }
+
+    /// <summary>Apellidos del funcionario (100).</summary>
+    public string? Apellidos { get; set; }
+
+    /// <summary>
+    /// Sede a la que pertenece el funcionario (RF01 4.1.2). Opcional: una entidad puede no tener
+    /// sedes. FK NO ACTION: inactivar una sede jamas borra usuarios.
+    /// </summary>
+    public long? SedeId { get; set; }
+    public Sede? Sede { get; set; }
+
+    /// <summary>Fecha de vinculacion a la entidad. Opcional.</summary>
+    public DateOnly? FechaVinculacion { get; set; }
+
+    /// <summary>
+    /// RUTA de la imagen de firma manuscrita escaneada (500). Se guarda la ruta, JAMAS los bytes
+    /// (invariante 9: binarios fuera de la base de datos). Hoy apunta a wwwroot/uploads; cuando
+    /// entre MinIO cambia la ruta, no el modelo.
+    /// </summary>
+    public string? FirmaImagenPath { get; set; }
+
+    /// <summary>
+    /// Reservado para el componente de firma DIGITAL (CAdES/PAdES/XAdES) de RQ05, que llega en un
+    /// hito posterior. La nota tecnica de RF06 pide dejarlo previsto desde ahora para no migrar la
+    /// tabla cuando exista; hoy siempre es null y ningun codigo lo lee.
+    /// </summary>
+    public long? FirmaDigitalId { get; set; }
+
     /// <summary>Token de invitacion para que el asesor complete su registro (clave + foto). Null si ya activo.</summary>
     public string? InvitationToken { get; set; }
     public DateTimeOffset? InvitationExpiresAt { get; set; }
+
+    /// <summary>
+    /// Nombre para mostrar derivado de los datos personales de RF06. Si el funcionario todavia no
+    /// los tiene (fila anterior a RF06), cae al correo. NO se persiste.
+    /// </summary>
+    public string NombreCompleto =>
+        string.IsNullOrWhiteSpace(Nombres) && string.IsNullOrWhiteSpace(Apellidos)
+            ? Email
+            : $"{Nombres} {Apellidos}".Trim();
 }

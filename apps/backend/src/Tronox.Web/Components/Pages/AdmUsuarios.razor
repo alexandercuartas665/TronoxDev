@@ -1,328 +1,573 @@
 @page "/admin-usuarios"
 @attribute [Authorize(Policy = "Perm:admin-usuarios:View")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.IO
+@using Tronox.Application.Archivistica
 @using Tronox.Application.Common
 @using Tronox.Application.MenuConfig
+@using Tronox.Application.Organization
 @using Tronox.Application.Roles
 @using Tronox.Application.Tenancy
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
+@using Tronox.Web.Services
 @inject ITenantUserService UsersSvc
+@inject IOrgUnitService OrgSvc
+@inject ISedeService SedesSvc
 @inject IMenuConfigService MenuSvc
 @inject IRolService RolesSvc
 @inject ITenantContext TenantCtx
 @inject ICurrentPermissions Perms
+@inject IWebHostEnvironment Env
 
-<PageTitle>Administracion de usuarios - TRONOX SGDEA</PageTitle>
+@* RQ01 - RF06 (Gestion de Usuarios / Funcionarios).
 
-<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
-    <a href="/inicio">Workspace</a>
-    <span class="sep">/</span>
-    <span>Sistema</span>
-    <span class="sep">/</span>
-    <span class="cur">Administracion de usuarios</span>
-</nav>
+   El funcionario es el MISMO TenantUser del backbone, ampliado con sus datos personales. No hay
+   un modelo paralelo de personas (invariante 2 aplicado hacia dentro: los actores EXTERNOS viven
+   en terceros; los internos, aqui).
 
-<div class="module-head">
-    <div>
-        <div class="module-eyebrow">
-            <div class="module-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </div>
-            <span>Modulo 000073 &#183; Sistema &#183; General</span>
+   Dos reglas que gobiernan la pantalla:
+   1. El usuario se ancla a UN nodo CARGO del organigrama (ADR-003, Addendum). La DEPENDENCIA no
+      se captura: se DERIVA subiendo el arbol, y se muestra como dato de solo lectura.
+   2. Para quedar ACTIVO necesita dependencia + cargo + al menos un rol (criterio 2 de 5.6.3).
+      El boton de activar explica que falta en vez de fallar en silencio.
+
+   PENDIENTE P-01 (5.6.3 punto 5) - DELEGACION TEMPORAL de funciones documentales entre usuarios
+   activos: NO se implementa. Esta a la espera de confirmacion del Product Owner (alcance de la
+   delegacion, que pasa con lo delegado al vencer el periodo y como se audita). *@
+
+<PageTitle>Usuarios / Funcionarios - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-usuarios">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración Organizacional</span>
+        <span class="sep">/</span>
+        <span class="cur">Usuarios / Funcionarios</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-people"></i><span>RQ01 &middot; RF06</span></div>
+            <h1 class="tx-ent-title">Usuarios / Funcionarios</h1>
+            <p class="tx-ent-sub">
+                Registro de los funcionarios de la entidad y su vínculo con la estructura organizacional.
+                El <strong>correo es el usuario de acceso</strong>; la <strong>dependencia se deriva del cargo</strong>.
+            </p>
         </div>
-        <h1 class="page-title" style="margin-top:12px;">Administracion de usuarios</h1>
-        <p class="page-sub" style="margin-bottom:0;">Invita usuarios a la empresa, define su rol, su estado y la vista de menu con la que trabajan.</p>
-    </div>
-    @if (_canCreate)
-    {
-        <button class="btn btn-primary" @onclick="OpenCreate" disabled="@_busy">+ Nuevo usuario</button>
-    }
-</div>
-
-@if (_loading)
-{
-    <p><em>Cargando...</em></p>
-}
-else if (_users.Count == 0)
-{
-    <div class="coming-soon" style="padding:40px 24px;">
-        <h3>Aun no hay usuarios</h3>
-        <p>Invita al primer usuario de la empresa con "+ Nuevo usuario".</p>
         @if (_canCreate)
         {
-            <button class="btn btn-primary" style="margin-top:14px;" @onclick="OpenCreate">+ Nuevo usuario</button>
+            <div>
+                <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenEditor(null))">
+                    <i class="bi bi-person-plus"></i> Nuevo funcionario
+                </button>
+            </div>
         }
     </div>
-}
-else
-{
-    <div class="card" style="overflow:hidden;">
-        <table class="table" style="margin:0;">
-            <thead>
-                <tr>
-                    <th>Usuario</th>
-                    <th>Email</th>
-                    <th>Rol</th>
-                    <th>Estado</th>
-                    <th>Vista de menu</th>
-                    <th>Rol de permisos</th>
-                    <th style="text-align:right;">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var u in _users)
+
+    @if (_pageError is not null)
+    {
+        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+    }
+    @if (_pageOk is not null)
+    {
+        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+    }
+
+    @* ===== KPIs ===== *@
+    <div class="tx-dep-kpis">
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon"><i class="bi bi-people"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_usuarios.Count</div>
+                <div class="tx-dep-kpi-lbl">Funcionarios</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-green"><i class="bi bi-person-check"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_usuarios.Count(u => u.Status == PlatformUserStatus.Active)</div>
+                <div class="tx-dep-kpi-lbl">Activos</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-slate"><i class="bi bi-person-dash"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_usuarios.Count(u => u.Status != PlatformUserStatus.Active)</div>
+                <div class="tx-dep-kpi-lbl">Sin acceso</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-violet"><i class="bi bi-exclamation-triangle"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@_usuarios.Count(u => u.MotivoNoActivable is not null)</div>
+                <div class="tx-dep-kpi-lbl">Vinculación incompleta</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tx-ent-card">
+        <div class="tx-dep-toolbar">
+            <div class="tx-dep-search">
+                <i class="bi bi-search"></i>
+                <input class="tx-ent-input" placeholder="Buscar por nombre, documento o correo..."
+                       value="@_search" @oninput="@(e => _search = e.Value?.ToString() ?? "")" />
+            </div>
+            <select class="tx-ent-input" style="max-width:190px" @bind="_filtroEstado">
+                <option value="">Todos los estados</option>
+                @foreach (var s in EstadosGestionables)
                 {
-                    <tr>
-                        <td><strong>@(string.IsNullOrWhiteSpace(u.DisplayName) ? "-" : u.DisplayName)</strong></td>
-                        <td><span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;">@u.Email</span></td>
-                        <td><span class="badge" style="background:@RoleColor(u.TenantRole);color:#fff;">@RoleLabel(u.TenantRole)</span></td>
-                        <td><span class="badge" style="background:@StatusColor(u.Status);color:#fff;">@StatusLabel(u.Status)</span></td>
-                        <td style="font-size:12.5px;color:var(--muted-foreground);">@ViewNameFor(u.Id)</td>
-                        <td>
-                            @if (_canEdit)
-                            {
-                                <select class="form-control" style="min-width:150px;" value="@RolIdFor(u.PlatformUserId)"
-                                        @onchange="@(e => AssignRolAsync(u, e.Value?.ToString()))">
-                                    <option value="">Sin rol</option>
-                                    @foreach (var r in _roles)
+                    <option value="@s">@EstadoLabel(s)</option>
+                }
+            </select>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="tx-ent-card-body"><em>Cargando funcionarios...</em></div>
+        }
+        else if (Filtrados().Count == 0)
+        {
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-empty">
+                    <i class="bi bi-people"></i>
+                    <div>
+                        @if (_usuarios.Count == 0)
+                        {
+                            <span><strong>Todavía no hay funcionarios</strong><br />Registra el primero para habilitar el acceso a la entidad.</span>
+                        }
+                        else
+                        {
+                            <span>Ningún funcionario coincide con el filtro.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="tx-ent-table-wrap">
+                <table class="tx-ent-table">
+                    <thead>
+                        <tr>
+                            <th>Funcionario</th>
+                            <th>Documento</th>
+                            <th>Cargo</th>
+                            <th>Dependencia</th>
+                            <th>Roles</th>
+                            <th>Estado</th>
+                            <th class="right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in Filtrados())
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@u.NombreCompleto</strong>
+                                    <div class="muted">@u.Email</div>
+                                </td>
+                                <td class="mono">@(u.NumeroDocumento is null ? "--" : $"{u.TipoDocumento} {u.NumeroDocumento}")</td>
+                                <td>
+                                    @(u.CargoNombre ?? "--")
+                                    @if (u.SedeNombre is string sede)
                                     {
-                                        <option value="@r.Id">@r.Name</option>
+                                        <div class="muted">@sede</div>
                                     }
-                                </select>
-                            }
-                            else
-                            {
-                                <span style="font-size:12.5px;color:var(--muted-foreground);">@RolNameFor(u.PlatformUserId)</span>
-                            }
-                        </td>
-                        <td style="text-align:right;white-space:nowrap;">
-                            @if (_canEdit)
-                            {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => OpenEdit(u))">Editar</button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => OpenPassword(u))">Cambiar clave</button>
-                            }
-                            @if (_canDelete)
-                            {
-                                @if (u.Status == PlatformUserStatus.Active)
+                                </td>
+                                <td>
+                                    @if (u.DependenciaNombre is string dep)
+                                    {
+                                        @dep
+                                        <div class="muted" title="La dependencia no se captura: se deriva del cargo (ADR-003).">derivada del cargo</div>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">Sin área documental</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (u.Roles.Count == 0)
+                                    {
+                                        <span class="muted">Sin rol</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var r in u.Roles)
+                                        {
+                                            <span class="tx-ent-badge sm info" style="margin-right:4px">@r.RolNombre</span>
+                                        }
+                                    }
+                                </td>
+                                <td>
+                                    <span class="tx-ent-badge sm @EstadoClase(u.Status)">@EstadoLabel(u.Status)</span>
+                                    @if (u.MotivoNoActivable is string motivo)
+                                    {
+                                        <div class="muted" title="@motivo">vinculación incompleta</div>
+                                    }
+                                </td>
+                                <td class="right">
+                                    @if (_canEdit)
+                                    {
+                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenEditor(u))">Editar</button>
+                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenPassword(u))">Clave</button>
+                                    }
+                                    @if (_canDelete)
+                                    {
+                                        @if (u.Status == PlatformUserStatus.Active)
+                                        {
+                                            <button type="button" class="tx-ent-btn sm danger" disabled="@_busy"
+                                                    @onclick="@(() => CambiarEstadoAsync(u, PlatformUserStatus.Inactive))">
+                                                Inactivar
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="tx-ent-btn sm" disabled="@(_busy || u.MotivoNoActivable is not null)"
+                                                    title="@(u.MotivoNoActivable ?? "Activar el funcionario")"
+                                                    @onclick="@(() => CambiarEstadoAsync(u, PlatformUserStatus.Active))">
+                                                Activar
+                                            </button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="tx-ent-hint">
+        <i class="bi bi-info-circle"></i>
+        Inactivar a un funcionario le quita el acceso pero <strong>conserva intactos</strong> sus documentos,
+        expedientes y pistas de auditoría (criterio 4 de RF06): nunca hay eliminación real.
+        La <strong>delegación temporal</strong> de funciones (5.6.3 punto 5) está pendiente de definición
+        del Product Owner (P-01) y todavía no se implementa.
+    </div>
+
+    @* ===== Modal crear/editar funcionario ===== *@
+    @if (_showEditor)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showEditor = false)">
+            <div class="modal-dialog" style="max-width:760px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_editing is null ? "Nuevo funcionario" : $"Editar {_editing.NombreCompleto}")</h3>
+                    <button class="modal-close" @onclick="@(() => _showEditor = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-usuarios">
+
+                    @* ---- Datos personales (5.6.1) ---- *@
+                    <div class="tx-ent-card-head" style="padding:0 0 10px 0;border-bottom:none">
+                        <div class="tx-ent-card-icon"><i class="bi bi-person-vcard"></i></div>
+                        <div>
+                            <div class="tx-ent-card-title">Datos personales</div>
+                            <div class="tx-ent-card-sub">El correo es el usuario de acceso y es único en la entidad.</div>
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Tipo de documento <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_fTipoDocumento">
+                                @foreach (var t in Enum.GetValues<TipoDocumento>())
                                 {
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="@(() => SetStatusAsync(u, PlatformUserStatus.Suspended))" disabled="@_busy">Suspender</button>
+                                    <option value="@t">@t</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Número de documento <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" @bind="_fNumeroDocumento" maxlength="20" />
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Nombres <span class="req">*</span></label>
+                            <input class="tx-ent-input" @bind="_fNombres" maxlength="100" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Apellidos <span class="req">*</span></label>
+                            <input class="tx-ent-input" @bind="_fApellidos" maxlength="100" />
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Correo electrónico <span class="req">*</span></label>
+                            <input class="tx-ent-input" type="email" @bind="_fCorreo" maxlength="150"
+                                   placeholder="funcionario@entidad.gov.co" />
+                            <div class="tx-ent-hint">Es el identificador de acceso (login).</div>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Teléfono <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input" @bind="_fTelefono" maxlength="20" />
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-sep"></div>
+
+                    @* ---- Datos organizacionales ---- *@
+                    <div class="tx-ent-card-head" style="padding:0 0 10px 0;border-bottom:none">
+                        <div class="tx-ent-card-icon tone-violet"><i class="bi bi-diagram-3"></i></div>
+                        <div>
+                            <div class="tx-ent-card-title">Vinculación organizacional</div>
+                            <div class="tx-ent-card-sub">Cargo del catálogo (RF04) + roles de permisos (RF05).</div>
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Cargo <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_fCargoId" @bind:after="OnCargoChanged">
+                                <option value="">-- Seleccione un cargo --</option>
+                                @foreach (var c in _cargos)
+                                {
+                                    <option value="@c.Id">@(c.CodigoCargo is null ? c.Name : $"{c.CodigoCargo} - {c.Name}")</option>
+                                }
+                            </select>
+                            <div class="tx-ent-hint">Catálogo global (RF04). El cargo es metadato: no otorga permisos.</div>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Dependencia <span class="opt">(derivada, no se edita)</span></label>
+                            <input class="tx-ent-input" value="@(_dependenciaDerivada ?? "-- sin área documental --")" readonly disabled />
+                            <div class="tx-ent-hint">
+                                Se resuelve subiendo por el cargo hasta la primera dependencia (ADR-003).
+                                Sin dependencia el funcionario no puede activarse.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Sede <span class="opt">(opcional)</span></label>
+                            <select class="tx-ent-input" @bind="_fSedeId">
+                                <option value="">(Sin sede)</option>
+                                @foreach (var s in _sedes)
+                                {
+                                    <option value="@s.Id">@s.NombreSede</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Fecha de vinculación <span class="opt">(opcional)</span></label>
+                            <input type="date" class="tx-ent-input" @bind="_fFechaVinculacion" />
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-field">
+                        <label>Roles de permisos <span class="req">*</span></label>
+                        <div class="tx-usr-roles">
+                            @if (_roles.Count == 0)
+                            {
+                                <span class="tx-ent-hint" style="margin:0">
+                                    No hay roles definidos todavía. Créalos en Roles y permisos (RF05).
+                                </span>
+                            }
+                            @foreach (var r in _roles)
+                            {
+                                <label class="tx-usr-role">
+                                    <input type="checkbox" checked="@_fRolIds.Contains(r.Id)"
+                                           @onchange="@(e => ToggleRol(r.Id, (bool)e.Value!))" />
+                                    <span>@r.Name</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="tx-ent-hint">
+                            Un usuario puede tener varios roles: sus permisos son la unión de todos.
+                            Sin ningún rol vigente queda <strong>sin permisos</strong> (fail-closed), nunca con acceso total.
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Rol orgánico</label>
+                            <select class="tx-ent-input" @bind="_fTenantRole">
+                                @foreach (var r in AllTenantRoles)
+                                {
+                                    <option value="@r">@TenantRoleLabel(r)</option>
+                                }
+                            </select>
+                            <div class="tx-ent-hint">Poder orgánico dentro del tenant. No concede permisos de módulo.</div>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Vista de menú <span class="opt">(opcional)</span></label>
+                            <select class="tx-ent-input" @bind="_fViewId">
+                                <option value="">Predeterminada</option>
+                                @foreach (var v in _views)
+                                {
+                                    <option value="@v.Id">@v.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    @if (_editing is null)
+                    {
+                        <div class="tx-ent-field">
+                            <label>Contraseña inicial <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input" type="password" @bind="_fPassword" autocomplete="new-password"
+                                   placeholder="Dejar vacío para invitar por correo" />
+                            <div class="tx-ent-hint">
+                                El funcionario nace <strong>Invitado</strong>: se activa desde el listado, y solo cuando
+                                tiene dependencia, cargo y al menos un rol.
+                            </div>
+                        </div>
+                    }
+
+                    @if (_editing is not null)
+                    {
+                        <div class="tx-ent-sep"></div>
+
+                        @* ---- Firma manuscrita ---- *@
+                        <div class="tx-ent-card-head" style="padding:0 0 10px 0;border-bottom:none">
+                            <div class="tx-ent-card-icon tone-amber"><i class="bi bi-pen"></i></div>
+                            <div>
+                                <div class="tx-ent-card-title">Imagen de firma</div>
+                                <div class="tx-ent-card-sub">Firma manuscrita escaneada. Se guarda la ruta, nunca el archivo en la base de datos.</div>
+                            </div>
+                        </div>
+                        <div class="tx-usr-firma">
+                            <div class="tx-usr-firma-box">
+                                @if (!string.IsNullOrWhiteSpace(_fFirmaPath))
+                                {
+                                    <img src="@_fFirmaPath" alt="Firma" />
                                 }
                                 else
                                 {
-                                    <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => SetStatusAsync(u, PlatformUserStatus.Active))" disabled="@_busy">Activar</button>
+                                    <i class="bi bi-pen"></i>
+                                    <span>Sin firma</span>
                                 }
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
+                            </div>
+                            <div>
+                                <label class="tx-ent-btn sm" style="position:relative;overflow:hidden">
+                                    <i class="bi bi-upload"></i> Subir imagen
+                                    <InputFile OnChange="OnFirmaSelected" accept="@ImageUploadGuard.Accept"
+                                               style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%" />
+                                </label>
+                                @if (!string.IsNullOrWhiteSpace(_fFirmaPath))
+                                {
+                                    <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => _fFirmaPath = null)">Quitar</button>
+                                }
+                                <div class="tx-ent-hint">@ImageUploadGuard.FormatosTexto &middot; Máx. 2 MB &middot; fondo transparente o blanco.</div>
+                                @if (_firmaError is not null)
+                                {
+                                    <div class="tx-ent-fielderr">@_firmaError</div>
+                                }
+                            </div>
+                        </div>
+                    }
 
-@* ===== Modal crear ===== *@
-@if (_createOpen)
-{
-    <div class="modal-overlay" @onclick="CloseCreate">
-        <div class="modal-dialog" style="max-width:560px;" @onclick:stopPropagation="true">
-            <div class="modal-head">
-                <h3>Nuevo usuario</h3>
-                <button class="modal-close" @onclick="CloseCreate">&times;</button>
+                    @if (_editorError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_editorError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showEditor = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveAsync" disabled="@_busy">
+                        @(_editing is null ? "Crear funcionario" : "Guardar")
+                    </button>
+                </div>
             </div>
-            <div class="modal-body">
-                <div class="field">
-                    <label class="form-label">Email *</label>
-                    <input class="form-control" type="email" @bind="_fEmail" placeholder="usuario@empresa.local" autocomplete="off" />
+        </div>
+    }
+
+    @* ===== Modal cambiar clave ===== *@
+    @if (_passwordTarget is not null)
+    {
+        <div class="modal-overlay" @onclick="ClosePassword">
+            <div class="modal-dialog" style="max-width:480px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>Cambiar clave</h3>
+                    <button class="modal-close" @onclick="ClosePassword">&times;</button>
                 </div>
-                <div class="field">
-                    <label class="form-label">Nombre para mostrar</label>
-                    <input class="form-control" @bind="_fDisplayName" placeholder="Nombre Apellido" autocomplete="off" />
-                </div>
-                <div class="field">
-                    <label class="form-label">Rol *</label>
-                    <select class="form-control" @bind="_fRole">
-                        @foreach (var r in AllRoles)
-                        {
-                            <option value="@r">@RoleLabel(r)</option>
-                        }
-                    </select>
-                </div>
-                <div class="field">
-                    <label class="form-label">Contrasena</label>
-                    <div style="display:flex;gap:6px;">
-                        <input class="form-control" type="@(_showPassword ? "text" : "password")" @bind="_fPassword" placeholder="Dejar vacio para invitar" autocomplete="new-password" />
-                        <button type="button" class="btn btn-outline-secondary" @onclick="@(() => _showPassword = !_showPassword)">@(_showPassword ? "Ocultar" : "Ver")</button>
-                        <button type="button" class="btn btn-outline-secondary" @onclick="GenerateRandomPassword">Generar</button>
+                <div class="modal-body tx-mod tx-usuarios">
+                    <p class="tx-ent-sub">Asigna una nueva clave a <strong>@_passwordTarget.Email</strong>.</p>
+                    <div class="tx-ent-field">
+                        <label>Nueva clave <span class="req">*</span></label>
+                        <input class="tx-ent-input" type="password" @bind="_fPassword" autocomplete="new-password" placeholder="Mínimo 6 caracteres" />
                     </div>
-                    <small class="text-muted">Vacio = queda <strong>Invitado</strong>. Con clave = queda <strong>Activo</strong> y puede iniciar sesion.</small>
-                </div>
-                <div class="field">
-                    <label class="form-label">Vista de menu</label>
-                    <select class="form-control" @bind="_fViewId">
-                        <option value="">Predeterminada</option>
-                        @foreach (var v in _views)
-                        {
-                            <option value="@v.Id">@v.Name</option>
-                        }
-                    </select>
-                </div>
-                @if (_formError is not null)
-                {
-                    <div class="text-danger small">@_formError</div>
-                }
-            </div>
-            <div class="modal-foot">
-                <button class="btn btn-outline-secondary" @onclick="CloseCreate">Cancelar</button>
-                <button class="btn btn-primary" @onclick="CreateAsync" disabled="@_busy">Crear usuario</button>
-            </div>
-        </div>
-    </div>
-}
-
-@* ===== Modal editar ===== *@
-@if (_editOpen && _editTarget is not null)
-{
-    <div class="modal-overlay" @onclick="CloseEdit">
-        <div class="modal-dialog" style="max-width:560px;" @onclick:stopPropagation="true">
-            <div class="modal-head">
-                <h3>Editar usuario</h3>
-                <button class="modal-close" @onclick="CloseEdit">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="field">
-                    <label class="form-label">Email</label>
-                    <input class="form-control" value="@_editTarget.Email" disabled />
-                    <small class="text-muted">El email no se puede cambiar.</small>
-                </div>
-                <div class="field">
-                    <label class="form-label">Nombre para mostrar</label>
-                    <input class="form-control" @bind="_fDisplayName" placeholder="Nombre Apellido" autocomplete="off" />
-                </div>
-                <div class="field">
-                    <label class="form-label">Rol *</label>
-                    <select class="form-control" @bind="_fRole">
-                        @foreach (var r in AllRoles)
-                        {
-                            <option value="@r">@RoleLabel(r)</option>
-                        }
-                    </select>
-                </div>
-                <div class="field">
-                    <label class="form-label">Estado</label>
-                    <select class="form-control" @bind="_fStatus">
-                        <option value="@PlatformUserStatus.Active">Activo</option>
-                        <option value="@PlatformUserStatus.Suspended">Suspendido</option>
-                        <option value="@PlatformUserStatus.Blocked">Bloqueado</option>
-                        <option value="@PlatformUserStatus.Invited">Invitado</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label class="form-label">Vista de menu</label>
-                    <select class="form-control" @bind="_fViewId">
-                        <option value="">Predeterminada</option>
-                        @foreach (var v in _views)
-                        {
-                            <option value="@v.Id">@v.Name</option>
-                        }
-                    </select>
-                </div>
-                @if (_formError is not null)
-                {
-                    <div class="text-danger small">@_formError</div>
-                }
-            </div>
-            <div class="modal-foot">
-                <button class="btn btn-outline-secondary" @onclick="CloseEdit">Cancelar</button>
-                <button class="btn btn-primary" @onclick="SaveEditAsync" disabled="@_busy">Guardar</button>
-            </div>
-        </div>
-    </div>
-}
-
-@* ===== Modal cambiar clave ===== *@
-@if (_passwordOpen && _passwordTarget is not null)
-{
-    <div class="modal-overlay" @onclick="ClosePassword">
-        <div class="modal-dialog" style="max-width:480px;" @onclick:stopPropagation="true">
-            <div class="modal-head">
-                <h3>Cambiar clave</h3>
-                <button class="modal-close" @onclick="ClosePassword">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p style="color:var(--muted-foreground);font-size:13px;margin-bottom:14px;">Asigna una nueva clave a <strong>@_passwordTarget.Email</strong>.</p>
-                <div class="field">
-                    <label class="form-label">Nueva clave *</label>
-                    <div style="display:flex;gap:6px;">
-                        <input class="form-control" type="@(_showPassword ? "text" : "password")" @bind="_fPassword" placeholder="Minimo 6 caracteres" autocomplete="new-password" />
-                        <button type="button" class="btn btn-outline-secondary" @onclick="@(() => _showPassword = !_showPassword)">@(_showPassword ? "Ocultar" : "Ver")</button>
-                        <button type="button" class="btn btn-outline-secondary" @onclick="GenerateRandomPassword">Generar</button>
+                    <div class="tx-ent-field">
+                        <label>Confirmar clave <span class="req">*</span></label>
+                        <input class="tx-ent-input" type="password" @bind="_fPasswordConfirm" autocomplete="new-password" />
                     </div>
+                    @if (_editorError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_editorError</div>
+                    }
                 </div>
-                <div class="field">
-                    <label class="form-label">Confirmar clave *</label>
-                    <input class="form-control" type="@(_showPassword ? "text" : "password")" @bind="_fPasswordConfirm" placeholder="Repite la clave" autocomplete="new-password" />
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="ClosePassword" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="ResetPasswordAsync" disabled="@_busy">Cambiar clave</button>
                 </div>
-                @if (_formError is not null)
-                {
-                    <div class="text-danger small">@_formError</div>
-                }
-            </div>
-            <div class="modal-foot">
-                <button class="btn btn-outline-secondary" @onclick="ClosePassword">Cancelar</button>
-                <button class="btn btn-primary" @onclick="ResetPasswordAsync" disabled="@_busy">Cambiar clave</button>
             </div>
         </div>
-    </div>
-}
-
-@if (_toast is not null)
-{
-    <div class="tk-toast @(_toastOk ? "ok" : "err")" style="position:fixed;right:20px;bottom:20px;z-index:2000;">@_toast</div>
-}
+    }
+</div>
 
 @code {
-    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    private const string ModuleKey = "admin-usuarios";
+    private const long MaxFirmaBytes = 2 * 1024 * 1024;
 
-    private static readonly TenantRole[] AllRoles =
-        new[] { TenantRole.Owner, TenantRole.Admin, TenantRole.Supervisor, TenantRole.Advisor };
+    private static readonly TenantRole[] AllTenantRoles =
+        [TenantRole.Owner, TenantRole.Admin, TenantRole.Supervisor, TenantRole.Advisor];
+
+    /// <summary>
+    /// Estados que un administrador GESTIONA (5.6.2). Blocked lo pone el SISTEMA tras intentos
+    /// fallidos y PendingActivation el auto-registro: no se ofrecen como opcion manual, pero si
+    /// se muestran si un usuario ya esta en ellos.
+    /// </summary>
+    private static readonly PlatformUserStatus[] EstadosGestionables =
+        [PlatformUserStatus.Active, PlatformUserStatus.Inactive, PlatformUserStatus.Suspended,
+         PlatformUserStatus.Blocked, PlatformUserStatus.Invited];
 
     private bool _loading = true;
     private bool _busy;
-    private string? _formError;
-    private string? _toast;
-    private bool _toastOk;
+    private string _search = "";
+    private string _filtroEstado = "";
+    private string? _pageError;
+    private string? _pageOk;
 
-    // Gateo de acciones por permiso. FAIL-CLOSED (invariante 10): se parte de NEGADO y solo la
-    // matriz efectiva del usuario concede. Ya no hay "Owner/Admin/sin-rol lo ven todo".
-    private const string ModuleKey = "admin-usuarios";
+    // Gateo por permiso. FAIL-CLOSED (invariante 10): se parte de NEGADO.
     private bool _canCreate;
     private bool _canEdit;
     private bool _canDelete;
 
-    private List<TenantUserDto> _users = new();
-    private List<MenuViewDto> _views = new();
-    private List<RolDto> _roles = new();
-    // TenantUserId -> nombre de la vista asignada (para la columna "Vista de menu").
-    private Dictionary<long, string> _assignedView = new();
-    // PlatformUserId -> roles asignados (RF05: un usuario puede tener VARIOS, con vigencia).
-    private Dictionary<long, IReadOnlyList<RolAsignacionDto>> _userRoles = new();
+    private IReadOnlyList<FuncionarioDto> _usuarios = [];
+    private IReadOnlyList<OrgUnitDto> _cargos = [];
+    private IReadOnlyList<SedeDto> _sedes = [];
+    private IReadOnlyList<RolDto> _roles = [];
+    private IReadOnlyList<MenuViewDto> _views = [];
 
-    // Form compartido.
-    private string _fEmail = "";
-    private string _fDisplayName = "";
-    private TenantRole _fRole = TenantRole.Advisor;
-    private PlatformUserStatus _fStatus = PlatformUserStatus.Active;
+    // ---- Editor ----
+    private bool _showEditor;
+    private FuncionarioDto? _editing;
+    private TipoDocumento _fTipoDocumento = TipoDocumento.CC;
+    private string? _fNumeroDocumento;
+    private string? _fNombres;
+    private string? _fApellidos;
+    private string _fCorreo = "";
+    private string? _fTelefono;
+    private string _fCargoId = "";
+    private string _fSedeId = "";
+    private DateOnly? _fFechaVinculacion;
+    private TenantRole _fTenantRole = TenantRole.Advisor;
+    private string _fViewId = "";
+    private readonly HashSet<long> _fRolIds = [];
+    private string? _fFirmaPath;
+    private string? _dependenciaDerivada;
+    private string? _editorError;
+    private string? _firmaError;
+
+    // ---- Clave ----
+    private FuncionarioDto? _passwordTarget;
     private string _fPassword = "";
     private string _fPasswordConfirm = "";
-    private string _fViewId = "";
-    private bool _showPassword;
-
-    private bool _createOpen;
-    private bool _editOpen;
-    private TenantUserDto? _editTarget;
-    private bool _passwordOpen;
-    private TenantUserDto? _passwordTarget;
 
     protected override async Task OnInitializedAsync()
     {
@@ -331,296 +576,298 @@ else
         _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
         _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
 
-        await ReloadAsync();
+        await LoadAsync();
         _loading = false;
     }
 
-    private async Task ReloadAsync()
+    private async Task LoadAsync()
     {
-        _users = (await UsersSvc.ListAsync()).ToList();
-        _views = (await MenuSvc.ListViewsAsync()).ToList();
-        _roles = (await RolesSvc.ListAsync()).ToList();
-        var withView = await MenuSvc.ListTenantUsersWithViewAsync();
-        _assignedView = withView
-            .Where(x => x.MenuViewName is not null)
-            .ToDictionary(x => x.TenantUserId, x => x.MenuViewName!);
-        // Los roles se leen de la puente usuarios_roles (no de un RolId en el usuario, que ya no
-        // existe). Se indexan por PlatformUserId porque es la clave que usa el markup.
-        _userRoles = new Dictionary<long, IReadOnlyList<RolAsignacionDto>>();
-        foreach (var u in _users)
-        {
-            _userRoles[u.PlatformUserId] = await RolesSvc.GetUserRolesAsync(u.Id);
-        }
+        _usuarios = await UsersSvc.ListFuncionariosAsync();
+        // Solo cargos ACTIVOS: un cargo inactivo salio del catalogo y no debe poder asignarse.
+        _cargos = (await OrgSvc.ListAsync(includeArchived: false))
+            .Where(u => u.Classifier == OrgUnitClassifier.Cargo)
+            .OrderBy(u => u.Name)
+            .ToList();
+        _sedes = await SedesSvc.ListAsync(soloActivas: true);
+        _roles = await RolesSvc.ListAsync();
+        _views = await MenuSvc.ListViewsAsync();
     }
 
-    private string ViewNameFor(long tenantUserId) =>
-        _assignedView.TryGetValue(tenantUserId, out var name) ? name : "Predeterminada";
+    private IReadOnlyList<FuncionarioDto> Filtrados()
+    {
+        var q = _search.Trim();
+        return _usuarios
+            .Where(u => q.Length == 0
+                        || u.NombreCompleto.Contains(q, StringComparison.OrdinalIgnoreCase)
+                        || u.Email.Contains(q, StringComparison.OrdinalIgnoreCase)
+                        || (u.NumeroDocumento ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Where(u => _filtroEstado.Length == 0 || u.Status.ToString() == _filtroEstado)
+            .ToList();
+    }
+
+    // ---- Editor ----
+
+    private void OpenEditor(FuncionarioDto? u)
+    {
+        _editing = u;
+        _fTipoDocumento = u?.TipoDocumento ?? TipoDocumento.CC;
+        _fNumeroDocumento = u?.NumeroDocumento;
+        _fNombres = u?.Nombres;
+        _fApellidos = u?.Apellidos;
+        _fCorreo = u?.Email ?? "";
+        _fTelefono = u?.Telefono;
+        _fCargoId = u?.CargoOrgUnitId?.ToString() ?? "";
+        _fSedeId = u?.SedeId?.ToString() ?? "";
+        _fFechaVinculacion = u?.FechaVinculacion;
+        _fTenantRole = u?.TenantRole ?? TenantRole.Advisor;
+        _fViewId = u?.MenuViewId?.ToString() ?? "";
+        _fFirmaPath = u?.FirmaImagenPath;
+        _fRolIds.Clear();
+        foreach (var r in u?.Roles ?? [])
+        {
+            _fRolIds.Add(r.RolId);
+        }
+        _fPassword = "";
+        _dependenciaDerivada = u?.DependenciaNombre;
+        _editorError = null;
+        _firmaError = null;
+        _pageOk = null;
+        _pageError = null;
+        _showEditor = true;
+    }
+
+    private void ToggleRol(long rolId, bool marcado)
+    {
+        if (marcado) { _fRolIds.Add(rolId); } else { _fRolIds.Remove(rolId); }
+    }
 
     /// <summary>
-    /// Id para el selector. Solo tiene sentido cuando el usuario tiene EXACTAMENTE un rol; con
-    /// varios se deja en blanco (el selector simple no puede representarlos) y la columna de
-    /// texto los muestra todos.
+    /// Al cambiar de cargo se recalcula la dependencia DERIVADA para mostrarla al instante: es el
+    /// dato que decide el area documental del funcionario y no se captura a mano (ADR-003).
     /// </summary>
-    private string RolIdFor(long platformUserId) =>
-        _userRoles.TryGetValue(platformUserId, out var rs) && rs.Count == 1
-            ? rs[0].RolId.ToString()
-            : "";
-
-    /// <summary>Roles del usuario, para mostrar cuando no puede editar (o cuando son varios).</summary>
-    private string RolNameFor(long platformUserId) =>
-        _userRoles.TryGetValue(platformUserId, out var rs) && rs.Count > 0
-            ? string.Join(", ", rs.Select(r => r.RolNombre ?? "?"))
-            : "Sin rol";
-
-    private async Task AssignRolAsync(TenantUserDto u, string? value)
+    private async Task OnCargoChanged()
     {
-        _busy = true;
-        try
+        if (!long.TryParse(_fCargoId, out var cargoId))
         {
-            var actor = await ResolveSelfIdAsync();
-            // El selector fija el CONJUNTO de roles: vacio = ninguno, o exactamente el elegido.
-            // Sin vigencia (permanente); los encargos temporales se gestionan en Roles y permisos.
-            var roles = long.TryParse(value, out var rolId)
-                ? new List<RolAsignacionDto> { new(rolId, null, null, null) }
-                : new List<RolAsignacionDto>();
-            await RolesSvc.SetUserRolesAsync(u.Id, roles, actor);
-            await ReloadAsync();
-            ShowToast("Roles de permisos actualizados.", true);
-        }
-        finally { _busy = false; }
-    }
-
-    // ---- Crear ----
-
-    private void OpenCreate()
-    {
-        _fEmail = "";
-        _fDisplayName = "";
-        _fRole = TenantRole.Advisor;
-        _fPassword = "";
-        _fViewId = "";
-        _showPassword = false;
-        _formError = null;
-        _createOpen = true;
-    }
-
-    private void CloseCreate() { _createOpen = false; _formError = null; }
-
-    private async Task CreateAsync()
-    {
-        _formError = null;
-        var email = _fEmail.Trim();
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || !email.Contains('.'))
-        {
-            _formError = "Ingresa un email valido.";
+            _dependenciaDerivada = null;
             return;
         }
+        var dependenciaId = await OrgSvc.ResolveDependenciaAsync(cargoId);
+        _dependenciaDerivada = dependenciaId is long id ? (await OrgSvc.GetAsync(id))?.Name : null;
+    }
+
+    private async Task SaveAsync()
+    {
         _busy = true;
+        _editorError = null;
         try
         {
-            var actor = await ResolveSelfIdAsync();
-            var created = await UsersSvc.InviteAsync(
-                new InviteTenantUserRequest(email, _fRole,
-                    Password: string.IsNullOrWhiteSpace(_fPassword) ? null : _fPassword,
-                    DisplayName: string.IsNullOrWhiteSpace(_fDisplayName) ? null : _fDisplayName.Trim()),
-                actor);
-            if (created is null)
+            var request = new SaveFuncionarioRequest(
+                _editing?.Id,
+                _fTipoDocumento,
+                _fNumeroDocumento,
+                _fNombres,
+                _fApellidos,
+                _fCorreo,
+                _fTelefono,
+                CargoOrgUnitId: long.TryParse(_fCargoId, out var cargoId) ? cargoId : null,
+                SedeId: long.TryParse(_fSedeId, out var sedeId) ? sedeId : null,
+                FechaVinculacion: _fFechaVinculacion,
+                TenantRole: _fTenantRole,
+                Password: string.IsNullOrWhiteSpace(_fPassword) ? null : _fPassword);
+
+            var actor = TenantCtx.UserId ?? 0;
+            var result = await UsersSvc.SaveFuncionarioAsync(request, actor);
+            if (!result.IsOk)
             {
-                _formError = "No se pudo crear: el email ya es miembro de la empresa o no hay tenant activo.";
+                _editorError = result.Error;
                 return;
             }
 
-            if (long.TryParse(_fViewId, out var viewId))
+            var guardado = result.Value!;
+
+            // Los roles se asignan por su propio servicio: es el unico camino que deja la
+            // asignacion en la pista de auditoria (criterio 6 de 5.6.3).
+            var rolesActuales = guardado.Roles.Select(r => r.RolId).ToHashSet();
+            if (!rolesActuales.SetEquals(_fRolIds))
             {
-                await MenuSvc.AssignUserToViewAsync(created.Id, viewId);
+                var asignaciones = _fRolIds.Select(id => new RolAsignacionDto(id, null, null, null)).ToList();
+                var rolesResult = await RolesSvc.SetUserRolesAsync(guardado.Id, asignaciones, actor);
+                if (!rolesResult.IsOk)
+                {
+                    _editorError = rolesResult.Error;
+                    return;
+                }
             }
 
-            _createOpen = false;
-            await ReloadAsync();
-            ShowToast($"Usuario {created.Email} creado.", true);
-        }
-        finally { _busy = false; }
-    }
+            await MenuSvc.AssignUserToViewAsync(guardado.Id, long.TryParse(_fViewId, out var vid) ? vid : null);
 
-    // ---- Editar ----
-
-    private void OpenEdit(TenantUserDto u)
-    {
-        _editTarget = u;
-        _fDisplayName = u.DisplayName ?? "";
-        _fRole = u.TenantRole;
-        _fStatus = u.Status;
-        _fViewId = _assignedView.ContainsKey(u.Id)
-            ? (_views.FirstOrDefault(v => v.Name == _assignedView[u.Id])?.Id.ToString() ?? "")
-            : "";
-        _formError = null;
-        _editOpen = true;
-    }
-
-    private void CloseEdit() { _editOpen = false; _editTarget = null; _formError = null; }
-
-    private async Task SaveEditAsync()
-    {
-        if (_editTarget is null) { return; }
-        _formError = null;
-        _busy = true;
-        try
-        {
-            var actor = await ResolveSelfIdAsync();
-            var id = _editTarget.Id;
-
-            await UsersSvc.UpdateProfileAsync(id, string.IsNullOrWhiteSpace(_fDisplayName) ? null : _fDisplayName.Trim(), actor);
-            if (_fRole != _editTarget.TenantRole)
+            if (_editing is not null && _fFirmaPath != _editing.FirmaImagenPath)
             {
-                await UsersSvc.ChangeRoleAsync(id, _fRole, actor);
+                await UsersSvc.SetFirmaImagenAsync(guardado.Id, _fFirmaPath, actor);
             }
-            if (_fStatus != _editTarget.Status)
-            {
-                await UsersSvc.SetStatusAsync(id, _fStatus, actor);
-            }
-            long? viewId = long.TryParse(_fViewId, out var vid) ? vid : null;
-            await MenuSvc.AssignUserToViewAsync(id, viewId);
 
-            _editOpen = false;
-            _editTarget = null;
-            await ReloadAsync();
-            ShowToast("Cambios guardados.", true);
+            _showEditor = false;
+            _pageOk = _editing is null
+                ? "Funcionario creado. Queda Invitado: actívalo cuando tenga dependencia, cargo y rol."
+                : "Cambios guardados.";
+            await LoadAsync();
         }
         catch (Exception ex)
         {
-            _formError = "No se pudo guardar: " + ex.Message;
+            _editorError = $"No se pudo guardar: {ex.Message}";
         }
         finally { _busy = false; }
     }
 
-    // ---- Estado rapido ----
+    // ---- Estado ----
 
-    private async Task SetStatusAsync(TenantUserDto u, PlatformUserStatus status)
+    private async Task CambiarEstadoAsync(FuncionarioDto u, PlatformUserStatus estado)
     {
         _busy = true;
+        _pageError = null;
+        _pageOk = null;
         try
         {
-            var actor = await ResolveSelfIdAsync();
-            await UsersSvc.SetStatusAsync(u.Id, status, actor);
-            await ReloadAsync();
-            ShowToast(status == PlatformUserStatus.Active ? "Usuario activado." : "Usuario suspendido.", true);
+            var motivo = estado == PlatformUserStatus.Active
+                ? "Activacion desde la gestion de usuarios (RF06)"
+                : "Inactivacion desde la gestion de usuarios (RF06)";
+            var result = await UsersSvc.SetFuncionarioEstadoAsync(u.Id, estado, motivo, TenantCtx.UserId ?? 0);
+            if (!result.IsOk)
+            {
+                _pageError = result.Error;
+                return;
+            }
+            _pageOk = estado == PlatformUserStatus.Active ? "Funcionario activado." : "Funcionario inactivado.";
+            await LoadAsync();
         }
         finally { _busy = false; }
     }
 
-    // ---- Cambiar clave ----
+    // ---- Firma ----
 
-    private void OpenPassword(TenantUserDto u)
+    private async Task OnFirmaSelected(InputFileChangeEventArgs e)
+    {
+        _firmaError = null;
+        var file = e.File;
+        if (file is null) { return; }
+        if (file.Size > MaxFirmaBytes)
+        {
+            _firmaError = "La imagen de firma no puede superar 2 MB.";
+            return;
+        }
+
+        var ext = ImageUploadGuard.ResolveExtension(file.Name);
+        if (ext is null)
+        {
+            _firmaError = $"Formato no permitido. Se aceptan {ImageUploadGuard.FormatosTexto}.";
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxFirmaBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var bytes = buffer.ToArray();
+
+            // La extension y el content-type los pone el CLIENTE: lo que decide son los BYTES.
+            if (!ImageUploadGuard.MatchesSignature(bytes, ext))
+            {
+                _firmaError = "El archivo no es una imagen valida.";
+                return;
+            }
+
+            var carpeta = Path.Combine(Env.WebRootPath, "uploads");
+            Directory.CreateDirectory(carpeta);
+            var nombre = ImageUploadGuard.BuildStoredFileName("firma", ext);
+            await File.WriteAllBytesAsync(Path.Combine(carpeta, nombre), bytes);
+            // Solo la RUTA: los bytes JAMAS van a la base de datos (invariante 9).
+            _fFirmaPath = $"/uploads/{nombre}";
+        }
+        catch (Exception ex)
+        {
+            _firmaError = $"No se pudo cargar la firma: {ex.Message}";
+        }
+    }
+
+    // ---- Clave ----
+
+    private void OpenPassword(FuncionarioDto u)
     {
         _passwordTarget = u;
         _fPassword = "";
         _fPasswordConfirm = "";
-        _showPassword = false;
-        _formError = null;
-        _passwordOpen = true;
+        _editorError = null;
     }
 
-    private void ClosePassword() { _passwordOpen = false; _passwordTarget = null; _formError = null; }
+    private void ClosePassword()
+    {
+        _passwordTarget = null;
+        _editorError = null;
+    }
 
     private async Task ResetPasswordAsync()
     {
         if (_passwordTarget is null) { return; }
         if (string.IsNullOrWhiteSpace(_fPassword) || _fPassword.Length < 6)
         {
-            _formError = "La clave debe tener al menos 6 caracteres.";
+            _editorError = "La clave debe tener al menos 6 caracteres.";
             return;
         }
         if (_fPassword != _fPasswordConfirm)
         {
-            _formError = "Las claves no coinciden.";
+            _editorError = "Las claves no coinciden.";
             return;
         }
         _busy = true;
         try
         {
-            var actor = await ResolveSelfIdAsync();
-            var updated = await UsersSvc.ResetPasswordAsync(_passwordTarget.Id, _fPassword, actor);
+            var updated = await UsersSvc.ResetPasswordAsync(_passwordTarget.Id, _fPassword, TenantCtx.UserId ?? 0);
             if (updated is null)
             {
-                _formError = "No se pudo cambiar la clave.";
+                _editorError = "No se pudo cambiar la clave.";
                 return;
             }
-            _passwordOpen = false;
             _passwordTarget = null;
-            await ReloadAsync();
-            ShowToast("Clave actualizada.", true);
+            _pageOk = "Clave actualizada.";
+            await LoadAsync();
         }
         catch (ArgumentException ex)
         {
-            _formError = ex.Message;
+            _editorError = ex.Message;
         }
         finally { _busy = false; }
     }
 
-    // ---- Helpers ----
+    // ---- Presentacion ----
 
-    private void GenerateRandomPassword()
-    {
-        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-        var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
-        var buf = new byte[12];
-        rng.GetBytes(buf);
-        var pwd = new char[12];
-        for (var i = 0; i < pwd.Length; i++) { pwd[i] = chars[buf[i] % chars.Length]; }
-        _fPassword = new string(pwd);
-        _fPasswordConfirm = _fPassword;
-        _showPassword = true;
-    }
-
-    private void ShowToast(string message, bool ok)
-    {
-        _toast = message;
-        _toastOk = ok;
-    }
-
-    private async Task<long> ResolveSelfIdAsync()
-    {
-        if (TenantCtx.UserId is long uid) { return uid; }
-        if (AuthState is null) { return 0; }
-        var st = await AuthState;
-        return long.TryParse(st.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    }
-
-    private static string RoleLabel(TenantRole role) => role switch
-    {
-        TenantRole.Owner => "Propietario",
-        TenantRole.Admin => "Administrador",
-        TenantRole.Supervisor => "Supervisor",
-        TenantRole.Advisor => "Asesor",
-        _ => role.ToString(),
-    };
-
-    private static string RoleColor(TenantRole role) => role switch
-    {
-        TenantRole.Owner => "#7c4dff",
-        TenantRole.Admin => "#06b6d4",
-        TenantRole.Supervisor => "#f97316",
-        TenantRole.Advisor => "#10b981",
-        _ => "#94a3b8",
-    };
-
-    private static string StatusLabel(PlatformUserStatus status) => status switch
+    private static string EstadoLabel(PlatformUserStatus estado) => estado switch
     {
         PlatformUserStatus.Active => "Activo",
+        PlatformUserStatus.Inactive => "Inactivo",
         PlatformUserStatus.Invited => "Invitado",
         PlatformUserStatus.Blocked => "Bloqueado",
         PlatformUserStatus.Suspended => "Suspendido",
         PlatformUserStatus.PendingActivation => "Pendiente",
-        _ => status.ToString(),
+        _ => estado.ToString(),
     };
 
-    private static string StatusColor(PlatformUserStatus status) => status switch
+    private static string EstadoClase(PlatformUserStatus estado) => estado switch
     {
-        PlatformUserStatus.Active => "#10b981",
-        PlatformUserStatus.Invited => "#6366f1",
-        PlatformUserStatus.Blocked => "#ef4444",
-        PlatformUserStatus.Suspended => "#f59e0b",
-        PlatformUserStatus.PendingActivation => "#94a3b8",
-        _ => "#94a3b8",
+        PlatformUserStatus.Active => "ok",
+        PlatformUserStatus.Blocked => "warn",
+        PlatformUserStatus.Suspended => "warn",
+        PlatformUserStatus.Invited => "info",
+        _ => "off",
+    };
+
+    private static string TenantRoleLabel(TenantRole role) => role switch
+    {
+        TenantRole.Owner => "Propietario",
+        TenantRole.Admin => "Administrador",
+        TenantRole.Supervisor => "Supervisor",
+        TenantRole.Advisor => "Funcionario",
+        _ => role.ToString(),
     };
 }

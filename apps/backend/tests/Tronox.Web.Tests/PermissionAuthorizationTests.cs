@@ -252,6 +252,7 @@ public class PermissionAuthorizationTests
     private sealed class FakeCurrentPermissions(EffectivePermissions eff) : ICurrentPermissions
     {
         public Task<EffectivePermissions> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(eff);
+        public Task<EffectivePermissions> GetForAsync(System.Security.Claims.ClaimsPrincipal? user, CancellationToken cancellationToken = default) => Task.FromResult(eff);
         public Task<bool> CanAsync(string moduleKey, PermissionAction action, CancellationToken cancellationToken = default) => Task.FromResult(eff.Can(moduleKey, action));
         public Task<bool> CanViewAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.View, cancellationToken);
         public Task<bool> CanCreateAsync(string moduleKey, CancellationToken cancellationToken = default) => CanAsync(moduleKey, PermissionAction.Create, cancellationToken);

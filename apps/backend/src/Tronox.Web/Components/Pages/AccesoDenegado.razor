@@ -1,0 +1,24 @@
+@page "/acceso-denegado"
+@using Microsoft.AspNetCore.Components.Routing
+@* Destino de AccessDeniedPath (cookie) y del enlace "acceso denegado" del sistema.
+
+   NO lleva [Authorize]: la pagina en si no es un recurso protegido, es el mensaje que explica
+   por que se denego otro recurso. Ponerle una policy la volveria irreachable justo cuando hace
+   falta. El fail-closed vive en el recurso denegado, no aqui.
+
+   El parametro de consulta lo pone el middleware de cookies (ReturnUrl); se muestra tal cual para
+   que el usuario sepa que pantalla pidio. *@
+
+<PageTitle>Acceso denegado - TRONOX SGDEA</PageTitle>
+
+<AccesoDenegadoView Ruta="@Ruta" />
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "ReturnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "ruta")]
+    public string? RutaQuery { get; set; }
+
+    private string? Ruta => string.IsNullOrWhiteSpace(RutaQuery) ? ReturnUrl : RutaQuery;
+}
