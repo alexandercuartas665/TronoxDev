@@ -53,6 +53,13 @@ public static class DependencyInjection
         // Niveles de clasificacion documental (los 4 canonicos los siembra el alta del tenant,
         // ver IClasificacionProvisioningService en Infrastructure), sedes, fondos y subfondos.
         services.AddScoped<Archivistica.INivelClasificacionService, Archivistica.NivelClasificacionService>();
+        // Datos de la Entidad (RF01 4.1.1): UNA fila por tenant. La logica pura (digito
+        // verificador del NIT, generacion del codigo de fondo AGN, obligatoriedad condicional
+        // si la entidad es Publica) vive en Archivistica.EntidadRules: estatica, sin EF y
+        // testeable sin base de datos, por eso no se registra.
+        services.AddScoped<Archivistica.IEntidadService, Archivistica.EntidadService>();
+        // Catalogos territoriales DIVIPOLA (pendiente P-02 de RQ01): solo lectura y GLOBALES.
+        services.AddScoped<Archivistica.IDivipolaService, Archivistica.DivipolaService>();
         services.AddScoped<Archivistica.ISedeService, Archivistica.SedeService>();
         services.AddScoped<Archivistica.IFondoService, Archivistica.FondoService>();
         services.AddScoped<Archivistica.ISubfondoService, Archivistica.SubfondoService>();

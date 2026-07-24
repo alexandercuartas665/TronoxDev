@@ -91,6 +91,10 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Reglas.Editar", p => p.RequireClaim("tenant_id"))
     .AddPolicy("Conceptos.Editar", p => p.RequireClaim("tenant_id"))
     .AddPolicy("Dependencias.Ver", p => p.RequireClaim("tenant_id"))
+    // Datos de la Entidad (RQ01 - RF01). Paso 1: mismo requisito que TenantMember (claim
+    // tenant_id), nombre estable. TODO (paso 2): derivarla del Module Registry, y restringir
+    // el cambio de estado de la entidad al Super Administrador como pide la spec.
+    .AddPolicy("DatosEntidad.Editar", p => p.RequireClaim("tenant_id"))
     .AddPolicy("ModulosWeb.Administrar", p => p.RequireClaim("tenant_id"))
     .AddPolicy("ExtraccionDatos.Editar", p => p.RequireClaim("tenant_id"))
     // Inventarios (grupo Sistema - Inventarios, ADR-0027): items 000066 + catalogos

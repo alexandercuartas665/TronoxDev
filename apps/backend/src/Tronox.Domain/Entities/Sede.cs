@@ -20,10 +20,11 @@ public class Sede : TenantEntity
     public string SiglaSede { get; set; } = null!;
 
     // --- Ubicacion DIVIPOLA ---
-    // La spec los declara obligatorios, pero los catalogos DIVIPOLA (pais / departamento /
-    // ciudad) todavia no existen como tablas: no hay a que apuntar ni FK que declarar. Se
-    // dejan como columnas nullable sin FK -> punto de extension. Cuando los catalogos entren,
-    // se convierten en FK NOT NULL y la validacion de obligatoriedad se activa en SedeRules.
+    // Los catalogos (Pais / Departamento / Municipio) YA existen y estas tres columnas son FK
+    // reales contra ellos. Siguen NULLABLE, no NOT NULL como pedia la spec: las sedes creadas
+    // antes del catalogo no tienen ubicacion, y volverlas obligatorias en base de datos las
+    // dejaria sin poder guardarse. La obligatoriedad se hara cumplir en ArchivisticaRules
+    // cuando se decida migrar los datos existentes.
     public long? PaisId { get; set; }
     public long? DepartamentoId { get; set; }
     public long? CiudadId { get; set; }

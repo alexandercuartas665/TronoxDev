@@ -112,6 +112,15 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<Fondo> Fondos => Set<Fondo>();
     public DbSet<Subfondo> Subfondos => Set<Subfondo>();
 
+    // Datos de la Entidad (RQ01 - RF01 4.1.1): UNA fila por tenant, tenant-scoped.
+    public DbSet<Entidad> Entidades => Set<Entidad>();
+
+    // Catalogos territoriales DIVIPOLA (pendiente P-02 de RQ01). GLOBALES: sin tenant_id y sin
+    // query filter, igual que ModuleDefinition. Se siembran por migracion.
+    public DbSet<Pais> Paises => Set<Pais>();
+    public DbSet<Departamento> Departamentos => Set<Departamento>();
+    public DbSet<Municipio> Municipios => Set<Municipio>();
+
     // Directorio General (modulo 000232): terceros (empresas / personas) con perfiles de
     // negocio, contactos embebidos y fichas dinamicas (jsonb). Multi-tenant (filtro global).
     // ---- Gestor de Clientes (000740) ----
@@ -348,6 +357,9 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<FondoTipo>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<FondoEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SubfondoEstado>().HaveConversion<string>().HaveMaxLength(20);
+        // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
+        configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EntidadEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Roles y permisos (RQ01 - RF05): estado del rol y accion de la matriz como texto. El
         // nombre del miembro es contrato de datos (y de las policies "Perm:{modulo}:{accion}").
         configurationBuilder.Properties<RolEstado>().HaveConversion<string>().HaveMaxLength(20);
@@ -950,7 +962,9 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         });
 
         // Sedes de la entidad. Opcionales. CodigoSede unico POR TENANT (no global).
-        // PaisId/DepartamentoId/CiudadId quedan sin FK hasta que existan los catalogos DIVIPOLA.
+        // PaisId/DepartamentoId/CiudadId YA apuntan a los catalogos DIVIPOLA (antes eran
+        // columnas sueltas sin FK). Siguen NULLABLE a proposito: las sedes creadas antes de que
+        // el catalogo existiera no tienen ubicacion y no pueden quedar sin poder guardarse.
         modelBuilder.Entity<Sede>(b =>
         {
             b.Property(x => x.NombreSede).HasMaxLength(200).IsRequired();
@@ -961,6 +975,10 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.CorreoSede).HasMaxLength(150);
             b.HasIndex(x => new { x.TenantId, x.CodigoSede }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.Estado });
+            // Restrict en las tres: el catalogo territorial jamas arrastra sedes por cascada.
+            b.HasOne<Pais>().WithMany().HasForeignKey(x => x.PaisId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Departamento>().WithMany().HasForeignKey(x => x.DepartamentoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Municipio>().WithMany().HasForeignKey(x => x.CiudadId).OnDelete(DeleteBehavior.Restrict);
         });
 
         // Fondos documentales. CodigoFondo unico POR TENANT (no global): dos entidades distintas
@@ -990,6 +1008,73 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasForeignKey(x => x.FondoId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.FondoId, x.CodigoSubfondo }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.FondoId });
+        });
+
+        // ---- Catalogos territoriales DIVIPOLA (pendiente P-02 de RQ01) ----
+        // GLOBALES de plataforma: sin tenant_id y sin query filter (igual que ModuleDefinition).
+        // Serian identicos en los N tenants y son datos de referencia nacional, no del tenant.
+        modelBuilder.Entity<Pais>(b =>
+        {
+            b.Property(x => x.CodigoIso2).HasMaxLength(2).IsRequired();
+            b.Property(x => x.CodigoIso3).HasMaxLength(3).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
+            b.HasIndex(x => x.CodigoIso2).IsUnique();
+        });
+
+        modelBuilder.Entity<Departamento>(b =>
+        {
+            // Codigo DANE de 2 digitos CON cero a la izquierda: texto, nunca entero.
+            b.Property(x => x.CodigoDane).HasMaxLength(2).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
+            b.HasOne(x => x.Pais).WithMany()
+                .HasForeignKey(x => x.PaisId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.PaisId, x.CodigoDane }).IsUnique();
+        });
+
+        modelBuilder.Entity<Municipio>(b =>
+        {
+            // Codigo DIVIPOLA completo de 5 digitos, con ceros a la izquierda: texto.
+            b.Property(x => x.CodigoDivipola).HasMaxLength(5).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(150).IsRequired();
+            b.HasOne(x => x.Departamento).WithMany()
+                .HasForeignKey(x => x.DepartamentoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.CodigoDivipola).IsUnique();
+            b.HasIndex(x => x.DepartamentoId);
+        });
+
+        DivipolaSeed.Apply(modelBuilder);
+
+        // ---- Datos de la Entidad (RQ01 - RF01 4.1.1) ----
+        // UNA SOLA FILA POR TENANT: el indice unico sobre tenant_id es la garantia real del
+        // criterio 1 de RF01. El servicio tambien lo comprueba, pero si un segundo camino
+        // intentara insertar otra entidad, la base la rechaza.
+        modelBuilder.Entity<Entidad>(b =>
+        {
+            b.Property(x => x.Nit).HasMaxLength(15).IsRequired();
+            b.Property(x => x.DigitoVerificacion).HasMaxLength(1).IsRequired();
+            b.Property(x => x.RazonSocial).HasMaxLength(200).IsRequired();
+            // 10 y no 20 (resolucion M01): la sigla entra literal en el codigo de fondo AGN.
+            b.Property(x => x.Sigla).HasMaxLength(10).IsRequired();
+            b.Property(x => x.NaturalezaJuridica).HasMaxLength(100);
+            b.Property(x => x.CodigoDivipola).HasMaxLength(5);
+            b.Property(x => x.DireccionPrincipal).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Telefono).HasMaxLength(20);
+            b.Property(x => x.CorreoInstitucional).HasMaxLength(150).IsRequired();
+            b.Property(x => x.PaginaWeb).HasMaxLength(200);
+            b.Property(x => x.RepresentanteLegal).HasMaxLength(150).IsRequired();
+            // Ruta del logo, NUNCA los bytes (invariante 9).
+            b.Property(x => x.LogoUrl).HasMaxLength(500);
+            b.Property(x => x.CodigoFondoAgn).HasMaxLength(30);
+            b.Property(x => x.ZonaHoraria).HasMaxLength(60).IsRequired();
+            b.Property(x => x.IdiomaDefecto).HasMaxLength(20).IsRequired();
+            b.HasOne(x => x.Pais).WithMany()
+                .HasForeignKey(x => x.PaisId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Departamento).WithMany()
+                .HasForeignKey(x => x.DepartamentoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Ciudad).WithMany()
+                .HasForeignKey(x => x.CiudadId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.TenantId).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Nit }).IsUnique();
         });
     }
 

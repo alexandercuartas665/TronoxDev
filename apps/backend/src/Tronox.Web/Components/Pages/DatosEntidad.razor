@@ -1,0 +1,832 @@
+@page "/modulo/datos-entidad"
+@attribute [Authorize(Policy = "DatosEntidad.Editar")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Archivistica
+@using Tronox.Domain.Enums
+@using Tronox.Web.Services
+@inject IEntidadService EntidadSvc
+@inject IDivipolaService Divipola
+@inject ISedeService SedeSvc
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject IWebHostEnvironment Env
+
+@* RQ01 - RF01 "Datos de la Entidad" (seccion 4.1). Una sola entidad por tenant: la pantalla
+   es EDITAR, no listar/crear. La estructura de tarjetas (Informacion legal / Ubicacion y
+   contacto / Configuracion del sistema / Sedes) reproduce el prototipo req001-app.html. *@
+
+<PageTitle>Datos de la Entidad - TRONOX SGDEA</PageTitle>
+
+<div class="tx-entidad">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración General</span>
+        <span class="sep">/</span>
+        <span class="cur">Datos de la Entidad</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-building"></i><span>RQ01 &middot; RF01</span></div>
+            <h1 class="tx-ent-title">Datos de la Entidad</h1>
+            <p class="tx-ent-sub">Identificación oficial y configuración base de la entidad. Es el metadato raíz: la sigla alimenta el esquema de radicación y el código de fondo AGN se hereda en todos los expedientes.</p>
+        </div>
+        <div class="tx-ent-headstate">
+            <span class="tx-ent-badge @EstadoClase(_estado)"><i class="bi @EstadoIcono(_estado)"></i> @_estado</span>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando datos de la entidad...</em></div></div>
+    }
+    else
+    {
+        @if (_mensaje is not null)
+        {
+            <div class="tx-ent-alert @(_esError ? "err" : "ok")">
+                <i class="bi @(_esError ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill")"></i>
+                <span>@_mensaje</span>
+            </div>
+        }
+
+        @* ============ TARJETA 1: INFORMACION LEGAL Y CORPORATIVA ============ *@
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-head">
+                <div class="tx-ent-card-icon tone-primary"><i class="bi bi-building-fill-check"></i></div>
+                <div>
+                    <div class="tx-ent-card-title">Información Legal y Corporativa</div>
+                    <div class="tx-ent-card-sub">Datos de identificación oficial de la entidad</div>
+                </div>
+            </div>
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field">
+                        <label>NIT <span class="req">*</span></label>
+                        <div class="tx-ent-nit">
+                            <input class="tx-ent-input mono" maxlength="20" @bind="_nit" @bind:event="oninput"
+                                   placeholder="900123456" />
+                            <div class="tx-ent-dv">
+                                <span class="tx-ent-dv-lbl">Dígito</span>
+                                <input class="tx-ent-input mono center" readonly value="@_dv" tabindex="-1"
+                                       title="Dígito de verificación calculado con el algoritmo de la DIAN" />
+                            </div>
+                        </div>
+                        <div class="tx-ent-hint"><i class="bi bi-info-circle"></i> Dígito verificador calculado automáticamente (algoritmo DIAN). No se captura a mano.</div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Razón Social <span class="req">*</span></label>
+                        <input class="tx-ent-input" maxlength="200" @bind="_razonSocial" placeholder="Nombre legal completo de la entidad" />
+                    </div>
+                </div>
+
+                <div class="tx-ent-grid c3">
+                    <div class="tx-ent-field">
+                        <label>Sigla <span class="req">*</span></label>
+                        <input class="tx-ent-input mono upper" maxlength="10" @bind="_sigla" @bind:event="oninput" placeholder="EMSP" />
+                        <div class="tx-ent-hint">Máx. 10 caracteres. Alimenta el esquema de radicación y el código AGN.</div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Tipo de Entidad <span class="req">*</span></label>
+                        <div class="tx-ent-tabs">
+                            @foreach (var t in new[] { TipoEntidad.Publica, TipoEntidad.Privada, TipoEntidad.Mixta })
+                            {
+                                <button type="button" class="tx-ent-tab @(_tipo == t ? "on" : "")"
+                                        @onclick="@(() => _tipo = t)">@TipoLabel(t)</button>
+                            }
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Naturaleza Jurídica <span class="opt">(opcional)</span></label>
+                        <input class="tx-ent-input" maxlength="100" @bind="_naturaleza" placeholder="Empresa Industrial y Comercial del Estado" />
+                    </div>
+                </div>
+
+                <div class="tx-ent-field">
+                    <label>Representante Legal <span class="req">*</span></label>
+                    <input class="tx-ent-input" style="max-width:520px" maxlength="150" @bind="_representante" placeholder="Nombre del representante legal" />
+                </div>
+
+                @* Bloque condicional: obligatorio solo si la entidad es Publica (criterio 4 de RF01). *@
+                <div class="tx-ent-agn @(EsPublica ? "obligatorio" : "")">
+                    <div class="tx-ent-agn-head">
+                        <i class="bi @(EsPublica ? "bi-star-fill" : "bi-info-circle")"></i>
+                        @if (EsPublica)
+                        {
+                            <span>Campos obligatorios para Entidades Públicas</span>
+                        }
+                        else
+                        {
+                            <span>Metadatos AGN (recomendados para entidades @TipoLabel(_tipo).ToLowerInvariant())</span>
+                        }
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Código DIVIPOLA @if (EsPublica) { <span class="req">*</span> }</label>
+                            <input class="tx-ent-input mono" maxlength="5" @bind="_divipola" @bind:event="oninput" placeholder="11001" />
+                            <div class="tx-ent-hint">Codificación territorial DANE (ISO 3166-2:CO). Se propone al elegir la ciudad.</div>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Código Fondo AGN @if (EsPublica) { <span class="req">*</span> }</label>
+                            <input class="tx-ent-input mono readonly" readonly tabindex="-1"
+                                   value="@(CodigoAgn ?? "-- pendiente: falta DIVIPOLA o sigla --")"
+                                   title="Se genera automáticamente con el patrón CO-{DIVIPOLA}-{SIGLA} (resolución M01). Solo el Super Administrador de plataforma puede fijarlo a mano, en casos excepcionales documentados." />
+                            <div class="tx-ent-hint"><i class="bi bi-lock-fill"></i> Autogenerado <code>CO-{DIVIPOLA}-{SIGLA}</code>. Se hereda en todos los expedientes y documentos.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ============ TARJETA 2: UBICACION Y CONTACTO ============ *@
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-head">
+                <div class="tx-ent-card-icon tone-teal"><i class="bi bi-geo-alt-fill"></i></div>
+                <div>
+                    <div class="tx-ent-card-title">Ubicación y Contacto</div>
+                    <div class="tx-ent-card-sub">Dirección principal y datos de comunicación</div>
+                </div>
+            </div>
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-grid c3">
+                    <div class="tx-ent-field">
+                        <label>País <span class="req">*</span></label>
+                        <select class="tx-ent-input" value="@_paisId" @onchange="OnPaisChanged">
+                            <option value="">-- Seleccione --</option>
+                            @foreach (var p in _paises)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Departamento <span class="req">*</span></label>
+                        <select class="tx-ent-input" value="@_departamentoId" @onchange="OnDepartamentoChanged" disabled="@(_departamentos.Count == 0)">
+                            <option value="">@(_departamentos.Count == 0 ? "-- Elija primero un país --" : "-- Seleccione --")</option>
+                            @foreach (var d in _departamentos)
+                            {
+                                <option value="@d.Id">@d.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Ciudad / Municipio <span class="req">*</span></label>
+                        <select class="tx-ent-input" value="@_ciudadId" @onchange="OnCiudadChanged" disabled="@(_municipios.Count == 0)">
+                            <option value="">@(_municipios.Count == 0 ? "-- Elija primero un departamento --" : "-- Seleccione --")</option>
+                            @foreach (var m in _municipios)
+                            {
+                                <option value="@m.Id">@m.Nombre (@m.CodigoDivipola)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="tx-ent-grid c3">
+                    <div class="tx-ent-field span2">
+                        <label>Dirección Principal <span class="req">*</span></label>
+                        <input class="tx-ent-input" maxlength="200" @bind="_direccion" placeholder="Calle 26 No. 57-83" />
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Teléfono <span class="opt">(opcional)</span></label>
+                        <input class="tx-ent-input" maxlength="20" @bind="_telefono" placeholder="+57 601 2203456" />
+                    </div>
+                    <div class="tx-ent-field span2">
+                        <label>Correo Institucional <span class="req">*</span></label>
+                        <input class="tx-ent-input" maxlength="150" @bind="_correo" placeholder="contacto@entidad.gov.co" />
+                        <div class="tx-ent-hint">Aparece en comunicaciones y notificaciones oficiales.</div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Página Web <span class="opt">(opcional)</span></label>
+                        <input class="tx-ent-input" maxlength="200" @bind="_web" placeholder="https://www.entidad.gov.co" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ============ TARJETA 3: CONFIGURACION DEL SISTEMA ============ *@
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-head">
+                <div class="tx-ent-card-icon tone-amber"><i class="bi bi-gear-fill"></i></div>
+                <div>
+                    <div class="tx-ent-card-title">Configuración del Sistema</div>
+                    <div class="tx-ent-card-sub">Zona horaria, idioma, logotipo y estado</div>
+                </div>
+            </div>
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field">
+                        <label>Zona Horaria <span class="req">*</span></label>
+                        <select class="tx-ent-input" @bind="_zonaHoraria">
+                            @foreach (var z in ZonasHorarias)
+                            {
+                                <option value="@z.Id">@z.Etiqueta</option>
+                            }
+                        </select>
+                        <div class="tx-ent-hint"><i class="bi bi-clock"></i> Los timestamps se almacenan en UTC y se muestran en esta zona. Nunca se guarda hora local.</div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Idioma por Defecto <span class="req">*</span></label>
+                        <select class="tx-ent-input" @bind="_idioma">
+                            @foreach (var i in Idiomas)
+                            {
+                                <option value="@i.Id">@i.Etiqueta</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="tx-ent-sep"></div>
+
+                <label class="tx-ent-blocklabel">Logo de la Entidad <span class="opt">(opcional)</span></label>
+                <div class="tx-ent-logo">
+                    <div class="tx-ent-logo-box">
+                        @if (!string.IsNullOrWhiteSpace(_logoUrl))
+                        {
+                            <img src="@_logoUrl" alt="Logo de la entidad" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-image"></i>
+                            <span>Vista previa</span>
+                        }
+                    </div>
+                    <div>
+                        <label class="tx-ent-upload">
+                            <i class="bi bi-upload"></i> Subir logo
+                            <InputFile OnChange="OnLogoSelected" accept="@ImageUploadGuard.Accept" />
+                        </label>
+                        @if (!string.IsNullOrWhiteSpace(_logoUrl))
+                        {
+                            <button type="button" class="tx-ent-btn ghost sm" @onclick="@(() => _logoUrl = null)">Quitar</button>
+                        }
+                        <div class="tx-ent-hint">@ImageUploadGuard.FormatosTexto &middot; Máx. 5 MB &middot; Se muestra en el menú y en la pantalla de acceso.</div>
+                        @if (_logoError is not null)
+                        {
+                            <div class="tx-ent-fielderr">@_logoError</div>
+                        }
+                    </div>
+                </div>
+
+                <div class="tx-ent-sep"></div>
+
+                <label class="tx-ent-blocklabel">Estado de la Entidad <span class="req">*</span></label>
+                <div class="tx-ent-estado">
+                    <span class="tx-ent-estado-lbl">Estado actual</span>
+                    <div class="tx-ent-tabs">
+                        @foreach (var e in new[] { EntidadEstado.Activo, EntidadEstado.Inactivo, EntidadEstado.Suspendido })
+                        {
+                            <button type="button" class="tx-ent-tab @(_estado == e ? "on" : "")"
+                                    @onclick="@(() => _estado = e)">@e</button>
+                        }
+                    </div>
+                    <span class="tx-ent-hint" style="margin:0">La entidad nunca se elimina: solo cambia de estado, con motivo y auditoría.</span>
+                </div>
+                @if (_estado != EntidadEstado.Activo)
+                {
+                    <div class="tx-ent-field" style="margin-top:12px;max-width:520px">
+                        <label>Motivo del cambio de estado</label>
+                        <input class="tx-ent-input" maxlength="200" @bind="_motivoEstado" placeholder="Se registra en la pista de auditoría" />
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ============ TARJETA 4: SEDES Y SUCURSALES (RF01 4.1.2) ============ *@
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-head">
+                <div class="tx-ent-card-icon tone-violet"><i class="bi bi-buildings"></i></div>
+                <div>
+                    <div class="tx-ent-card-title">Sedes y Sucursales</div>
+                    <div class="tx-ent-card-sub">Opcionales. Una sede Inactiva no se ofrece en el esquema de radicación ni en nuevos fondos.</div>
+                </div>
+                <button type="button" class="tx-ent-btn primary sm" style="margin-left:auto" @onclick="@(() => AbrirSede(null))">
+                    <i class="bi bi-plus-lg"></i> Agregar Sede / Sucursal
+                </button>
+            </div>
+            <div class="tx-ent-card-body">
+                @if (_sedes.Count == 0)
+                {
+                    <div class="tx-ent-empty">
+                        <i class="bi bi-buildings"></i>
+                        <div>La entidad no tiene sedes registradas. Son opcionales: si no las necesita, el sistema opera sin ellas.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="tx-ent-table-wrap">
+                        <table class="tx-ent-table">
+                            <thead>
+                                <tr>
+                                    <th>Código</th><th>Sigla</th><th>Nombre</th><th>Dirección</th><th>Contacto</th><th>Estado</th><th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in _sedes)
+                                {
+                                    <tr class="@(s.Estado == SedeEstado.Inactivo ? "inactiva" : "")">
+                                        <td class="mono">@s.CodigoSede</td>
+                                        <td class="mono">@s.SiglaSede</td>
+                                        <td><strong>@s.NombreSede</strong></td>
+                                        <td>@s.Direccion</td>
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(s.Telefono)) { <div>@s.Telefono</div> }
+                                            @if (!string.IsNullOrWhiteSpace(s.CorreoSede)) { <div class="muted">@s.CorreoSede</div> }
+                                        </td>
+                                        <td><span class="tx-ent-badge sm @(s.Estado == SedeEstado.Activo ? "ok" : "off")">@s.Estado</span></td>
+                                        <td class="right">
+                                            <button type="button" class="tx-ent-btn ghost sm" @onclick="@(() => AbrirSede(s))">Editar</button>
+                                            @if (s.Estado == SedeEstado.Activo)
+                                            {
+                                                <button type="button" class="tx-ent-btn ghost sm danger" @onclick="@(() => InactivarSedeAsync(s))" disabled="@_busy">Inactivar</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ============ BARRA DE ACCIONES ============ *@
+        <div class="tx-ent-actions">
+            <button type="button" class="tx-ent-btn ghost" @onclick="RecargarAsync" disabled="@_busy">Descartar cambios</button>
+            <div class="tx-ent-actions-right">
+                @if (_guardadoEn is DateTimeOffset guardado)
+                {
+                    <span class="tx-ent-hint" style="margin:0"><i class="bi bi-clock"></i> Último guardado: @guardado.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                }
+                <button type="button" class="tx-ent-btn primary" @onclick="GuardarAsync" disabled="@_busy">
+                    <i class="bi bi-check-lg"></i> Guardar cambios
+                </button>
+            </div>
+        </div>
+    }
+
+    @* ============ MODAL SEDE ============ *@
+    @if (_showSede)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showSede = false)">
+            <div class="modal-dialog" style="max-width:560px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_sedeEditando is null ? "Nueva sede o sucursal" : $"Editar {_sedeEditando.NombreSede}")</h3>
+                    <button class="modal-close" @onclick="@(() => _showSede = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-entidad">
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Código de sede <span class="req">*</span></label>
+                            <input class="tx-ent-input mono upper" maxlength="20" @bind="_sCodigo" placeholder="SED01" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Sigla <span class="req">*</span></label>
+                            <input class="tx-ent-input mono upper" maxlength="10" @bind="_sSigla" placeholder="MED" />
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Nombre de la sede <span class="req">*</span></label>
+                        <input class="tx-ent-input" maxlength="200" @bind="_sNombre" placeholder="Sede Medellín" />
+                    </div>
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>País</label>
+                            <select class="tx-ent-input" value="@_sPaisId" @onchange="OnSedePaisChanged">
+                                <option value="">-- Seleccione --</option>
+                                @foreach (var p in _paises)
+                                {
+                                    <option value="@p.Id">@p.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Departamento</label>
+                            <select class="tx-ent-input" value="@_sDepartamentoId" @onchange="OnSedeDepartamentoChanged" disabled="@(_sDepartamentos.Count == 0)">
+                                <option value="">-- Seleccione --</option>
+                                @foreach (var d in _sDepartamentos)
+                                {
+                                    <option value="@d.Id">@d.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Ciudad</label>
+                            <select class="tx-ent-input" value="@_sCiudadId" @onchange="OnSedeCiudadChanged" disabled="@(_sMunicipios.Count == 0)">
+                                <option value="">-- Seleccione --</option>
+                                @foreach (var m in _sMunicipios)
+                                {
+                                    <option value="@m.Id">@m.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Dirección <span class="req">*</span></label>
+                        <input class="tx-ent-input" maxlength="200" @bind="_sDireccion" />
+                    </div>
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Teléfono</label>
+                            <input class="tx-ent-input" maxlength="20" @bind="_sTelefono" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Correo</label>
+                            <input class="tx-ent-input" maxlength="150" @bind="_sCorreo" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Estado</label>
+                            <select class="tx-ent-input" @bind="_sEstado">
+                                <option value="@SedeEstado.Activo">Activo</option>
+                                <option value="@SedeEstado.Inactivo">Inactivo</option>
+                            </select>
+                        </div>
+                    </div>
+                    @if (_sedeError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_sedeError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn ghost" @onclick="@(() => _showSede = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="GuardarSedeAsync" disabled="@_busy">Guardar sede</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // ---- Catalogos ----
+    private IReadOnlyList<PaisDto> _paises = [];
+    private IReadOnlyList<DepartamentoDto> _departamentos = [];
+    private IReadOnlyList<MunicipioDto> _municipios = [];
+
+    private sealed record Opcion(string Id, string Etiqueta);
+
+    // Zonas horarias IANA de uso realista para una entidad colombiana. La spec exige IANA,
+    // no el identificador de Windows: los timestamps se guardan en UTC y se convierten con esta.
+    private static readonly Opcion[] ZonasHorarias =
+    [
+        new("America/Bogota", "America/Bogota (UTC-5)"),
+        new("America/Lima", "America/Lima (UTC-5)"),
+        new("America/Panama", "America/Panama (UTC-5)"),
+        new("America/Guayaquil", "America/Guayaquil (UTC-5)"),
+        new("America/Caracas", "America/Caracas (UTC-4)"),
+        new("America/Mexico_City", "America/Mexico_City (UTC-6)"),
+        new("America/New_York", "America/New_York (UTC-5/-4)"),
+        new("UTC", "UTC (UTC+0)")
+    ];
+
+    private static readonly Opcion[] Idiomas =
+    [
+        new("es-CO", "Español - Colombia (es-CO)"),
+        new("es-ES", "Español - España (es-ES)"),
+        new("en-US", "English - United States (en-US)")
+    ];
+
+    // ---- Estado de pantalla ----
+    private bool _loading = true;
+    private bool _busy;
+    private string? _mensaje;
+    private bool _esError;
+    private DateTimeOffset? _guardadoEn;
+
+    // ---- Formulario de la entidad ----
+    private string _nit = "";
+    private string _razonSocial = "";
+    private string _sigla = "";
+    private TipoEntidad _tipo = TipoEntidad.Publica;
+    private string? _naturaleza;
+    private string _divipola = "";
+    private string _paisId = "";
+    private string _departamentoId = "";
+    private string _ciudadId = "";
+    private string _direccion = "";
+    private string? _telefono;
+    private string _correo = "";
+    private string? _web;
+    private string _representante = "";
+    private string? _logoUrl;
+    private string? _logoError;
+    private string _zonaHoraria = "America/Bogota";
+    private string _idioma = "es-CO";
+    private EntidadEstado _estado = EntidadEstado.Activo;
+    private EntidadEstado _estadoOriginal = EntidadEstado.Activo;
+    private string? _motivoEstado;
+
+    // El DV nunca se captura: se deriva del NIT en cada render (logica pura de Application).
+    private string _dv => EntidadRules.CalcularDigitoVerificacion(_nit)?.ToString() ?? "-";
+
+    private bool EsPublica => EntidadRules.RequiereDatosAgn(_tipo);
+
+    private string? CodigoAgn => EntidadRules.GenerarCodigoFondoAgn(_divipola, _sigla);
+
+    // ---- Sedes ----
+    private IReadOnlyList<SedeDto> _sedes = [];
+    private bool _showSede;
+    private SedeDto? _sedeEditando;
+    private string _sCodigo = "", _sSigla = "", _sNombre = "", _sDireccion = "";
+    private string? _sTelefono, _sCorreo, _sedeError;
+    private SedeEstado _sEstado = SedeEstado.Activo;
+    private string _sPaisId = "", _sDepartamentoId = "", _sCiudadId = "";
+    private IReadOnlyList<DepartamentoDto> _sDepartamentos = [];
+    private IReadOnlyList<MunicipioDto> _sMunicipios = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _paises = await Divipola.ListPaisesAsync();
+        await RecargarAsync();
+        _loading = false;
+    }
+
+    private async Task RecargarAsync()
+    {
+        _mensaje = null;
+        _esError = false;
+        _sedes = await SedeSvc.ListAsync();
+
+        var entidad = await EntidadSvc.GetAsync();
+        if (entidad is null)
+        {
+            // Tenant sin entidad todavia: el formulario arranca en blanco con Colombia
+            // preseleccionada si el catalogo la tiene (es el unico pais sembrado).
+            var colombia = _paises.FirstOrDefault(p => p.CodigoIso2 == "CO");
+            if (colombia is not null)
+            {
+                _paisId = colombia.Id.ToString();
+                _departamentos = await Divipola.ListDepartamentosAsync(colombia.Id);
+            }
+            return;
+        }
+
+        _nit = entidad.Nit;
+        _razonSocial = entidad.RazonSocial;
+        _sigla = entidad.Sigla;
+        _tipo = entidad.TipoEntidad;
+        _naturaleza = entidad.NaturalezaJuridica;
+        _divipola = entidad.CodigoDivipola ?? "";
+        _direccion = entidad.DireccionPrincipal;
+        _telefono = entidad.Telefono;
+        _correo = entidad.CorreoInstitucional;
+        _web = entidad.PaginaWeb;
+        _representante = entidad.RepresentanteLegal;
+        _logoUrl = entidad.LogoUrl;
+        _zonaHoraria = entidad.ZonaHoraria;
+        _idioma = entidad.IdiomaDefecto;
+        _estado = entidad.Estado;
+        _estadoOriginal = entidad.Estado;
+
+        _paisId = entidad.PaisId?.ToString() ?? "";
+        _departamentoId = entidad.DepartamentoId?.ToString() ?? "";
+        _ciudadId = entidad.CiudadId?.ToString() ?? "";
+        if (entidad.PaisId is long paisId)
+        {
+            _departamentos = await Divipola.ListDepartamentosAsync(paisId);
+        }
+        if (entidad.DepartamentoId is long depId)
+        {
+            _municipios = await Divipola.ListMunicipiosAsync(depId);
+        }
+    }
+
+    // ---- Selectores encadenados (criterio 5 de RF01) ----
+
+    private async Task OnPaisChanged(ChangeEventArgs e)
+    {
+        _paisId = e.Value?.ToString() ?? "";
+        // Cambiar de pais invalida departamento y ciudad: no se dejan colgando.
+        _departamentoId = "";
+        _ciudadId = "";
+        _municipios = [];
+        _departamentos = long.TryParse(_paisId, out var id)
+            ? await Divipola.ListDepartamentosAsync(id)
+            : [];
+    }
+
+    private async Task OnDepartamentoChanged(ChangeEventArgs e)
+    {
+        _departamentoId = e.Value?.ToString() ?? "";
+        _ciudadId = "";
+        _municipios = long.TryParse(_departamentoId, out var id)
+            ? await Divipola.ListMunicipiosAsync(id)
+            : [];
+    }
+
+    private void OnCiudadChanged(ChangeEventArgs e)
+    {
+        _ciudadId = e.Value?.ToString() ?? "";
+        // El DIVIPOLA de la entidad es, por definicion, el del municipio elegido: se propone.
+        // Queda editable porque una entidad puede declarar procedencia territorial distinta.
+        if (long.TryParse(_ciudadId, out var id))
+        {
+            var municipio = _municipios.FirstOrDefault(m => m.Id == id);
+            if (municipio is not null) { _divipola = municipio.CodigoDivipola; }
+        }
+    }
+
+    // ---- Logo ----
+
+    private async Task OnLogoSelected(InputFileChangeEventArgs e)
+    {
+        _logoError = null;
+        var file = e.File;
+        if (file is null) { return; }
+
+        if (file.Size > EntidadRules.MaxLogoBytes)
+        {
+            _logoError = "El logo no puede superar 5 MB.";
+            return;
+        }
+
+        var ext = ImageUploadGuard.ResolveExtension(file.Name);
+        if (ext is null)
+        {
+            _logoError = $"Formato no permitido. Se aceptan {ImageUploadGuard.FormatosTexto}.";
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(EntidadRules.MaxLogoBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var bytes = buffer.ToArray();
+
+            // La extension y el content-type los controla el cliente: lo que decide son los BYTES.
+            if (!ImageUploadGuard.MatchesSignature(bytes, ext))
+            {
+                _logoError = "El archivo no es una imagen valida.";
+                return;
+            }
+
+            var carpeta = Path.Combine(Env.WebRootPath, "uploads");
+            Directory.CreateDirectory(carpeta);
+            var nombre = ImageUploadGuard.BuildStoredFileName("entidad-logo", ext);
+            await File.WriteAllBytesAsync(Path.Combine(carpeta, nombre), bytes);
+            // Se guarda la RUTA, nunca los bytes (invariante 9).
+            _logoUrl = $"/uploads/{nombre}";
+        }
+        catch (Exception ex)
+        {
+            _logoError = $"No se pudo cargar el logo: {ex.Message}";
+        }
+    }
+
+    // ---- Guardar ----
+
+    private async Task GuardarAsync()
+    {
+        _busy = true;
+        _mensaje = null;
+        _esError = false;
+
+        var request = new SaveEntidadRequest(
+            Nit: _nit,
+            DigitoVerificacion: _dv,
+            RazonSocial: _razonSocial ?? "",
+            Sigla: _sigla ?? "",
+            TipoEntidad: _tipo,
+            NaturalezaJuridica: _naturaleza,
+            CodigoDivipola: _divipola,
+            PaisId: long.TryParse(_paisId, out var paisId) ? paisId : null,
+            DepartamentoId: long.TryParse(_departamentoId, out var depId) ? depId : null,
+            CiudadId: long.TryParse(_ciudadId, out var ciudadId) ? ciudadId : null,
+            DireccionPrincipal: _direccion ?? "",
+            Telefono: _telefono,
+            CorreoInstitucional: _correo ?? "",
+            PaginaWeb: _web,
+            RepresentanteLegal: _representante ?? "",
+            LogoUrl: _logoUrl,
+            ZonaHoraria: _zonaHoraria,
+            IdiomaDefecto: _idioma,
+            Estado: _estado);
+
+        var actor = Tenant.UserId ?? 0;
+        var result = await EntidadSvc.SaveAsync(request, actor);
+        if (!result.IsOk)
+        {
+            _esError = true;
+            _mensaje = result.Error;
+        }
+        else
+        {
+            // El cambio de estado se registra aparte para que el motivo entre en la auditoria.
+            if (_estado != _estadoOriginal)
+            {
+                await EntidadSvc.CambiarEstadoAsync(_estado, _motivoEstado, actor);
+                _estadoOriginal = _estado;
+                _motivoEstado = null;
+            }
+            _guardadoEn = DateTimeOffset.UtcNow;
+            _mensaje = "Datos de la entidad guardados. Los cambios quedaron en la pista de auditoría.";
+            await RecargarAsync();
+            _mensaje = "Datos de la entidad guardados. Los cambios quedaron en la pista de auditoría.";
+        }
+        _busy = false;
+    }
+
+    // ---- Sedes ----
+
+    private async Task AbrirSede(SedeDto? sede)
+    {
+        _sedeEditando = sede;
+        _sedeError = null;
+        _sCodigo = sede?.CodigoSede ?? "";
+        _sSigla = sede?.SiglaSede ?? "";
+        _sNombre = sede?.NombreSede ?? "";
+        _sDireccion = sede?.Direccion ?? "";
+        _sTelefono = sede?.Telefono;
+        _sCorreo = sede?.CorreoSede;
+        _sEstado = sede?.Estado ?? SedeEstado.Activo;
+        _sPaisId = sede?.PaisId?.ToString() ?? _paisId;
+        _sDepartamentoId = sede?.DepartamentoId?.ToString() ?? "";
+        _sCiudadId = sede?.CiudadId?.ToString() ?? "";
+        _sDepartamentos = long.TryParse(_sPaisId, out var p) ? await Divipola.ListDepartamentosAsync(p) : [];
+        _sMunicipios = long.TryParse(_sDepartamentoId, out var d) ? await Divipola.ListMunicipiosAsync(d) : [];
+        _showSede = true;
+    }
+
+    private async Task OnSedePaisChanged(ChangeEventArgs e)
+    {
+        _sPaisId = e.Value?.ToString() ?? "";
+        _sDepartamentoId = "";
+        _sCiudadId = "";
+        _sMunicipios = [];
+        _sDepartamentos = long.TryParse(_sPaisId, out var id) ? await Divipola.ListDepartamentosAsync(id) : [];
+    }
+
+    private async Task OnSedeDepartamentoChanged(ChangeEventArgs e)
+    {
+        _sDepartamentoId = e.Value?.ToString() ?? "";
+        _sCiudadId = "";
+        _sMunicipios = long.TryParse(_sDepartamentoId, out var id) ? await Divipola.ListMunicipiosAsync(id) : [];
+    }
+
+    private void OnSedeCiudadChanged(ChangeEventArgs e) => _sCiudadId = e.Value?.ToString() ?? "";
+
+    private async Task GuardarSedeAsync()
+    {
+        _busy = true;
+        _sedeError = null;
+        var request = new SaveSedeRequest(
+            Id: _sedeEditando?.Id,
+            NombreSede: _sNombre ?? "",
+            CodigoSede: _sCodigo ?? "",
+            SiglaSede: _sSigla ?? "",
+            PaisId: long.TryParse(_sPaisId, out var p) ? p : null,
+            DepartamentoId: long.TryParse(_sDepartamentoId, out var d) ? d : null,
+            CiudadId: long.TryParse(_sCiudadId, out var c) ? c : null,
+            Direccion: _sDireccion ?? "",
+            Telefono: _sTelefono,
+            CorreoSede: _sCorreo,
+            Estado: _sEstado);
+
+        var result = await SedeSvc.SaveAsync(request, Tenant.UserId ?? 0);
+        if (!result.IsOk)
+        {
+            _sedeError = result.Error;
+        }
+        else
+        {
+            _showSede = false;
+            _sedes = await SedeSvc.ListAsync();
+        }
+        _busy = false;
+    }
+
+    private async Task InactivarSedeAsync(SedeDto sede)
+    {
+        _busy = true;
+        var result = await SedeSvc.InactivarAsync(sede.Id, "Inactivada desde Datos de la Entidad", Tenant.UserId ?? 0);
+        if (!result.IsOk)
+        {
+            _esError = true;
+            _mensaje = result.Error;
+        }
+        _sedes = await SedeSvc.ListAsync();
+        _busy = false;
+    }
+
+    // ---- Presentacion ----
+
+    private static string TipoLabel(TipoEntidad tipo) => tipo switch
+    {
+        TipoEntidad.Publica => "Pública",
+        TipoEntidad.Privada => "Privada",
+        _ => "Mixta"
+    };
+
+    private static string EstadoClase(EntidadEstado estado) => estado switch
+    {
+        EntidadEstado.Activo => "ok",
+        EntidadEstado.Suspendido => "warn",
+        _ => "off"
+    };
+
+    private static string EstadoIcono(EntidadEstado estado) => estado switch
+    {
+        EntidadEstado.Activo => "bi-check-circle-fill",
+        EntidadEstado.Suspendido => "bi-pause-circle-fill",
+        _ => "bi-slash-circle-fill"
+    };
+}

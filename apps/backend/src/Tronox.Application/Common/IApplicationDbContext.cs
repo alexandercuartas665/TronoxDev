@@ -44,8 +44,17 @@ public interface IApplicationDbContext
     // documental, sedes, fondos y subfondos. Todas tenant-scoped.
     DbSet<NivelClasificacion> NivelesClasificacion { get; }
     DbSet<Sede> Sedes { get; }
+
+    // Datos de la Entidad (base de RQ01 - RF01 4.1.1). UNA fila por tenant.
+    DbSet<Entidad> Entidades { get; }
     DbSet<Fondo> Fondos { get; }
     DbSet<Subfondo> Subfondos { get; }
+
+    // Catalogos territoriales DIVIPOLA (pendiente P-02 de RQ01). Son GLOBALES de plataforma:
+    // no llevan tenant_id y no reciben query filter, igual que ModuleDefinition.
+    DbSet<Pais> Paises { get; }
+    DbSet<Departamento> Departamentos { get; }
+    DbSet<Municipio> Municipios { get; }
 
     // Estructura organizacional (base de RQ01 - RF03/RF04).
     DbSet<OrgUnit> OrgUnits { get; }
