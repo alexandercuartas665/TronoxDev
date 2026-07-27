@@ -53,7 +53,7 @@ Puertos de desarrollo: 5443 postgres · 6390 redis · 5683/15683 rabbitmq · 900
 
 | RF | Modulo | Estado |
 |---|---|---|
-| RF01 | Versiones de TRD | PENDIENTE |
+| RF01 | **Versiones de TRD** | HECHO - marco legal; una sola Vigente por tenant (indice unico parcial + flip a Historico al activar), maquina de estados (En Construccion/Vigente/Historico/Inactivo), sin borrado fisico, convalidacion solo si Publica. Migrado del legacy `doc_versionesTRD.aspx` (2026-07-27) |
 | RF02 | **Catalogo de Series y Subseries** | HECHO - arbol autorreferencial (jerarquia ilimitada), codigo unico por nivel + nombre unico entre hermanos, inactivacion sin borrado fisico, ciclos fail-closed. Migrado del legacy `doc_catalogoTRD.aspx` (2026-07-27) |
 | RF03 | Administrador de Listas | PENDIENTE |
 | RF04 | Construccion de la TRD (cruce Dependencia + Serie) | PENDIENTE |

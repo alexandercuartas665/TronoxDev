@@ -82,6 +82,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     // catalogo GLOBAL de plataforma (sin TenantId ni query filter); TenantModule es el
     // estado por tenant (scoped).
     public DbSet<OrgUnit> OrgUnits => Set<OrgUnit>();
+    public DbSet<TrdVersion> TrdVersiones => Set<TrdVersion>();
     public DbSet<SerieDocumental> SeriesDocumentales => Set<SerieDocumental>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
@@ -359,7 +360,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<FondoTipo>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<FondoEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SubfondoEstado>().HaveConversion<string>().HaveMaxLength(20);
-        // Catalogo de series y subseries (RQ02 - RF02): estado como texto acotado.
+        // Configuracion documental (RQ02): estados como texto acotado.
+        configurationBuilder.Properties<TrdVersionEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SerieEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
         configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
@@ -775,6 +777,21 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasForeignKey(x => x.OrgUnitId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.OrgUnitId, x.TenantUserId }).IsUnique();
             b.HasIndex(x => x.TenantUserId);
+        });
+
+        // Versiones de la TRD (RQ02 - RF01). codigo_version unico POR TENANT. Indice unico PARCIAL
+        // sobre (tenant_id) filtrado a Estado = 'Vigente': garantiza en la BASE que solo exista UNA
+        // version Vigente por tenant (RF01 3.1.4-2), no solo en el servicio.
+        modelBuilder.Entity<TrdVersion>(b =>
+        {
+            b.Property(x => x.CodigoVersion).HasMaxLength(50).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(300);
+            b.Property(x => x.ActoAdministrativo).HasMaxLength(200);
+            b.HasIndex(x => new { x.TenantId, x.CodigoVersion }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => x.TenantId).IsUnique()
+                .HasFilter(isNpgsql ? "estado = 'Vigente'" : "[estado] = 'Vigente'")
+                .HasDatabaseName("ux_trd_versiones_una_vigente_por_tenant");
         });
 
         // Catalogo de series y subseries (RQ02 - RF02): arbol autorreferencial, listado maestro

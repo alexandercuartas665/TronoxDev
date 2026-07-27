@@ -1,0 +1,427 @@
+@page "/trd-versiones"
+@attribute [Authorize(Policy = "Perm:modulo/trd-versiones:View")]
+@* La llave de permisos es la RUTA del item del menu (RF09 5.9.3): "modulo/trd-versiones". La
+   pagina real vive en /trd-versiones y a ella se llega por la promocion de Modulo.razor. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Archivistica
+@using Tronox.Application.TrdVersiones
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject ITrdVersionService Svc
+@inject IEntidadService EntidadSvc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ02 - RF01 (Gestion de Versiones de TRD).
+
+   Es el MARCO LEGAL sobre el que RF04 construira la TRD (cruce Dependencia + Serie con tiempos y
+   disposicion final). Bloqueante para RF04.
+
+   Regla critica: solo UNA version Vigente por tenant. Al activar una version, la Vigente anterior
+   pasa AUTOMATICAMENTE a Historico. Los expedientes quedan amarrados a la version vigente al
+   momento de crearse, y esa referencia es inmutable (DAT-03). Nada se elimina: se descarta a
+   Inactivo. Equivale al legacy doc_versionesTRD.aspx (tabla GEN_TRD_VERSION). *@
+
+<PageTitle>Versiones de TRD - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-trd">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración Documental</span>
+        <span class="sep">/</span>
+        <span class="cur">Versiones de TRD</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-clock-history"></i><span>RQ02 &middot; RF01</span></div>
+            <h1 class="tx-ent-title">Versiones de la Tabla de Retención Documental</h1>
+            <p class="tx-ent-sub">
+                Marco legal de la TRD. Solo puede haber <strong>una versión vigente</strong> a la vez: al activar
+                una nueva, la anterior pasa automáticamente a histórica y los expedientes ya creados conservan
+                la versión bajo la que nacieron.
+            </p>
+        </div>
+        @if (_canCreate)
+        {
+            <div>
+                <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenEditor(null))">
+                    <i class="bi bi-plus-lg"></i> Crear versión
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_pageError is not null)
+    {
+        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+    }
+    @if (_pageOk is not null)
+    {
+        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+    }
+
+    @* ===== KPIs ===== *@
+    <div class="tx-dep-kpis">
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon"><i class="bi bi-collection"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Total ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Versiones</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-green"><i class="bi bi-patch-check"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.HayVigente == true ? "Sí" : "No")</div>
+                <div class="tx-dep-kpi-lbl">Vigente</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-violet"><i class="bi bi-pencil-square"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.EnConstruccion ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">En construcción</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-slate"><i class="bi bi-archive"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Historicas ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Históricas</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tx-ent-card">
+        @if (_loading)
+        {
+            <div class="tx-ent-card-body"><em>Cargando versiones...</em></div>
+        }
+        else if (_versiones.Count == 0)
+        {
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-empty">
+                    <i class="bi bi-clock-history"></i>
+                    <div>
+                        <strong>Aún no hay versiones de TRD</strong><br />
+                        Crea la primera versión (nace <em>En construcción</em>). Cuando esté lista, actívala para
+                        que sea la vigente y puedas construir la TRD sobre ella (RF04).
+                    </div>
+                    @if (_canCreate)
+                    {
+                        <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenEditor(null))">
+                            <i class="bi bi-plus-lg"></i> Crear versión
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="tx-ent-table-wrap">
+                <table class="tx-ent-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Vigencia desde</th>
+                            <th>Acto administrativo</th>
+                            <th>Estado</th>
+                            <th class="right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in _versiones)
+                        {
+                            <tr>
+                                <td><strong class="mono">@v.CodigoVersion</strong></td>
+                                <td>@(string.IsNullOrWhiteSpace(v.Descripcion) ? "--" : v.Descripcion)</td>
+                                <td>@v.FechaVigenciaDesde.ToString("yyyy-MM-dd")</td>
+                                <td>@(string.IsNullOrWhiteSpace(v.ActoAdministrativo) ? "--" : v.ActoAdministrativo)</td>
+                                <td><span class="tx-ent-badge sm @EstadoClase(v.Estado)">@EstadoLabel(v.Estado)</span></td>
+                                <td class="right">
+                                    @if (v.EnConstruccion)
+                                    {
+                                        @if (_canEdit)
+                                        {
+                                            <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenEditor(v))" disabled="@_busy">Editar</button>
+                                            <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => PedirConfirmacion(v, activar: true))" disabled="@_busy">Activar</button>
+                                        }
+                                        @if (_canDelete)
+                                        {
+                                            <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => PedirConfirmacion(v, activar: false))" disabled="@_busy">Descartar</button>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="muted" title="Una versión que no está En construcción es de solo consulta">Solo consulta</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="tx-ent-hint">
+        <i class="bi bi-shield-lock"></i>
+        Una versión <strong>no se elimina</strong>: se descarta (pasa a <em>Inactivo</em>) o se reemplaza
+        activando otra. Al activar una versión, la vigente anterior pasa a <strong>histórica</strong> de forma
+        automática, y los expedientes existentes conservan su versión de origen (inmutable, DAT-03).
+    </div>
+
+    @* ===== Modal crear/editar ===== *@
+    @if (_showEditor)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showEditor = false)">
+            <div class="modal-dialog" style="max-width:640px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_editing is null ? "Nueva versión de TRD" : $"Editar {_editing.CodigoVersion}")</h3>
+                    <button class="modal-close" @onclick="@(() => _showEditor = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trd">
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Código de la versión <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" @bind="_fCodigo" maxlength="50" placeholder="TRD-2026-v1" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Vigencia desde <span class="req">*</span></label>
+                            <input type="date" class="tx-ent-input" @bind="_fVigenciaDesde" />
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Descripción <span class="opt">(opcional)</span></label>
+                        <textarea class="tx-ent-input" @bind="_fDescripcion" maxlength="300" rows="2"
+                                  placeholder="Descripción o justificación de la versión."></textarea>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Acto administrativo <span class="opt">(opcional)</span></label>
+                        <input class="tx-ent-input" @bind="_fActo" maxlength="200"
+                               placeholder="Ej: Resolución 001 de 2026 — Fecha de aprobación" />
+                    </div>
+                    @if (_esEntidadPublica)
+                    {
+                        @* Criterio 6 de RF01: fecha_convalidacion solo aplica a entidades Publicas. *@
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field">
+                                <label>Fecha de aprobación <span class="opt">(opcional)</span></label>
+                                <input type="date" class="tx-ent-input" @bind="_fAprobacion" />
+                            </div>
+                            <div class="tx-ent-field">
+                                <label>Fecha de convalidación <span class="opt">(opcional)</span></label>
+                                <input type="date" class="tx-ent-input" @bind="_fConvalidacion" />
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="tx-ent-field">
+                            <label>Fecha de aprobación <span class="opt">(opcional)</span></label>
+                            <input type="date" class="tx-ent-input" @bind="_fAprobacion" />
+                        </div>
+                    }
+
+                    @if (_editorError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_editorError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showEditor = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveAsync" disabled="@_busy">
+                        @(_editing is null ? "Crear" : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Modal de confirmacion (activar / descartar) ===== *@
+    @if (_confirm is not null)
+    {
+        <div class="modal-overlay" @onclick="@(() => _confirm = null)">
+            <div class="modal-dialog" style="max-width:520px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@_confirm.Titulo</h3>
+                    <button class="modal-close" @onclick="@(() => _confirm = null)">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin:0">@_confirm.Mensaje</p>
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _confirm = null)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn @(_confirm.Activar ? "primary" : "danger")" @onclick="ConfirmarAsync" disabled="@_busy">
+                        @(_confirm.Activar ? "Activar versión" : "Descartar versión")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private const string ModuleKey = "modulo/trd-versiones";
+
+    private bool _loading = true;
+    private bool _busy;
+    private string? _pageError;
+    private string? _pageOk;
+
+    // Gateo por permiso (fail-closed: se parte de NEGADO, invariante 10).
+    private bool _canCreate;
+    private bool _canEdit;
+    private bool _canDelete;
+
+    /// <summary>Criterio 6 de RF01: la fecha de convalidacion solo aplica a entidades Publicas.</summary>
+    private bool _esEntidadPublica;
+
+    private IReadOnlyList<TrdVersionDto> _versiones = [];
+    private TrdVersionKpisDto? _kpis;
+
+    // ---- Editor ----
+    private bool _showEditor;
+    private TrdVersionDto? _editing;
+    private string _fCodigo = "";
+    private DateOnly? _fVigenciaDesde;
+    private string? _fDescripcion;
+    private string? _fActo;
+    private DateOnly? _fAprobacion;
+    private DateOnly? _fConvalidacion;
+    private string? _editorError;
+
+    // ---- Confirmacion ----
+    private ConfirmData? _confirm;
+    private sealed record ConfirmData(TrdVersionDto Version, bool Activar, string Titulo, string Mensaje);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+
+        try
+        {
+            _esEntidadPublica = (await EntidadSvc.GetAsync())?.TipoEntidad == TipoEntidad.Publica;
+        }
+        catch
+        {
+            _esEntidadPublica = false;
+        }
+
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _versiones = await Svc.ListAsync();
+        _kpis = await Svc.GetKpisAsync();
+    }
+
+    private void OpenEditor(TrdVersionDto? version)
+    {
+        _editing = version;
+        _fCodigo = version?.CodigoVersion ?? "";
+        _fVigenciaDesde = version?.FechaVigenciaDesde;
+        _fDescripcion = version?.Descripcion;
+        _fActo = version?.ActoAdministrativo;
+        _fAprobacion = version?.FechaAprobacion;
+        _fConvalidacion = version?.FechaConvalidacion;
+        _editorError = null;
+        _pageOk = null;
+        _pageError = null;
+        _showEditor = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _editorError = null;
+        try
+        {
+            if (_fVigenciaDesde is not DateOnly vigencia)
+            {
+                _editorError = "La fecha de inicio de vigencia es obligatoria.";
+                return;
+            }
+            var request = new SaveTrdVersionRequest(
+                _fCodigo, vigencia, _fDescripcion, _fActo, _fAprobacion,
+                _esEntidadPublica ? _fConvalidacion : null);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editing is null
+                ? await Svc.CreateAsync(request, actor)
+                : await Svc.UpdateAsync(_editing.Id, request, actor);
+
+            if (!result.IsOk)
+            {
+                _editorError = result.Error;
+                return;
+            }
+            _showEditor = false;
+            _pageOk = _editing is null ? "Versión creada (En construcción)." : "Versión actualizada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private void PedirConfirmacion(TrdVersionDto version, bool activar)
+    {
+        _pageOk = null;
+        _pageError = null;
+        _confirm = activar
+            ? new ConfirmData(version, true, "Activar versión de TRD",
+                _kpis?.HayVigente == true
+                    ? $"Al activar '{version.CodigoVersion}', la versión vigente actual pasará automáticamente a histórica. Los expedientes existentes conservarán su versión de origen. ¿Continuar?"
+                    : $"'{version.CodigoVersion}' quedará como la versión vigente de la entidad. ¿Continuar?")
+            : new ConfirmData(version, false, "Descartar versión de TRD",
+                $"'{version.CodigoVersion}' pasará a Inactivo y no podrá activarse. No se elimina: queda en el histórico como descartada. ¿Continuar?");
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        if (_confirm is not ConfirmData data) { return; }
+        _busy = true;
+        try
+        {
+            var actor = Tenant.UserId ?? 0;
+            var result = data.Activar
+                ? await Svc.ActivarAsync(data.Version.Id, actor)
+                : await Svc.DescartarAsync(data.Version.Id, actor,
+                    motivo: "Descarte de version En Construccion desde el modulo de versiones (RF01)");
+            if (!result.IsOk)
+            {
+                _pageError = result.Error;
+                return;
+            }
+            _pageOk = data.Activar ? "Versión activada. Es la vigente de la entidad." : "Versión descartada.";
+            _confirm = null;
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private static string EstadoLabel(TrdVersionEstado estado) => estado switch
+    {
+        TrdVersionEstado.EnConstruccion => "En construcción",
+        TrdVersionEstado.Vigente => "Vigente",
+        TrdVersionEstado.Historico => "Histórico",
+        TrdVersionEstado.Inactivo => "Inactivo",
+        _ => estado.ToString()
+    };
+
+    private static string EstadoClase(TrdVersionEstado estado) => estado switch
+    {
+        TrdVersionEstado.EnConstruccion => "violet",
+        TrdVersionEstado.Vigente => "ok",
+        TrdVersionEstado.Historico => "off",
+        TrdVersionEstado.Inactivo => "off",
+        _ => ""
+    };
+}

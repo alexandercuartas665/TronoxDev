@@ -61,8 +61,9 @@ public interface IApplicationDbContext
     DbSet<OrgUnitMember> OrgUnitMembers { get; }
     DbSet<BusinessUnit> BusinessUnits { get; }
 
-    // Configuracion documental (base de RQ02 - RF02): catalogo de series y subseries.
-    // Arbol tenant-scoped (adjacency-list por ParentId), listado maestro intelectual.
+    // Configuracion documental (base de RQ02). Versiones de la TRD (RF01): marco legal, una sola
+    // Vigente por tenant. Catalogo de series y subseries (RF02): arbol tenant-scoped.
+    DbSet<TrdVersion> TrdVersiones { get; }
     DbSet<SerieDocumental> SeriesDocumentales { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
