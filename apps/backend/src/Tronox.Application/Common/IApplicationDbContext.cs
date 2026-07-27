@@ -61,6 +61,10 @@ public interface IApplicationDbContext
     DbSet<OrgUnitMember> OrgUnitMembers { get; }
     DbSet<BusinessUnit> BusinessUnits { get; }
 
+    // Configuracion documental (base de RQ02 - RF02): catalogo de series y subseries.
+    // Arbol tenant-scoped (adjacency-list por ParentId), listado maestro intelectual.
+    DbSet<SerieDocumental> SeriesDocumentales { get; }
+
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }

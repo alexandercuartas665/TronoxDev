@@ -70,6 +70,11 @@ public static class DependencyInjection
         // inyecta, se testea sin base de datos y se puede cachear por tenant.
         services.AddScoped<Organization.IOrgUnitService, Organization.OrgUnitService>();
 
+        // --- Configuracion documental (base de RQ02): catalogo de series y subseries (RF02) ---
+        // La logica de arbol (ciclos) y las validaciones son PURAS y estaticas en
+        // SeriesDocumentales.SerieRules: se testean sin base de datos, por eso no se registran.
+        services.AddScoped<SeriesDocumentales.ISerieDocumentalService, SeriesDocumentales.SerieDocumentalService>();
+
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();
 

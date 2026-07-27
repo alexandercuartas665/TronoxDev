@@ -82,6 +82,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     // catalogo GLOBAL de plataforma (sin TenantId ni query filter); TenantModule es el
     // estado por tenant (scoped).
     public DbSet<OrgUnit> OrgUnits => Set<OrgUnit>();
+    public DbSet<SerieDocumental> SeriesDocumentales => Set<SerieDocumental>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -358,6 +359,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<FondoTipo>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<FondoEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SubfondoEstado>().HaveConversion<string>().HaveMaxLength(20);
+        // Catalogo de series y subseries (RQ02 - RF02): estado como texto acotado.
+        configurationBuilder.Properties<SerieEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
         configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EntidadEstado>().HaveConversion<string>().HaveMaxLength(20);
@@ -772,6 +775,32 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasForeignKey(x => x.OrgUnitId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.OrgUnitId, x.TenantUserId }).IsUnique();
             b.HasIndex(x => x.TenantUserId);
+        });
+
+        // Catalogo de series y subseries (RQ02 - RF02): arbol autorreferencial, listado maestro
+        // intelectual independiente de dependencias. Codigo y nombre unicos ENTRE HERMANOS.
+        modelBuilder.Entity<SerieDocumental>(b =>
+        {
+            b.Property(x => x.Codigo).HasMaxLength(20).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(500);
+            // Self-FK del arbol con ON DELETE RESTRICT: una serie con subseries no se borra en
+            // cascada (y las series nunca se borran fisicamente: se inactivan, invariante 8).
+            b.HasOne(x => x.Parent).WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.ParentId });
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            // Unicidad ENTRE HERMANOS (mismo padre) dentro del tenant, NO global (RF02 criterio 2).
+            // Van DOS indices filtrados por columna porque en SQL dos parent_id NULL no colisionan
+            // entre si, asi que las series raiz necesitan el suyo. Codigo y nombre, cada uno igual.
+            b.HasIndex(x => new { x.TenantId, x.ParentId, x.Codigo }).IsUnique()
+                .HasFilter(isNpgsql ? "parent_id IS NOT NULL" : "[parent_id] IS NOT NULL");
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique()
+                .HasFilter(isNpgsql ? "parent_id IS NULL" : "[parent_id] IS NULL");
+            b.HasIndex(x => new { x.TenantId, x.ParentId, x.Nombre }).IsUnique()
+                .HasFilter(isNpgsql ? "parent_id IS NOT NULL" : "[parent_id] IS NOT NULL");
+            b.HasIndex(x => new { x.TenantId, x.Nombre }).IsUnique()
+                .HasFilter(isNpgsql ? "parent_id IS NULL" : "[parent_id] IS NULL");
         });
 
         // Asignacion por nodo (ADR-0035, ola F1): que Dependencia/Cargo atiende un paso Task.

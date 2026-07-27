@@ -45,8 +45,22 @@ Puertos de desarrollo: 5443 postgres · 6390 redis · 5683/15683 rabbitmq · 900
 | RF08 | Carga Masiva Asistida | PENDIENTE |
 | RF09 | **Administrador de Menu** | HECHO - menu en BD (136 nodos), arbol canonico del prototipo, filtrado por permisos |
 
-**Lo que NO existe todavia:** ningun modulo de RQ02 a RQ17. El menu muestra 106 opciones,
-pero ~91 llevan a una ficha de "modulo pendiente". **Menu completo != sistema construido.**
+**Lo que NO existe todavia (de RQ01):** RF07 (Mi Perfil) y RF08 (Carga Masiva). Ver deuda tecnica.
+
+---
+
+## 2.b Fase 2 - RQ02 Configuracion Documental (en curso)
+
+| RF | Modulo | Estado |
+|---|---|---|
+| RF01 | Versiones de TRD | PENDIENTE |
+| RF02 | **Catalogo de Series y Subseries** | HECHO - arbol autorreferencial (jerarquia ilimitada), codigo unico por nivel + nombre unico entre hermanos, inactivacion sin borrado fisico, ciclos fail-closed. Migrado del legacy `doc_catalogoTRD.aspx` (2026-07-27) |
+| RF03 | Administrador de Listas | PENDIENTE |
+| RF04 | Construccion de la TRD (cruce Dependencia + Serie) | PENDIENTE |
+| RF05..RF10 | (resto de RQ02) | PENDIENTE |
+
+**Del resto (RQ03 a RQ17): nada construido.** El menu muestra las opciones del arbol canonico,
+pero la gran mayoria llevan a una ficha de "modulo pendiente". **Menu completo != sistema construido.**
 
 ---
 

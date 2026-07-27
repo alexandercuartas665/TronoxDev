@@ -1,0 +1,438 @@
+@page "/series-subseries"
+@attribute [Authorize(Policy = "Perm:modulo/series-subseries:View")]
+@* La llave de permisos es la RUTA del item del menu (RF09 5.9.3), que en la semilla es
+   "modulo/series-subseries". La pagina real vive en /series-subseries y a ella se llega por la
+   promocion de Modulo.razor, de modo que funciona en TODOS los tenants sin tocar su menu en BD. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.SeriesDocumentales
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject ISerieDocumentalService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ02 - RF02 (Catalogo de Series y Subseries).
+
+   Es el LISTADO MAESTRO INTELECTUAL de la entidad, INDEPENDIENTE de las dependencias que las
+   producen (regla de diseno fundamental de RF02): aqui NO se vinculan dependencias, NO se asignan
+   tiempos de retencion ni clasificacion documental. Ese cruce ocurre en RF04 y produce el CCD y
+   la TRD. Este catalogo es el insumo de RF04.
+
+   Jerarquia ILIMITADA por auto-relacion (serie -> subserie -> ...). Nada se elimina: se INACTIVA
+   (invariante 8). Equivale al legacy doc_catalogoTRD.aspx (tabla GEN_TRD_CATALOGO_SERIES). *@
+
+<PageTitle>Catálogo de Series y Subseries - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-series">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración Documental</span>
+        <span class="sep">/</span>
+        <span class="cur">Catálogo de Series y Subseries</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-collection"></i><span>RQ02 &middot; RF02</span></div>
+            <h1 class="tx-ent-title">Catálogo de Series y Subseries</h1>
+            <p class="tx-ent-sub">
+                Listado maestro <strong>intelectual</strong> de la entidad. Es independiente de las dependencias:
+                aquí no se asignan tiempos de retención ni clasificación; eso ocurre al construir la TRD (RF04).
+                La jerarquía es ilimitada (serie &rarr; subserie &rarr; ...).
+            </p>
+        </div>
+        @if (_canCreate)
+        {
+            <div>
+                <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenEditor(null, null))">
+                    <i class="bi bi-plus-lg"></i> Crear serie
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_pageError is not null)
+    {
+        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+    }
+    @if (_pageOk is not null)
+    {
+        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+    }
+
+    @* ===== KPIs ===== *@
+    <div class="tx-dep-kpis">
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon"><i class="bi bi-collection"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Series ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Series</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-violet"><i class="bi bi-diagram-2"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Subseries ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Subseries</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-green"><i class="bi bi-check2-circle"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Activas ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Activas</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-slate"><i class="bi bi-archive"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Inactivas ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Inactivas</div>
+            </div>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando catálogo...</em></div></div>
+    }
+    else if (_flat.Count == 0 && string.IsNullOrWhiteSpace(_search))
+    {
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-empty">
+                    <i class="bi bi-collection"></i>
+                    <div>
+                        <strong>Sin series todavía</strong><br />
+                        Crea la primera serie del catálogo. Luego podrás anidarle subseries y, en RF04,
+                        cruzarlas con las dependencias para construir la TRD.
+                    </div>
+                    @if (_canCreate)
+                    {
+                        <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenEditor(null, null))">
+                            <i class="bi bi-plus-lg"></i> Crear serie
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="tx-ent-card">
+            <div class="tx-dep-toolbar">
+                <div class="tx-dep-search">
+                    <i class="bi bi-search"></i>
+                    <input class="tx-ent-input" placeholder="Buscar por código o nombre..."
+                           value="@_search" @oninput="@(e => _search = e.Value?.ToString() ?? "")" />
+                </div>
+                <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" checked="@_verInactivas"
+                           @onchange="@(async e => { _verInactivas = (bool)e.Value!; await LoadAsync(); })" />
+                    Ver inactivas
+                </label>
+                <div style="flex:1"></div>
+                <button type="button" class="tx-ent-btn sm" @onclick="ExpandAll" title="Expandir todo">
+                    <i class="bi bi-arrows-expand"></i> Expandir
+                </button>
+                <button type="button" class="tx-ent-btn sm" @onclick="CollapseAll" title="Colapsar todo">
+                    <i class="bi bi-arrows-collapse"></i> Colapsar
+                </button>
+            </div>
+
+            <div class="tx-dep-tree">
+                @if (!string.IsNullOrWhiteSpace(_search))
+                {
+                    @* Con busqueda activa se muestra una lista plana de coincidencias: en un arbol
+                       filtrado el usuario pierde la referencia de donde esta cada nodo. *@
+                    @foreach (var node in Buscar())
+                    {
+                        <div class="tx-dep-node @(node.EsInactiva ? "archivada" : "")">
+                            <span class="tx-dep-chev ph"></span>
+                            @NodoInterior(node)
+                        </div>
+                    }
+                    @if (Buscar().Count == 0)
+                    {
+                        <div class="tx-ent-hint" style="padding:14px">Ninguna serie coincide con la búsqueda.</div>
+                    }
+                }
+                else
+                {
+                    @foreach (var row in FlattenTree())
+                    {
+                        var node = row.Node;
+                        <div class="tx-dep-node @(node.EsInactiva ? "archivada" : "")" style="margin-left:@(row.Depth * 22)px">
+                            @if (node.ChildCount > 0)
+                            {
+                                <button type="button" class="tx-dep-chev @(_collapsed.Contains(node.Id) ? "" : "open")"
+                                        title="@(_collapsed.Contains(node.Id) ? "Expandir" : "Contraer")"
+                                        @onclick="@(() => ToggleCollapse(node.Id))">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="tx-dep-chev ph"></span>
+                            }
+                            @NodoInterior(node)
+                            @if (_canCreate && !node.EsInactiva)
+                            {
+                                <button type="button" class="tx-dep-add" title="Agregar subserie"
+                                        @onclick="@(() => OpenEditor(null, node.Id))">+</button>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    <div class="tx-ent-hint">
+        <i class="bi bi-shield-lock"></i>
+        El catálogo es el <strong>listado maestro</strong>: aquí no se vinculan dependencias ni se fijan
+        tiempos de retención (eso es RF04). Una serie <strong>no se elimina</strong>: se inactiva, y una
+        serie inactiva no se ofrece para nuevas asignaciones en la TRD.
+    </div>
+
+    @* ===== Modal crear/editar ===== *@
+    @if (_showEditor)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showEditor = false)">
+            <div class="modal-dialog" style="max-width:600px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_editing is null ? (_parentNombre is null ? "Nueva serie" : $"Nueva subserie de {_parentNombre}") : $"Editar {_editing.Nombre}")</h3>
+                    <button class="modal-close" @onclick="@(() => _showEditor = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-series">
+                    @if (_parentNombre is not null)
+                    {
+                        <div class="tx-ent-hint" style="margin-bottom:12px">
+                            <i class="bi bi-diagram-2"></i> Subserie de <strong>@_parentNombre</strong>
+                        </div>
+                    }
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Código <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" @bind="_fCodigo" maxlength="20"
+                                   placeholder="@(_parentNombre is null ? "01" : "01.1")" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Nombre <span class="req">*</span></label>
+                            <input class="tx-ent-input" @bind="_fNombre" maxlength="200"
+                                   placeholder="Ej. Actas, Historias Laborales" />
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Descripción <span class="opt">(opcional)</span></label>
+                        <textarea class="tx-ent-input" @bind="_fDescripcion" maxlength="500" rows="3"
+                                  placeholder="Descripción archivística de la serie."></textarea>
+                    </div>
+
+                    @if (_editorError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_editorError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showEditor = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveAsync" disabled="@_busy">
+                        @(_editing is null ? "Crear" : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private const string ModuleKey = "modulo/series-subseries";
+
+    private bool _loading = true;
+    private bool _busy;
+    private bool _verInactivas;
+    private string _search = "";
+    private string? _pageError;
+    private string? _pageOk;
+
+    // Gateo por permiso (fail-closed: se parte de NEGADO, invariante 10).
+    private bool _canCreate;
+    private bool _canEdit;
+    private bool _canDelete;
+
+    private IReadOnlyList<SerieNodeDto> _tree = [];
+    private List<SerieNodeDto> _flat = [];
+    private SerieKpisDto? _kpis;
+    private readonly HashSet<long> _collapsed = [];
+
+    // ---- Editor ----
+    private bool _showEditor;
+    private SerieNodeDto? _editing;
+    private long? _parentId;
+    private string? _parentNombre;
+    private string _fCodigo = "";
+    private string _fNombre = "";
+    private string? _fDescripcion;
+    private string? _editorError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _tree = await Svc.GetTreeAsync(includeInactivas: _verInactivas);
+        _flat = [];
+        Collect(_tree);
+        _kpis = await Svc.GetKpisAsync();
+    }
+
+    private void Collect(IReadOnlyList<SerieNodeDto> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            _flat.Add(n);
+            Collect(n.Children);
+        }
+    }
+
+    private sealed record Row(SerieNodeDto Node, int Depth);
+
+    private List<Row> FlattenTree()
+    {
+        var rows = new List<Row>();
+        void Walk(IReadOnlyList<SerieNodeDto> nodes, int depth)
+        {
+            foreach (var n in nodes)
+            {
+                rows.Add(new Row(n, depth));
+                if (!_collapsed.Contains(n.Id))
+                {
+                    Walk(n.Children, depth + 1);
+                }
+            }
+        }
+        Walk(_tree, 0);
+        return rows;
+    }
+
+    private List<SerieNodeDto> Buscar()
+    {
+        var q = _search.Trim();
+        return _flat
+            .Where(n => n.Codigo.Contains(q, StringComparison.OrdinalIgnoreCase)
+                        || n.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private void ToggleCollapse(long id)
+    {
+        if (!_collapsed.Remove(id)) { _collapsed.Add(id); }
+    }
+
+    private void ExpandAll() => _collapsed.Clear();
+
+    private void CollapseAll()
+    {
+        _collapsed.Clear();
+        foreach (var n in _flat.Where(n => n.ChildCount > 0))
+        {
+            _collapsed.Add(n.Id);
+        }
+    }
+
+    private void OpenEditor(SerieNodeDto? serie, long? parentId)
+    {
+        _editing = serie;
+        _parentId = serie?.ParentId ?? parentId;
+        _parentNombre = _parentId is long pid ? _flat.FirstOrDefault(n => n.Id == pid)?.Nombre : null;
+        _fCodigo = serie?.Codigo ?? "";
+        _fNombre = serie?.Nombre ?? "";
+        _fDescripcion = serie?.Descripcion;
+        _editorError = null;
+        _pageOk = null;
+        _pageError = null;
+        _showEditor = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _editorError = null;
+        try
+        {
+            var request = new SaveSerieRequest(_fCodigo, _fNombre, _fDescripcion, _parentId);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editing is null
+                ? await Svc.CreateAsync(request, actor)
+                : await Svc.UpdateAsync(_editing.Id, request, actor);
+
+            if (!result.IsOk)
+            {
+                _editorError = result.Error;
+                return;
+            }
+            _showEditor = false;
+            _pageOk = _editing is null ? "Serie creada." : "Serie actualizada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetEstadoAsync(SerieNodeDto serie, bool activar)
+    {
+        _busy = true;
+        _pageError = null;
+        _pageOk = null;
+        try
+        {
+            var result = await Svc.SetEstadoAsync(
+                serie.Id, activar, Tenant.UserId ?? 0,
+                motivo: activar ? "Reactivacion desde el catalogo de series (RF02)" : "Inactivacion desde el catalogo de series (RF02)");
+            if (!result.IsOk)
+            {
+                _pageError = result.Error;
+                return;
+            }
+            _pageOk = activar ? "Serie reactivada." : "Serie inactivada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private RenderFragment NodoInterior(SerieNodeDto node) => __builder =>
+    {
+        <span class="tx-dep-node-code">@node.Codigo</span>
+        <span class="tx-dep-node-name">@node.Nombre</span>
+        <span class="tx-dep-node-right">
+            <span class="tx-ent-badge sm @(node.EsSerie ? "violet" : "")">@(node.EsSerie ? "Serie" : "Subserie")</span>
+            <span class="tx-ent-badge sm @(node.EsInactiva ? "off" : "ok")">@(node.EsInactiva ? "Inactiva" : "Activa")</span>
+            @if (_canEdit)
+            {
+                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenEditor(node, null))" @onclick:stopPropagation="true">Editar</button>
+            }
+            @if (_canDelete)
+            {
+                @if (node.EsInactiva)
+                {
+                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetEstadoAsync(node, true))" @onclick:stopPropagation="true" disabled="@_busy">Reactivar</button>
+                }
+                else
+                {
+                    <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetEstadoAsync(node, false))" @onclick:stopPropagation="true" disabled="@_busy"
+                            title="@(node.ChildCount > 0 ? "Si tiene subseries activas, inactivalas primero" : "Inactivar la serie")">
+                        Inactivar
+                    </button>
+                }
+            }
+        </span>
+    };
+}
