@@ -661,6 +661,26 @@ public sealed class OrgUnitService : IOrgUnitService
             }
         }
 
+        // 5. Codigo del CARGO unico DENTRO DEL TENANT (RF04, paridad con el legacy
+        //    CatalogoCargos.ExisteCodigoDuplicado). A diferencia de la dependencia NO es por
+        //    hermanos: el catalogo de cargos es GLOBAL en el tenant (ADR-003), asi que el mismo
+        //    codigo no puede repetirse aunque los cargos cuelguen de dependencias distintas. El
+        //    codigo es opcional; solo se valida si viene con valor.
+        if (request.Classifier == OrgUnitClassifier.Cargo && Normalize(request.CodigoCargo) is string codigoCargo)
+        {
+            var upper = codigoCargo.ToUpperInvariant();
+            var duplicated = await _db.OrgUnits.AsNoTracking().AnyAsync(
+                u => u.Classifier == OrgUnitClassifier.Cargo
+                     && u.CodigoCargo != null && u.CodigoCargo.ToUpper() == upper
+                     && (unitId == null || u.Id != unitId),
+                cancellationToken);
+            if (duplicated)
+            {
+                return OrgResult<bool>.Conflict(
+                    $"Ya existe un cargo con el codigo '{codigoCargo}' en la entidad.");
+            }
+        }
+
         return null;
     }
 

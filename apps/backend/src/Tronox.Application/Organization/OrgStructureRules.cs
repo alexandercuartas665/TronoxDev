@@ -7,8 +7,8 @@ namespace Tronox.Application.Organization;
 /// testeable sin base de datos. Devuelve el mensaje de error o null si el nodo es valido.
 ///
 /// Lo que NO se valida aqui (necesita base de datos y vive en OrgUnitService): existencia del
-/// fondo, del padre, de la sucesora y del usuario ocupante; y la unicidad del codigo entre
-/// hermanos.
+/// fondo, del padre, de la sucesora y del usuario ocupante; la unicidad del codigo de dependencia
+/// entre hermanos; y la unicidad del codigo de cargo dentro del tenant (catalogo global, RF04).
 /// </summary>
 public static class OrgStructureRules
 {

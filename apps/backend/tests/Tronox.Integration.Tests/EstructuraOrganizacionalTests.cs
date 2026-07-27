@@ -121,6 +121,63 @@ public abstract class EstructuraOrganizacionalTestsBase
         }
     }
 
+    [Fact]
+    public async Task CodigoDeCargo_EsUnicoEnElTenant_AunqueCuelguenDeDependenciasDistintas()
+    {
+        // Paridad con el legacy CatalogoCargos.ExisteCodigoDuplicado: el codigo del cargo es unico
+        // en la entidad. A diferencia de la dependencia NO es por hermanos, porque el catalogo de
+        // cargos es GLOBAL en el tenant (ADR-003).
+        var seed = await SeedTenantAsync("Org Codigo Cargo");
+        var fondo = await SeedFondoAsync(seed.TenantId, "F01");
+
+        await using var ctx = _fixture.CreateContext(seed.TenantId);
+        var svc = NewService(ctx, seed);
+
+        var depA = Ok(await svc.CreateAsync(Dependencia("Secretaria A", "SA", fondo), Actor));
+        var depB = Ok(await svc.CreateAsync(Dependencia("Secretaria B", "SB", fondo), Actor));
+
+        var original = Ok(await svc.CreateAsync(
+            Cargo("Profesional Universitario", depA.Id, NivelJerarquico.Profesional) with { CodigoCargo = "219-11" },
+            Actor));
+
+        // Mismo codigo bajo OTRA dependencia: conflicto (unicidad en todo el tenant, no entre hermanos).
+        var duplicado = await svc.CreateAsync(
+            Cargo("Otro cargo", depB.Id, NivelJerarquico.Tecnico) with { CodigoCargo = "219-11" }, Actor);
+        Assert.Equal(OrgServiceStatus.Conflict, duplicado.Status);
+        Assert.Contains("219-11", duplicado.Error!);
+
+        // Case-insensitive: "219-11" choca con "219-11" aunque cambie la caja (aqui no hay letras,
+        // pero un codigo con letras tampoco debe colarse).
+        var conLetras = Ok(await svc.CreateAsync(
+            Cargo("Tecnico Operativo", depA.Id, NivelJerarquico.Tecnico) with { CodigoCargo = "TO-05a" }, Actor));
+        var choqueCaja = await svc.CreateAsync(
+            Cargo("Duplicado caja", depB.Id, NivelJerarquico.Tecnico) with { CodigoCargo = "to-05A" }, Actor);
+        Assert.Equal(OrgServiceStatus.Conflict, choqueCaja.Status);
+
+        // El codigo es OPCIONAL: varios cargos sin codigo conviven sin chocar.
+        Assert.True((await svc.CreateAsync(Cargo("Sin codigo 1", depA.Id, NivelJerarquico.Asistencial), Actor)).IsOk);
+        Assert.True((await svc.CreateAsync(Cargo("Sin codigo 2", depB.Id, NivelJerarquico.Asistencial), Actor)).IsOk);
+
+        // Al EDITAR el propio cargo, su codigo no choca consigo mismo.
+        var reedicion = await svc.UpdateAsync(
+            original.Id,
+            Cargo("Profesional Universitario Grado 11", depA.Id, NivelJerarquico.Profesional) with { CodigoCargo = "219-11" },
+            Actor);
+        Assert.True(reedicion.IsOk, reedicion.Error);
+
+        // Y el codigo no choca contra un cargo de OTRO tenant (DAT-01).
+        var otro = await SeedTenantAsync("Org Codigo Cargo B");
+        var fondoOtro = await SeedFondoAsync(otro.TenantId, "F01");
+        await using var ctxOtro = _fixture.CreateContext(otro.TenantId);
+        var svcOtro = NewService(ctxOtro, otro);
+        var depOtro = Ok(await svcOtro.CreateAsync(Dependencia("Sec", "SEC", fondoOtro), Actor));
+        var enOtroTenant = await svcOtro.CreateAsync(
+            Cargo("Profesional", depOtro.Id, NivelJerarquico.Profesional) with { CodigoCargo = "219-11" }, Actor);
+        Assert.True(enOtroTenant.IsOk, enOtroTenant.Error);
+
+        _ = conLetras;
+    }
+
     // ================= 3. fondo_id obligatorio SOLO en Dependencia =================
 
     [Fact]

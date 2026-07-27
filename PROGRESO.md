@@ -38,7 +38,7 @@ Puertos de desarrollo: 5443 postgres · 6390 redis · 5683/15683 rabbitmq · 900
 | RF01-P.3 | **Niveles de Clasificacion** | HECHO - los 4 niveles sembrados al alta del tenant |
 | RF02 | **Fondos Documentales** | HECHO (backend) - codigo unico por tenant, fondo Cerrado de solo lectura, `sede_id` NULL = transversal. **Sin pantalla propia todavia** |
 | RF03 | **Dependencias** | HECHO - arbol unico con clasificador (ADR-003), ciclos fail-closed, archivado, vigencias, sucesora |
-| RF04 | **Catalogo de Cargos** | HECHO - vista de catalogo de los nodos `Cargo`; `codigo_dafp` solo si la entidad es Publica; no se inactiva un cargo con funcionarios activos |
+| RF04 | **Catalogo de Cargos** | HECHO - vista de catalogo de los nodos `Cargo`; `codigo_dafp` solo si la entidad es Publica; no se inactiva un cargo con funcionarios activos; **codigo de cargo unico en el tenant** (reconciliado con el legacy `CatalogoCargos.aspx`, 2026-07-27) |
 | RF05 | **Roles y Permisos** | HECHO - 6 acciones, multi-rol con vigencia, union por OR, nivel maximo, **fail-closed** (ADR-004) |
 | RF06 | **Usuarios / Funcionarios** | HECHO - documento y correo unicos por tenant, activacion exige dependencia+cargo+rol, dependencia **derivada** del cargo |
 | RF07 | Mi Perfil | PENDIENTE |
