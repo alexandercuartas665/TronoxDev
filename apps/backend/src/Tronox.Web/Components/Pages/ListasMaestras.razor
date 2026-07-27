@@ -1,0 +1,523 @@
+@page "/listas-maestras"
+@attribute [Authorize(Policy = "Perm:modulo/listas-maestras:View")]
+@* La llave de permisos es la RUTA del item del menu (RF09 5.9.3): "modulo/listas-maestras". La
+   pagina real vive en /listas-maestras y a ella se llega por la promocion de Modulo.razor. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Listas
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IListaMaestraService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ02 - RF03 (Administrador de Listas).
+
+   Listas de opciones REUTILIZABLES que alimentan los metadatos de tipo Lista en series, subseries
+   y tipos documentales (RF04/RF05). NO es un banco de metadatos global: solo provee las opciones de
+   un desplegable. Maestro-detalle Lista -> Opciones. Nada se elimina: se inactiva (invariante 8).
+   La opcion separa CLAVE (valor interno estable) de VALOR (etiqueta visible), mejora sobre el
+   legacy doc_adminlistas.aspx que solo tenia el texto visible. *@
+
+<PageTitle>Administrador de Listas - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-listas">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración Documental</span>
+        <span class="sep">/</span>
+        <span class="cur">Administrador de Listas</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-list-ul"></i><span>RQ02 &middot; RF03</span></div>
+            <h1 class="tx-ent-title">Administrador de Listas</h1>
+            <p class="tx-ent-sub">
+                Listas de opciones reutilizables. Son la <strong>fuente de valores</strong> de los metadatos de
+                tipo Lista en series, subseries y tipos documentales. Una lista necesita al menos
+                <strong>2 opciones activas</strong> para poder usarse.
+            </p>
+        </div>
+        @if (_canCreate)
+        {
+            <div>
+                <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenListaEditor(null))">
+                    <i class="bi bi-plus-lg"></i> Crear lista
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_pageError is not null)
+    {
+        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+    }
+    @if (_pageOk is not null)
+    {
+        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+    }
+
+    @* ===== KPIs ===== *@
+    <div class="tx-dep-kpis">
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon"><i class="bi bi-list-ul"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Total ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Listas</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-green"><i class="bi bi-check2-circle"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Usables ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Usables (2+ activas)</div>
+            </div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-slate"><i class="bi bi-archive"></i></div>
+            <div>
+                <div class="tx-dep-kpi-val">@(_kpis?.Inactivas ?? 0)</div>
+                <div class="tx-dep-kpi-lbl">Inactivas</div>
+            </div>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando listas...</em></div></div>
+    }
+    else
+    {
+        <div class="tx-dep-layout">
+
+            @* ---------- Catalogo de listas ---------- *@
+            <div class="tx-ent-card">
+                <div class="tx-dep-toolbar">
+                    <div class="tx-dep-search">
+                        <i class="bi bi-search"></i>
+                        <input class="tx-ent-input" placeholder="Buscar lista..."
+                               value="@_search" @oninput="@(e => _search = e.Value?.ToString() ?? "")" />
+                    </div>
+                </div>
+                <div class="tx-dep-tree">
+                    @if (Filtradas().Count == 0)
+                    {
+                        <div class="tx-ent-hint" style="padding:14px">
+                            @(_listas.Count == 0 ? "Aún no hay listas. Crea la primera." : "Ninguna lista coincide.")
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var l in Filtradas())
+                        {
+                            <div class="tx-dep-node @(l.Id == _selectedId ? "on" : "") @(l.EsInactiva ? "archivada" : "")"
+                                 @onclick="@(() => Select(l.Id))">
+                                <span class="tx-dep-chev ph"></span>
+                                <span class="tx-dep-node-name">@l.NombreLista</span>
+                                <span class="tx-dep-node-right">
+                                    <span class="tx-ent-badge sm @(l.EsUsable ? "ok" : "")" title="@(l.EsUsable ? "Usable en metadatos" : "Necesita 2+ opciones activas")">
+                                        @l.OpcionesActivas op.
+                                    </span>
+                                    @if (l.EsInactiva)
+                                    {
+                                        <span class="tx-ent-badge sm off">Inactiva</span>
+                                    }
+                                </span>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ---------- Detalle de la lista ---------- *@
+            <div class="tx-ent-card">
+                @if (_selected is null)
+                {
+                    <div class="tx-ent-card-body">
+                        <div class="tx-ent-empty">
+                            <i class="bi bi-list-ul"></i>
+                            <div>Selecciona una lista para ver y administrar sus opciones.</div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="tx-ent-card-body">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                            <div>
+                                <h3 style="margin:0">@_selected.NombreLista</h3>
+                                @if (!string.IsNullOrWhiteSpace(_selected.Descripcion))
+                                {
+                                    <p class="tx-ent-hint" style="margin:4px 0 0">@_selected.Descripcion</p>
+                                }
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <span class="tx-ent-badge sm @(_selected.EsInactiva ? "off" : "ok")">@(_selected.EsInactiva ? "Inactiva" : "Activa")</span>
+                                @if (_selected.EsUsable)
+                                {
+                                    <span class="tx-ent-badge sm violet">Usable</span>
+                                }
+                            </div>
+                        </div>
+
+                        @if (!_selected.EsUsable && !_selected.EsInactiva)
+                        {
+                            <div class="tx-ent-alert" style="margin-top:10px">
+                                <i class="bi bi-info-circle"></i>
+                                <span>Esta lista aún no es usable: necesita <strong>al menos 2 opciones activas</strong>.</span>
+                            </div>
+                        }
+
+                        <div class="tx-dep-toolbar" style="margin-top:12px">
+                            @if (_canEdit)
+                            {
+                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenListaEditor(_selected))">Editar datos</button>
+                                <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenOpcionEditor(null))">
+                                    <i class="bi bi-plus-lg"></i> Agregar opción
+                                </button>
+                            }
+                            <div style="flex:1"></div>
+                            @if (_canDelete)
+                            {
+                                @if (_selected.EsInactiva)
+                                {
+                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetListaEstado(true))" disabled="@_busy">Reactivar lista</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetListaEstado(false))" disabled="@_busy">Inactivar lista</button>
+                                }
+                            }
+                        </div>
+
+                        @if (_selected.Opciones.Count == 0)
+                        {
+                            <div class="tx-ent-empty" style="margin-top:14px">
+                                <i class="bi bi-card-list"></i>
+                                <div>Esta lista no tiene opciones. Agrega al menos 2 para poder usarla.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="tx-ent-table-wrap" style="margin-top:12px">
+                                <table class="tx-ent-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:70px">Orden</th>
+                                            <th>Clave</th>
+                                            <th>Valor</th>
+                                            <th>Estado</th>
+                                            <th class="right">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @{ var ops = _selected.Opciones; }
+                                        @for (var i = 0; i < ops.Count; i++)
+                                        {
+                                            var op = ops[i];
+                                            var idx = i;
+                                            <tr class="@(op.EsInactiva ? "archivada" : "")">
+                                                <td>
+                                                    @if (_canEdit)
+                                                    {
+                                                        <button type="button" class="tx-ent-btn sm" title="Subir" disabled="@(_busy || idx == 0)"
+                                                                @onclick="@(() => MoverAsync(idx, -1))"><i class="bi bi-chevron-up"></i></button>
+                                                        <button type="button" class="tx-ent-btn sm" title="Bajar" disabled="@(_busy || idx == ops.Count - 1)"
+                                                                @onclick="@(() => MoverAsync(idx, 1))"><i class="bi bi-chevron-down"></i></button>
+                                                    }
+                                                </td>
+                                                <td class="mono">@op.Clave</td>
+                                                <td>@op.Valor</td>
+                                                <td><span class="tx-ent-badge sm @(op.EsInactiva ? "off" : "ok")">@(op.EsInactiva ? "Inactiva" : "Activa")</span></td>
+                                                <td class="right">
+                                                    @if (_canEdit)
+                                                    {
+                                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenOpcionEditor(op))" disabled="@_busy">Editar</button>
+                                                        @if (op.EsInactiva)
+                                                        {
+                                                            <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetOpcionEstado(op, true))" disabled="@_busy">Reactivar</button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetOpcionEstado(op, false))" disabled="@_busy">Inactivar</button>
+                                                        }
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="tx-ent-hint" style="margin-top:8px">
+                                <i class="bi bi-info-circle"></i>
+                                Inactivar una opción no borra los valores ya guardados en expedientes o documentos: solo deja de ofrecerse.
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ===== Modal lista ===== *@
+    @if (_showListaEditor)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showListaEditor = false)">
+            <div class="modal-dialog" style="max-width:560px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_editingLista is null ? "Nueva lista" : $"Editar {_editingLista.NombreLista}")</h3>
+                    <button class="modal-close" @onclick="@(() => _showListaEditor = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-listas">
+                    <div class="tx-ent-field">
+                        <label>Nombre de la lista <span class="req">*</span></label>
+                        <input class="tx-ent-input" @bind="_fNombre" maxlength="100" placeholder="Ej. Tipo de Vinculación" />
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Descripción <span class="opt">(opcional)</span></label>
+                        <textarea class="tx-ent-input" @bind="_fDescripcion" maxlength="300" rows="2"></textarea>
+                    </div>
+                    @if (_listaError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_listaError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showListaEditor = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveListaAsync" disabled="@_busy">@(_editingLista is null ? "Crear" : "Guardar")</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Modal opcion ===== *@
+    @if (_showOpcionEditor)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showOpcionEditor = false)">
+            <div class="modal-dialog" style="max-width:560px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_editingOpcion is null ? "Nueva opción" : $"Editar opción")</h3>
+                    <button class="modal-close" @onclick="@(() => _showOpcionEditor = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-listas">
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Clave <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" @bind="_fClave" maxlength="50" placeholder="LIBRE_REMOCION" />
+                            <div class="tx-ent-hint">Valor interno estable. No cambia el histórico si renombras el valor visible.</div>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Valor visible <span class="req">*</span></label>
+                            <input class="tx-ent-input" @bind="_fValor" maxlength="200" placeholder="Libre Remoción" />
+                        </div>
+                    </div>
+                    @if (_opcionError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_opcionError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showOpcionEditor = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveOpcionAsync" disabled="@_busy">@(_editingOpcion is null ? "Agregar" : "Guardar")</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private const string ModuleKey = "modulo/listas-maestras";
+
+    private bool _loading = true;
+    private bool _busy;
+    private string _search = "";
+    private string? _pageError;
+    private string? _pageOk;
+
+    private bool _canCreate;
+    private bool _canEdit;
+    private bool _canDelete;
+
+    private IReadOnlyList<ListaMaestraDto> _listas = [];
+    private ListaKpisDto? _kpis;
+    private long? _selectedId;
+    private ListaMaestraDto? _selected;
+
+    // ---- Editor lista ----
+    private bool _showListaEditor;
+    private ListaMaestraDto? _editingLista;
+    private string _fNombre = "";
+    private string? _fDescripcion;
+    private string? _listaError;
+
+    // ---- Editor opcion ----
+    private bool _showOpcionEditor;
+    private ListaOpcionDto? _editingOpcion;
+    private string _fClave = "";
+    private string _fValor = "";
+    private string? _opcionError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _listas = await Svc.ListAsync();
+        _kpis = await Svc.GetKpisAsync();
+        _selected = _selectedId is long id ? _listas.FirstOrDefault(l => l.Id == id) : null;
+        if (_selected is null) { _selectedId = null; }
+    }
+
+    private List<ListaMaestraDto> Filtradas()
+    {
+        var q = _search.Trim();
+        return _listas
+            .Where(l => q.Length == 0
+                        || l.NombreLista.Contains(q, StringComparison.OrdinalIgnoreCase)
+                        || (l.Descripcion ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private void Select(long id)
+    {
+        _selectedId = id;
+        _selected = _listas.FirstOrDefault(l => l.Id == id);
+        _pageOk = null;
+        _pageError = null;
+    }
+
+    // ---- Lista ----
+
+    private void OpenListaEditor(ListaMaestraDto? lista)
+    {
+        _editingLista = lista;
+        _fNombre = lista?.NombreLista ?? "";
+        _fDescripcion = lista?.Descripcion;
+        _listaError = null;
+        _pageOk = null;
+        _pageError = null;
+        _showListaEditor = true;
+    }
+
+    private async Task SaveListaAsync()
+    {
+        _busy = true;
+        _listaError = null;
+        try
+        {
+            var request = new SaveListaRequest(_fNombre, _fDescripcion);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editingLista is null
+                ? await Svc.CreateListaAsync(request, actor)
+                : await Svc.UpdateListaAsync(_editingLista.Id, request, actor);
+            if (!result.IsOk)
+            {
+                _listaError = result.Error;
+                return;
+            }
+            _showListaEditor = false;
+            _pageOk = _editingLista is null ? "Lista creada." : "Lista actualizada.";
+            if (_editingLista is null) { _selectedId = result.Value!.Id; }
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetListaEstado(bool activar)
+    {
+        if (_selected is null) { return; }
+        _busy = true;
+        _pageError = null;
+        _pageOk = null;
+        try
+        {
+            var result = await Svc.SetListaEstadoAsync(_selected.Id, activar, Tenant.UserId ?? 0,
+                motivo: activar ? "Reactivacion de lista (RF03)" : "Inactivacion de lista (RF03)");
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            _pageOk = activar ? "Lista reactivada." : "Lista inactivada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Opcion ----
+
+    private void OpenOpcionEditor(ListaOpcionDto? opcion)
+    {
+        _editingOpcion = opcion;
+        _fClave = opcion?.Clave ?? "";
+        _fValor = opcion?.Valor ?? "";
+        _opcionError = null;
+        _pageOk = null;
+        _pageError = null;
+        _showOpcionEditor = true;
+    }
+
+    private async Task SaveOpcionAsync()
+    {
+        if (_selected is null) { return; }
+        _busy = true;
+        _opcionError = null;
+        try
+        {
+            var request = new SaveOpcionRequest(_fClave, _fValor);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editingOpcion is null
+                ? await Svc.AddOpcionAsync(_selected.Id, request, actor)
+                : await Svc.UpdateOpcionAsync(_editingOpcion.Id, request, actor);
+            if (!result.IsOk)
+            {
+                _opcionError = result.Error;
+                return;
+            }
+            _showOpcionEditor = false;
+            _pageOk = _editingOpcion is null ? "Opción agregada." : "Opción actualizada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetOpcionEstado(ListaOpcionDto opcion, bool activar)
+    {
+        _busy = true;
+        _pageError = null;
+        _pageOk = null;
+        try
+        {
+            var result = await Svc.SetOpcionEstadoAsync(opcion.Id, activar, Tenant.UserId ?? 0);
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            _pageOk = activar ? "Opción reactivada." : "Opción inactivada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task MoverAsync(int index, int delta)
+    {
+        if (_selected is null) { return; }
+        var ids = _selected.Opciones.Select(o => o.Id).ToList();
+        var target = index + delta;
+        if (target < 0 || target >= ids.Count) { return; }
+        (ids[index], ids[target]) = (ids[target], ids[index]);
+
+        _busy = true;
+        _pageError = null;
+        _pageOk = null;
+        try
+        {
+            var result = await Svc.ReordenarOpcionesAsync(_selected.Id, ids, Tenant.UserId ?? 0);
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+}

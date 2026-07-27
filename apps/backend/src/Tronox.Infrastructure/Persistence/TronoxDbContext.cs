@@ -84,6 +84,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<OrgUnit> OrgUnits => Set<OrgUnit>();
     public DbSet<TrdVersion> TrdVersiones => Set<TrdVersion>();
     public DbSet<SerieDocumental> SeriesDocumentales => Set<SerieDocumental>();
+    public DbSet<ListaMaestra> ListasMaestras => Set<ListaMaestra>();
+    public DbSet<ListaOpcion> ListaOpciones => Set<ListaOpcion>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -363,6 +365,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         // Configuracion documental (RQ02): estados como texto acotado.
         configurationBuilder.Properties<TrdVersionEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SerieEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<ListaEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
         configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EntidadEstado>().HaveConversion<string>().HaveMaxLength(20);
@@ -818,6 +821,28 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasFilter(isNpgsql ? "parent_id IS NOT NULL" : "[parent_id] IS NOT NULL");
             b.HasIndex(x => new { x.TenantId, x.Nombre }).IsUnique()
                 .HasFilter(isNpgsql ? "parent_id IS NULL" : "[parent_id] IS NULL");
+        });
+
+        // Administrador de listas (RQ02 - RF03): maestro-detalle Lista -> Opciones. nombre_lista
+        // unico por tenant; clave de opcion unica dentro de la lista. Nunca hay borrado fisico: se
+        // inactivan (por eso la FK va con la opcion viviendo y muriendo con su lista).
+        modelBuilder.Entity<ListaMaestra>(b =>
+        {
+            b.Property(x => x.NombreLista).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(300);
+            b.HasIndex(x => new { x.TenantId, x.NombreLista }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+        });
+
+        modelBuilder.Entity<ListaOpcion>(b =>
+        {
+            b.Property(x => x.Clave).HasMaxLength(50).IsRequired();
+            b.Property(x => x.Valor).HasMaxLength(200).IsRequired();
+            b.HasOne(x => x.ListaMaestra).WithMany(x => x.Opciones)
+                .HasForeignKey(x => x.ListaMaestraId).OnDelete(DeleteBehavior.Cascade);
+            // clave UNICA DENTRO DE LA LISTA (no global): la misma clave puede existir en otra lista.
+            b.HasIndex(x => new { x.ListaMaestraId, x.Clave }).IsUnique();
+            b.HasIndex(x => new { x.ListaMaestraId, x.Orden });
         });
 
         // Asignacion por nodo (ADR-0035, ola F1): que Dependencia/Cargo atiende un paso Task.

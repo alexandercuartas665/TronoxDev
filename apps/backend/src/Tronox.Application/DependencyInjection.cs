@@ -76,6 +76,7 @@ public static class DependencyInjection
         // estaticas (TrdVersionRules / SerieRules): se testean sin base de datos, no se registran.
         services.AddScoped<TrdVersiones.ITrdVersionService, TrdVersiones.TrdVersionService>();
         services.AddScoped<SeriesDocumentales.ISerieDocumentalService, SeriesDocumentales.SerieDocumentalService>();
+        services.AddScoped<Listas.IListaMaestraService, Listas.ListaMaestraService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

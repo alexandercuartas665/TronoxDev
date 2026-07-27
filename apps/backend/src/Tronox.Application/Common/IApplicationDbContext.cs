@@ -62,9 +62,12 @@ public interface IApplicationDbContext
     DbSet<BusinessUnit> BusinessUnits { get; }
 
     // Configuracion documental (base de RQ02). Versiones de la TRD (RF01): marco legal, una sola
-    // Vigente por tenant. Catalogo de series y subseries (RF02): arbol tenant-scoped.
+    // Vigente por tenant. Catalogo de series y subseries (RF02): arbol tenant-scoped. Administrador
+    // de listas (RF03): maestro-detalle Lista -> Opciones que alimenta metadatos de tipo Lista.
     DbSet<TrdVersion> TrdVersiones { get; }
     DbSet<SerieDocumental> SeriesDocumentales { get; }
+    DbSet<ListaMaestra> ListasMaestras { get; }
+    DbSet<ListaOpcion> ListaOpciones { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
