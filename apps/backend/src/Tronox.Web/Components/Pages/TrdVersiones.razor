@@ -11,6 +11,7 @@
 @inject IEntidadService EntidadSvc
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
 
 @* RQ02 - RF01 (Gestion de Versiones de TRD).
 
@@ -143,6 +144,11 @@
                                 <td>@(string.IsNullOrWhiteSpace(v.ActoAdministrativo) ? "--" : v.ActoAdministrativo)</td>
                                 <td><span class="tx-ent-badge sm @EstadoClase(v.Estado)">@EstadoLabel(v.Estado)</span></td>
                                 <td class="right">
+                                    @* Puente al submodulo de construccion de la TRD (RF04): toda version entra;
+                                       En construccion = construir, el resto = ver en solo lectura. *@
+                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => Nav.NavigateTo($"/trd?version={v.Id}"))">
+                                        <i class="bi bi-table"></i> @(v.EnConstruccion ? "Abrir TRD" : "Ver TRD")
+                                    </button>
                                     @if (v.EnConstruccion)
                                     {
                                         @if (_canEdit)
@@ -154,10 +160,6 @@
                                         {
                                             <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => PedirConfirmacion(v, activar: false))" disabled="@_busy">Descartar</button>
                                         }
-                                    }
-                                    else
-                                    {
-                                        <span class="muted" title="Una versión que no está En construcción es de solo consulta">Solo consulta</span>
                                     }
                                 </td>
                             </tr>

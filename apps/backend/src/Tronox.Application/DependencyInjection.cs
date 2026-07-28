@@ -77,6 +77,10 @@ public static class DependencyInjection
         services.AddScoped<TrdVersiones.ITrdVersionService, TrdVersiones.TrdVersionService>();
         services.AddScoped<SeriesDocumentales.ISerieDocumentalService, SeriesDocumentales.SerieDocumentalService>();
         services.AddScoped<Listas.IListaMaestraService, Listas.ListaMaestraService>();
+        // Construccion de la TRD (RF04): cruce Dependencia x Serie con tiempos, disposicion,
+        // clasificacion y metadatos. La logica pura (CCD, permisos por estado) vive en
+        // Trd.TrdConstruccionRules; se testea sin base de datos y no se registra.
+        services.AddScoped<Trd.ITrdConstruccionService, Trd.TrdConstruccionService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

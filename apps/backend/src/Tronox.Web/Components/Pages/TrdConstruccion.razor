@@ -1,0 +1,656 @@
+@page "/trd"
+@attribute [Authorize(Policy = "Perm:modulo/trd:View")]
+@* Llave de permisos = ruta de menu "modulo/trd" (RF09 5.9.3). Se entra desde el listado de
+   Versiones de TRD (RF01) con ?version={id}. Es el submodulo de construccion de la TRD. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Trd
+@using Tronox.Application.SeriesDocumentales
+@using Tronox.Application.Archivistica
+@using Tronox.Application.Listas
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject ITrdConstruccionService Svc
+@inject ISerieDocumentalService SeriesSvc
+@inject INivelClasificacionService NivelesSvc
+@inject IListaMaestraService ListasSvc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
+
+@* RQ02 - RF04 (Construccion de la TRD). Cruce Dependencia x Serie dentro de una version: el CCD y
+   la TRD. Respeta la solo-lectura por estado de la version (RF01 3.1.3): sobre Vigente solo se
+   agregan series y se editan procedimiento/metadatos; sobre Historico/Inactivo, solo consulta. *@
+
+<PageTitle>Tabla de Retención Documental - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración Documental</span>
+        <span class="sep">/</span>
+        <a href="/trd-versiones">Versiones de TRD</a>
+        <span class="sep">/</span>
+        <span class="cur">Construcción de la TRD</span>
+    </nav>
+
+    @if (_version is null)
+    {
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-body">
+                <div class="tx-ent-empty">
+                    <i class="bi bi-table"></i>
+                    <div>
+                        <strong>Selecciona una versión de TRD</strong><br />
+                        La construcción de la TRD se hace sobre una versión. Entra desde el módulo de
+                        <a href="/trd-versiones">Versiones de TRD</a> con «Abrir/Ver TRD».
+                    </div>
+                    <a class="tx-ent-btn primary" href="/trd-versiones"><i class="bi bi-clock-history"></i> Ir a Versiones de TRD</a>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="tx-ent-head">
+            <div>
+                <div class="tx-ent-eyebrow"><i class="bi bi-table"></i><span>RQ02 &middot; RF04</span></div>
+                <h1 class="tx-ent-title">TRD &mdash; <span class="mono">@_version.CodigoVersion</span></h1>
+                <p class="tx-ent-sub">
+                    Cruza cada <strong>dependencia</strong> con las <strong>series</strong> del catálogo y define sus
+                    tiempos de retención, disposición final, clasificación y metadatos. El código CCD se genera solo.
+                </p>
+            </div>
+            <div>
+                <span class="tx-ent-badge @EstadoClase(_version.Estado)">@EstadoLabel(_version.Estado)</span>
+            </div>
+        </div>
+
+        @if (_version.SoloConsulta)
+        {
+            <div class="tx-ent-alert"><i class="bi bi-eye"></i><span>Versión <strong>@EstadoLabel(_version.Estado)</strong>: solo consulta. No se puede modificar la TRD.</span></div>
+        }
+        else if (_version.Vigente)
+        {
+            <div class="tx-ent-alert"><i class="bi bi-shield-lock"></i><span>Versión <strong>Vigente</strong>: puedes agregar series y editar procedimiento/metadatos, pero <strong>no</strong> los tiempos, la disposición, la clasificación ni eliminar series. Para eso crea una nueva versión.</span></div>
+        }
+
+        @if (_pageError is not null)
+        {
+            <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+        }
+        @if (_pageOk is not null)
+        {
+            <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+        }
+
+        <div class="tx-dep-layout">
+            @* ---- Dependencias ---- *@
+            <div class="tx-ent-card">
+                <div class="tx-dep-toolbar">
+                    <div class="tx-dep-search">
+                        <i class="bi bi-search"></i>
+                        <input class="tx-ent-input" placeholder="Buscar dependencia..."
+                               value="@_search" @oninput="@(e => _search = e.Value?.ToString() ?? "")" />
+                    </div>
+                </div>
+                <div class="tx-dep-tree">
+                    @if (DependenciasFiltradas().Count == 0)
+                    {
+                        <div class="tx-ent-hint" style="padding:14px">No hay dependencias. Créalas en Organizacional › Dependencias.</div>
+                    }
+                    else
+                    {
+                        @foreach (var d in DependenciasFiltradas())
+                        {
+                            <div class="tx-dep-node @(d.DependenciaId == _selectedDepId ? "on" : "")" @onclick="@(() => SelectDep(d.DependenciaId))">
+                                <span class="tx-dep-chev ph"></span>
+                                <span class="tx-dep-node-code">@d.Codigo</span>
+                                <span class="tx-dep-node-name">@d.Nombre</span>
+                                <span class="tx-dep-node-right">
+                                    <span class="tx-ent-badge sm @(d.SeriesActivas > 0 ? "ok" : "")">@d.SeriesActivas serie(s)</span>
+                                </span>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ---- Asignaciones de la dependencia ---- *@
+            <div class="tx-ent-card">
+                @if (_selectedDep is null)
+                {
+                    <div class="tx-ent-card-body"><div class="tx-ent-empty"><i class="bi bi-diagram-3"></i><div>Selecciona una dependencia para ver y construir su TRD.</div></div></div>
+                }
+                else
+                {
+                    <div class="tx-ent-card-body">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+                            <h3 style="margin:0"><span class="mono">@_selectedDep.Codigo</span> &middot; @_selectedDep.Nombre</h3>
+                            @if (_canAgregar)
+                            {
+                                <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Agregar serie</button>
+                            }
+                        </div>
+
+                        @if (_asignaciones.Count == 0)
+                        {
+                            <div class="tx-ent-empty" style="margin-top:14px"><i class="bi bi-table"></i><div>Esta dependencia aún no tiene series en la TRD.</div></div>
+                        }
+                        else
+                        {
+                            <div class="tx-ent-table-wrap" style="margin-top:12px">
+                                <table class="tx-ent-table">
+                                    <thead>
+                                        <tr>
+                                            <th>CCD</th><th>Serie</th><th>Gestión</th><th>Central</th>
+                                            <th>Disposición</th><th>Clasificación</th><th>Metadatos</th><th class="right">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var a in _asignaciones)
+                                        {
+                                            <tr class="@(a.IsArchived ? "archivada" : "")">
+                                                <td class="mono">@a.CodigoCcd</td>
+                                                <td>@a.SerieNombre @if (a.SerieEsSubserie) { <span class="tx-ent-badge sm">Subserie</span> }</td>
+                                                <td>@a.TiempoGestion a</td>
+                                                <td>@a.TiempoCentral a</td>
+                                                <td><span class="tx-ent-badge sm @DispClase(a.DisposicionFinal)">@DispCodigo(a.DisposicionFinal)</span></td>
+                                                <td><span class="tx-ent-badge sm violet">@a.NivelClasificacionNombre</span></td>
+                                                <td>
+                                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatos(a))">@a.Metadatos.Count(m => !m.IsArchived) campo(s)</button>
+                                                </td>
+                                                <td class="right">
+                                                    @if (_canEditEstructura && !a.IsArchived)
+                                                    {
+                                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenEditAsignacion(a))" disabled="@_busy">Editar</button>
+                                                    }
+                                                    @if (_canEliminar)
+                                                    {
+                                                        @if (a.IsArchived)
+                                                        {
+                                                            <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetArchived(a, false))" disabled="@_busy">Reactivar</button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetArchived(a, true))" disabled="@_busy">Inactivar</button>
+                                                        }
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ===== Modal asignacion (crear/editar reglas) ===== *@
+    @if (_showAsignEditor)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showAsignEditor = false)">
+            <div class="modal-dialog" style="max-width:680px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_editingAsign is null ? "Agregar serie a la dependencia" : $"Editar {_editingAsign.CodigoCcd}")</h3>
+                    <button class="modal-close" @onclick="@(() => _showAsignEditor = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    @if (_editingAsign is null)
+                    {
+                        <div class="tx-ent-field">
+                            <label>Serie del catálogo (activas) <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_fSerieId">
+                                <option value="0">— Selecciona —</option>
+                                @foreach (var s in _seriesActivas)
+                                {
+                                    <option value="@s.Id">@s.Codigo — @s.Nombre</option>
+                                }
+                            </select>
+                            <div class="tx-ent-hint">El código CCD se generará como código de dependencia + código de serie.</div>
+                        </div>
+                    }
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Tiempo en Gestión (años) <span class="req">*</span></label>
+                            <input type="number" min="0" class="tx-ent-input" @bind="_fTiempoGestion" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Tiempo en Central (años) <span class="req">*</span></label>
+                            <input type="number" min="0" class="tx-ent-input" @bind="_fTiempoCentral" />
+                        </div>
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Disposición final <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_fDisposicion">
+                                <option value="@DisposicionFinal.ConservacionTotal">CT — Conservación Total</option>
+                                <option value="@DisposicionFinal.Seleccion">S — Selección</option>
+                                <option value="@DisposicionFinal.Eliminacion">E — Eliminación</option>
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Clasificación <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_fNivelId">
+                                @foreach (var n in _niveles)
+                                {
+                                    <option value="@n.Id">@n.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                            <input type="checkbox" @bind="_fReproduccion" /> Reproducción técnica del papel (M/D)
+                        </label>
+                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                            <input type="checkbox" @bind="_fDdhh" /> Serie con documentos DD.HH / DIH
+                        </label>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Procedimiento <span class="opt">(opcional)</span></label>
+                        <textarea class="tx-ent-input" @bind="_fProcedimiento" maxlength="1000" rows="2"></textarea>
+                    </div>
+                    @if (_asignError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_asignError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showAsignEditor = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveAsignacion" disabled="@_busy">@(_editingAsign is null ? "Agregar" : "Guardar")</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Modal metadatos ===== *@
+    @if (_showMetadatos && _metaAsign is not null)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showMetadatos = false)">
+            <div class="modal-dialog" style="max-width:720px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>Metadatos del expediente &middot; <span class="mono">@_metaAsign.CodigoCcd</span></h3>
+                    <button class="modal-close" @onclick="@(() => _showMetadatos = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <p class="tx-ent-hint" style="margin-top:0">Se diligencian al crear un expediente bajo esta serie en esta dependencia.</p>
+
+                    @if (_metaAsign.Metadatos.Count > 0)
+                    {
+                        <div class="tx-ent-table-wrap">
+                            <table class="tx-ent-table">
+                                <thead><tr><th>Nombre</th><th>Tipo</th><th>Obligatorio</th><th>Lista</th><th>Estado</th><th class="right">Acciones</th></tr></thead>
+                                <tbody>
+                                    @foreach (var m in _metaAsign.Metadatos)
+                                    {
+                                        <tr class="@(m.IsArchived ? "archivada" : "")">
+                                            <td>@m.Nombre</td>
+                                            <td>@TipoLabel(m.TipoDato)</td>
+                                            <td>@(m.Obligatorio ? "Sí" : "No")</td>
+                                            <td>@(m.ListaNombre ?? "--")</td>
+                                            <td><span class="tx-ent-badge sm @(m.IsArchived ? "off" : "ok")">@(m.IsArchived ? "Inactivo" : "Activo")</span></td>
+                                            <td class="right">
+                                                @if (_canEditProcMeta)
+                                                {
+                                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenMetaEditor(m))" disabled="@_busy">Editar</button>
+                                                    @if (m.IsArchived)
+                                                    {
+                                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetMetaArchived(m, false))" disabled="@_busy">Reactivar</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetMetaArchived(m, true))" disabled="@_busy">Inactivar</button>
+                                                    }
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="tx-ent-hint">Sin metadatos todavía.</div>
+                    }
+
+                    @if (_canEditProcMeta)
+                    {
+                        <div class="tx-ent-card" style="margin-top:12px;padding:12px">
+                            <strong>@(_editingMeta is null ? "Nuevo metadato" : "Editar metadato")</strong>
+                            <div class="tx-ent-grid c2" style="margin-top:8px">
+                                <div class="tx-ent-field">
+                                    <label>Nombre <span class="req">*</span></label>
+                                    <input class="tx-ent-input" @bind="_fMetaNombre" maxlength="200" />
+                                </div>
+                                <div class="tx-ent-field">
+                                    <label>Tipo de dato <span class="req">*</span></label>
+                                    <select class="tx-ent-input" @bind="_fMetaTipo">
+                                        @foreach (var t in Enum.GetValues<TipoDatoMetadato>())
+                                        {
+                                            <option value="@t">@TipoLabel(t)</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="tx-ent-grid c2">
+                                @if (_fMetaTipo == TipoDatoMetadato.Lista)
+                                {
+                                    <div class="tx-ent-field">
+                                        <label>Lista <span class="req">*</span></label>
+                                        <select class="tx-ent-input" @bind="_fMetaListaId">
+                                            <option value="0">— Selecciona —</option>
+                                            @foreach (var l in _listas)
+                                            {
+                                                <option value="@l.Id">@l.NombreLista</option>
+                                            }
+                                        </select>
+                                    </div>
+                                }
+                                <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                                    <input type="checkbox" @bind="_fMetaObligatorio" /> Obligatorio
+                                </label>
+                            </div>
+                            @if (_metaError is not null)
+                            {
+                                <div class="tx-ent-fielderr">@_metaError</div>
+                            }
+                            <div style="margin-top:8px;display:flex;gap:8px">
+                                <button class="tx-ent-btn primary sm" @onclick="SaveMetadato" disabled="@_busy">@(_editingMeta is null ? "Agregar" : "Guardar")</button>
+                                @if (_editingMeta is not null)
+                                {
+                                    <button class="tx-ent-btn sm" @onclick="ResetMetaEditor" disabled="@_busy">Cancelar edición</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showMetadatos = false)">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private const string ModuleKey = "modulo/trd";
+
+    [SupplyParameterFromQuery(Name = "version")] public long? VersionId { get; set; }
+
+    private bool _busy;
+    private string _search = "";
+    private string? _pageError;
+    private string? _pageOk;
+
+    private bool _permView, _permCreate, _permEdit, _permDelete;
+    private bool _canAgregar, _canEditEstructura, _canEditProcMeta, _canEliminar;
+
+    private TrdVersionCabeceraDto? _version;
+    private IReadOnlyList<DependenciaTrdResumenDto> _dependencias = [];
+    private long? _selectedDepId;
+    private DependenciaTrdResumenDto? _selectedDep;
+    private IReadOnlyList<TrdAsignacionDto> _asignaciones = [];
+
+    private List<SerieNodeDto> _seriesActivas = [];
+    private IReadOnlyList<NivelClasificacionDto> _niveles = [];
+    private IReadOnlyList<ListaMaestraDto> _listas = [];
+
+    // ---- Editor asignacion ----
+    private bool _showAsignEditor;
+    private TrdAsignacionDto? _editingAsign;
+    private long _fSerieId;
+    private int _fTiempoGestion, _fTiempoCentral;
+    private DisposicionFinal _fDisposicion = DisposicionFinal.ConservacionTotal;
+    private long _fNivelId;
+    private bool _fReproduccion, _fDdhh;
+    private string? _fProcedimiento;
+    private string? _asignError;
+
+    // ---- Metadatos ----
+    private bool _showMetadatos;
+    private TrdAsignacionDto? _metaAsign;
+    private TrdMetadatoDto? _editingMeta;
+    private string _fMetaNombre = "";
+    private TipoDatoMetadato _fMetaTipo = TipoDatoMetadato.TextoCorto;
+    private bool _fMetaObligatorio;
+    private long _fMetaListaId;
+    private string? _metaError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _permView = eff.Can(ModuleKey, PermissionAction.View);
+        _permCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _permEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _permDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+
+        if (VersionId is not long vid) { return; }
+        _version = await Svc.GetVersionAsync(vid);
+        if (_version is null) { return; }
+
+        RecalcularPermisos();
+
+        _niveles = await NivelesSvc.ListAsync(soloActivos: true);
+        var tree = await SeriesSvc.GetTreeAsync(includeInactivas: false);
+        _seriesActivas = [];
+        Collect(tree);
+        _listas = (await ListasSvc.ListAsync(includeInactivas: false))
+            .Where(l => !l.EsInactiva).ToList();
+
+        await LoadDependenciasAsync();
+    }
+
+    private void RecalcularPermisos()
+    {
+        // Permiso del modulo Y estado de la version (RF01 3.1.3).
+        var estado = _version!.Estado;
+        _canAgregar = _permCreate && estado is TrdVersionEstado.EnConstruccion or TrdVersionEstado.Vigente;
+        _canEditEstructura = _permEdit && estado == TrdVersionEstado.EnConstruccion;
+        _canEditProcMeta = _permEdit && estado is TrdVersionEstado.EnConstruccion or TrdVersionEstado.Vigente;
+        _canEliminar = _permDelete && estado == TrdVersionEstado.EnConstruccion;
+    }
+
+    private void Collect(IReadOnlyList<SerieNodeDto> nodes)
+    {
+        foreach (var n in nodes) { _seriesActivas.Add(n); Collect(n.Children); }
+    }
+
+    private async Task LoadDependenciasAsync()
+    {
+        _dependencias = await Svc.GetDependenciasResumenAsync(_version!.Id);
+        if (_selectedDepId is long id) { await SelectDep(id); }
+    }
+
+    private List<DependenciaTrdResumenDto> DependenciasFiltradas()
+    {
+        var q = _search.Trim();
+        return _dependencias.Where(d => q.Length == 0
+            || d.Codigo.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || d.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private async Task SelectDep(long depId)
+    {
+        _selectedDepId = depId;
+        _selectedDep = _dependencias.FirstOrDefault(d => d.DependenciaId == depId);
+        _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, depId, includeArchived: true);
+        _pageOk = null; _pageError = null;
+    }
+
+    // ---- Asignacion ----
+
+    private void OpenAddAsignacion()
+    {
+        _editingAsign = null;
+        _fSerieId = 0; _fTiempoGestion = 0; _fTiempoCentral = 0;
+        _fDisposicion = DisposicionFinal.ConservacionTotal;
+        _fNivelId = _niveles.FirstOrDefault(n => n.Codigo == "02")?.Id ?? _niveles.FirstOrDefault()?.Id ?? 0;
+        _fReproduccion = false; _fDdhh = false; _fProcedimiento = null;
+        _asignError = null; _pageOk = null; _pageError = null;
+        _showAsignEditor = true;
+    }
+
+    private void OpenEditAsignacion(TrdAsignacionDto a)
+    {
+        _editingAsign = a;
+        _fTiempoGestion = a.TiempoGestion; _fTiempoCentral = a.TiempoCentral;
+        _fDisposicion = a.DisposicionFinal; _fNivelId = a.NivelClasificacionId;
+        _fReproduccion = a.ReproduccionTecnica; _fDdhh = a.SerieDdhhDih; _fProcedimiento = a.Procedimiento;
+        _asignError = null; _pageOk = null; _pageError = null;
+        _showAsignEditor = true;
+    }
+
+    private async Task SaveAsignacion()
+    {
+        _busy = true; _asignError = null;
+        try
+        {
+            var actor = Tenant.UserId ?? 0;
+            TrdResult<TrdAsignacionDto> result;
+            if (_editingAsign is null)
+            {
+                if (_fSerieId <= 0) { _asignError = "Selecciona una serie."; return; }
+                result = await Svc.AddAsignacionAsync(_version!.Id, new AddAsignacionRequest(
+                    _selectedDepId!.Value, _fSerieId, _fTiempoGestion, _fTiempoCentral, _fDisposicion,
+                    _fNivelId, _fReproduccion, _fDdhh, _fProcedimiento), actor);
+            }
+            else
+            {
+                result = await Svc.UpdateAsignacionAsync(_editingAsign.Id, new UpdateAsignacionRequest(
+                    _fTiempoGestion, _fTiempoCentral, _fDisposicion, _fNivelId, _fReproduccion, _fDdhh, _fProcedimiento), actor);
+            }
+            if (!result.IsOk) { _asignError = result.Error; return; }
+            _showAsignEditor = false;
+            _pageOk = _editingAsign is null ? "Serie asignada a la TRD." : "Asignación actualizada.";
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetArchived(TrdAsignacionDto a, bool archived)
+    {
+        _busy = true; _pageError = null; _pageOk = null;
+        try
+        {
+            var result = await Svc.SetAsignacionArchivedAsync(a.Id, archived, Tenant.UserId ?? 0,
+                motivo: archived ? "Inactivacion de asignacion TRD (RF04)" : "Reactivacion (RF04)");
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            _pageOk = archived ? "Asignación inactivada." : "Asignación reactivada.";
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Metadatos ----
+
+    private void OpenMetadatos(TrdAsignacionDto a)
+    {
+        _metaAsign = a;
+        ResetMetaEditor();
+        _showMetadatos = true;
+    }
+
+    private void OpenMetaEditor(TrdMetadatoDto m)
+    {
+        _editingMeta = m;
+        _fMetaNombre = m.Nombre; _fMetaTipo = m.TipoDato; _fMetaObligatorio = m.Obligatorio;
+        _fMetaListaId = m.ListaMaestraId ?? 0; _metaError = null;
+    }
+
+    private void ResetMetaEditor()
+    {
+        _editingMeta = null;
+        _fMetaNombre = ""; _fMetaTipo = TipoDatoMetadato.TextoCorto; _fMetaObligatorio = false; _fMetaListaId = 0;
+        _metaError = null;
+    }
+
+    private async Task SaveMetadato()
+    {
+        if (_metaAsign is null) { return; }
+        _busy = true; _metaError = null;
+        try
+        {
+            long? listaId = _fMetaTipo == TipoDatoMetadato.Lista ? (_fMetaListaId > 0 ? _fMetaListaId : null) : null;
+            var request = new SaveMetadatoRequest(_fMetaNombre, _fMetaTipo, _fMetaObligatorio, listaId);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editingMeta is null
+                ? await Svc.AddMetadatoAsync(_metaAsign.Id, request, actor)
+                : await Svc.UpdateMetadatoAsync(_editingMeta.Id, request, actor);
+            if (!result.IsOk) { _metaError = result.Error; return; }
+            await ReloadAsync();
+            _metaAsign = _asignaciones.FirstOrDefault(x => x.Id == _metaAsign.Id) ?? _metaAsign;
+            ResetMetaEditor();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetMetaArchived(TrdMetadatoDto m, bool archived)
+    {
+        _busy = true; _metaError = null;
+        try
+        {
+            var result = await Svc.SetMetadatoArchivedAsync(m.Id, archived, Tenant.UserId ?? 0);
+            if (!result.IsOk) { _metaError = result.Error; return; }
+            await ReloadAsync();
+            if (_metaAsign is not null) { _metaAsign = _asignaciones.FirstOrDefault(x => x.Id == _metaAsign.Id) ?? _metaAsign; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _dependencias = await Svc.GetDependenciasResumenAsync(_version!.Id);
+        _selectedDep = _dependencias.FirstOrDefault(d => d.DependenciaId == _selectedDepId);
+        if (_selectedDepId is long id)
+        {
+            _asignaciones = await Svc.GetAsignacionesAsync(_version.Id, id, includeArchived: true);
+        }
+    }
+
+    // ---- Labels ----
+
+    private static string EstadoLabel(TrdVersionEstado e) => e switch
+    {
+        TrdVersionEstado.EnConstruccion => "En construcción",
+        TrdVersionEstado.Vigente => "Vigente",
+        TrdVersionEstado.Historico => "Histórico",
+        TrdVersionEstado.Inactivo => "Inactivo",
+        _ => e.ToString()
+    };
+    private static string EstadoClase(TrdVersionEstado e) => e switch
+    {
+        TrdVersionEstado.EnConstruccion => "violet",
+        TrdVersionEstado.Vigente => "ok",
+        _ => "off"
+    };
+    private static string DispCodigo(DisposicionFinal d) => d switch
+    {
+        DisposicionFinal.ConservacionTotal => "CT",
+        DisposicionFinal.Seleccion => "S",
+        DisposicionFinal.Eliminacion => "E",
+        _ => "?"
+    };
+    private static string DispClase(DisposicionFinal d) => d switch
+    {
+        DisposicionFinal.ConservacionTotal => "ok",
+        DisposicionFinal.Seleccion => "violet",
+        DisposicionFinal.Eliminacion => "off",
+        _ => ""
+    };
+    private static string TipoLabel(TipoDatoMetadato t) => t switch
+    {
+        TipoDatoMetadato.TextoCorto => "Texto corto",
+        TipoDatoMetadato.TextoLargo => "Texto largo",
+        TipoDatoMetadato.Numerico => "Numérico",
+        TipoDatoMetadato.Fecha => "Fecha",
+        TipoDatoMetadato.Lista => "Lista",
+        TipoDatoMetadato.Booleano => "Booleano",
+        _ => t.ToString()
+    };
+}

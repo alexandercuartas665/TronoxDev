@@ -86,6 +86,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<SerieDocumental> SeriesDocumentales => Set<SerieDocumental>();
     public DbSet<ListaMaestra> ListasMaestras => Set<ListaMaestra>();
     public DbSet<ListaOpcion> ListaOpciones => Set<ListaOpcion>();
+    public DbSet<TrdAsignacion> TrdAsignaciones => Set<TrdAsignacion>();
+    public DbSet<TrdMetadato> TrdMetadatos => Set<TrdMetadato>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -366,6 +368,10 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<TrdVersionEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SerieEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ListaEstado>().HaveConversion<string>().HaveMaxLength(20);
+        // Construccion de la TRD (RF04): enums como texto acotado.
+        configurationBuilder.Properties<DisposicionFinal>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<TipoDatoMetadato>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<ContextoMetadato>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
         configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EntidadEstado>().HaveConversion<string>().HaveMaxLength(20);
@@ -843,6 +849,41 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             // clave UNICA DENTRO DE LA LISTA (no global): la misma clave puede existir en otra lista.
             b.HasIndex(x => new { x.ListaMaestraId, x.Clave }).IsUnique();
             b.HasIndex(x => new { x.ListaMaestraId, x.Orden });
+        });
+
+        // Construccion de la TRD (RQ02 - RF04): cruce Dependencia x Serie dentro de una version. Se
+        // colapsa cabecera+detalle del legacy en una sola fila. Indice unico (version, dependencia,
+        // serie): la misma serie no se asigna dos veces a la misma dependencia en la version
+        // (3.4.4-4), pero SI a dependencias distintas (personalizacion, 3.4.2). FKs RESTRICT: nada
+        // se borra por cascada; las asignaciones se inactivan (invariante 8).
+        modelBuilder.Entity<TrdAsignacion>(b =>
+        {
+            b.Property(x => x.CodigoCcd).HasMaxLength(60).IsRequired();
+            b.Property(x => x.Procedimiento).HasMaxLength(1000);
+            b.HasOne(x => x.TrdVersion).WithMany()
+                .HasForeignKey(x => x.TrdVersionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Dependencia).WithMany()
+                .HasForeignKey(x => x.DependenciaOrgUnitId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Serie).WithMany()
+                .HasForeignKey(x => x.SerieDocumentalId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.NivelClasificacion).WithMany()
+                .HasForeignKey(x => x.NivelClasificacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TrdVersionId, x.DependenciaOrgUnitId, x.SerieDocumentalId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.TrdVersionId });
+            b.HasIndex(x => x.SerieDocumentalId);
+            b.HasIndex(x => x.NivelClasificacionId);
+        });
+
+        // Metadatos de la asignacion (RF04 paso 6). Viven y mueren con su asignacion (Cascade). La
+        // FK a la lista (tipo Lista, RF03) es RESTRICT: una lista en uso no se borra por cascada.
+        modelBuilder.Entity<TrdMetadato>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.HasOne(x => x.TrdAsignacion).WithMany(x => x.Metadatos)
+                .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ListaMaestra).WithMany()
+                .HasForeignKey(x => x.ListaMaestraId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TrdAsignacionId, x.Orden });
         });
 
         // Asignacion por nodo (ADR-0035, ola F1): que Dependencia/Cargo atiende un paso Task.

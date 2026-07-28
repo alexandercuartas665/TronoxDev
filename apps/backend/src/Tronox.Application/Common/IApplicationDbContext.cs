@@ -68,6 +68,9 @@ public interface IApplicationDbContext
     DbSet<SerieDocumental> SeriesDocumentales { get; }
     DbSet<ListaMaestra> ListasMaestras { get; }
     DbSet<ListaOpcion> ListaOpciones { get; }
+    // Construccion de la TRD (RF04): cruce Dependencia x Serie con reglas y metadatos de expediente.
+    DbSet<TrdAsignacion> TrdAsignaciones { get; }
+    DbSet<TrdMetadato> TrdMetadatos { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
