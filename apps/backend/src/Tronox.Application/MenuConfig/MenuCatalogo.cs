@@ -100,6 +100,9 @@ public static class MenuCatalogo
                     new("General", "req001-general", "bi-sliders", null,
                     [
                         new("Datos de la Entidad", "modulo/datos-entidad", "bi-building", "RF01"),
+                        // Topografia Fisica (RQ02 - RF06): la spec la agrupa en Configuracion Documental,
+                        // pero por decision del usuario vive aqui en GENERAL, debajo de Datos de la Entidad.
+                        new("Topografía Física", "modulo/topografia-fisica", "bi-diagram-2", "RF06"),
                         // Rotulos con tilde EXACTOS del prototipo (contenido de UI, no identificador).
                         new("Configuración Radicación", "modulo/config-radicacion", "bi-hash", "RF01"),
                         new("Configuración PQR", "modulo/config-pqr", "bi-megaphone", "RF01")

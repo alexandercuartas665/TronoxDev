@@ -58,7 +58,8 @@ Puertos de desarrollo: 5443 postgres · 6390 redis · 5683/15683 rabbitmq · 900
 | RF03 | **Administrador de Listas** | HECHO - maestro-detalle Lista/Opciones; nombre unico por tenant, clave (interna, nueva) unica en la lista, orden reordenable, usabilidad >= 2 activas, sin borrado fisico. Migrado del legacy `doc_adminlistas.aspx` (2026-07-27) |
 | RF04 | **Construccion de la TRD (cruce Dependencia + Serie)** | HECHO (nucleo) - CCD automatico, personalizacion por dependencia, tiempos/disposicion/clasificacion, metadatos de expediente; solo-lectura por estado de version (RF01 3.1.3). Puente Abrir/Ver TRD desde RF01. Migrado del legacy `doc_tablaRetencionDocumental.aspx` (2026-07-28). `modo_codigo_serie` descartado (ADR-006). Tipologias -> RF05 |
 | RF05 | Tipologias Documentales | PENDIENTE - completa la composicion documental de RF04 |
-| RF06..RF10 | (resto de RQ02) | PENDIENTE |
+| RF06 | **Topografia Fisica** | HECHO - jerarquia de niveles configurable + arbol de elementos con codigo topografico automatico (siglas raiz->hoja), ocupacion y estados. Migrado del legacy `NEWFRONT_doc_bodegas.aspx` (2026-07-28). Menu en GENERAL, bajo Datos de la Entidad (decision del usuario) |
+| RF07..RF10 | (resto de RQ02) | PENDIENTE |
 
 **Del resto (RQ03 a RQ17): nada construido.** El menu muestra las opciones del arbol canonico,
 pero la gran mayoria llevan a una ficha de "modulo pendiente". **Menu completo != sistema construido.**

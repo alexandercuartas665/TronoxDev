@@ -88,6 +88,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<ListaOpcion> ListaOpciones => Set<ListaOpcion>();
     public DbSet<TrdAsignacion> TrdAsignaciones => Set<TrdAsignacion>();
     public DbSet<TrdMetadato> TrdMetadatos => Set<TrdMetadato>();
+    public DbSet<TopografiaNivel> TopografiaNiveles => Set<TopografiaNivel>();
+    public DbSet<TopografiaElemento> TopografiaElementos => Set<TopografiaElemento>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -372,6 +374,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<DisposicionFinal>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<TipoDatoMetadato>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ContextoMetadato>().HaveConversion<string>().HaveMaxLength(20);
+        // Topografia fisica (RQ02 - RF06): estado como texto acotado.
+        configurationBuilder.Properties<TopografiaEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
         configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EntidadEstado>().HaveConversion<string>().HaveMaxLength(20);
@@ -884,6 +888,35 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasOne(x => x.ListaMaestra).WithMany()
                 .HasForeignKey(x => x.ListaMaestraId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TrdAsignacionId, x.Orden });
+        });
+
+        // Topografia fisica (RQ02 - RF06). Niveles: nombre/sigla/orden unicos por tenant. Elementos:
+        // arbol autorreferencial (self-ref NO ACTION), sigla unica ENTRE HERMANOS.
+        modelBuilder.Entity<TopografiaNivel>(b =>
+        {
+            b.Property(x => x.NombreNivel).HasMaxLength(100).IsRequired();
+            b.Property(x => x.SiglaBase).HasMaxLength(10).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.NombreNivel }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.SiglaBase }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Orden }).IsUnique();
+        });
+
+        modelBuilder.Entity<TopografiaElemento>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Sigla).HasMaxLength(20).IsRequired();
+            b.HasOne(x => x.Nivel).WithMany()
+                .HasForeignKey(x => x.NivelId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Parent).WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.ParentId });
+            b.HasIndex(x => x.NivelId);
+            // sigla UNICA ENTRE HERMANOS (mismo padre) dentro del tenant. Dos indices filtrados: en
+            // SQL dos parent_id NULL no colisionan, asi que las raices necesitan el suyo.
+            b.HasIndex(x => new { x.TenantId, x.ParentId, x.Sigla }).IsUnique()
+                .HasFilter(isNpgsql ? "parent_id IS NOT NULL" : "[parent_id] IS NOT NULL");
+            b.HasIndex(x => new { x.TenantId, x.Sigla }).IsUnique()
+                .HasFilter(isNpgsql ? "parent_id IS NULL" : "[parent_id] IS NULL");
         });
 
         // Asignacion por nodo (ADR-0035, ola F1): que Dependencia/Cargo atiende un paso Task.

@@ -1,0 +1,438 @@
+@page "/topografia-fisica"
+@attribute [Authorize(Policy = "Perm:modulo/topografia-fisica:View")]
+@* Llave de permisos = ruta de menu "modulo/topografia-fisica" (RF09 5.9.3). Ubicado en GENERAL,
+   debajo de Datos de la Entidad. La pagina real vive en /topografia-fisica (promovida en Modulo.razor). *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Topografia
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject ITopografiaService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ02 - RF06 (Topografia Fisica). Jerarquia configurable de niveles (Bodega > Estante > ... > Caja)
+   y arbol de ubicaciones fisicas reales, con codigo topografico automatico (siglas raiz->hoja).
+   Base para ubicar expedientes fisicos (RQ03, Hito 2). Migrado del legacy NEWFRONT_doc_bodegas.aspx. *@
+
+<PageTitle>Topografía Física - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-topo">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración General</span>
+        <span class="sep">/</span>
+        <span class="cur">Topografía Física</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-diagram-2"></i><span>RQ02 &middot; RF06</span></div>
+            <h1 class="tx-ent-title">Topografía Física del Archivo</h1>
+            <p class="tx-ent-sub">
+                Define la jerarquía de niveles (Bodega &rarr; Estante &rarr; ... &rarr; Caja) y crea las ubicaciones
+                reales. El sistema genera el <strong>código topográfico</strong> automáticamente para localizar
+                cualquier expediente físico.
+            </p>
+        </div>
+    </div>
+
+    @if (_pageError is not null)
+    {
+        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+    }
+    @if (_pageOk is not null)
+    {
+        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+    }
+
+    @* ===== KPIs ===== *@
+    <div class="tx-dep-kpis">
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon"><i class="bi bi-layers"></i></div>
+            <div><div class="tx-dep-kpi-val">@(_kpis?.Niveles ?? 0)</div><div class="tx-dep-kpi-lbl">Niveles</div></div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-green"><i class="bi bi-box-seam"></i></div>
+            <div><div class="tx-dep-kpi-val">@(_kpis?.Elementos ?? 0)</div><div class="tx-dep-kpi-lbl">Ubicaciones</div></div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-violet"><i class="bi bi-database-fill-check"></i></div>
+            <div><div class="tx-dep-kpi-val">@(_kpis?.Llenos ?? 0)</div><div class="tx-dep-kpi-lbl">Llenas</div></div>
+        </div>
+        <div class="tx-dep-kpi">
+            <div class="tx-dep-kpi-icon tone-slate"><i class="bi bi-archive"></i></div>
+            <div><div class="tx-dep-kpi-val">@(_kpis?.Inactivos ?? 0)</div><div class="tx-dep-kpi-lbl">Inactivas</div></div>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando topografía...</em></div></div>
+    }
+    else
+    {
+        @* ===== Configuracion de niveles ===== *@
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-body">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+                    <h3 style="margin:0">Niveles topográficos</h3>
+                    @if (_canEdit && !_hayElementos)
+                    {
+                        <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenNivel(null))"><i class="bi bi-plus-lg"></i> Agregar nivel</button>
+                    }
+                </div>
+
+                @if (_hayElementos)
+                {
+                    <div class="tx-ent-alert" style="margin-top:10px"><i class="bi bi-lock"></i><span>La configuración de niveles está <strong>bloqueada</strong> porque ya existen ubicaciones creadas (RF06 3.6.6-1).</span></div>
+                }
+
+                @if (_niveles.Count == 0)
+                {
+                    <div class="tx-ent-empty" style="margin-top:14px"><i class="bi bi-layers"></i><div>Define primero los niveles (Bodega, Estante, ..., Caja). Solo el de mayor orden puede controlar capacidad.</div></div>
+                }
+                else
+                {
+                    <div class="tx-ent-table-wrap" style="margin-top:12px">
+                        <table class="tx-ent-table">
+                            <thead><tr><th style="width:80px">Orden</th><th>Nivel</th><th>Sigla</th><th>Capacidad</th><th class="right">Acciones</th></tr></thead>
+                            <tbody>
+                                @foreach (var n in _niveles)
+                                {
+                                    <tr>
+                                        <td>@n.Orden</td>
+                                        <td><strong>@n.NombreNivel</strong></td>
+                                        <td class="mono">@n.SiglaBase</td>
+                                        <td>@(n.ControlaCapacidad ? "Controla capacidad" : "--")</td>
+                                        <td class="right">
+                                            @if (_canEdit && !_hayElementos)
+                                            {
+                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenNivel(n))" disabled="@_busy">Editar</button>
+                                            }
+                                            @if (_canDelete && !_hayElementos)
+                                            {
+                                                <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => DeleteNivel(n))" disabled="@_busy">Eliminar</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ===== Arbol de ubicaciones ===== *@
+        <div class="tx-ent-card">
+            <div class="tx-dep-toolbar">
+                <h3 style="margin:0;flex:1">Ubicaciones físicas</h3>
+                <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" checked="@_verInactivos" @onchange="@(async e => { _verInactivos = (bool)e.Value!; await LoadAsync(); })" /> Ver inactivas
+                </label>
+                @if (_canCreate && _niveles.Count > 0)
+                {
+                    <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenElemento(null, null))"><i class="bi bi-plus-lg"></i> Ubicación raíz</button>
+                }
+            </div>
+            <div class="tx-dep-tree">
+                @if (_niveles.Count == 0)
+                {
+                    <div class="tx-ent-hint" style="padding:14px">Configura al menos un nivel antes de crear ubicaciones.</div>
+                }
+                else if (_flat.Count == 0)
+                {
+                    <div class="tx-ent-hint" style="padding:14px">Aún no hay ubicaciones. Crea la primera (nivel más alto).</div>
+                }
+                else
+                {
+                    @foreach (var row in FlattenTree())
+                    {
+                        var n = row.Node;
+                        <div class="tx-dep-node @(n.EsInactivo ? "archivada" : "")" style="margin-left:@(row.Depth * 22)px">
+                            @if (n.Children.Count > 0)
+                            {
+                                <button type="button" class="tx-dep-chev @(_collapsed.Contains(n.Id) ? "" : "open")" @onclick="@(() => Toggle(n.Id))"><i class="bi bi-chevron-right"></i></button>
+                            }
+                            else
+                            {
+                                <span class="tx-dep-chev ph"></span>
+                            }
+                            <span class="tx-dep-node-code">@n.Sigla</span>
+                            <span class="tx-dep-node-name">@n.Nombre <span class="tx-ent-hint" style="margin:0">· @n.NivelNombre</span></span>
+                            <span class="tx-dep-node-right">
+                                <span class="mono" style="font-size:11px;color:var(--tx-text-500)">@n.CodigoTopografico</span>
+                                @if (n.Capacidad is int cap)
+                                {
+                                    <span class="tx-ent-badge sm @(n.Estado == TopografiaEstado.Lleno ? "off" : "ok")">@n.Ocupacion/@cap@(n.PorcentajeOcupacion is int p ? $" ({p}%)" : "")</span>
+                                }
+                                <span class="tx-ent-badge sm @EstadoClase(n.Estado)">@EstadoLabel(n.Estado)</span>
+                                @if (_canCreate && !n.EsInactivo && PuedeTenerHijo(n))
+                                {
+                                    <button type="button" class="tx-dep-add" title="Agregar sub-ubicación" @onclick="@(() => OpenElemento(null, n))">+</button>
+                                }
+                                @if (_canEdit)
+                                {
+                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenElemento(n, null))" disabled="@_busy">Editar</button>
+                                }
+                                @if (_canDelete)
+                                {
+                                    @if (n.EsInactivo)
+                                    {
+                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetEstado(n, true))" disabled="@_busy">Reactivar</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetEstado(n, false))" disabled="@_busy">Inactivar</button>
+                                    }
+                                }
+                            </span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    @* ===== Modal nivel ===== *@
+    @if (_showNivel)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showNivel = false)">
+            <div class="modal-dialog" style="max-width:560px" @onclick:stopPropagation="true">
+                <div class="modal-head"><h3>@(_editNivel is null ? "Nuevo nivel" : $"Editar {_editNivel.NombreNivel}")</h3><button class="modal-close" @onclick="@(() => _showNivel = false)">&times;</button></div>
+                <div class="modal-body tx-mod tx-topo">
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_fnNombre" maxlength="100" placeholder="Ej. Caja" /></div>
+                        <div class="tx-ent-field"><label>Sigla base <span class="req">*</span></label><input class="tx-ent-input mono" @bind="_fnSigla" maxlength="10" placeholder="CAJ" /></div>
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field"><label>Orden <span class="req">*</span></label><input type="number" min="1" class="tx-ent-input" @bind="_fnOrden" /><div class="tx-ent-hint">1 = nivel más alto (contenedor mayor).</div></div>
+                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_fnControla" /> Controla capacidad (solo el de mayor orden)</label>
+                    </div>
+                    @if (_nivelError is not null) { <div class="tx-ent-fielderr">@_nivelError</div> }
+                </div>
+                <div class="modal-foot"><button class="tx-ent-btn" @onclick="@(() => _showNivel = false)" disabled="@_busy">Cancelar</button><button class="tx-ent-btn primary" @onclick="SaveNivel" disabled="@_busy">@(_editNivel is null ? "Crear" : "Guardar")</button></div>
+            </div>
+        </div>
+    }
+
+    @* ===== Modal elemento ===== *@
+    @if (_showElem)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showElem = false)">
+            <div class="modal-dialog" style="max-width:600px" @onclick:stopPropagation="true">
+                <div class="modal-head"><h3>@(_editElem is null ? (_parentElem is null ? "Nueva ubicación raíz" : $"Sub-ubicación de {_parentElem.Nombre}") : $"Editar {_editElem.Nombre}")</h3><button class="modal-close" @onclick="@(() => _showElem = false)">&times;</button></div>
+                <div class="modal-body tx-mod tx-topo">
+                    <div class="tx-ent-field">
+                        <label>Tipo de nivel <span class="req">*</span></label>
+                        <select class="tx-ent-input" @bind="_feNivelId" disabled="@(_editElem is not null)">
+                            <option value="0">— Selecciona —</option>
+                            @foreach (var n in NivelesDisponibles())
+                            {
+                                <option value="@n.Id">@n.Orden. @n.NombreNivel (@n.SiglaBase)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_feNombre" maxlength="100" placeholder="Ej. Bodega Norte" /></div>
+                        <div class="tx-ent-field"><label>Sigla <span class="req">*</span></label><input class="tx-ent-input mono" @bind="_feSigla" maxlength="20" placeholder="NOR" /></div>
+                    </div>
+                    @if (NivelControlaCapacidad(_feNivelId))
+                    {
+                        <div class="tx-ent-field"><label>Capacidad máxima <span class="req">*</span></label><input type="number" min="1" class="tx-ent-input" @bind="_feCapacidad" /><div class="tx-ent-hint">Número máximo de unidades que puede contener.</div></div>
+                    }
+                    @if (_elemError is not null) { <div class="tx-ent-fielderr">@_elemError</div> }
+                </div>
+                <div class="modal-foot"><button class="tx-ent-btn" @onclick="@(() => _showElem = false)" disabled="@_busy">Cancelar</button><button class="tx-ent-btn primary" @onclick="SaveElemento" disabled="@_busy">@(_editElem is null ? "Crear" : "Guardar")</button></div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private const string ModuleKey = "modulo/topografia-fisica";
+
+    private bool _loading = true, _busy, _verInactivos = true, _hayElementos;
+    private string? _pageError, _pageOk;
+    private bool _canCreate, _canEdit, _canDelete;
+
+    private IReadOnlyList<TopografiaNivelDto> _niveles = [];
+    private IReadOnlyList<TopografiaElementoNodeDto> _arbol = [];
+    private List<TopografiaElementoNodeDto> _flat = [];
+    private TopografiaKpisDto? _kpis;
+    private readonly HashSet<long> _collapsed = [];
+
+    // Editor nivel
+    private bool _showNivel;
+    private TopografiaNivelDto? _editNivel;
+    private string _fnNombre = "", _fnSigla = "";
+    private int _fnOrden = 1;
+    private bool _fnControla;
+    private string? _nivelError;
+
+    // Editor elemento
+    private bool _showElem;
+    private TopografiaElementoNodeDto? _editElem, _parentElem;
+    private long _feNivelId;
+    private string _feNombre = "", _feSigla = "";
+    private int? _feCapacidad;
+    private string? _elemError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _niveles = await Svc.ListNivelesAsync();
+        _hayElementos = await Svc.HayElementosAsync();
+        _arbol = await Svc.GetArbolAsync(includeInactivos: _verInactivos);
+        _flat = [];
+        Collect(_arbol);
+        _kpis = await Svc.GetKpisAsync();
+    }
+
+    private void Collect(IReadOnlyList<TopografiaElementoNodeDto> nodes)
+    {
+        foreach (var n in nodes) { _flat.Add(n); Collect(n.Children); }
+    }
+
+    private sealed record Row(TopografiaElementoNodeDto Node, int Depth);
+    private List<Row> FlattenTree()
+    {
+        var rows = new List<Row>();
+        void Walk(IReadOnlyList<TopografiaElementoNodeDto> nodes, int depth)
+        {
+            foreach (var n in nodes) { rows.Add(new Row(n, depth)); if (!_collapsed.Contains(n.Id)) { Walk(n.Children, depth + 1); } }
+        }
+        Walk(_arbol, 0);
+        return rows;
+    }
+
+    private void Toggle(long id) { if (!_collapsed.Remove(id)) { _collapsed.Add(id); } }
+
+    private TopografiaNivelDto? NivelDe(long nivelId) => _niveles.FirstOrDefault(n => n.Id == nivelId);
+    private bool NivelControlaCapacidad(long nivelId) => NivelDe(nivelId)?.ControlaCapacidad ?? false;
+
+    /// <summary>Un elemento puede tener hijos si existe un nivel de orden mayor al suyo.</summary>
+    private bool PuedeTenerHijo(TopografiaElementoNodeDto n)
+    {
+        var ordenActual = NivelDe(n.NivelId)?.Orden ?? int.MaxValue;
+        return _niveles.Any(x => x.Orden > ordenActual);
+    }
+
+    /// <summary>Niveles ofrecibles al crear: si hay padre, solo los de orden mayor; si raiz, todos.</summary>
+    private IReadOnlyList<TopografiaNivelDto> NivelesDisponibles()
+    {
+        if (_parentElem is null) { return _niveles; }
+        var ordenPadre = NivelDe(_parentElem.NivelId)?.Orden ?? 0;
+        return _niveles.Where(n => n.Orden > ordenPadre).ToList();
+    }
+
+    // ---- Nivel ----
+    private void OpenNivel(TopografiaNivelDto? n)
+    {
+        _editNivel = n;
+        _fnNombre = n?.NombreNivel ?? "";
+        _fnSigla = n?.SiglaBase ?? "";
+        _fnOrden = n?.Orden ?? (_niveles.Count == 0 ? 1 : _niveles.Max(x => x.Orden) + 1);
+        _fnControla = n?.ControlaCapacidad ?? false;
+        _nivelError = null; _pageOk = null; _pageError = null;
+        _showNivel = true;
+    }
+
+    private async Task SaveNivel()
+    {
+        _busy = true; _nivelError = null;
+        try
+        {
+            var req = new SaveNivelRequest(_fnNombre, _fnSigla, _fnOrden, _fnControla);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editNivel is null ? await Svc.CreateNivelAsync(req, actor) : await Svc.UpdateNivelAsync(_editNivel.Id, req, actor);
+            if (!result.IsOk) { _nivelError = result.Error; return; }
+            _showNivel = false; _pageOk = _editNivel is null ? "Nivel creado." : "Nivel actualizado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteNivel(TopografiaNivelDto n)
+    {
+        _busy = true; _pageError = null; _pageOk = null;
+        try
+        {
+            var result = await Svc.DeleteNivelAsync(n.Id, Tenant.UserId ?? 0);
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            _pageOk = "Nivel eliminado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Elemento ----
+    private void OpenElemento(TopografiaElementoNodeDto? elem, TopografiaElementoNodeDto? parent)
+    {
+        _editElem = elem;
+        _parentElem = elem is not null ? _flat.FirstOrDefault(x => x.Id == elem.ParentId) : parent;
+        _feNivelId = elem?.NivelId ?? (NivelesDisponibles().FirstOrDefault()?.Id ?? 0);
+        _feNombre = elem?.Nombre ?? "";
+        _feSigla = elem?.Sigla ?? "";
+        _feCapacidad = elem?.Capacidad;
+        _elemError = null; _pageOk = null; _pageError = null;
+        _showElem = true;
+    }
+
+    private async Task SaveElemento()
+    {
+        _busy = true; _elemError = null;
+        try
+        {
+            if (_editElem is null && _feNivelId <= 0) { _elemError = "Selecciona el tipo de nivel."; return; }
+            var req = new SaveElementoRequest(
+                _editElem?.NivelId ?? _feNivelId, _editElem?.ParentId ?? _parentElem?.Id, _feNombre, _feSigla, _feCapacidad);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editElem is null ? await Svc.CreateElementoAsync(req, actor) : await Svc.UpdateElementoAsync(_editElem.Id, req, actor);
+            if (!result.IsOk) { _elemError = result.Error; return; }
+            _showElem = false; _pageOk = _editElem is null ? "Ubicación creada." : "Ubicación actualizada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetEstado(TopografiaElementoNodeDto n, bool activar)
+    {
+        _busy = true; _pageError = null; _pageOk = null;
+        try
+        {
+            var result = await Svc.SetEstadoAsync(n.Id, activar, Tenant.UserId ?? 0,
+                motivo: activar ? "Reactivacion de ubicacion (RF06)" : "Inactivacion de ubicacion (RF06)");
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            _pageOk = activar ? "Ubicación reactivada." : "Ubicación inactivada.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private static string EstadoLabel(TopografiaEstado e) => e switch
+    {
+        TopografiaEstado.Disponible => "Disponible",
+        TopografiaEstado.Lleno => "Llena",
+        TopografiaEstado.Inactivo => "Inactiva",
+        _ => e.ToString()
+    };
+    private static string EstadoClase(TopografiaEstado e) => e switch
+    {
+        TopografiaEstado.Disponible => "ok",
+        TopografiaEstado.Lleno => "off",
+        TopografiaEstado.Inactivo => "off",
+        _ => ""
+    };
+}

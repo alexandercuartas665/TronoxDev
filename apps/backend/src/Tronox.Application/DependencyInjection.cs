@@ -81,6 +81,9 @@ public static class DependencyInjection
         // clasificacion y metadatos. La logica pura (CCD, permisos por estado) vive en
         // Trd.TrdConstruccionRules; se testea sin base de datos y no se registra.
         services.AddScoped<Trd.ITrdConstruccionService, Trd.TrdConstruccionService>();
+        // Topografia fisica (RF06): jerarquia de niveles + arbol de elementos con codigo topografico.
+        // La logica pura (codigo, capacidad, ciclos) vive en Topografia.TopografiaRules.
+        services.AddScoped<Topografia.ITopografiaService, Topografia.TopografiaService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

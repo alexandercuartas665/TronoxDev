@@ -71,6 +71,9 @@ public interface IApplicationDbContext
     // Construccion de la TRD (RF04): cruce Dependencia x Serie con reglas y metadatos de expediente.
     DbSet<TrdAsignacion> TrdAsignaciones { get; }
     DbSet<TrdMetadato> TrdMetadatos { get; }
+    // Topografia fisica (RF06): niveles configurables + arbol de elementos fisicos.
+    DbSet<TopografiaNivel> TopografiaNiveles { get; }
+    DbSet<TopografiaElemento> TopografiaElementos { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
