@@ -1,57 +1,73 @@
-# Infraestructura local de TRONOX.tareas
+# Infraestructura local de TRONOX SGDEA
 
-Pila Docker Compose para desarrollo local. Incluye PostgreSQL, SQL Server 2022 (DAL dual),
-Redis, RabbitMQ y Adminer.
+Pila Docker Compose para desarrollo local. **Motor de base de datos UNICO: PostgreSQL 16**
+(no hay SQL Server ni DAL dual). Ademas: Redis (cache), RabbitMQ (colas), MinIO (object
+storage S3) y Adminer (consola web de BD).
 
-## Puertos asignados (bloque DEDICADO TRONOX Tareas)
+Proyecto compose `tronox`, red `tronox-net`, prefijo `tronox-` en contenedores y volumenes.
+Los puertos son un **bloque DEDICADO** verificado libre contra los ~30 contenedores de los
+stacks hermanos de la maquina. Estan parametrizados en `.env` (no versionado).
 
-La maquina corre varios stacks Docker en paralelo (doktrino, cubot, cubot-travels,
-visal, propia-*). TRONOX Tareas usa un bloque de puertos propio y prefijo
-`tronox-tareas-` en contenedores, volumenes y red. Ver ADR-0010.
+## Puertos asignados (host)
 
-| Servicio | Puerto host | Puerto interno | Acceso |
-|----------|-------------|----------------|--------|
-| PostgreSQL 16 | 5442 | 5432 | `Host=localhost;Port=5442;Database=tronox_dev;Username=tronox;Password=...` |
-| SQL Server 2022 | 1443 | 1433 | `Server=localhost,1443;Database=tronox_dev;User Id=sa;Password=...;TrustServerCertificate=true` |
-| Redis | 6389 | 6379 | `localhost:6389` (con password) |
-| RabbitMQ AMQP | 5682 | 5672 | `amqp://tronox:...@localhost:5682` |
-| RabbitMQ Management UI | 15682 | 15672 | http://localhost:15682 |
-| Adminer | 8092 | 8080 | http://localhost:8092 (sirve Postgres y SQL Server) |
+| Servicio | Puerto host | Contenedor | Acceso |
+|----------|-------------|------------|--------|
+| PostgreSQL 16 | **5443** | `tronox-postgres` | `Host=localhost;Port=5443;Database=tronox_dev;Username=tronox;Password=...` |
+| Redis 7 | 6390 | `tronox-redis` | `localhost:6390` (con password) |
+| RabbitMQ 3.13 (AMQP) | 5683 | `tronox-rabbitmq` | `amqp://tronox:...@localhost:5683` |
+| RabbitMQ Management UI | 15683 | `tronox-rabbitmq` | http://localhost:15683 |
+| MinIO (S3 API) | 9004 | `tronox-minio` | http://localhost:9004 |
+| MinIO Console | 9005 | `tronox-minio` | http://localhost:9005 |
+| Adminer | 8093 | `tronox-adminer` | http://localhost:8093 |
 
-## Levantar la pila (pre-flight primero)
+> Los puertos de la APP (API 8094, Web 8095) los usa `dotnet run`, no el compose: en desarrollo
+> las apps corren FUERA de docker y se conectan a estos servicios por `localhost`.
+
+## 1. Preparar el `.env` (una sola vez)
 
 ```powershell
-cd C:\DesarrolloIA\TRONOX.tareas\deploy\docker
-.\preflight.ps1          # docker vivo, puertos libres, sin contenedores muertos, recursos
-docker compose up -d
-docker compose ps
+cd deploy\docker
+Copy-Item .env.example .env
+# Edita .env y cambia las claves 'cambia-esta-clave' por valores propios.
+# IMPORTANTE: el POSTGRES_PASSWORD del .env debe coincidir con el Password de
+# apps/backend/src/Tronox.Web/appsettings.Development.local.json (ver docs/ONBOARDING.md).
 ```
 
-## Bajar la pila (mantiene datos)
+El `.env` NO se versiona (repo publico). Si mueves un puerto, cambialo aqui y vuelve a correr
+`preflight.ps1`; no hace falta tocar el `docker-compose.yml`.
+
+## 2. Levantar la pila (preflight SIEMPRE primero)
 
 ```powershell
-docker compose down
+cd deploy\docker
+.\preflight.ps1                         # valida docker vivo, puertos libres, sin choques con vecinos
+docker compose --env-file .env up -d
+docker compose ps                       # los 5 contenedores 'healthy'
 ```
 
-## Bajar y borrar datos
+> **Regla de convivencia:** la maquina corre ~30 contenedores de stacks hermanos. Compara
+> `docker ps` antes y despues del `up`: el numero de contenedores vecinos NO debe bajar.
+
+## 3. Operacion
 
 ```powershell
-docker compose down -v
+docker compose -p tronox ps                        # estado
+docker compose -p tronox down                       # bajar (MANTIENE los datos en los volumenes)
+docker compose -p tronox --env-file .env up -d      # volver a subir
+docker compose -p tronox down -v                    # bajar y BORRAR datos (empezar de cero)
 ```
 
-## Validar conectividad
+## 4. Validar conectividad
 
 ```powershell
-docker compose exec postgres pg_isready -U tronox -d tronox_dev
-docker compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $env:SQLSERVER_SA_PASSWORD -C -Q "SELECT 1"
-docker compose exec redis redis-cli -a $env:REDIS_PASSWORD ping
-docker compose exec rabbitmq rabbitmq-diagnostics ping
+docker exec tronox-postgres pg_isready -U tronox -d tronox_dev
+docker exec tronox-redis redis-cli -a $env:REDIS_PASSWORD ping
+docker exec tronox-rabbitmq rabbitmq-diagnostics ping
 ```
 
 ## Notas
 
-- Las contrasenas reales viven en `deploy/docker/.env` (ignorado por git).
-- `deploy/docker/.env.example` es la plantilla versionable.
-- Los datos persisten en volumenes nombrados `tronox-tareas-postgres-data`,
-  `tronox-tareas-sqlserver-data`, `tronox-tareas-redis-data`, `tronox-tareas-rabbitmq-data`.
-- SQL Server necesita >= 2 GB de RAM asignada a Docker; el preflight lo verifica.
+- Las contrasenas reales viven en `deploy/docker/.env` (ignorado por git). La plantilla es `.env.example`.
+- Los datos persisten en volumenes nombrados `tronox_postgres-data`, `tronox_redis-data`,
+  `tronox_rabbitmq-data`, `tronox_minio-data`.
+- Con la infra arriba, aplica migraciones y siembra un usuario: ver **`docs/ONBOARDING.md`** (raiz del repo).
