@@ -71,6 +71,8 @@ public interface IApplicationDbContext
     // Construccion de la TRD (RF04): cruce Dependencia x Serie con reglas y metadatos de expediente.
     DbSet<TrdAsignacion> TrdAsignaciones { get; }
     DbSet<TrdMetadato> TrdMetadatos { get; }
+    // Tipologias documentales (RF05): tipos de documento por asignacion + metadatos de documento.
+    DbSet<TrdTipologia> TrdTipologias { get; }
     // Topografia fisica (RF06): niveles configurables + arbol de elementos fisicos.
     DbSet<TopografiaNivel> TopografiaNiveles { get; }
     DbSet<TopografiaElemento> TopografiaElementos { get; }

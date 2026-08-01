@@ -4,11 +4,12 @@ using Tronox.Domain.Enums;
 namespace Tronox.Domain.Entities;
 
 /// <summary>
-/// Metadato de una asignacion de TRD (RQ02 - RF04 paso 6). TENANT-SCOPED. Define un campo que el
-/// usuario debera diligenciar al crear un expediente bajo esta serie en esta dependencia.
-///
-/// Contexto = Expediente en RF04 (metadatos del expediente). Los metadatos de Documento (contexto
-/// Documento) los produce RF05 sobre las tipologias; se modelaran cuando exista RF05.
+/// Metadato de una asignacion de TRD. TENANT-SCOPED. Define un campo que el usuario debera
+/// diligenciar segun su contexto:
+///   - Contexto = Expediente (RF04 paso 6): al CREAR un expediente bajo esta serie en esta
+///     dependencia. TrdTipologiaId es null (cuelga directo de la asignacion).
+///   - Contexto = Documento (RF05 3.5.3): al CARGAR un documento de una tipologia. TrdTipologiaId
+///     apunta a la TrdTipologia (equivale al TRD_TIPOLOGIA_REG del legacy).
 ///
 /// Para tipo de dato Lista, referencia una ListaMaestra del Administrador de Listas (RF03) por FK
 /// EXPLICITA (ListaMaestraId), en vez del prefijo numerico en VALOR_DEFAULT del legacy.
@@ -17,6 +18,13 @@ public class TrdMetadato : TenantEntity
 {
     public long TrdAsignacionId { get; set; }
     public TrdAsignacion? TrdAsignacion { get; set; }
+
+    /// <summary>
+    /// Tipologia a la que pertenece cuando Contexto = Documento (RF05). Null cuando Contexto =
+    /// Expediente (RF04), en cuyo caso el metadato cuelga directamente de la asignacion.
+    /// </summary>
+    public long? TrdTipologiaId { get; set; }
+    public TrdTipologia? TrdTipologia { get; set; }
 
     public string Nombre { get; set; } = null!;
 

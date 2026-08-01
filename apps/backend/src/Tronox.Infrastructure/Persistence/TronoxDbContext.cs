@@ -88,6 +88,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<ListaOpcion> ListaOpciones => Set<ListaOpcion>();
     public DbSet<TrdAsignacion> TrdAsignaciones => Set<TrdAsignacion>();
     public DbSet<TrdMetadato> TrdMetadatos => Set<TrdMetadato>();
+    public DbSet<TrdTipologia> TrdTipologias => Set<TrdTipologia>();
     public DbSet<TopografiaNivel> TopografiaNiveles => Set<TopografiaNivel>();
     public DbSet<TopografiaElemento> TopografiaElementos => Set<TopografiaElemento>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
@@ -374,6 +375,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<DisposicionFinal>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<TipoDatoMetadato>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ContextoMetadato>().HaveConversion<string>().HaveMaxLength(20);
+        // Tipologias documentales (RF05): soporte como texto acotado.
+        configurationBuilder.Properties<SoporteTipologia>().HaveConversion<string>().HaveMaxLength(20);
         // Topografia fisica (RQ02 - RF06): estado como texto acotado.
         configurationBuilder.Properties<TopografiaEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
@@ -878,16 +881,32 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasIndex(x => x.NivelClasificacionId);
         });
 
-        // Metadatos de la asignacion (RF04 paso 6). Viven y mueren con su asignacion (Cascade). La
-        // FK a la lista (tipo Lista, RF03) es RESTRICT: una lista en uso no se borra por cascada.
+        // Metadatos de la asignacion. Contexto Expediente (RF04 paso 6): TrdTipologiaId null, cuelgan
+        // de la asignacion. Contexto Documento (RF05 3.5.3): cuelgan de una tipologia. Viven y mueren
+        // con su asignacion/tipologia (Cascade; PostgreSQL admite multiples rutas de cascada). La FK a
+        // la lista (tipo Lista, RF03) es RESTRICT: una lista en uso no se borra por cascada.
         modelBuilder.Entity<TrdMetadato>(b =>
         {
             b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
             b.HasOne(x => x.TrdAsignacion).WithMany(x => x.Metadatos)
                 .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdTipologia).WithMany(x => x.Metadatos)
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne(x => x.ListaMaestra).WithMany()
                 .HasForeignKey(x => x.ListaMaestraId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TrdAsignacionId, x.Orden });
+            b.HasIndex(x => x.TrdTipologiaId);
+        });
+
+        // Tipologias documentales (RQ02 - RF05). Cuelgan de una asignacion Dependencia+Serie (3.5.1) y
+        // viven/mueren con ella (Cascade). Se inactivan en vez de borrarse (invariante 8, 3.5.5-5).
+        modelBuilder.Entity<TrdTipologia>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Formato).HasMaxLength(100);
+            b.HasOne(x => x.TrdAsignacion).WithMany(x => x.Tipologias)
+                .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TrdAsignacionId, x.Nombre });
         });
 
         // Topografia fisica (RQ02 - RF06). Niveles: nombre/sigla/orden unicos por tenant. Elementos:

@@ -90,4 +90,38 @@ public class TrdConstruccionRulesTests
     [InlineData(TrdVersionEstado.Vigente, false)]
     public void PermiteEliminar_SoloEnConstruccion(TrdVersionEstado estado, bool esperado)
         => Assert.Equal(esperado, TrdConstruccionRules.PermiteEliminar(estado));
+
+    // ---- ValidateTipologia (RF05 3.5.2) ----
+
+    [Fact]
+    public void Tipologia_Valida()
+        => Assert.Null(TrdConstruccionRules.ValidateTipologia("Acta de Reunion", "PDF"));
+
+    [Fact]
+    public void Tipologia_SinFormato_Valida()
+        => Assert.Null(TrdConstruccionRules.ValidateTipologia("Contrato", null));
+
+    [Fact]
+    public void Tipologia_SinNombre_Invalida()
+        => Assert.NotNull(TrdConstruccionRules.ValidateTipologia("   ", "PDF"));
+
+    [Fact]
+    public void Tipologia_NombreLargo_Invalida()
+        => Assert.NotNull(TrdConstruccionRules.ValidateTipologia(new string('T', 201), null));
+
+    [Fact]
+    public void Tipologia_FormatoLargo_Invalida()
+        => Assert.NotNull(TrdConstruccionRules.ValidateTipologia("Acta", new string('F', 101)));
+
+    // ---- EstadoDependencia (badge derivado, ADR-007) ----
+
+    [Theory]
+    [InlineData(0, TrdVersionEstado.EnConstruccion, EstadoTrdDependencia.SinTrd)]
+    [InlineData(0, TrdVersionEstado.Vigente, EstadoTrdDependencia.SinTrd)]
+    [InlineData(3, TrdVersionEstado.EnConstruccion, EstadoTrdDependencia.EnConstruccion)]
+    [InlineData(3, TrdVersionEstado.Vigente, EstadoTrdDependencia.Activa)]
+    [InlineData(1, TrdVersionEstado.Historico, EstadoTrdDependencia.Historica)]
+    [InlineData(1, TrdVersionEstado.Inactivo, EstadoTrdDependencia.Inactiva)]
+    public void EstadoDependencia_Derivado(int seriesActivas, TrdVersionEstado version, EstadoTrdDependencia esperado)
+        => Assert.Equal(esperado, TrdConstruccionRules.EstadoDependencia(seriesActivas, version));
 }

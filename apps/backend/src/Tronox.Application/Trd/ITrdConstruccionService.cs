@@ -48,4 +48,20 @@ public interface ITrdConstruccionService
 
     Task<TrdResult<bool>> SetMetadatoArchivedAsync(
         long metadatoId, bool archived, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Tipologias documentales (RF05) ----
+
+    Task<TrdResult<TrdTipologiaDto>> AddTipologiaAsync(
+        long asignacionId, SaveTipologiaRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    Task<TrdResult<TrdTipologiaDto>> UpdateTipologiaAsync(
+        long tipologiaId, SaveTipologiaRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    Task<TrdResult<bool>> SetTipologiaArchivedAsync(
+        long tipologiaId, bool archived, long actorUserId, string? motivo = null, CancellationToken cancellationToken = default);
+
+    // ---- Metadatos del documento (RF05 3.5.3): cuelgan de una tipologia ----
+
+    Task<TrdResult<TrdMetadatoDto>> AddMetadatoDocumentoAsync(
+        long tipologiaId, SaveMetadatoRequest request, long actorUserId, CancellationToken cancellationToken = default);
 }
