@@ -34,16 +34,7 @@
         <span class="sep">/</span>
         <a href="/trd-versiones">Versiones de TRD</a>
         <span class="sep">/</span>
-        @if (_workspaceDep is not null)
-        {
-            <a href="javascript:void(0)" @onclick="BackToList">Gestión de la TRD</a>
-            <span class="sep">/</span>
-            <span class="cur">@_workspaceDep.Codigo · @_workspaceDep.Nombre</span>
-        }
-        else
-        {
-            <span class="cur">Gestión de la TRD</span>
-        }
+        <span class="cur">Gestión de la TRD</span>
     </nav>
 
     @if (_version is null)
@@ -96,10 +87,8 @@
             <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
         }
 
-        @if (_workspaceDep is null)
-        {
-            @* =================== VISTA A: LISTA "Asignacion por Dependencia" =================== *@
-            <div class="tx-ent-card">
+        @* =================== LISTA "Asignacion por Dependencia" (siempre visible) =================== *@
+        <div class="tx-ent-card">
                 <div class="tx-dep-toolbar" style="gap:12px;flex-wrap:wrap">
                     <div class="tx-dep-search">
                         <i class="bi bi-search"></i>
@@ -167,23 +156,32 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
-        }
-        else
+        </div>
+
+        @* =================== WORKSPACE como MODAL (fiel al legacy pnlTRDWorkspace = rf4-modal-workspace) =================== *@
+        @if (_workspaceDep is not null)
         {
-            @* =================== VISTA B: WORKSPACE de la dependencia =================== *@
-            <div class="tx-ent-card">
-                <div class="tx-ent-card-body">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-                        <div>
-                            <button type="button" class="tx-ent-btn sm" @onclick="BackToList"><i class="bi bi-arrow-left"></i> Volver a la lista</button>
-                            <h3 style="margin:8px 0 0">TRD &middot; <span class="mono">@_workspaceDep.Codigo</span> &middot; @_workspaceDep.Nombre</h3>
-                        </div>
-                        @if (_canAgregar)
-                        {
-                            <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Nueva serie</button>
-                        }
+            <div class="modal-overlay" @onclick="BackToList">
+                <div class="modal-dialog" style="max-width:1080px;width:96%" @onclick:stopPropagation="true">
+                    <div class="modal-head">
+                        <h3>TRD &middot; <span class="mono">@_workspaceDep.Codigo</span> &middot; @_workspaceDep.Nombre</h3>
+                        <button class="modal-close" @onclick="BackToList">&times;</button>
                     </div>
+                    <div class="modal-body tx-mod tx-trdc">
+                        @if (_pageError is not null)
+                        {
+                            <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+                        }
+                        @if (_pageOk is not null)
+                        {
+                            <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+                        }
+                        <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+                            @if (_canAgregar)
+                            {
+                                <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Nueva serie</button>
+                            }
+                        </div>
 
                     @if (_asignaciones.Count == 0)
                     {
@@ -238,6 +236,7 @@
                             </table>
                         </div>
                     }
+                    </div>
                 </div>
             </div>
         }
