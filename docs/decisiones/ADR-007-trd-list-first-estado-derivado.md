@@ -34,7 +34,9 @@ modelo de datos de la spec (estado en la version; `trd_asignaciones` como cruce)
 
 1. **UI list-first.** `/trd` aterriza en la lista "Gestion de Tablas de Retencion Documental ·
    {version}" con una fila por dependencia y acciones Ver / Crear, igual que el legacy. Desde ahi se
-   abre el WORKSPACE de la dependencia (cambio de vista en la misma pagina).
+   abre el WORKSPACE de la dependencia **como un MODAL** sobre la lista, fiel al legacy (donde el
+   panel `pnlTRDWorkspace` es `rf4-modal-overlay` / `rf4-modal-workspace`), no como un cambio de
+   pagina.
 
 2. **Estado TRD por dependencia DERIVADO** (no persistido), calculado en logica pura
    (`TrdConstruccionRules.EstadoDependencia`, enum `EstadoTrdDependencia`):
