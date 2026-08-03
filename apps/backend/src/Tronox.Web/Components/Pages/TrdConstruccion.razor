@@ -197,8 +197,19 @@
                                     <span class="tx-ent-hint">&nbsp;@ContarSeries() series &middot; @ContarSubseries() subseries</span>
                                 </div>
                                 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                                    <input class="tx-ent-input" style="min-width:220px" placeholder="Buscar serie, subserie o tipología..."
+                                    <input class="tx-ent-input" style="min-width:200px" placeholder="Buscar serie, subserie o tipología..."
                                            value="@_treeSearch" @oninput="@(e => _treeSearch = e.Value?.ToString() ?? "")" />
+                                    <select class="tx-ent-input" style="min-width:150px" @bind="_treeLevelFilter">
+                                        <option value="">Todos los niveles</option>
+                                        <option value="serie">Series</option>
+                                        <option value="subserie">Subseries</option>
+                                        <option value="tipologia">Tipologías</option>
+                                    </select>
+                                    <select class="tx-ent-input" style="min-width:140px" @bind="_treeEstadoFilter">
+                                        <option value="">Estado: todos</option>
+                                        <option value="activo">Activo</option>
+                                        <option value="inactivo">Inactivo</option>
+                                    </select>
                                     <button type="button" class="tx-ent-btn sm" @onclick="ExpandAll"><i class="bi bi-arrows-expand"></i> Expandir</button>
                                     <button type="button" class="tx-ent-btn sm" @onclick="CollapseAll"><i class="bi bi-arrows-collapse"></i> Colapsar</button>
                                     @if (_canAgregar)
@@ -225,16 +236,19 @@
                                         <tbody>
                                             @foreach (var serie in SeriesTop())
                                             {
-                                                @SerieRow(serie, 0)
-                                                @if (IsExpanded(serie))
+                                                @if (ShowNivel("serie") && EstadoMatchAsig(serie)) { @SerieRow(serie, 0) }
+                                                @if (IsExpanded(serie) && _treeLevelFilter != "serie")
                                                 {
-                                                    @foreach (var t in TipsVisibles(serie)) { @TipologiaRow(serie, t) }
+                                                    @if (ShowNivel("tipologia"))
+                                                    {
+                                                        @foreach (var t in TipsVisibles(serie)) { @if (EstadoMatchTip(t)) { @TipologiaRow(serie, t) } }
+                                                    }
                                                     @foreach (var sub in SubseriesDe(serie))
                                                     {
-                                                        @SerieRow(sub, 1)
-                                                        @if (IsExpanded(sub))
+                                                        @if (ShowNivel("subserie") && EstadoMatchAsig(sub)) { @SerieRow(sub, 1) }
+                                                        @if (IsExpanded(sub) && _treeLevelFilter != "subserie" && ShowNivel("tipologia"))
                                                         {
-                                                            @foreach (var t in TipsVisibles(sub)) { @TipologiaRow(sub, t) }
+                                                            @foreach (var t in TipsVisibles(sub)) { @if (EstadoMatchTip(t)) { @TipologiaRow(sub, t) } }
                                                         }
                                                     }
                                                 }
@@ -256,22 +270,29 @@
         <div class="modal-overlay" @onclick="@(() => _showAsignEditor = false)">
             <div class="modal-dialog" style="max-width:680px" @onclick:stopPropagation="true">
                 <div class="modal-head">
-                    <h3>@(_editingAsign is null ? "Agregar serie a la dependencia" : $"Editar {_editingAsign.CodigoCcd}")</h3>
+                    <h3>@(_editingAsign is not null ? $"Editar {_editingAsign.CodigoCcd}" : _addScopeParentNombre is not null ? $"Agregar subserie a {_addScopeParentNombre}" : "Agregar serie a la dependencia")</h3>
                     <button class="modal-close" @onclick="@(() => _showAsignEditor = false)">&times;</button>
                 </div>
                 <div class="modal-body tx-mod tx-trdc">
                     @if (_editingAsign is null)
                     {
                         <div class="tx-ent-field">
-                            <label>Serie del catálogo (activas) <span class="req">*</span></label>
+                            <label>@(_addScopeParentSerieId is not null ? "Subserie del catálogo (activas)" : "Serie del catálogo (activas)") <span class="req">*</span></label>
                             <select class="tx-ent-input" @bind="_fSerieId">
                                 <option value="0">— Selecciona —</option>
-                                @foreach (var s in _seriesActivas)
+                                @foreach (var s in SeriesParaAgregar())
                                 {
                                     <option value="@s.Id">@s.Codigo — @s.Nombre</option>
                                 }
                             </select>
-                            <div class="tx-ent-hint">El código CCD se generará como código de dependencia + código de serie.</div>
+                            @if (_addScopeParentSerieId is not null && SeriesParaAgregar().Count == 0)
+                            {
+                                <div class="tx-ent-hint">No hay subseries del catálogo disponibles para esta serie (créalas en el Catálogo de Series).</div>
+                            }
+                            else
+                            {
+                                <div class="tx-ent-hint">El código CCD se generará como código de dependencia + código de serie.</div>
+                            }
                         </div>
                     }
                     <div class="tx-ent-grid c2">
@@ -510,8 +531,11 @@
     private IReadOnlyList<TrdAsignacionDto> _asignaciones = [];
     private readonly HashSet<long> _expanded = [];   // series/subseries expandidas por SerieId
     private string _treeSearch = "";
+    private string _treeLevelFilter = "";   // "" | serie | subserie | tipologia
+    private string _treeEstadoFilter = "";  // "" | activo | inactivo
 
     private List<SerieNodeDto> _seriesActivas = [];
+    private readonly Dictionary<long, SerieNodeDto> _catalogById = [];   // catalogo por id (para el + contextual)
     private IReadOnlyList<NivelClasificacionDto> _niveles = [];
     private IReadOnlyList<ListaMaestraDto> _listas = [];
 
@@ -525,6 +549,8 @@
     private bool _fReproduccion, _fDdhh;
     private string? _fProcedimiento;
     private string? _asignError;
+    private long? _addScopeParentSerieId;   // != null cuando se agrega una SUBSERIE de esta serie (+ contextual)
+    private string? _addScopeParentNombre;
 
     // ---- Metadatos (expediente y documento comparten editor) ----
     private bool _showMetadatos;              // metadatos de expediente (de una asignacion)
@@ -565,6 +591,7 @@
         _niveles = await NivelesSvc.ListAsync(soloActivos: true);
         var tree = await SeriesSvc.GetTreeAsync(includeInactivas: false);
         _seriesActivas = [];
+        _catalogById.Clear();
         Collect(tree);
         _listas = (await ListasSvc.ListAsync(includeInactivas: false))
             .Where(l => !l.EsInactiva).ToList();
@@ -583,7 +610,7 @@
 
     private void Collect(IReadOnlyList<SerieNodeDto> nodes)
     {
-        foreach (var n in nodes) { _seriesActivas.Add(n); Collect(n.Children); }
+        foreach (var n in nodes) { _seriesActivas.Add(n); _catalogById[n.Id] = n; Collect(n.Children); }
     }
 
     private async Task LoadDependenciasAsync()
@@ -608,6 +635,8 @@
         _workspaceDep = d;
         _expanded.Clear();
         _treeSearch = "";
+        _treeLevelFilter = "";
+        _treeEstadoFilter = "";
         _pageOk = null; _pageError = null;
         _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, d.DependenciaId, includeArchived: true);
         if (autoAdd && _canAgregar) { OpenAddAsignacion(); }
@@ -619,6 +648,8 @@
         _asignaciones = [];
         _expanded.Clear();
         _treeSearch = "";
+        _treeLevelFilter = "";
+        _treeEstadoFilter = "";
         _pageOk = null; _pageError = null;
         await LoadDependenciasAsync();
     }
@@ -671,10 +702,42 @@
     private int ContarSubseries() => _asignaciones.Count(a => a.SerieParentId is not null);
 
     private bool Expandable(TrdAsignacionDto a) => SubseriesRaw(a).Any() || a.Tipologias.Any(t => !t.IsArchived);
-    private bool IsExpanded(TrdAsignacionDto a) => TreeSearching || _expanded.Contains(a.SerieId);
+    private bool Filtering => TreeSearching || _treeLevelFilter.Length > 0 || _treeEstadoFilter.Length > 0;
+    private bool IsExpanded(TrdAsignacionDto a) => Filtering || _expanded.Contains(a.SerieId);
     private void ToggleExpand(TrdAsignacionDto a) { if (!_expanded.Add(a.SerieId)) { _expanded.Remove(a.SerieId); } }
     private void ExpandAll() { foreach (var a in _asignaciones) { _expanded.Add(a.SerieId); } }
     private void CollapseAll() => _expanded.Clear();
+
+    private bool ShowNivel(string nivel) => _treeLevelFilter.Length == 0 || _treeLevelFilter == nivel;
+    private bool EstadoMatchAsig(TrdAsignacionDto a) => _treeEstadoFilter switch { "activo" => !a.IsArchived, "inactivo" => a.IsArchived, _ => true };
+    private bool EstadoMatchTip(TrdTipologiaDto t) => _treeEstadoFilter switch { "activo" => !t.IsArchived, "inactivo" => t.IsArchived, _ => true };
+
+    // El + contextual (legacy TIENE_SUBSERIES): en una serie con subseries en el catalogo agrega una
+    // SUBSERIE; en una serie hoja o en una subserie agrega una TIPOLOGIA.
+    private IReadOnlyList<SerieNodeDto> CatalogChildren(long serieId) => _catalogById.TryGetValue(serieId, out var n) ? n.Children : [];
+
+    private List<SerieNodeDto> SeriesParaAgregar()
+    {
+        if (_addScopeParentSerieId is long pid)
+        {
+            var asignados = _asignaciones.Select(a => a.SerieId).ToHashSet();
+            return CatalogChildren(pid).Where(c => !asignados.Contains(c.Id)).ToList();
+        }
+        return _seriesActivas;
+    }
+
+    private void AgregarHijo(TrdAsignacionDto a)
+    {
+        if (a.SerieParentId is null && CatalogChildren(a.SerieId).Count > 0) { OpenAddSubserie(a); }
+        else { OpenTipologias(a); }
+    }
+
+    private void OpenAddSubserie(TrdAsignacionDto serie)
+    {
+        OpenAddAsignacion();
+        _addScopeParentSerieId = serie.SerieId;
+        _addScopeParentNombre = serie.SerieNombre;
+    }
 
     private RenderFragment SerieRow(TrdAsignacionDto a, int level) => __builder =>
     {
@@ -706,7 +769,7 @@
                 }
                 @if (_canEditProcMeta)
                 {
-                    <button type="button" title="Tipos documentales" class="tx-ent-btn sm" @onclick="@(() => OpenTipologias(a))"><i class="bi bi-plus-lg"></i></button>
+                    <button type="button" title="Agregar subserie o tipología" class="tx-ent-btn sm" @onclick="@(() => AgregarHijo(a))"><i class="bi bi-plus-lg"></i></button>
                 }
                 @if (_canEliminar)
                 {
@@ -761,6 +824,7 @@
     private void OpenAddAsignacion()
     {
         _editingAsign = null;
+        _addScopeParentSerieId = null; _addScopeParentNombre = null;
         _fSerieId = 0; _fTiempoGestion = 0; _fTiempoCentral = 0;
         _fDisposicion = DisposicionFinal.ConservacionTotal;
         _fNivelId = _niveles.FirstOrDefault(n => n.Codigo == "02")?.Id ?? _niveles.FirstOrDefault()?.Id ?? 0;
