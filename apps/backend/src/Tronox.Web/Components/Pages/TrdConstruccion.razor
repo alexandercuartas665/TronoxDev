@@ -4,19 +4,24 @@
    Versiones de TRD (RF01) con ?version={id}. Es el submodulo de construccion de la TRD y sus
    tipologias (RF04 + RF05), equivalente al legacy doc_tablaRetencionDocumental. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text
+@using System.Xml.Linq
 @using Tronox.Application.Trd
+@using Tronox.Application.TrdVersiones
 @using Tronox.Application.SeriesDocumentales
 @using Tronox.Application.Archivistica
 @using Tronox.Application.Listas
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
 @inject ITrdConstruccionService Svc
+@inject ITrdVersionService VersionsSvc
 @inject ISerieDocumentalService SeriesSvc
 @inject INivelClasificacionService NivelesSvc
 @inject IListaMaestraService ListasSvc
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @* RQ02 - RF04 + RF05. Vista list-first: aterriza en "Gestion de TRD por dependencia" (con Estado
    TRD DERIVADO, ADR-007) y desde "Ver/Crear" se abre el workspace de esa dependencia, donde se
@@ -182,6 +187,15 @@
                             </div>
                             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                                 <span class="tx-ent-badge @EstadoClase(_version.Estado)">@EstadoLabel(_version.Estado)</span>
+                                @if (_asignaciones.Count > 0)
+                                {
+                                    <button type="button" class="tx-ent-btn sm" @onclick="ExportXls" disabled="@_busy"><i class="bi bi-file-earmark-spreadsheet"></i> XLS</button>
+                                    <button type="button" class="tx-ent-btn sm" @onclick="ExportXml" disabled="@_busy"><i class="bi bi-filetype-xml"></i> XML</button>
+                                }
+                                @if (_canPublicar)
+                                {
+                                    <button type="button" class="tx-ent-btn sm ok" @onclick="@(() => _showPublicar = true)" disabled="@_busy"><i class="bi bi-cloud-arrow-up"></i> Publicar como versión TRD</button>
+                                }
                                 @if (_canAgregar)
                                 {
                                     <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Nueva Serie</button>
@@ -262,6 +276,31 @@
                 </div>
             </div>
         }
+    }
+
+    @* ===== Modal publicar version TRD (activar) ===== *@
+    @if (_showPublicar && _version is not null)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showPublicar = false)">
+            <div class="modal-dialog" style="max-width:560px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>Publicar como versión TRD</h3>
+                    <button class="modal-close" @onclick="@(() => _showPublicar = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <p>Vas a publicar la versión <strong class="mono">@_version.CodigoVersion</strong> como <strong>Vigente</strong>.</p>
+                    <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>La versión <strong>Vigente</strong> actual (si existe) pasará automáticamente a <strong>Histórica</strong>. Los expedientes ya creados conservan la versión bajo la que nacieron. A partir de aquí solo se podrán hacer cambios aditivos (no se editan tiempos/disposición/clasificación).</span></div>
+                    @if (_publicarError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_publicarError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showPublicar = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn ok" @onclick="Publicar" disabled="@_busy"><i class="bi bi-cloud-arrow-up"></i> Publicar</button>
+                </div>
+            </div>
+        </div>
     }
 
     @* ===== Modal asignacion (crear/editar reglas) ===== *@
@@ -521,7 +560,11 @@
     private string? _pageOk;
 
     private bool _permView, _permCreate, _permEdit, _permDelete;
-    private bool _canAgregar, _canEditEstructura, _canEditProcMeta, _canEliminar;
+    private bool _canAgregar, _canEditEstructura, _canEditProcMeta, _canEliminar, _canPublicar;
+
+    // ---- Publicar version (activar) ----
+    private bool _showPublicar;
+    private string? _publicarError;
 
     private TrdVersionCabeceraDto? _version;
     private IReadOnlyList<DependenciaTrdResumenDto> _dependencias = [];
@@ -606,7 +649,122 @@
         _canEditEstructura = _permEdit && estado == TrdVersionEstado.EnConstruccion;
         _canEditProcMeta = _permEdit && estado is TrdVersionEstado.EnConstruccion or TrdVersionEstado.Vigente;
         _canEliminar = _permDelete && estado == TrdVersionEstado.EnConstruccion;
+        // Publicar (activar) solo desde En Construccion; se reutiliza el flujo de RF01.
+        _canPublicar = _permEdit && estado == TrdVersionEstado.EnConstruccion;
     }
+
+    // ---- Publicar version TRD (reutiliza la activacion de RF01) ----
+
+    private async Task Publicar()
+    {
+        if (_version is null) { return; }
+        _busy = true; _publicarError = null;
+        try
+        {
+            var result = await VersionsSvc.ActivarAsync(_version.Id, Tenant.UserId ?? 0);
+            if (!result.IsOk) { _publicarError = result.Error; return; }
+            _showPublicar = false;
+            _version = await Svc.GetVersionAsync(_version.Id) ?? _version;
+            RecalcularPermisos();
+            await ReloadWorkspaceAsync();
+            _pageOk = $"Versión {_version.CodigoVersion} publicada como Vigente.";
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Exportar la TRD de la dependencia (XLS / XML) ----
+
+    private async Task ExportXls()
+    {
+        var html = new StringBuilder();
+        html.Append("<html><head><meta charset=\"utf-8\"></head><body>");
+        html.Append($"<h3>Tabla de Retención Documental · {Xml(_version!.CodigoVersion)} · {Xml(_workspaceDep!.Codigo)} {Xml(_workspaceDep!.Nombre)}</h3>");
+        html.Append("<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\">");
+        html.Append("<tr><th>Nivel</th><th>Serie / Subserie / Tipología</th><th>Código</th><th>T. Gestión</th><th>T. Central</th><th>Disposición</th><th>Formato / Conteo</th><th>Estado</th></tr>");
+        foreach (var f in FlattenParaExport())
+        {
+            html.Append("<tr>");
+            html.Append($"<td>{Xml(f.Nivel)}</td><td>{Xml(f.Nombre)}</td><td>{Xml(f.Codigo)}</td><td>{Xml(f.Gestion)}</td><td>{Xml(f.Central)}</td><td>{Xml(f.Disposicion)}</td><td>{Xml(f.FormatoConteo)}</td><td>{Xml(f.Estado)}</td>");
+            html.Append("</tr>");
+        }
+        html.Append("</table></body></html>");
+        await Descargar($"TRD_{_version!.CodigoVersion}_{_workspaceDep!.Codigo}.xls", "application/vnd.ms-excel", html.ToString());
+    }
+
+    private async Task ExportXml()
+    {
+        var raiz = new XElement("TablaRetencionDocumental",
+            new XAttribute("version", _version!.CodigoVersion),
+            new XAttribute("estadoVersion", _version.Estado.ToString()),
+            new XAttribute("dependenciaCodigo", _workspaceDep!.Codigo),
+            new XAttribute("dependenciaNombre", _workspaceDep.Nombre));
+
+        foreach (var serie in SeriesTop())
+        {
+            raiz.Add(SerieXml(serie, "Serie"));
+        }
+        var doc = new XDocument(new XDeclaration("1.0", "utf-8", null), raiz);
+        await Descargar($"TRD_{_version.CodigoVersion}_{_workspaceDep.Codigo}.xml", "application/xml", doc.Declaration + Environment.NewLine + doc);
+    }
+
+    private XElement SerieXml(TrdAsignacionDto a, string tag)
+    {
+        var el = new XElement(tag,
+            new XAttribute("codigo", a.SerieCodigo),
+            new XAttribute("nombre", a.SerieNombre),
+            new XAttribute("ccd", a.CodigoCcd),
+            new XAttribute("tiempoGestion", a.TiempoGestion),
+            new XAttribute("tiempoCentral", a.TiempoCentral),
+            new XAttribute("disposicion", DispCodigo(a.DisposicionFinal)),
+            new XAttribute("clasificacion", a.NivelClasificacionNombre),
+            new XAttribute("estado", a.IsArchived ? "Inactivo" : "Activo"));
+        foreach (var t in a.Tipologias)
+        {
+            el.Add(new XElement("Tipologia",
+                new XAttribute("nombre", t.Nombre),
+                new XAttribute("soporte", t.Soporte.ToString()),
+                new XAttribute("formato", t.Formato ?? ""),
+                new XAttribute("obligatorioEnExpediente", t.ObligatorioEnExpediente),
+                new XAttribute("estado", t.IsArchived ? "Inactivo" : "Activo")));
+        }
+        foreach (var sub in SubseriesDe(a))
+        {
+            el.Add(SerieXml(sub, "Subserie"));
+        }
+        return el;
+    }
+
+    private readonly record struct ExportRow(string Nivel, string Nombre, string Codigo, string Gestion, string Central, string Disposicion, string FormatoConteo, string Estado);
+
+    private List<ExportRow> FlattenParaExport()
+    {
+        var rows = new List<ExportRow>();
+        void AddSerie(TrdAsignacionDto a, string nivel)
+        {
+            var subs = SubseriesRaw(a).Count();
+            var tips = a.Tipologias.Count(t => !t.IsArchived);
+            rows.Add(new ExportRow(nivel, a.SerieNombre, a.SerieCodigo, $"{a.TiempoGestion} años",
+                $"{a.TiempoCentral} años", DispCodigo(a.DisposicionFinal), $"{subs} subs / {tips} tipos",
+                a.IsArchived ? "Inactivo" : "TRD"));
+            foreach (var t in a.Tipologias.OrderBy(x => x.Nombre))
+            {
+                var fmt = string.IsNullOrWhiteSpace(t.Formato) ? SoporteLabel(t.Soporte) : $"{SoporteLabel(t.Soporte)} / {t.Formato}";
+                rows.Add(new ExportRow("Tipología", t.Nombre, "", "— heredado —", "— heredado —", "—", fmt,
+                    t.IsArchived ? "Inactivo" : "Activo"));
+            }
+            foreach (var sub in SubseriesDe(a)) { AddSerie(sub, "Subserie"); }
+        }
+        foreach (var serie in SeriesTop()) { AddSerie(serie, "Serie"); }
+        return rows;
+    }
+
+    private async Task Descargar(string filename, string mime, string contenido)
+    {
+        var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(contenido));
+        await JS.InvokeVoidAsync("tronoxDownload", filename, base64, mime);
+    }
+
+    private static string Xml(string? s) => System.Security.SecurityElement.Escape(s ?? "") ?? "";
 
     private void Collect(IReadOnlyList<SerieNodeDto> nodes)
     {
