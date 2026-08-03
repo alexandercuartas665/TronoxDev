@@ -111,14 +111,14 @@
                     <table class="tx-ent-table">
                         <thead>
                             <tr>
-                                <th>Código</th><th>Dependencia</th><th>TRD</th><th>Estado TRD</th>
-                                <th class="right">Series</th><th class="right">Acciones</th>
+                                <th>Código</th><th>Dependencia</th><th>Versión TRD</th><th>Estado TRD</th>
+                                <th>Fecha creación</th><th>Usuario creador</th><th class="right">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             @if (DependenciasFiltradas().Count == 0)
                             {
-                                <tr><td colspan="6"><div class="tx-ent-hint" style="padding:14px">No hay dependencias que coincidan. Créalas en Organizacional › Dependencias.</div></td></tr>
+                                <tr><td colspan="7"><div class="tx-ent-hint" style="padding:14px">No hay dependencias que coincidan. Créalas en Organizacional › Dependencias.</div></td></tr>
                             }
                             else
                             {
@@ -127,15 +127,10 @@
                                     <tr>
                                         <td class="mono">@d.Codigo</td>
                                         <td>@d.Nombre</td>
-                                        <td>
-                                            @if (d.SeriesAsignadas > 0)
-                                            {
-                                                <span class="tx-ent-badge sm">TRD @d.Codigo</span>
-                                            }
-                                            else { <span class="tx-ent-hint">--</span> }
-                                        </td>
+                                        <td>@(d.SeriesAsignadas > 0 ? _version.CodigoVersion : "--")</td>
                                         <td><span class="tx-ent-badge sm @EstadoDepClase(d.Estado)">@EstadoDepLabel(d.Estado)</span></td>
-                                        <td class="right">@d.SeriesActivas</td>
+                                        <td>@(d.FechaCreacion is DateTimeOffset f ? f.ToString("yyyy-MM-dd") : "--")</td>
+                                        <td>@(d.CreadoPorId is long uid ? $"Usuario {uid}" : "--")</td>
                                         <td class="right">
                                             @if (d.SeriesAsignadas > 0)
                                             {
@@ -164,7 +159,10 @@
             <div class="modal-overlay" @onclick="BackToList">
                 <div class="modal-dialog" style="max-width:1080px;width:96%" @onclick:stopPropagation="true">
                     <div class="modal-head">
-                        <h3>TRD &middot; <span class="mono">@_workspaceDep.Codigo</span> &middot; @_workspaceDep.Nombre</h3>
+                        <div>
+                            <h3 style="margin:0"><span class="mono">@_workspaceDep.Codigo</span> &middot; @_workspaceDep.Nombre</h3>
+                            <div class="tx-ent-hint" style="margin-top:2px">Tabla de Retención Documental por dependencia</div>
+                        </div>
                         <button class="modal-close" @onclick="BackToList">&times;</button>
                     </div>
                     <div class="modal-body tx-mod tx-trdc">
@@ -176,66 +174,76 @@
                         {
                             <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
                         }
-                        <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-                            @if (_canAgregar)
-                            {
-                                <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Nueva serie</button>
-                            }
+
+                        <div class="tx-ent-head" style="margin-bottom:8px">
+                            <div>
+                                <h3 style="margin:0">Tabla de Retención Documental</h3>
+                                <p class="tx-ent-sub" style="margin:2px 0 0">@_version.CodigoVersion &middot; Configura series, subseries y tipologías desde un solo módulo</p>
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <span class="tx-ent-badge @EstadoClase(_version.Estado)">@EstadoLabel(_version.Estado)</span>
+                                @if (_canAgregar)
+                                {
+                                    <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Nueva Serie</button>
+                                }
+                            </div>
                         </div>
 
-                    @if (_asignaciones.Count == 0)
-                    {
-                        <div class="tx-ent-empty" style="margin-top:14px"><i class="bi bi-table"></i><div>Esta dependencia aún no tiene series en la TRD.</div></div>
-                    }
-                    else
-                    {
-                        <div class="tx-ent-table-wrap" style="margin-top:12px">
-                            <table class="tx-ent-table">
-                                <thead>
-                                    <tr>
-                                        <th>CCD</th><th>Serie</th><th>Gestión</th><th>Central</th>
-                                        <th>Disposición</th><th>Clasificación</th><th>Meta. exp.</th><th>Tipos doc.</th><th class="right">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var a in _asignaciones)
+                        <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span><strong>Módulo central TRD:</strong> gestiona series, subseries y tipologías documentales desde este árbol. Usa el botón <i class="bi bi-plus-lg"></i> de cada serie para agregar subseries o tipologías según su estructura.</span></div>
+
+                        <div class="tx-ent-card" style="padding:12px;margin-top:10px">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                                <div><strong>Serie / Subserie / Tipología</strong>
+                                    <span class="tx-ent-hint">&nbsp;@ContarSeries() series &middot; @ContarSubseries() subseries</span>
+                                </div>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                                    <input class="tx-ent-input" style="min-width:220px" placeholder="Buscar serie, subserie o tipología..."
+                                           value="@_treeSearch" @oninput="@(e => _treeSearch = e.Value?.ToString() ?? "")" />
+                                    <button type="button" class="tx-ent-btn sm" @onclick="ExpandAll"><i class="bi bi-arrows-expand"></i> Expandir</button>
+                                    <button type="button" class="tx-ent-btn sm" @onclick="CollapseAll"><i class="bi bi-arrows-collapse"></i> Colapsar</button>
+                                    @if (_canAgregar)
                                     {
-                                        <tr class="@(a.IsArchived ? "archivada" : "")">
-                                            <td class="mono">@a.CodigoCcd</td>
-                                            <td>@a.SerieNombre @if (a.SerieEsSubserie) { <span class="tx-ent-badge sm">Subserie</span> }</td>
-                                            <td>@a.TiempoGestion a</td>
-                                            <td>@a.TiempoCentral a</td>
-                                            <td><span class="tx-ent-badge sm @DispClase(a.DisposicionFinal)">@DispCodigo(a.DisposicionFinal)</span></td>
-                                            <td><span class="tx-ent-badge sm violet">@a.NivelClasificacionNombre</span></td>
-                                            <td>
-                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatos(a))">@a.Metadatos.Count(m => !m.IsArchived) campo(s)</button>
-                                            </td>
-                                            <td>
-                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenTipologias(a))">@a.Tipologias.Count(t => !t.IsArchived) tipo(s)</button>
-                                            </td>
-                                            <td class="right">
-                                                @if (_canEditEstructura && !a.IsArchived)
-                                                {
-                                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenEditAsignacion(a))" disabled="@_busy">Editar</button>
-                                                }
-                                                @if (_canEliminar)
-                                                {
-                                                    @if (a.IsArchived)
-                                                    {
-                                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetArchived(a, false))" disabled="@_busy">Reactivar</button>
-                                                    }
-                                                    else
-                                                    {
-                                                        <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetArchived(a, true))" disabled="@_busy">Inactivar</button>
-                                                    }
-                                                }
-                                            </td>
-                                        </tr>
+                                        <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Crear</button>
                                     }
-                                </tbody>
-                            </table>
+                                </div>
+                            </div>
+
+                            @if (_asignaciones.Count == 0)
+                            {
+                                <div class="tx-ent-empty" style="margin-top:12px"><i class="bi bi-diagram-3"></i><div>Esta dependencia aún no tiene series en la TRD.</div></div>
+                            }
+                            else
+                            {
+                                <div class="tx-ent-table-wrap" style="margin-top:10px">
+                                    <table class="tx-ent-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Serie / Subserie / Tipología</th><th>Código</th><th>T. Gestión</th><th>T. Central</th>
+                                                <th>Disposición</th><th>Formato / Conteo</th><th>Estado</th><th class="right">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var serie in SeriesTop())
+                                            {
+                                                @SerieRow(serie, 0)
+                                                @if (IsExpanded(serie))
+                                                {
+                                                    @foreach (var t in TipsVisibles(serie)) { @TipologiaRow(serie, t) }
+                                                    @foreach (var sub in SubseriesDe(serie))
+                                                    {
+                                                        @SerieRow(sub, 1)
+                                                        @if (IsExpanded(sub))
+                                                        {
+                                                            @foreach (var t in TipsVisibles(sub)) { @TipologiaRow(sub, t) }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
                         </div>
-                    }
                     </div>
                 </div>
             </div>
@@ -500,6 +508,8 @@
     // Workspace
     private DependenciaTrdResumenDto? _workspaceDep;
     private IReadOnlyList<TrdAsignacionDto> _asignaciones = [];
+    private readonly HashSet<long> _expanded = [];   // series/subseries expandidas por SerieId
+    private string _treeSearch = "";
 
     private List<SerieNodeDto> _seriesActivas = [];
     private IReadOnlyList<NivelClasificacionDto> _niveles = [];
@@ -596,6 +606,8 @@
     private async Task OpenWorkspace(DependenciaTrdResumenDto d, bool autoAdd)
     {
         _workspaceDep = d;
+        _expanded.Clear();
+        _treeSearch = "";
         _pageOk = null; _pageError = null;
         _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, d.DependenciaId, includeArchived: true);
         if (autoAdd && _canAgregar) { OpenAddAsignacion(); }
@@ -605,6 +617,8 @@
     {
         _workspaceDep = null;
         _asignaciones = [];
+        _expanded.Clear();
+        _treeSearch = "";
         _pageOk = null; _pageError = null;
         await LoadDependenciasAsync();
     }
@@ -614,6 +628,133 @@
         if (_workspaceDep is null) { return; }
         _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, _workspaceDep.DependenciaId, includeArchived: true);
     }
+
+    // ---- Arbol Serie / Subserie / Tipologia (rpSeries) ----
+
+    private bool TreeSearching => _treeSearch.Trim().Length > 0;
+    private bool TextMatch(string? s) => s is not null && s.Contains(_treeSearch.Trim(), StringComparison.OrdinalIgnoreCase);
+    private bool TipMatch(TrdTipologiaDto t) => TextMatch(t.Nombre) || TextMatch(t.Formato);
+
+    private IEnumerable<TrdAsignacionDto> SubseriesRaw(TrdAsignacionDto serie)
+        => _asignaciones.Where(x => x.SerieParentId == serie.SerieId);
+
+    private bool NodeMatch(TrdAsignacionDto a) =>
+        TextMatch(a.SerieNombre) || TextMatch(a.SerieCodigo) || a.Tipologias.Any(TipMatch)
+        || SubseriesRaw(a).Any(sub => TextMatch(sub.SerieNombre) || TextMatch(sub.SerieCodigo) || sub.Tipologias.Any(TipMatch));
+
+    private List<TrdAsignacionDto> SeriesTop()
+    {
+        var ids = _asignaciones.Select(a => a.SerieId).ToHashSet();
+        var tops = _asignaciones.Where(a => a.SerieParentId is null || !ids.Contains(a.SerieParentId.Value));
+        if (TreeSearching) { tops = tops.Where(NodeMatch); }
+        return tops.OrderBy(a => a.SerieCodigo, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private List<TrdAsignacionDto> SubseriesDe(TrdAsignacionDto serie)
+    {
+        var subs = SubseriesRaw(serie);
+        if (TreeSearching)
+        {
+            subs = subs.Where(sub => NodeMatch(serie) || TextMatch(sub.SerieNombre) || TextMatch(sub.SerieCodigo) || sub.Tipologias.Any(TipMatch));
+        }
+        return subs.OrderBy(a => a.SerieCodigo, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private List<TrdTipologiaDto> TipsVisibles(TrdAsignacionDto a)
+    {
+        IEnumerable<TrdTipologiaDto> tips = a.Tipologias;
+        if (TreeSearching) { tips = tips.Where(t => TipMatch(t) || TextMatch(a.SerieNombre) || TextMatch(a.SerieCodigo)); }
+        return tips.OrderBy(t => t.Nombre, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private int ContarSeries() => _asignaciones.Count(a => a.SerieParentId is null);
+    private int ContarSubseries() => _asignaciones.Count(a => a.SerieParentId is not null);
+
+    private bool Expandable(TrdAsignacionDto a) => SubseriesRaw(a).Any() || a.Tipologias.Any(t => !t.IsArchived);
+    private bool IsExpanded(TrdAsignacionDto a) => TreeSearching || _expanded.Contains(a.SerieId);
+    private void ToggleExpand(TrdAsignacionDto a) { if (!_expanded.Add(a.SerieId)) { _expanded.Remove(a.SerieId); } }
+    private void ExpandAll() { foreach (var a in _asignaciones) { _expanded.Add(a.SerieId); } }
+    private void CollapseAll() => _expanded.Clear();
+
+    private RenderFragment SerieRow(TrdAsignacionDto a, int level) => __builder =>
+    {
+        var subCount = SubseriesRaw(a).Count();
+        var tipCount = a.Tipologias.Count(t => !t.IsArchived);
+        <tr class="@(a.IsArchived ? "archivada" : "")">
+            <td>
+                <span style="display:inline-flex;align-items:center;gap:6px;padding-left:@(level * 22)px">
+                    @if (Expandable(a))
+                    {
+                        <button type="button" class="tx-ent-btn sm" style="padding:2px 7px" @onclick="@(() => ToggleExpand(a))"><i class="bi @(IsExpanded(a) ? "bi-chevron-down" : "bi-chevron-right")"></i></button>
+                    }
+                    else { <span style="display:inline-block;width:28px"></span> }
+                    <i class="bi @(level == 0 ? "bi-folder-fill" : "bi-file-earmark-text")"></i>
+                    <span>@a.SerieNombre</span>
+                </span>
+            </td>
+            <td class="mono">@a.SerieCodigo</td>
+            <td>@a.TiempoGestion años</td>
+            <td>@a.TiempoCentral años</td>
+            <td><span class="tx-ent-badge sm @DispClase(a.DisposicionFinal)">@DispCodigo(a.DisposicionFinal)</span></td>
+            <td><span class="tx-ent-badge sm">@subCount subs &middot; @tipCount tipos</span></td>
+            <td><span class="tx-ent-badge sm @(a.IsArchived ? "off" : "ok")">@(a.IsArchived ? "Inactivo" : "TRD")</span></td>
+            <td class="right">
+                <button type="button" title="Metadatos del expediente" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatos(a))"><i class="bi bi-eye"></i></button>
+                @if (_canEditEstructura && !a.IsArchived)
+                {
+                    <button type="button" title="Editar reglas TRD" class="tx-ent-btn sm" @onclick="@(() => OpenEditAsignacion(a))" disabled="@_busy"><i class="bi bi-pencil"></i></button>
+                }
+                @if (_canEditProcMeta)
+                {
+                    <button type="button" title="Tipos documentales" class="tx-ent-btn sm" @onclick="@(() => OpenTipologias(a))"><i class="bi bi-plus-lg"></i></button>
+                }
+                @if (_canEliminar)
+                {
+                    @if (a.IsArchived)
+                    {
+                        <button type="button" title="Reactivar" class="tx-ent-btn sm" @onclick="@(() => SetArchived(a, false))" disabled="@_busy"><i class="bi bi-arrow-counterclockwise"></i></button>
+                    }
+                    else
+                    {
+                        <button type="button" title="Quitar de la TRD" class="tx-ent-btn sm danger" @onclick="@(() => SetArchived(a, true))" disabled="@_busy"><i class="bi bi-trash"></i></button>
+                    }
+                }
+            </td>
+        </tr>
+    };
+
+    private RenderFragment TipologiaRow(TrdAsignacionDto parent, TrdTipologiaDto t) => __builder =>
+    {
+        var level = parent.SerieParentId is null ? 1 : 2;
+        <tr class="@(t.IsArchived ? "archivada" : "")">
+            <td>
+                <span style="display:inline-flex;align-items:center;gap:6px;padding-left:@(level * 22)px">
+                    <span style="display:inline-block;width:28px"></span>
+                    <i class="bi bi-file-text"></i>
+                    <span>@t.Nombre</span>
+                </span>
+            </td>
+            <td class="mono">&mdash;</td>
+            <td class="tx-ent-hint">&mdash; heredado &mdash;</td>
+            <td class="tx-ent-hint">&mdash; heredado &mdash;</td>
+            <td class="tx-ent-hint">&mdash;</td>
+            <td>
+                <span class="tx-ent-badge sm">@SoporteLabel(t.Soporte)</span>
+                @if (!string.IsNullOrWhiteSpace(t.Formato))
+                {
+                    <span class="tx-ent-badge sm">@t.Formato</span>
+                }
+            </td>
+            <td><span class="tx-ent-badge sm @(t.IsArchived ? "off" : "ok")">@(t.IsArchived ? "Inactivo" : "Activo")</span></td>
+            <td class="right">
+                <button type="button" title="Metadatos del documento" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatosDoc(t))"><i class="bi bi-eye"></i></button>
+                @if (_canEditProcMeta)
+                {
+                    <button type="button" title="Editar tipo documental" class="tx-ent-btn sm" @onclick="@(() => OpenTipologias(parent))"><i class="bi bi-pencil"></i></button>
+                }
+            </td>
+        </tr>
+    };
 
     // ---- Asignacion ----
 

@@ -57,16 +57,20 @@ public sealed class TrdConstruccionService : ITrdConstruccionService
 
         var asignaciones = await _db.TrdAsignaciones.AsNoTracking()
             .Where(a => a.TrdVersionId == versionId)
-            .Select(a => new { a.DependenciaOrgUnitId, a.IsArchived })
+            .Select(a => new { a.DependenciaOrgUnitId, a.IsArchived, a.CreatedAt, a.CreatedBy })
             .ToListAsync(cancellationToken);
         var porDep = asignaciones.GroupBy(a => a.DependenciaOrgUnitId)
-            .ToDictionary(g => g.Key, g => (Total: g.Count(), Activas: g.Count(a => !a.IsArchived)));
+            .ToDictionary(g => g.Key, g => (
+                Total: g.Count(),
+                Activas: g.Count(a => !a.IsArchived),
+                Fecha: (DateTimeOffset?)g.Min(a => a.CreatedAt),
+                CreadoPor: g.OrderBy(a => a.CreatedAt).Select(a => a.CreatedBy).FirstOrDefault()));
 
         return dependencias.Select(d =>
         {
             porDep.TryGetValue(d.Id, out var c);
             var estado = TrdConstruccionRules.EstadoDependencia(c.Activas, estadoVersion);
-            return new DependenciaTrdResumenDto(d.Id, d.Codigo ?? "", d.Name, c.Total, c.Activas, estado);
+            return new DependenciaTrdResumenDto(d.Id, d.Codigo ?? "", d.Name, c.Total, c.Activas, estado, c.Fecha, c.CreadoPor);
         }).ToList();
     }
 
@@ -503,6 +507,7 @@ public sealed class TrdConstruccionService : ITrdConstruccionService
         return new TrdAsignacionDto(
             a.Id, a.TrdVersionId, a.DependenciaOrgUnitId, a.Dependencia?.Codigo ?? "", a.Dependencia?.Name ?? "",
             a.SerieDocumentalId, a.Serie?.Codigo ?? "", a.Serie?.Nombre ?? "", a.Serie?.ParentId is not null,
+            a.Serie?.ParentId,
             a.CodigoCcd, a.TiempoGestion, a.TiempoCentral, a.DisposicionFinal, a.ReproduccionTecnica,
             a.SerieDdhhDih, a.Procedimiento, a.NivelClasificacionId, a.NivelClasificacion?.Nombre ?? "",
             a.IsArchived, expediente, tipologias);

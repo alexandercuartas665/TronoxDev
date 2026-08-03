@@ -21,14 +21,19 @@ public enum EstadoTrdDependencia
     Inactiva = 4
 }
 
-/// <summary>Resumen por dependencia para la LISTA de entrada de RF04 ("Gestion de TRD por dependencia").</summary>
+/// <summary>Resumen por dependencia para la LISTA de entrada de RF04 ("Gestion de TRD por dependencia").
+/// Columnas fieles al legacy gvDependenciasTRD: codigo, dependencia, version TRD, estado TRD, fecha
+/// creacion, usuario creador, acciones. Fecha/usuario se DERIVAN de la primera asignacion (ADR-007:
+/// no hay entidad cabecera por dependencia).</summary>
 public sealed record DependenciaTrdResumenDto(
     long DependenciaId,
     string Codigo,
     string Nombre,
     int SeriesAsignadas,
     int SeriesActivas,
-    EstadoTrdDependencia Estado);
+    EstadoTrdDependencia Estado,
+    DateTimeOffset? FechaCreacion,
+    long? CreadoPorId);
 
 /// <summary>Una asignacion Serie->Dependencia (el cruce) con sus reglas TRD, metadatos y tipologias.</summary>
 public sealed record TrdAsignacionDto(
@@ -41,6 +46,7 @@ public sealed record TrdAsignacionDto(
     string SerieCodigo,
     string SerieNombre,
     bool SerieEsSubserie,
+    long? SerieParentId,
     string CodigoCcd,
     int TiempoGestion,
     int TiempoCentral,
