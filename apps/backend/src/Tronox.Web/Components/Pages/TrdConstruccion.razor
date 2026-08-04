@@ -198,7 +198,7 @@
                                 }
                                 @if (_canAgregar)
                                 {
-                                    <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Nueva Serie</button>
+                                    <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenWizard("SERIE", null))"><i class="bi bi-plus-lg"></i> Nueva Serie</button>
                                 }
                             </div>
                         </div>
@@ -227,7 +227,7 @@
                                     <button type="button" class="tx-ent-btn sm" @onclick="CollapseAll"><i class="bi bi-arrows-collapse"></i> Colapsar</button>
                                     @if (_canAgregar)
                                     {
-                                        <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Crear</button>
+                                        <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenWizard("SERIE", null))"><i class="bi bi-plus-lg"></i> Crear</button>
                                     }
                                 </div>
 
@@ -274,6 +274,251 @@
                 </div>
             </div>
         }
+    }
+
+    @* ===== Wizard Nueva Serie/Subserie (legacy pnlModalSubserie, 4 pasos) ===== *@
+    @if (_showWizard)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showWizard = false)">
+            <div class="modal-dialog" style="max-width:840px;width:96%" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_wzMode == "SUBSERIE" ? "Nueva Subserie" : "Nueva Serie")</h3>
+                    <button class="modal-close" @onclick="@(() => _showWizard = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+                        @for (var i = 1; i <= 4; i++)
+                        {
+                            var idx = i;
+                            <span class="tx-ent-badge sm @(_wzStep == idx ? "primary" : (_wzStep > idx ? "ok" : "off"))">@idx. @_wzPasos[idx - 1]</span>
+                        }
+                    </div>
+                    @if (_wzParent is not null)
+                    {
+                        <div class="tx-ent-alert"><i class="bi bi-diagram-3"></i><span>Serie padre: <strong>@_wzParent.SerieCodigo &middot; @_wzParent.SerieNombre</strong></span></div>
+                    }
+                    @if (_wzError is not null) { <div class="tx-ent-fielderr">@_wzError</div> }
+
+                    @if (_wzStep == 1)
+                    {
+                        @if (_wzMode == "SERIE")
+                        {
+                            <div class="tx-ent-field">
+                                <label>Serie del catálogo (activas) <span class="req">*</span></label>
+                                <select class="tx-ent-input" @onchange="WizSerieChanged">
+                                    <option value="0">— Selecciona —</option>
+                                    @foreach (var s in WizSeriesCatalogo())
+                                    {
+                                        <option value="@s.Id" selected="@(s.Id == _wzSerieCatId)">@s.Codigo — @s.Nombre</option>
+                                    }
+                                </select>
+                                <div class="tx-ent-hint">El código CCD se generará como código de dependencia + código de serie.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="tx-ent-grid c2">
+                                <div class="tx-ent-field"><label>Código de la subserie <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzCodigo" maxlength="20" /></div>
+                                <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzNombre" maxlength="200" /></div>
+                            </div>
+                            <div class="tx-ent-field"><label>Descripción <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_wzDescripcion" rows="2" maxlength="500"></textarea></div>
+                        }
+                    }
+                    else if (_wzStep == 2)
+                    {
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Tiempo en Gestión (años) <span class="req">*</span></label><input type="number" min="0" class="tx-ent-input" @bind="_wzTG" /></div>
+                            <div class="tx-ent-field"><label>Tiempo en Central (años) <span class="req">*</span></label><input type="number" min="0" class="tx-ent-input" @bind="_wzTC" /></div>
+                        </div>
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Disposición final <span class="req">*</span></label>
+                                <select class="tx-ent-input" @bind="_wzDisp">
+                                    <option value="@DisposicionFinal.ConservacionTotal">CT — Conservación Total</option>
+                                    <option value="@DisposicionFinal.Seleccion">S — Selección</option>
+                                    <option value="@DisposicionFinal.Eliminacion">E — Eliminación</option>
+                                </select>
+                            </div>
+                            <div class="tx-ent-field"><label>Clasificación <span class="req">*</span></label>
+                                <select class="tx-ent-input" @bind="_wzNivelId">@foreach (var n in _niveles) { <option value="@n.Id">@n.Nombre</option> }</select>
+                            </div>
+                        </div>
+                        <div class="tx-ent-grid c2">
+                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzRepro" /> Reproducción técnica del papel (M/D)</label>
+                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzDdhh" /> Serie con documentos DD.HH / DIH</label>
+                        </div>
+                        <div class="tx-ent-field"><label>Procedimiento <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_wzProc" rows="2" maxlength="1000"></textarea></div>
+                    }
+                    else if (_wzStep == 3)
+                    {
+                        <p class="tx-ent-hint" style="margin-top:0">Se diligencian al crear un expediente bajo esta serie en esta dependencia.</p>
+                        @WizMetaList(_wzMetas)
+                        @if (!_wzMetaForm)
+                        {
+                            <button class="tx-ent-btn sm" @onclick="@(() => { _wzMetaForm = true; ResetWzMetaForm(); })"><i class="bi bi-plus-lg"></i> Agregar metadato</button>
+                        }
+                        else
+                        {
+                            <div class="tx-ent-card" style="padding:12px;margin-top:8px">
+                                <strong>Nuevo metadato del expediente</strong>
+                                <div class="tx-ent-grid c2" style="margin-top:8px">
+                                    <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzMetaNombre" maxlength="200" /></div>
+                                    <div class="tx-ent-field"><label>Tipo de dato</label><select class="tx-ent-input" @bind="_wzMetaTipo">@foreach (var tp in Enum.GetValues<TipoDatoMetadato>()) { <option value="@tp">@TipoLabel(tp)</option> }</select></div>
+                                </div>
+                                <div class="tx-ent-grid c2">
+                                    @if (_wzMetaTipo == TipoDatoMetadato.Lista)
+                                    {
+                                        <div class="tx-ent-field"><label>Lista <span class="req">*</span></label><select class="tx-ent-input" @bind="_wzMetaListaId"><option value="0">— Selecciona —</option>@foreach (var l in _listas) { <option value="@l.Id">@l.NombreLista</option> }</select></div>
+                                    }
+                                    <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzMetaOblig" /> Obligatorio</label>
+                                </div>
+                                <div style="margin-top:8px;display:flex;gap:8px"><button class="tx-ent-btn primary sm" @onclick="WzAddMeta">Agregar</button><button class="tx-ent-btn sm" @onclick="@(() => _wzMetaForm = false)">Cancelar</button></div>
+                            </div>
+                        }
+                    }
+                    else if (_wzStep == 4)
+                    {
+                        <p class="tx-ent-hint" style="margin-top:0">Tipos de documento que conforman esta serie, con sus metadatos de documento (opcional).</p>
+                        @if (_wzTips.Count > 0)
+                        {
+                            <div class="tx-ent-table-wrap"><table class="tx-ent-table"><thead><tr><th>Nombre</th><th>Soporte</th><th>Formato</th><th>Oblig.</th><th>Meta.</th><th class="right">Acciones</th></tr></thead><tbody>
+                                @foreach (var t in _wzTips)
+                                {
+                                    <tr><td>@t.Nombre</td><td>@SoporteLabel(t.Soporte)</td><td>@(t.Formato ?? "--")</td><td>@(t.Obligatorio ? "Sí" : "No")</td><td>@t.Metas.Count</td><td class="right"><button class="tx-ent-btn sm danger" @onclick="@(() => _wzTips.Remove(t))">Quitar</button></td></tr>
+                                }
+                            </tbody></table></div>
+                        }
+                        else { <div class="tx-ent-hint">Sin tipologías (opcional).</div> }
+                        @if (!_wzTipForm)
+                        {
+                            <button class="tx-ent-btn sm" @onclick="@(() => { _wzTipForm = true; ResetWzTipForm(); })"><i class="bi bi-plus-lg"></i> Agregar tipología</button>
+                        }
+                        else
+                        {
+                            <div class="tx-ent-card" style="padding:12px;margin-top:10px">
+                                <strong>Nueva tipología</strong>
+                                <div class="tx-ent-grid c2" style="margin-top:8px">
+                                    <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzTipNombre" maxlength="200" /></div>
+                                    <div class="tx-ent-field"><label>Soporte</label><select class="tx-ent-input" @bind="_wzTipSop"><option value="@SoporteTipologia.Electronico">Electrónico</option><option value="@SoporteTipologia.Fisico">Físico</option><option value="@SoporteTipologia.Hibrido">Híbrido</option></select></div>
+                                </div>
+                                <div class="tx-ent-grid c2">
+                                    <div class="tx-ent-field"><label>Formato <span class="opt">(opcional)</span></label><input class="tx-ent-input" @bind="_wzTipFmt" maxlength="100" placeholder="PDF, DOCX..." /></div>
+                                    <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzTipOblig" /> Obligatorio en el expediente</label>
+                                </div>
+                                <div style="margin-top:6px"><strong class="tx-ent-hint">Metadatos del documento</strong></div>
+                                @WizMetaList(_wzTipMetas)
+                                @if (!_wzTipMetaForm)
+                                {
+                                    <button class="tx-ent-btn sm" @onclick="@(() => { _wzTipMetaForm = true; ResetWzTipMetaForm(); })"><i class="bi bi-plus-lg"></i> Agregar metadato</button>
+                                }
+                                else
+                                {
+                                    <div class="tx-ent-card" style="padding:10px;margin-top:6px">
+                                        <div class="tx-ent-grid c2">
+                                            <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzTipMetaNombre" maxlength="200" /></div>
+                                            <div class="tx-ent-field"><label>Tipo de dato</label><select class="tx-ent-input" @bind="_wzTipMetaTipo">@foreach (var tp in Enum.GetValues<TipoDatoMetadato>()) { <option value="@tp">@TipoLabel(tp)</option> }</select></div>
+                                        </div>
+                                        <div class="tx-ent-grid c2">
+                                            @if (_wzTipMetaTipo == TipoDatoMetadato.Lista)
+                                            {
+                                                <div class="tx-ent-field"><label>Lista <span class="req">*</span></label><select class="tx-ent-input" @bind="_wzTipMetaListaId"><option value="0">— Selecciona —</option>@foreach (var l in _listas) { <option value="@l.Id">@l.NombreLista</option> }</select></div>
+                                            }
+                                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzTipMetaOblig" /> Obligatorio</label>
+                                        </div>
+                                        <div style="margin-top:6px;display:flex;gap:8px"><button class="tx-ent-btn primary sm" @onclick="WzAddTipMeta">Agregar</button><button class="tx-ent-btn sm" @onclick="@(() => _wzTipMetaForm = false)">Cancelar</button></div>
+                                    </div>
+                                }
+                                <div style="margin-top:10px;display:flex;gap:8px">
+                                    <button class="tx-ent-btn primary sm" @onclick="WzAddTip">Agregar tipología</button>
+                                    <button class="tx-ent-btn sm" @onclick="@(() => { _wzTipForm = false; ResetWzTipForm(); })">Cancelar</button>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-foot">
+                    <span class="tx-ent-hint" style="margin:0;margin-right:auto">Paso @_wzStep de 4</span>
+                    @if (_wzStep > 1) { <button class="tx-ent-btn" @onclick="WizBack" disabled="@_wzBusy">Atrás</button> }
+                    @if (_wzStep < 4) { <button class="tx-ent-btn primary" @onclick="WizNext" disabled="@_wzBusy">Siguiente</button> }
+                    else { <button class="tx-ent-btn primary" @onclick="WizardCrear" disabled="@_wzBusy">Crear</button> }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Wizard Tipologia (legacy pnlModalTipologia, 2 pasos) ===== *@
+    @if (_showTipWizard)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showTipWizard = false)">
+            <div class="modal-dialog" style="max-width:700px;width:96%" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_twEditing is null ? "Nueva Tipología Documental" : "Editar Tipología Documental")</h3>
+                    <button class="modal-close" @onclick="@(() => _showTipWizard = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <div style="display:flex;gap:6px;margin-bottom:12px">
+                        <span class="tx-ent-badge sm @(_twStep == 1 ? "primary" : "ok")">1. Configuración</span>
+                        <span class="tx-ent-badge sm @(_twStep == 2 ? "primary" : "off")">2. Confirmar</span>
+                    </div>
+                    @if (_twParent is not null) { <div class="tx-ent-alert"><i class="bi bi-diagram-3"></i><span>Sobre: <strong class="mono">@_twParent.CodigoCcd</strong> &middot; @_twParent.SerieNombre</span></div> }
+                    @if (_twError is not null) { <div class="tx-ent-fielderr">@_twError</div> }
+                    @if (_twStep == 1)
+                    {
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_twNombre" maxlength="200" placeholder="Ej: Acta de Reunión" /></div>
+                            <div class="tx-ent-field"><label>Soporte</label><select class="tx-ent-input" @bind="_twSop"><option value="@SoporteTipologia.Electronico">Electrónico</option><option value="@SoporteTipologia.Fisico">Físico</option><option value="@SoporteTipologia.Hibrido">Híbrido</option></select></div>
+                        </div>
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Formato <span class="opt">(opcional)</span></label><input class="tx-ent-input" @bind="_twFmt" maxlength="100" placeholder="PDF, DOCX..." /></div>
+                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_twOblig" /> Obligatorio en el expediente</label>
+                        </div>
+                        @if (_twEditing is null)
+                        {
+                            <div style="margin-top:8px"><strong class="tx-ent-hint">Metadatos del documento</strong></div>
+                            @WizMetaList(_twMetas)
+                            @if (!_twMetaForm)
+                            {
+                                <button class="tx-ent-btn sm" @onclick="@(() => { _twMetaForm = true; ResetTwMetaForm(); })"><i class="bi bi-plus-lg"></i> Agregar metadato</button>
+                            }
+                            else
+                            {
+                                <div class="tx-ent-card" style="padding:10px;margin-top:6px">
+                                    <div class="tx-ent-grid c2">
+                                        <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_twMetaNombre" maxlength="200" /></div>
+                                        <div class="tx-ent-field"><label>Tipo de dato</label><select class="tx-ent-input" @bind="_twMetaTipo">@foreach (var tp in Enum.GetValues<TipoDatoMetadato>()) { <option value="@tp">@TipoLabel(tp)</option> }</select></div>
+                                    </div>
+                                    <div class="tx-ent-grid c2">
+                                        @if (_twMetaTipo == TipoDatoMetadato.Lista)
+                                        {
+                                            <div class="tx-ent-field"><label>Lista <span class="req">*</span></label><select class="tx-ent-input" @bind="_twMetaListaId"><option value="0">— Selecciona —</option>@foreach (var l in _listas) { <option value="@l.Id">@l.NombreLista</option> }</select></div>
+                                        }
+                                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_twMetaOblig" /> Obligatorio</label>
+                                    </div>
+                                    <div style="margin-top:6px;display:flex;gap:8px"><button class="tx-ent-btn primary sm" @onclick="TwAddMeta">Agregar</button><button class="tx-ent-btn sm" @onclick="@(() => _twMetaForm = false)">Cancelar</button></div>
+                                </div>
+                            }
+                        }
+                        else { <div class="tx-ent-hint">Los metadatos del documento se gestionan desde el ícono <i class="bi bi-eye"></i> de la tipología.</div> }
+                    }
+                    else
+                    {
+                        <p class="tx-ent-hint" style="margin-top:0">Confirma el tipo documental:</p>
+                        <ul>
+                            <li>Nombre: <strong>@_twNombre</strong></li>
+                            <li>Soporte: @SoporteLabel(_twSop)</li>
+                            <li>Formato: @(_twFmt ?? "--")</li>
+                            <li>Obligatorio en expediente: @(_twOblig ? "Sí" : "No")</li>
+                            @if (_twEditing is null) { <li>Metadatos de documento: @_twMetas.Count</li> }
+                        </ul>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <span class="tx-ent-hint" style="margin:0;margin-right:auto">Paso @_twStep de 2</span>
+                    @if (_twStep == 2) { <button class="tx-ent-btn" @onclick="TwBack" disabled="@_twBusy">Atrás</button> }
+                    @if (_twStep == 1) { <button class="tx-ent-btn primary" @onclick="TwNext" disabled="@_twBusy">Siguiente</button> }
+                    else { <button class="tx-ent-btn primary" @onclick="TwCrear" disabled="@_twBusy">@(_twEditing is null ? "Crear" : "Guardar")</button> }
+                </div>
+            </div>
+        </div>
     }
 
     @* ===== Modal publicar version TRD (activar) ===== *@
@@ -795,7 +1040,7 @@
         _treeEstadoFilter = "";
         _pageOk = null; _pageError = null;
         _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, d.DependenciaId, includeArchived: true);
-        if (autoAdd && _canAgregar) { OpenAddAsignacion(); }
+        if (autoAdd && _canAgregar) { OpenWizard("SERIE", null); }
     }
 
     private async Task BackToList()
@@ -882,10 +1127,14 @@
         return _seriesActivas;
     }
 
+    // El + contextual (legacy: If TIENE_SUBSERIES -> NuevaSubserie else NuevaTipologia):
+    // en una subserie -> wizard de tipologia; en una serie contenedora -> wizard de subserie;
+    // en una serie hoja -> wizard de tipologia.
     private void AgregarHijo(TrdAsignacionDto a)
     {
-        if (a.SerieParentId is null && CatalogChildren(a.SerieId).Count > 0) { OpenAddSubserie(a); }
-        else { OpenTipologias(a); }
+        if (a.SerieParentId is not null) { OpenTipWizard(a, null); }
+        else if (CatalogChildren(a.SerieId).Count > 0 || SubseriesRaw(a).Any()) { OpenWizard("SUBSERIE", a); }
+        else { OpenTipWizard(a, null); }
     }
 
     private void OpenAddSubserie(TrdAsignacionDto serie)
@@ -969,10 +1218,231 @@
                 <button type="button" title="Metadatos del documento" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatosDoc(t))"><i class="bi bi-eye"></i></button>
                 @if (_canEditProcMeta)
                 {
-                    <button type="button" title="Editar tipo documental" class="tx-ent-btn sm" @onclick="@(() => OpenTipologias(parent))"><i class="bi bi-pencil"></i></button>
+                    <button type="button" title="Editar tipo documental" class="tx-ent-btn sm" @onclick="@(() => OpenTipWizard(parent, t))"><i class="bi bi-pencil"></i></button>
                 }
             </td>
         </tr>
+    };
+
+    // ==================== WIZARD Nueva Serie/Subserie (legacy pnlModalSubserie, 4 pasos) ====================
+    private bool _showWizard;
+    private string _wzMode = "SERIE";   // SERIE | SUBSERIE
+    private int _wzStep = 1;
+    private TrdAsignacionDto? _wzParent;
+    private string? _wzError;
+    private bool _wzBusy;
+    // Paso 1
+    private long _wzSerieCatId;
+    private string _wzCodigo = ""; private string _wzNombre = ""; private string? _wzDescripcion;
+    // Paso 2
+    private int _wzTG, _wzTC;
+    private DisposicionFinal _wzDisp = DisposicionFinal.ConservacionTotal;
+    private long _wzNivelId; private bool _wzDdhh, _wzRepro; private string? _wzProc;
+    // Paso 3 (metadatos de expediente)
+    private readonly List<WizMeta> _wzMetas = [];
+    private bool _wzMetaForm; private string _wzMetaNombre = ""; private TipoDatoMetadato _wzMetaTipo = TipoDatoMetadato.TextoCorto; private bool _wzMetaOblig; private long _wzMetaListaId;
+    // Paso 4 (tipologias)
+    private readonly List<WizTip> _wzTips = [];
+    private bool _wzTipForm; private string _wzTipNombre = ""; private SoporteTipologia _wzTipSop = SoporteTipologia.Electronico; private string? _wzTipFmt; private bool _wzTipOblig;
+    private readonly List<WizMeta> _wzTipMetas = [];
+    private bool _wzTipMetaForm; private string _wzTipMetaNombre = ""; private TipoDatoMetadato _wzTipMetaTipo = TipoDatoMetadato.TextoCorto; private bool _wzTipMetaOblig; private long _wzTipMetaListaId;
+
+    private sealed record WizMeta(string Nombre, TipoDatoMetadato Tipo, bool Obligatorio, long? ListaId);
+    private sealed class WizTip { public string Nombre = ""; public SoporteTipologia Soporte; public string? Formato; public bool Obligatorio; public List<WizMeta> Metas = []; }
+
+    private static readonly string[] _wzPasos = ["Datos básicos", "Caracterización", "Metadatos", "Tipologías"];
+
+    private List<SerieNodeDto> WizSeriesCatalogo()
+    {
+        var asignados = _asignaciones.Select(a => a.SerieId).ToHashSet();
+        return _seriesActivas.Where(s => s.ParentId is null && !asignados.Contains(s.Id)).ToList();
+    }
+
+    private void OpenWizard(string mode, TrdAsignacionDto? parent)
+    {
+        _wzMode = mode; _wzParent = parent; _wzStep = 1; _wzError = null;
+        _wzSerieCatId = 0; _wzCodigo = ""; _wzNombre = ""; _wzDescripcion = null;
+        _wzTG = 0; _wzTC = 0; _wzDisp = DisposicionFinal.ConservacionTotal;
+        _wzNivelId = _niveles.FirstOrDefault(n => n.Codigo == "02")?.Id ?? _niveles.FirstOrDefault()?.Id ?? 0;
+        _wzDdhh = false; _wzRepro = false; _wzProc = null;
+        _wzMetas.Clear(); _wzMetaForm = false; ResetWzMetaForm();
+        _wzTips.Clear(); _wzTipForm = false; ResetWzTipForm();
+        _pageOk = null; _pageError = null;
+        _showWizard = true;
+    }
+
+    private void WizSerieChanged(ChangeEventArgs e)
+    {
+        _wzSerieCatId = long.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        var n = _seriesActivas.FirstOrDefault(s => s.Id == _wzSerieCatId);
+        if (n is not null) { _wzCodigo = n.Codigo; _wzNombre = n.Nombre; }
+    }
+
+    private string? WizValidateStep(int step)
+    {
+        if (step == 1)
+        {
+            if (_wzMode == "SERIE") { if (_wzSerieCatId <= 0) { return "Selecciona una serie del catálogo."; } }
+            else { if (string.IsNullOrWhiteSpace(_wzCodigo)) { return "El código es obligatorio."; } if (string.IsNullOrWhiteSpace(_wzNombre)) { return "El nombre es obligatorio."; } }
+        }
+        else if (step == 2)
+        {
+            if (_wzTG < 0 || _wzTC < 0) { return "Los tiempos no pueden ser negativos."; }
+        }
+        return null;
+    }
+
+    private void WizNext()
+    {
+        var err = WizValidateStep(_wzStep);
+        if (err is not null) { _wzError = err; return; }
+        _wzError = null; if (_wzStep < 4) { _wzStep++; }
+    }
+    private void WizBack() { _wzError = null; if (_wzStep > 1) { _wzStep--; } }
+
+    private void ResetWzMetaForm() { _wzMetaNombre = ""; _wzMetaTipo = TipoDatoMetadato.TextoCorto; _wzMetaOblig = false; _wzMetaListaId = 0; }
+    private void WzAddMeta()
+    {
+        if (string.IsNullOrWhiteSpace(_wzMetaNombre)) { _wzError = "El nombre del metadato es obligatorio."; return; }
+        long? lista = _wzMetaTipo == TipoDatoMetadato.Lista ? (_wzMetaListaId > 0 ? _wzMetaListaId : null) : null;
+        _wzMetas.Add(new WizMeta(_wzMetaNombre.Trim(), _wzMetaTipo, _wzMetaOblig, lista));
+        ResetWzMetaForm(); _wzMetaForm = false; _wzError = null;
+    }
+
+    private void ResetWzTipForm() { _wzTipNombre = ""; _wzTipSop = SoporteTipologia.Electronico; _wzTipFmt = null; _wzTipOblig = false; _wzTipMetas.Clear(); _wzTipMetaForm = false; ResetWzTipMetaForm(); }
+    private void ResetWzTipMetaForm() { _wzTipMetaNombre = ""; _wzTipMetaTipo = TipoDatoMetadato.TextoCorto; _wzTipMetaOblig = false; _wzTipMetaListaId = 0; }
+    private void WzAddTipMeta()
+    {
+        if (string.IsNullOrWhiteSpace(_wzTipMetaNombre)) { _wzError = "El nombre del metadato es obligatorio."; return; }
+        long? lista = _wzTipMetaTipo == TipoDatoMetadato.Lista ? (_wzTipMetaListaId > 0 ? _wzTipMetaListaId : null) : null;
+        _wzTipMetas.Add(new WizMeta(_wzTipMetaNombre.Trim(), _wzTipMetaTipo, _wzTipMetaOblig, lista));
+        ResetWzTipMetaForm(); _wzTipMetaForm = false; _wzError = null;
+    }
+    private void WzAddTip()
+    {
+        if (string.IsNullOrWhiteSpace(_wzTipNombre)) { _wzError = "El nombre de la tipología es obligatorio."; return; }
+        _wzTips.Add(new WizTip { Nombre = _wzTipNombre.Trim(), Soporte = _wzTipSop, Formato = string.IsNullOrWhiteSpace(_wzTipFmt) ? null : _wzTipFmt!.Trim(), Obligatorio = _wzTipOblig, Metas = [.. _wzTipMetas] });
+        ResetWzTipForm(); _wzTipForm = false; _wzError = null;
+    }
+
+    private async Task WizardCrear()
+    {
+        var errAll = WizValidateStep(1) ?? WizValidateStep(2);
+        if (errAll is not null) { _wzError = errAll; _wzStep = string.IsNullOrEmpty(WizValidateStep(1)) ? 2 : 1; return; }
+        _wzBusy = true; _wzError = null;
+        try
+        {
+            var actor = Tenant.UserId ?? 0;
+            long serieId;
+            if (_wzMode == "SUBSERIE")
+            {
+                var cr = await SeriesSvc.CreateAsync(new SaveSerieRequest(_wzCodigo.Trim(), _wzNombre.Trim(), _wzDescripcion, _wzParent!.SerieId), actor);
+                if (!cr.IsOk) { _wzError = cr.Error; return; }
+                serieId = cr.Value!.Id;
+            }
+            else { serieId = _wzSerieCatId; }
+
+            var ar = await Svc.AddAsignacionAsync(_version!.Id, new AddAsignacionRequest(
+                _workspaceDep!.DependenciaId, serieId, _wzTG, _wzTC, _wzDisp, _wzNivelId, _wzRepro, _wzDdhh, _wzProc), actor);
+            if (!ar.IsOk) { _wzError = ar.Error; return; }
+            var asigId = ar.Value!.Id;
+
+            foreach (var m in _wzMetas) { await Svc.AddMetadatoAsync(asigId, new SaveMetadatoRequest(m.Nombre, m.Tipo, m.Obligatorio, m.ListaId), actor); }
+            foreach (var t in _wzTips)
+            {
+                var tr = await Svc.AddTipologiaAsync(asigId, new SaveTipologiaRequest(t.Nombre, t.Soporte, t.Formato, t.Obligatorio), actor);
+                if (tr.IsOk) { foreach (var dm in t.Metas) { await Svc.AddMetadatoDocumentoAsync(tr.Value!.Id, new SaveMetadatoRequest(dm.Nombre, dm.Tipo, dm.Obligatorio, dm.ListaId), actor); } }
+            }
+            _showWizard = false;
+            _pageOk = _wzMode == "SUBSERIE" ? "Subserie agregada a la TRD." : "Serie agregada a la TRD.";
+            if (_wzParent is not null) { _expanded.Add(_wzParent.SerieId); }
+            await ReloadWorkspaceAsync();
+        }
+        finally { _wzBusy = false; }
+    }
+
+    // ==================== WIZARD Tipologia (legacy pnlModalTipologia, 2 pasos) ====================
+    private bool _showTipWizard;
+    private int _twStep = 1;
+    private TrdAsignacionDto? _twParent;
+    private TrdTipologiaDto? _twEditing;
+    private string? _twError; private bool _twBusy;
+    private string _twNombre = ""; private SoporteTipologia _twSop = SoporteTipologia.Electronico; private string? _twFmt; private bool _twOblig;
+    private readonly List<WizMeta> _twMetas = [];
+    private bool _twMetaForm; private string _twMetaNombre = ""; private TipoDatoMetadato _twMetaTipo = TipoDatoMetadato.TextoCorto; private bool _twMetaOblig; private long _twMetaListaId;
+
+    private void OpenTipWizard(TrdAsignacionDto parent, TrdTipologiaDto? editing)
+    {
+        _twParent = parent; _twEditing = editing; _twStep = 1; _twError = null;
+        _twNombre = editing?.Nombre ?? ""; _twSop = editing?.Soporte ?? SoporteTipologia.Electronico;
+        _twFmt = editing?.Formato; _twOblig = editing?.ObligatorioEnExpediente ?? false;
+        _twMetas.Clear();
+        _twMetaForm = false; ResetTwMetaForm();
+        _pageOk = null; _pageError = null;
+        _showTipWizard = true;
+    }
+    private void ResetTwMetaForm() { _twMetaNombre = ""; _twMetaTipo = TipoDatoMetadato.TextoCorto; _twMetaOblig = false; _twMetaListaId = 0; }
+    private void TwAddMeta()
+    {
+        if (string.IsNullOrWhiteSpace(_twMetaNombre)) { _twError = "El nombre del metadato es obligatorio."; return; }
+        long? lista = _twMetaTipo == TipoDatoMetadato.Lista ? (_twMetaListaId > 0 ? _twMetaListaId : null) : null;
+        _twMetas.Add(new WizMeta(_twMetaNombre.Trim(), _twMetaTipo, _twMetaOblig, lista));
+        ResetTwMetaForm(); _twMetaForm = false; _twError = null;
+    }
+    private void TwNext() { if (string.IsNullOrWhiteSpace(_twNombre)) { _twError = "El nombre de la tipología es obligatorio."; return; } _twError = null; _twStep = 2; }
+    private void TwBack() { _twError = null; _twStep = 1; }
+    private async Task TwCrear()
+    {
+        if (string.IsNullOrWhiteSpace(_twNombre)) { _twError = "El nombre es obligatorio."; _twStep = 1; return; }
+        _twBusy = true; _twError = null;
+        try
+        {
+            var actor = Tenant.UserId ?? 0;
+            if (_twEditing is not null)
+            {
+                var ur = await Svc.UpdateTipologiaAsync(_twEditing.Id, new SaveTipologiaRequest(_twNombre.Trim(), _twSop, _twFmt, _twOblig), actor);
+                if (!ur.IsOk) { _twError = ur.Error; return; }
+            }
+            else
+            {
+                var cr = await Svc.AddTipologiaAsync(_twParent!.Id, new SaveTipologiaRequest(_twNombre.Trim(), _twSop, _twFmt, _twOblig), actor);
+                if (!cr.IsOk) { _twError = cr.Error; return; }
+                foreach (var m in _twMetas) { await Svc.AddMetadatoDocumentoAsync(cr.Value!.Id, new SaveMetadatoRequest(m.Nombre, m.Tipo, m.Obligatorio, m.ListaId), actor); }
+            }
+            _showTipWizard = false;
+            _pageOk = _twEditing is null ? "Tipología agregada." : "Tipología actualizada.";
+            if (_twParent is not null) { _expanded.Add(_twParent.SerieId); }
+            await ReloadWorkspaceAsync();
+        }
+        finally { _twBusy = false; }
+    }
+
+    private RenderFragment WizMetaList(List<WizMeta> metas) => __builder =>
+    {
+        if (metas.Count == 0)
+        {
+            <div class="tx-ent-hint">Sin metadatos.</div>
+        }
+        else
+        {
+            <div class="tx-ent-table-wrap">
+                <table class="tx-ent-table">
+                    <thead><tr><th>Nombre</th><th>Tipo</th><th>Oblig.</th><th>Lista</th><th class="right">Acciones</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in metas)
+                        {
+                            <tr>
+                                <td>@m.Nombre</td>
+                                <td>@TipoLabel(m.Tipo)</td>
+                                <td>@(m.Obligatorio ? "Sí" : "No")</td>
+                                <td>@(m.ListaId is long lid ? (_listas.FirstOrDefault(l => l.Id == lid)?.NombreLista ?? "--") : "--")</td>
+                                <td class="right"><button class="tx-ent-btn sm danger" @onclick="@(() => metas.Remove(m))">Quitar</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     };
 
     // ---- Asignacion ----

@@ -58,6 +58,18 @@ Puertos de desarrollo: 5443 postgres · 6390 redis · 5683/15683 rabbitmq · 900
 | RF03 | **Administrador de Listas** | HECHO - maestro-detalle Lista/Opciones; nombre unico por tenant, clave (interna, nueva) unica en la lista, orden reordenable, usabilidad >= 2 activas, sin borrado fisico. Migrado del legacy `doc_adminlistas.aspx` (2026-07-27) |
 | RF04 | **Construccion de la TRD (cruce Dependencia + Serie)** | HECHO - CCD automatico, personalizacion por dependencia, tiempos/disposicion/clasificacion, metadatos de expediente; solo-lectura por estado de version (RF01 3.1.3). Puente Abrir/Ver TRD desde RF01. **UI rehecha list-first** (lista "Gestion de TRD por dependencia" con Estado TRD DERIVADO + Ver/Crear + workspace), fiel al legacy `doc_tablaRetencionDocumental.aspx` (2026-08-01, ADR-007). `modo_codigo_serie` descartado (ADR-006) |
 | RF05 | **Tipologias Documentales** | HECHO - tipos documentales por asignacion (nombre, soporte Fisico/Electronico/Hibrido, formato, obligatorio en expediente) + metadatos de documento (contexto Documento, colgados de la tipologia). Embebido en la pantalla de RF04 igual que el legacy (2026-08-01, ADR-007) |
+
+**Wizards fieles al legacy (2026-08-04):** el modal "Crear" simple se reemplazo por los dos
+asistentes que trae el fuente VB.NET `doc_tablaRetencionDocumental.aspx`:
+`pnlModalSubserie` (wizard **Nueva Serie/Subserie de 4 pasos**: Datos basicos -> Caracterizacion
+-> Metadatos de expediente -> Tipologias, cada una con sus metadatos de documento) y
+`pnlModalTipologia` (wizard **Tipologia de 2 pasos**: Configuracion -> Confirmar, en modo alta y
+edicion). El boton `+` contextual decide subserie vs tipologia segun la estructura de la serie,
+igual que el legacy. `pnlModalProcedimiento` NO se construye (huerfano en el legacy: el
+procedimiento se edita inline en el paso 2). Import CSV/JSON del paso 4 diferido a RF07.
+Verificado end-to-end en local: el wizard crea asignacion + metadato + tipologia, genera el CCD
+(`100.150`) y respeta el aislamiento por tenant. Al verificar se detecto que la BD dev estaba
+atrasada (faltaba la migracion RF05 `trd_tipologia_id`); se aplico. Build verde, 513 tests.
 | RF06 | **Topografia Fisica** | HECHO - jerarquia de niveles configurable + arbol de elementos con codigo topografico automatico (siglas raiz->hoja), ocupacion y estados. Migrado del legacy `NEWFRONT_doc_bodegas.aspx` (2026-07-28). Menu en GENERAL, bajo Datos de la Entidad (decision del usuario) |
 | RF07..RF10 | (resto de RQ02) | PENDIENTE |
 
