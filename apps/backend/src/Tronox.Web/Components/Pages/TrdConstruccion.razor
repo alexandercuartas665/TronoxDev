@@ -206,20 +206,19 @@
                         <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span><strong>Módulo central TRD:</strong> gestiona series, subseries y tipologías documentales desde este árbol. Usa el botón <i class="bi bi-plus-lg"></i> de cada serie para agregar subseries o tipologías según su estructura.</span></div>
 
                         <div class="tx-ent-card" style="padding:12px;margin-top:10px">
-                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-                                <div><strong>Serie / Subserie / Tipología</strong>
-                                    <span class="tx-ent-hint">&nbsp;@ContarSeries() series &middot; @ContarSubseries() subseries</span>
-                                </div>
-                                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                                    <input class="tx-ent-input" style="min-width:200px" placeholder="Buscar serie, subserie o tipología..."
-                                           value="@_treeSearch" @oninput="@(e => _treeSearch = e.Value?.ToString() ?? "")" />
-                                    <select class="tx-ent-input" style="min-width:150px" @bind="_treeLevelFilter">
+                            <div style="margin-bottom:8px"><strong>Serie / Subserie / Tipología</strong>
+                                <span class="tx-ent-hint">&nbsp;@ContarSeries() series &middot; @ContarSubseries() subseries</span>
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
+                                <input class="tx-ent-input" style="flex:1 1 auto;min-width:120px" placeholder="Buscar serie, subserie o tipología..."
+                                       value="@_treeSearch" @oninput="@(e => _treeSearch = e.Value?.ToString() ?? "")" />
+                                <select class="tx-ent-input" style="flex:0 0 auto;width:170px" @bind="_treeLevelFilter">
                                         <option value="">Todos los niveles</option>
                                         <option value="serie">Series</option>
                                         <option value="subserie">Subseries</option>
                                         <option value="tipologia">Tipologías</option>
                                     </select>
-                                    <select class="tx-ent-input" style="min-width:140px" @bind="_treeEstadoFilter">
+                                    <select class="tx-ent-input" style="flex:0 0 auto;width:160px" @bind="_treeEstadoFilter">
                                         <option value="">Estado: todos</option>
                                         <option value="activo">Activo</option>
                                         <option value="inactivo">Inactivo</option>
@@ -231,7 +230,6 @@
                                         <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Crear</button>
                                     }
                                 </div>
-                            </div>
 
                             @if (_asignaciones.Count == 0)
                             {
