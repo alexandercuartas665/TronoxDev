@@ -1,0 +1,659 @@
+@page "/modulo/documentos"
+@attribute [Authorize(Policy = "Perm:modulo/documentos:View")]
+@* Llave de permisos = ruta de menu "modulo/documentos" (RF09 5.9.3). "Mis Documentos" (RQ04 - RF15):
+   3 bandejas (Mis Borradores privados, Archivados por mi, Compartidos [diferido]). Flujo B: crear
+   borrador (binario en object storage Azure Blob / ADR-009, o Fisico) y archivar en un expediente
+   (RF16). El unico borrado fisico del sistema es el borrador nunca archivado. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components.Forms
+@using Tronox.Application.Documentos
+@using Tronox.Application.Validaciones
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IDocumentoService Svc
+@inject IValidacionService ValSvc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject IJSRuntime JS
+
+<PageTitle>Mis Documentos - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span>/</span>
+        <span>Gestión Documental</span>
+        <span>/</span>
+        <span>Gestión Integral de Documentos</span>
+        <span>/</span>
+        <span class="current">Mis Documentos</span>
+    </nav>
+
+    <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+            <h1 class="tx-ent-title">Mis Documentos</h1>
+            <p class="tx-ent-sub" style="margin:2px 0 0">Producción documental: crea borradores, súbelos o márcalos físicos, y archívalos en un expediente.</p>
+        </div>
+        @if (_canCreate)
+        {
+            <button class="tx-ent-btn primary" @onclick="OpenCrear"><i class="bi bi-file-earmark-plus"></i> Crear Documento</button>
+        }
+    </div>
+
+    @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
+    @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+    <div class="tx-tabs" style="display:flex;gap:6px;border-bottom:1px solid var(--kt-border,#e9ebec);margin:12px 0;flex-wrap:wrap">
+        @foreach (var b in new[] { BandejaDocumento.MisBorradores, BandejaDocumento.ArchivadosPorMi, BandejaDocumento.CompartidosConmigo })
+        {
+            var bb = b;
+            <button class="tx-tab" style="border:none;background:none;padding:8px 14px;cursor:pointer;border-bottom:2px solid @(_bandeja == bb ? "var(--kt-primary,#405189)" : "transparent");font-weight:@(_bandeja == bb ? "600" : "400")"
+                    @onclick="@(() => SwitchBandeja(bb))">@BandejaLabel(bb)</button>
+        }
+    </div>
+
+    <div class="tx-ent-toolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input class="tx-ent-input" style="flex:1;min-width:200px" placeholder="Buscar por nombre..." @bind="_texto" @bind:event="oninput" @onkeyup="OnSearchKey" />
+        <button class="tx-ent-btn" @onclick="Reload"><i class="bi bi-search"></i> Buscar</button>
+    </div>
+
+    @if (_bandeja == BandejaDocumento.MisBorradores)
+    {
+        <div class="tx-ent-table-wrap">
+            <table class="tx-ent-table">
+                <thead><tr><th>NOMBRE</th><th>SOPORTE</th><th>FORMATO</th><th>CREADO</th><th>TAMAÑO</th><th>FIRMA</th><th class="right">ACCIONES</th></tr></thead>
+                <tbody>
+                    @if (_borradores is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_borradores.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes borradores.</td></tr> }
+                    else
+                    {
+                        @foreach (var d in _borradores)
+                        {
+                            <tr>
+                                <td>@d.Nombre</td>
+                                <td><span class="tx-ent-badge">@d.Soporte</span></td>
+                                <td>@(d.Formato ?? "--")</td>
+                                <td>@d.FechaCreacion.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@Tamano(d.TamanoBytes)</td>
+                                <td><span class="tx-ent-badge off">@d.EstadoFirma</span></td>
+                                <td class="right">
+                                    <button class="tx-ent-btn sm" title="Ver" @onclick="@(() => VerDetalle(d.Id))"><i class="bi bi-eye"></i></button>
+                                    @if (_canEdit) { <button class="tx-ent-btn sm" title="Editar" @onclick="@(() => OpenEditar(d.Id))"><i class="bi bi-pencil"></i></button> }
+                                    @if (d.TieneBinario) { <button class="tx-ent-btn sm" title="Descargar" @onclick="@(() => Descargar(d.Id))"><i class="bi bi-download"></i></button> }
+                                    @if (_canEdit) { <button class="tx-ent-btn sm primary" title="Archivar en expediente" @onclick="@(() => OpenArchivar(d.Id))"><i class="bi bi-archive"></i></button> }
+                                    <button class="tx-ent-btn sm" title="Solicitar revisión/aprobación" @onclick="@(() => OpenSolicitar(d.Id, d.Nombre))"><i class="bi bi-person-check"></i></button>
+                                    @if (_canDelete) { <button class="tx-ent-btn sm danger" title="Eliminar" @onclick="@(() => OpenEliminar(d))"><i class="bi bi-trash"></i></button> }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (_bandeja == BandejaDocumento.ArchivadosPorMi)
+    {
+        <div class="tx-ent-table-wrap">
+            <table class="tx-ent-table">
+                <thead><tr><th>NOMBRE</th><th>TIPO DOCUMENTAL</th><th>EXPEDIENTE</th><th>INCORPORADO</th><th>FOLIOS</th><th>TAMAÑO</th><th>FIRMA</th><th class="right">ACCIONES</th></tr></thead>
+                <tbody>
+                    @if (_archivados is null) { <tr><td colspan="8" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_archivados.Count == 0) { <tr><td colspan="8" class="tx-ent-hint" style="text-align:center;padding:18px">No has archivado documentos.</td></tr> }
+                    else
+                    {
+                        @foreach (var d in _archivados)
+                        {
+                            <tr>
+                                <td>@d.Nombre</td>
+                                <td>@(d.TipologiaNombre ?? "--")</td>
+                                <td><span class="mono">@d.ExpedienteCodigo</span> <span style="color:var(--kt-text-gray-600);font-size:11.5px">@d.ExpedienteNombre</span></td>
+                                <td>@(d.FechaIncorporacion?.ToString("yyyy-MM-dd HH:mm") ?? "--")</td>
+                                <td>@(d.Folios?.ToString() ?? "--")</td>
+                                <td>@Tamano(d.TamanoBytes)</td>
+                                <td><span class="tx-ent-badge off">@d.EstadoFirma</span></td>
+                                <td class="right">
+                                    <button class="tx-ent-btn sm" title="Ver" @onclick="@(() => VerDetalle(d.Id))"><i class="bi bi-eye"></i></button>
+                                    @if (d.TieneBinario) { <button class="tx-ent-btn sm" title="Descargar" @onclick="@(() => Descargar(d.Id))"><i class="bi bi-download"></i></button> }
+                                    <button class="tx-ent-btn sm" title="Solicitar revisión/aprobación" @onclick="@(() => OpenSolicitar(d.Id, d.Nombre))"><i class="bi bi-person-check"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>La bandeja "Compartidos conmigo" (RF07) se habilita en un siguiente avance.</span></div>
+    }
+</div>
+
+@* ============ Modal CREAR ============ *@
+@if (_showCrear)
+{
+    <div class="modal-overlay" @onclick="@(() => _showCrear = false)">
+        <div class="modal-dialog" style="max-width:640px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Crear Documento</h3><button class="modal-close" @onclick="@(() => _showCrear = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_crearError is not null) { <div class="tx-ent-fielderr">@_crearError</div> }
+                <div class="tx-ent-field">
+                    <label>Tipo de creación</label>
+                    <div style="display:flex;gap:14px">
+                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="modo" checked="@(_crearModo == "ARCHIVO")" @onchange="@(() => _crearModo = "ARCHIVO")" /> Subir archivo</label>
+                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="modo" checked="@(_crearModo == "FISICO")" @onchange="@(() => _crearModo = "FISICO")" /> Documento físico (papel)</label>
+                    </div>
+                </div>
+                <div class="tx-ent-field"><label>Nombre del documento <span class="req">*</span></label><input class="tx-ent-input" @bind="_cNombre" maxlength="200" /></div>
+                <div class="tx-ent-field"><label>Fecha del documento <span class="opt">(opcional)</span></label><input type="date" class="tx-ent-input" @bind="_cFecha" /></div>
+                @if (_crearModo == "ARCHIVO")
+                {
+                    <div class="tx-ent-field">
+                        <label>Archivo <span class="req">*</span></label>
+                        <InputFile OnChange="OnFileSelected" class="tx-ent-input" />
+                        <div class="tx-ent-hint">Máx 50 MB. PDF, DOCX, XLSX, PPTX, imágenes, audio/video, XML. @(_fileName is null ? "" : $"Seleccionado: {_fileName} ({Tamano(_fileSize)})")</div>
+                    </div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showCrear = false)" disabled="@_crearBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarCrear" disabled="@_crearBusy">@(_crearBusy ? "Guardando..." : "Crear")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal DETALLE ============ *@
+@if (_showDetalle && _detalle is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showDetalle = false)">
+        <div class="modal-dialog" style="max-width:680px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>@_detalle.Nombre</h3><button class="modal-close" @onclick="@(() => _showDetalle = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+                    <span class="tx-ent-badge @(_detalle.Estado == EstadoDocumento.Borrador ? "off" : "ok")">@_detalle.Estado</span>
+                    <span class="tx-ent-badge">@_detalle.Soporte</span>
+                    <span class="tx-ent-badge off">Firma: @_detalle.EstadoFirma</span>
+                    @if (_detalle.NivelNombre is not null) { <span class="tx-ent-badge">@_detalle.NivelNombre</span> }
+                </div>
+                <div class="tx-ent-grid c2">
+                    <div><span class="tx-ent-hint">Formato</span><div>@(_detalle.Formato ?? "--")</div></div>
+                    <div><span class="tx-ent-hint">Tamaño</span><div>@Tamano(_detalle.TamanoBytes)</div></div>
+                    <div><span class="tx-ent-hint">Folios</span><div>@(_detalle.Folios?.ToString() ?? "--")</div></div>
+                    <div><span class="tx-ent-hint">Hash SHA-256</span><div style="font-size:11px;word-break:break-all">@(_detalle.HashSha256 ?? "--")</div></div>
+                    <div><span class="tx-ent-hint">Fecha documento</span><div>@(_detalle.FechaDocumento?.ToString("yyyy-MM-dd") ?? "--")</div></div>
+                    <div><span class="tx-ent-hint">Incorporado</span><div>@(_detalle.FechaIncorporacion?.ToString("yyyy-MM-dd HH:mm") ?? "--")</div></div>
+                    @if (_detalle.ExpedienteCodigo is not null)
+                    {
+                        <div><span class="tx-ent-hint">Expediente</span><div><span class="mono">@_detalle.ExpedienteCodigo</span> @_detalle.ExpedienteNombre</div></div>
+                        <div><span class="tx-ent-hint">Tipo documental</span><div>@(_detalle.TipologiaNombre ?? "--")</div></div>
+                    }
+                </div>
+                @if (_detalle.Metadatos.Count > 0)
+                {
+                    <div style="font-weight:600;margin:12px 0 6px">Metadatos del documento</div>
+                    <div class="tx-ent-table-wrap"><table class="tx-ent-table"><thead><tr><th>Metadato</th><th>Valor</th></tr></thead><tbody>
+                        @foreach (var m in _detalle.Metadatos) { <tr><td>@m.Nombre</td><td>@(string.IsNullOrWhiteSpace(m.Valor) ? "--" : m.Valor)</td></tr> }
+                    </tbody></table></div>
+                }
+            </div>
+            <div class="modal-foot">
+                @if (_detalle.TieneBinario) { <button class="tx-ent-btn" @onclick="@(() => Descargar(_detalle!.Id))"><i class="bi bi-download"></i> Descargar</button> }
+                <button class="tx-ent-btn primary" @onclick="@(() => _showDetalle = false)">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal EDITAR ============ *@
+@if (_showEditar)
+{
+    <div class="modal-overlay" @onclick="@(() => _showEditar = false)">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Editar borrador</h3><button class="modal-close" @onclick="@(() => _showEditar = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_editError is not null) { <div class="tx-ent-fielderr">@_editError</div> }
+                <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_eNombre" maxlength="200" /></div>
+                <div class="tx-ent-field"><label>Fecha del documento <span class="opt">(opcional)</span></label><input type="date" class="tx-ent-input" @bind="_eFecha" /></div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showEditar = false)" disabled="@_editBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarEditar" disabled="@_editBusy">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal ARCHIVAR (RF16) ============ *@
+@if (_showArchivar)
+{
+    <div class="modal-overlay" @onclick="@(() => _showArchivar = false)">
+        <div class="modal-dialog" style="max-width:760px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Archivar en expediente</h3><button class="modal-close" @onclick="@(() => _showArchivar = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_arcError is not null) { <div class="tx-ent-fielderr">@_arcError</div> }
+                <div class="tx-ent-field">
+                    <label>Expediente destino (Abierto) <span class="req">*</span></label>
+                    <input class="tx-ent-input" placeholder="Buscar código o nombre..." @bind="_arcExpTexto" @bind:event="oninput" @onkeyup="OnArcSearchKey" />
+                    <select class="tx-ent-input" style="margin-top:6px" @onchange="OnExpChanged" size="4">
+                        @foreach (var e in _arcExpedientes)
+                        {
+                            <option value="@e.Id" selected="@(e.Id == _arcExpId)">@e.Codigo — @e.Nombre</option>
+                        }
+                    </select>
+                    @if (_arcExpedientes.Count == 0) { <div class="tx-ent-hint">No hay expedientes abiertos visibles. Crea uno en "Mis Expedientes".</div> }
+                </div>
+                @if (_arcExpId > 0)
+                {
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Tipo documental <span class="req">*</span></label>
+                            <select class="tx-ent-input" @onchange="OnTipChanged">
+                                <option value="0">— Selecciona —</option>
+                                @foreach (var t in _arcTipologias) { <option value="@t.Id" selected="@(t.Id == _arcTipId)">@t.Nombre</option> }
+                            </select>
+                            @if (_arcTipologias.Count == 0) { <div class="tx-ent-hint">La serie del expediente no tiene tipologías.</div> }
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Nivel de clasificación <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_arcNivelId">
+                                @foreach (var n in _arcNiveles.Where(n => n.Orden >= _arcNivelHeredadoOrden)) { <option value="@n.Id">@n.Nombre</option> }
+                            </select>
+                            <div class="tx-ent-hint">Heredado del expediente; solo elevar.</div>
+                        </div>
+                    </div>
+                    @if (_arcMetaDefs.Count > 0)
+                    {
+                        <div style="font-weight:600;margin:8px 0 6px">Metadatos del documento</div>
+                        @foreach (var m in _arcMetaDefs)
+                        {
+                            <div class="tx-ent-field"><label>@m.Nombre @if (m.Obligatorio) { <span class="req">*</span> }</label>@MetaInput(m)</div>
+                        }
+                    }
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showArchivar = false)" disabled="@_arcBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="ConfirmarArchivar" disabled="@(_arcBusy || _arcExpId <= 0 || _arcTipId <= 0)">Archivar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal ELIMINAR ============ *@
+@if (_showEliminar)
+{
+    <div class="modal-overlay" @onclick="@(() => _showEliminar = false)">
+        <div class="modal-dialog" style="max-width:480px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Eliminar borrador</h3><button class="modal-close" @onclick="@(() => _showEliminar = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_delError is not null) { <div class="tx-ent-fielderr">@_delError</div> }
+                <p>Se eliminará <strong>permanentemente</strong> el borrador <strong>@_delNombre</strong> y su binario. Es el único borrado real del sistema y no se puede deshacer.</p>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showEliminar = false)" disabled="@_delBusy">Cancelar</button>
+                <button class="tx-ent-btn danger" @onclick="ConfirmarEliminar" disabled="@_delBusy">Eliminar definitivamente</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal SOLICITAR VALIDACION (RF11) ============ *@
+@if (_showSolicitar)
+{
+    <div class="modal-overlay" @onclick="@(() => _showSolicitar = false)">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Solicitar validación</h3><button class="modal-close" @onclick="@(() => _showSolicitar = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_solError is not null) { <div class="tx-ent-fielderr">@_solError</div> }
+                <div class="tx-ent-hint" style="margin-top:0">Documento: <strong>@_solDocNombre</strong></div>
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field"><label>Tipo <span class="req">*</span></label>
+                        <select class="tx-ent-input" @bind="_solTipo"><option value="@TipoValidacion.Revision">Revisión</option><option value="@TipoValidacion.Aprobacion">Aprobación</option></select>
+                    </div>
+                    <div class="tx-ent-field"><label>Prioridad</label>
+                        <select class="tx-ent-input" @bind="_solPrioridad"><option value="@PrioridadTarea.Baja">Baja</option><option value="@PrioridadTarea.Media">Media</option><option value="@PrioridadTarea.Alta">Alta</option><option value="@PrioridadTarea.Urgente">Urgente</option></select>
+                    </div>
+                </div>
+                <div class="tx-ent-field"><label>Asignar a <span class="req">*</span></label>
+                    <select class="tx-ent-input" @bind="_solAsignadoId"><option value="0">— Selecciona —</option>@foreach (var u in _solUsuarios) { <option value="@u.Id">@u.Nombre</option> }</select>
+                </div>
+                <div class="tx-ent-field"><label>Fecha límite <span class="opt">(opcional)</span></label><input type="date" class="tx-ent-input" @bind="_solFecha" /></div>
+                <div class="tx-ent-field"><label>Instrucciones <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_solInstrucciones" rows="2" maxlength="2000"></textarea></div>
+                <div class="tx-ent-hint">La revisión/aprobación deja trazabilidad y no cambia el estado del documento (RF11).</div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showSolicitar = false)" disabled="@_solBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarSolicitar" disabled="@(_solBusy || _solAsignadoId <= 0)">Solicitar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<script>
+    window.tronoxDownload = function (fileName, contentType, base64) {
+        const a = document.createElement('a');
+        a.href = 'data:' + contentType + ';base64,' + base64;
+        a.download = fileName;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    };
+</script>
+
+@code {
+    private const string ModuleKey = "modulo/documentos";
+    private const long MaxUpload = 50L * 1024 * 1024;
+
+    private bool _canCreate, _canEdit, _canDelete;
+    private long Actor => Tenant.UserId ?? 0;
+
+    private BandejaDocumento _bandeja = BandejaDocumento.MisBorradores;
+    private string _texto = "";
+    private IReadOnlyList<BorradorItemDto>? _borradores;
+    private IReadOnlyList<ArchivadoItemDto>? _archivados;
+    private string? _pageOk, _pageError;
+
+    // Crear
+    private bool _showCrear, _crearBusy;
+    private string? _crearError;
+    private string _crearModo = "ARCHIVO";
+    private string _cNombre = "";
+    private DateTime? _cFecha;
+    private IBrowserFile? _file;
+    private string? _fileName;
+    private long _fileSize;
+
+    // Detalle
+    private bool _showDetalle;
+    private DocumentoDetalleDto? _detalle;
+
+    // Editar
+    private bool _showEditar, _editBusy;
+    private string? _editError;
+    private long _editId;
+    private string _eNombre = "";
+    private DateTime? _eFecha;
+
+    // Archivar
+    private bool _showArchivar, _arcBusy;
+    private string? _arcError;
+    private long _arcDocId;
+    private string _arcExpTexto = "";
+    private IReadOnlyList<ExpedienteDestinoDto> _arcExpedientes = [];
+    private long _arcExpId;
+    private int _arcNivelHeredadoOrden;
+    private IReadOnlyList<TipologiaOpcionDto> _arcTipologias = [];
+    private long _arcTipId;
+    private IReadOnlyList<NivelDocOpcionDto> _arcNiveles = [];
+    private long _arcNivelId;
+    private IReadOnlyList<DocMetadatoDefDto> _arcMetaDefs = [];
+    private readonly Dictionary<long, string?> _arcMetaValores = [];
+
+    // Eliminar
+    private bool _showEliminar, _delBusy;
+    private string? _delError;
+    private long _delId;
+    private string _delNombre = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+        await Reload();
+    }
+
+    private static string BandejaLabel(BandejaDocumento b) => b switch
+    {
+        BandejaDocumento.MisBorradores => "Mis Borradores",
+        BandejaDocumento.ArchivadosPorMi => "Archivados por mí",
+        BandejaDocumento.CompartidosConmigo => "Compartidos conmigo",
+        _ => b.ToString()
+    };
+
+    private static string Tamano(long? bytes)
+    {
+        if (bytes is not long b || b <= 0) { return "--"; }
+        string[] u = ["B", "KB", "MB", "GB"];
+        double v = b; int i = 0;
+        while (v >= 1024 && i < u.Length - 1) { v /= 1024; i++; }
+        return $"{v:0.#} {u[i]}";
+    }
+
+    private async Task SwitchBandeja(BandejaDocumento b) { _bandeja = b; await Reload(); }
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { await Reload(); } }
+
+    private async Task Reload()
+    {
+        var t = string.IsNullOrWhiteSpace(_texto) ? null : _texto;
+        if (_bandeja == BandejaDocumento.MisBorradores) { _borradores = await Svc.ListarBorradoresAsync(Actor, t); }
+        else if (_bandeja == BandejaDocumento.ArchivadosPorMi) { _archivados = await Svc.ListarArchivadosPorMiAsync(Actor, t); }
+    }
+
+    // ---- Crear ----
+
+    private void OpenCrear()
+    {
+        _crearError = null; _crearBusy = false; _crearModo = "ARCHIVO";
+        _cNombre = ""; _cFecha = null; _file = null; _fileName = null; _fileSize = 0;
+        _pageOk = null; _pageError = null;
+        _showCrear = true;
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _file = e.File;
+        _fileName = e.File.Name;
+        _fileSize = e.File.Size;
+        if (string.IsNullOrWhiteSpace(_cNombre)) { _cNombre = System.IO.Path.GetFileNameWithoutExtension(e.File.Name); }
+    }
+
+    private async Task GuardarCrear()
+    {
+        _crearBusy = true; _crearError = null;
+        try
+        {
+            var fecha = _cFecha is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+            DocumentoResult<DocumentoDetalleDto> res;
+            if (_crearModo == "FISICO")
+            {
+                res = await Svc.CrearBorradorFisicoAsync(new CrearBorradorFisicoRequest(_cNombre, fecha), Actor);
+            }
+            else
+            {
+                if (_file is null) { _crearError = "Selecciona un archivo."; return; }
+                if (_file.Size > MaxUpload) { _crearError = "El archivo supera 50 MB."; return; }
+                using var ms = new MemoryStream();
+                await _file.OpenReadStream(MaxUpload).CopyToAsync(ms);
+                res = await Svc.CrearBorradorBinarioAsync(_cNombre, fecha, ms.ToArray(), _file.Name, Actor);
+            }
+            if (!res.IsOk) { _crearError = res.Error; return; }
+            _showCrear = false;
+            _pageOk = "Documento creado como borrador.";
+            _bandeja = BandejaDocumento.MisBorradores;
+            await Reload();
+        }
+        finally { _crearBusy = false; }
+    }
+
+    // ---- Detalle / descargar ----
+
+    private async Task VerDetalle(long id)
+    {
+        var res = await Svc.GetDetalleAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _detalle = res.Value; _showDetalle = true;
+    }
+
+    private async Task Descargar(long id)
+    {
+        var res = await Svc.DescargarAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        var d = res.Value!;
+        await JS.InvokeVoidAsync("tronoxDownload", d.NombreArchivo, d.ContentType, Convert.ToBase64String(d.Contenido));
+    }
+
+    // ---- Editar ----
+
+    private async Task OpenEditar(long id)
+    {
+        var res = await Svc.GetDetalleAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        var d = res.Value!;
+        _editId = d.Id; _eNombre = d.Nombre;
+        _eFecha = d.FechaDocumento is DateOnly fd ? fd.ToDateTime(TimeOnly.MinValue) : null;
+        _editError = null; _showDetalle = false; _showEditar = true;
+    }
+
+    private async Task GuardarEditar()
+    {
+        _editBusy = true; _editError = null;
+        try
+        {
+            var fecha = _eFecha is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+            var res = await Svc.EditarBorradorAsync(_editId, _eNombre, fecha, Actor);
+            if (!res.IsOk) { _editError = res.Error; return; }
+            _showEditar = false; _pageOk = "Borrador actualizado."; await Reload();
+        }
+        finally { _editBusy = false; }
+    }
+
+    // ---- Archivar ----
+
+    private async Task OpenArchivar(long docId)
+    {
+        _arcDocId = docId; _arcError = null; _arcBusy = false;
+        _arcExpTexto = ""; _arcExpId = 0; _arcTipId = 0; _arcNivelId = 0; _arcNivelHeredadoOrden = 0;
+        _arcTipologias = []; _arcMetaDefs = []; _arcMetaValores.Clear();
+        _arcNiveles = await Svc.GetNivelesAsync();
+        _arcExpedientes = await Svc.GetExpedientesDestinoAsync(Actor);
+        _pageOk = null; _pageError = null;
+        _showArchivar = true;
+    }
+
+    private async Task OnArcSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { _arcExpedientes = await Svc.GetExpedientesDestinoAsync(Actor, _arcExpTexto); }
+    }
+
+    private async Task OnExpChanged(ChangeEventArgs e)
+    {
+        _arcExpId = long.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        _arcTipId = 0; _arcMetaDefs = []; _arcMetaValores.Clear();
+        var exp = _arcExpedientes.FirstOrDefault(x => x.Id == _arcExpId);
+        _arcNivelHeredadoOrden = exp?.NivelHeredadoOrden ?? 0;
+        _arcNivelId = _arcNiveles.FirstOrDefault(n => n.Orden == _arcNivelHeredadoOrden)?.Id ?? _arcNiveles.FirstOrDefault()?.Id ?? 0;
+        _arcTipologias = _arcExpId > 0 ? await Svc.GetTipologiasExpedienteAsync(_arcExpId, Actor) : [];
+    }
+
+    private async Task OnTipChanged(ChangeEventArgs e)
+    {
+        _arcTipId = long.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        _arcMetaValores.Clear();
+        _arcMetaDefs = _arcTipId > 0 ? await Svc.GetMetadatosTipologiaAsync(_arcTipId) : [];
+    }
+
+    private async Task ConfirmarArchivar()
+    {
+        _arcBusy = true; _arcError = null;
+        try
+        {
+            var metadatos = _arcMetaDefs.Select(m => new DocMetadatoInput(m.TrdMetadatoId, _arcMetaValores.TryGetValue(m.TrdMetadatoId, out var v) ? v : null)).ToList();
+            var req = new ArchivarRequest(_arcDocId, _arcExpId, _arcTipId, _arcNivelId, null, metadatos);
+            var res = await Svc.ArchivarAsync(req, Actor);
+            if (!res.IsOk) { _arcError = res.Error; return; }
+            _showArchivar = false;
+            _pageOk = $"Documento archivado en {res.Value!.ExpedienteCodigo}.";
+            await Reload();
+        }
+        finally { _arcBusy = false; }
+    }
+
+    // ---- Eliminar ----
+
+    private void OpenEliminar(BorradorItemDto d) { _delId = d.Id; _delNombre = d.Nombre; _delError = null; _delBusy = false; _showEliminar = true; }
+
+    private async Task ConfirmarEliminar()
+    {
+        _delBusy = true; _delError = null;
+        try
+        {
+            var res = await Svc.EliminarBorradorAsync(_delId, Actor);
+            if (!res.IsOk) { _delError = res.Error; return; }
+            _showEliminar = false; _pageOk = "Borrador eliminado."; await Reload();
+        }
+        finally { _delBusy = false; }
+    }
+
+    // ---- Solicitar validacion (RF11) ----
+
+    private bool _showSolicitar, _solBusy;
+    private string? _solError;
+    private long _solDocId;
+    private string _solDocNombre = "";
+    private TipoValidacion _solTipo = TipoValidacion.Revision;
+    private PrioridadTarea _solPrioridad = PrioridadTarea.Media;
+    private long _solAsignadoId;
+    private DateTime? _solFecha;
+    private string? _solInstrucciones;
+    private IReadOnlyList<UsuarioAsignableDto> _solUsuarios = [];
+
+    private async Task OpenSolicitar(long docId, string nombre)
+    {
+        _solDocId = docId; _solDocNombre = nombre; _solError = null; _solBusy = false;
+        _solTipo = TipoValidacion.Revision; _solPrioridad = PrioridadTarea.Media;
+        _solAsignadoId = 0; _solFecha = null; _solInstrucciones = null;
+        _solUsuarios = await ValSvc.GetUsuariosAsignablesAsync(Actor);
+        _pageOk = null; _pageError = null;
+        _showSolicitar = true;
+    }
+
+    private async Task GuardarSolicitar()
+    {
+        _solBusy = true; _solError = null;
+        try
+        {
+            var fecha = _solFecha is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+            var req = new SolicitarValidacionRequest(_solDocId, _solTipo, _solAsignadoId, _solPrioridad, fecha, _solInstrucciones);
+            var res = await ValSvc.SolicitarAsync(req, Actor);
+            if (!res.IsOk) { _solError = res.Error; return; }
+            _showSolicitar = false;
+            _pageOk = "Solicitud de validación creada.";
+        }
+        finally { _solBusy = false; }
+    }
+
+    // ---- Render de metadato de documento por tipo ----
+
+    private RenderFragment MetaInput(DocMetadatoDefDto m) => __builder =>
+    {
+        string? current = _arcMetaValores.TryGetValue(m.TrdMetadatoId, out var v) ? v : null;
+        void Set(ChangeEventArgs e) => _arcMetaValores[m.TrdMetadatoId] = e.Value?.ToString();
+
+        switch (m.TipoDato)
+        {
+            case TipoDatoMetadato.TextoLargo:
+                <textarea class="tx-ent-input" rows="2" value="@current" @onchange="Set"></textarea>
+                break;
+            case TipoDatoMetadato.Numerico:
+            case TipoDatoMetadato.Moneda:
+                <input type="number" step="any" class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Fecha:
+                <input type="date" class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Booleano:
+                <select class="tx-ent-input" value="@current" @onchange="Set"><option value="">--</option><option value="true">Sí</option><option value="false">No</option></select>
+                break;
+            case TipoDatoMetadato.Lista:
+                <select class="tx-ent-input" value="@current" @onchange="Set">
+                    <option value="">— Selecciona —</option>
+                    @foreach (var o in m.OpcionesLista) { <option value="@o.Clave">@o.Valor</option> }
+                </select>
+                break;
+            default:
+                <input class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+        }
+    };
+}

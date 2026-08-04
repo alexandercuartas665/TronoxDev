@@ -1,0 +1,205 @@
+@page "/modulo/tramite-mis-tareas"
+@attribute [Authorize(Policy = "Perm:modulo/tramite-mis-tareas:View")]
+@* Llave de permisos = ruta de menu "modulo/tramite-mis-tareas". Bandeja "Mis Tareas" (RQ04 - RF12):
+   tareas de validacion (Revision/Aprobacion) asignadas al usuario. La respuesta (Aprobar/Devolver/
+   Rechazar) es traza paralela y NO cambia el estado del documento (RF11 CA-1). La creacion (RF11)
+   se inicia desde un documento (modulo de Documentos). *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Validaciones
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IValidacionService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<PageTitle>Mis Tareas - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span>/</span>
+        <span>Gestión y Trámite</span>
+        <span>/</span>
+        <span class="current">Mis Tareas</span>
+    </nav>
+
+    <div class="tx-ent-headrow">
+        <h1 class="tx-ent-title">Mis Tareas</h1>
+        <p class="tx-ent-sub" style="margin:2px 0 0">Revisiones y aprobaciones de documentos asignadas a ti (RF12). Responder no cambia el estado del documento.</p>
+    </div>
+
+    @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
+    @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+    <div class="tx-tabs" style="display:flex;gap:6px;border-bottom:1px solid var(--kt-border,#e9ebec);margin:12px 0">
+        <button class="tx-tab" style="border:none;background:none;padding:8px 14px;cursor:pointer;border-bottom:2px solid @(_tab == "PEND" ? "var(--kt-primary,#405189)" : "transparent");font-weight:@(_tab == "PEND" ? "600" : "400")" @onclick="@(() => SwitchTab("PEND"))">Pendientes @(_cont is null ? "" : $"({_cont.Total})")</button>
+        <button class="tx-tab" style="border:none;background:none;padding:8px 14px;cursor:pointer;border-bottom:2px solid @(_tab == "HIST" ? "var(--kt-primary,#405189)" : "transparent");font-weight:@(_tab == "HIST" ? "600" : "400")" @onclick="@(() => SwitchTab("HIST"))">Historial</button>
+    </div>
+
+    @if (_tab == "PEND")
+    {
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <button class="tx-ent-btn sm @(_filtroTipo is null ? "primary" : "")" @onclick="@(() => SetFiltro(null))">Todas @(_cont is null ? "" : $"· {_cont.Total}")</button>
+            <button class="tx-ent-btn sm @(_filtroTipo == TipoValidacion.Revision ? "primary" : "")" @onclick="@(() => SetFiltro(TipoValidacion.Revision))">Revisión @(_cont is null ? "" : $"· {_cont.Revision}")</button>
+            <button class="tx-ent-btn sm @(_filtroTipo == TipoValidacion.Aprobacion ? "primary" : "")" @onclick="@(() => SetFiltro(TipoValidacion.Aprobacion))">Aprobación @(_cont is null ? "" : $"· {_cont.Aprobacion}")</button>
+        </div>
+
+        <div class="tx-ent-table-wrap">
+            <table class="tx-ent-table">
+                <thead><tr><th>DOCUMENTO</th><th>TIPO</th><th>PRIORIDAD</th><th>VENCIMIENTO</th><th>SOLICITADO POR</th><th>ASIGNADA</th><th class="right">ACCIONES</th></tr></thead>
+                <tbody>
+                    @if (_pendientes is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_pendientes.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes tareas pendientes.</td></tr> }
+                    else
+                    {
+                        @foreach (var t in _pendientes)
+                        {
+                            <tr>
+                                <td>@t.DocumentoNombre @if (t.ExpedienteCodigo is not null) { <span style="color:var(--kt-text-gray-600);font-size:11.5px">· @t.ExpedienteCodigo</span> }</td>
+                                <td><span class="tx-ent-badge @(t.Tipo == TipoValidacion.Aprobacion ? "primary" : "")">@t.Tipo</span></td>
+                                <td><span class="tx-ent-badge @PrioridadCss(t.Prioridad)">@t.Prioridad</span></td>
+                                <td>@VencimientoTexto(t)</td>
+                                <td>@(t.SolicitanteNombre ?? "--")</td>
+                                <td>@t.FechaAsignacion.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td class="right"><button class="tx-ent-btn sm primary" @onclick="@(() => OpenTramitar(t))"><i class="bi bi-gear"></i> Tramitar</button></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="tx-ent-table-wrap">
+            <table class="tx-ent-table">
+                <thead><tr><th>DOCUMENTO</th><th>EXPEDIENTE</th><th>TIPO</th><th>SOLICITADO POR</th><th>RESPUESTA</th><th>COMENTARIOS</th><th>FECHA RESPUESTA</th></tr></thead>
+                <tbody>
+                    @if (_historial is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_historial.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Sin historial.</td></tr> }
+                    else
+                    {
+                        @foreach (var t in _historial)
+                        {
+                            <tr>
+                                <td>@t.DocumentoNombre</td>
+                                <td>@(t.ExpedienteCodigo is null ? "--" : t.ExpedienteCodigo)</td>
+                                <td><span class="tx-ent-badge">@t.Tipo</span></td>
+                                <td>@(t.SolicitanteNombre ?? "--")</td>
+                                <td><span class="tx-ent-badge @EstadoCss(t.Estado)">@t.Estado</span></td>
+                                <td style="max-width:260px">@(string.IsNullOrWhiteSpace(t.Comentarios) ? "--" : t.Comentarios)</td>
+                                <td>@(t.FechaRespuesta?.ToString("yyyy-MM-dd HH:mm") ?? "--")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@* ============ Modal TRAMITAR ============ *@
+@if (_showTramitar && _tarea is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showTramitar = false)">
+        <div class="modal-dialog" style="max-width:620px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Tarea de @_tarea.Tipo</h3><button class="modal-close" @onclick="@(() => _showTramitar = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_tramError is not null) { <div class="tx-ent-fielderr">@_tramError</div> }
+                <h4 style="margin:0 0 6px">@_tarea.DocumentoNombre</h4>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                    <span class="tx-ent-badge @(_tarea.Tipo == TipoValidacion.Aprobacion ? "primary" : "")">@_tarea.Tipo</span>
+                    <span class="tx-ent-badge @PrioridadCss(_tarea.Prioridad)">@_tarea.Prioridad</span>
+                    @if (_tarea.ExpedienteCodigo is not null) { <span class="tx-ent-badge">@_tarea.ExpedienteCodigo</span> }
+                </div>
+                <div class="tx-ent-hint">Solicitado por @(_tarea.SolicitanteNombre ?? "--") · @_tarea.FechaAsignacion.ToString("yyyy-MM-dd HH:mm")</div>
+                @if (!string.IsNullOrWhiteSpace(_tarea.Instrucciones))
+                {
+                    <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>@_tarea.Instrucciones</span></div>
+                }
+                <div class="tx-ent-field" style="margin-top:8px">
+                    <label>Comentario <span class="opt">(obligatorio al devolver o rechazar)</span></label>
+                    <textarea class="tx-ent-input" @bind="_tramComentario" rows="3" maxlength="2000"></textarea>
+                </div>
+                <div class="tx-ent-alert"><i class="bi bi-exclamation-circle"></i><span>Responder deja trazabilidad y NO cambia el estado del documento ni bloquea el archivado (RF11).</span></div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showTramitar = false)" disabled="@_tramBusy">Cancelar</button>
+                <button class="tx-ent-btn danger" @onclick="@(() => Responder(EstadoValidacion.Rechazado))" disabled="@_tramBusy">Rechazar</button>
+                <button class="tx-ent-btn" @onclick="@(() => Responder(EstadoValidacion.Devuelto))" disabled="@_tramBusy">Devolver</button>
+                <button class="tx-ent-btn primary" @onclick="@(() => Responder(EstadoValidacion.Aprobado))" disabled="@_tramBusy">Aprobar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string ModuleKey = "modulo/tramite-mis-tareas";
+    private long Actor => Tenant.UserId ?? 0;
+
+    private string _tab = "PEND";
+    private TipoValidacion? _filtroTipo;
+    private IReadOnlyList<TareaItemDto>? _pendientes;
+    private IReadOnlyList<TareaHistorialDto>? _historial;
+    private TareaContadoresDto? _cont;
+    private string? _pageOk, _pageError;
+
+    private bool _showTramitar, _tramBusy;
+    private string? _tramError;
+    private TareaItemDto? _tarea;
+    private string _tramComentario = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadPendientes();
+
+    private async Task ReloadPendientes()
+    {
+        _cont = await Svc.GetContadoresAsync(Actor);
+        _pendientes = await Svc.ListarPendientesAsync(Actor, _filtroTipo);
+    }
+
+    private async Task SwitchTab(string t)
+    {
+        _tab = t;
+        if (t == "PEND") { await ReloadPendientes(); }
+        else { _historial = await Svc.ListarHistorialAsync(Actor); }
+    }
+
+    private async Task SetFiltro(TipoValidacion? tipo) { _filtroTipo = tipo; _pendientes = await Svc.ListarPendientesAsync(Actor, _filtroTipo); }
+
+    private void OpenTramitar(TareaItemDto t) { _tarea = t; _tramComentario = ""; _tramError = null; _tramBusy = false; _pageOk = null; _showTramitar = true; }
+
+    private async Task Responder(EstadoValidacion nuevoEstado)
+    {
+        _tramBusy = true; _tramError = null;
+        try
+        {
+            var res = await Svc.ResponderAsync(_tarea!.Id, nuevoEstado, _tramComentario, Actor);
+            if (!res.IsOk) { _tramError = res.Error; return; }
+            _showTramitar = false;
+            _pageOk = $"Tarea {nuevoEstado.ToString().ToLower()}.";
+            await ReloadPendientes();
+        }
+        finally { _tramBusy = false; }
+    }
+
+    private static string PrioridadCss(PrioridadTarea p) => p switch
+    {
+        PrioridadTarea.Urgente => "danger",
+        PrioridadTarea.Alta => "primary",
+        _ => "off"
+    };
+
+    private static string EstadoCss(EstadoValidacion e) => e switch
+    {
+        EstadoValidacion.Aprobado => "ok",
+        EstadoValidacion.Rechazado => "danger",
+        _ => "off"
+    };
+
+    private static string VencimientoTexto(TareaItemDto t)
+    {
+        if (t.FechaLimite is null) { return "--"; }
+        var d = t.DiasRestantes ?? 0;
+        return d < 0 ? $"Vencida ({-d}d)" : d == 0 ? "Hoy" : $"En {d}d";
+    }
+}

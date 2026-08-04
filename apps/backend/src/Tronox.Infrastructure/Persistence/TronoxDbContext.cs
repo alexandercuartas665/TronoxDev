@@ -91,6 +91,13 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<TrdTipologia> TrdTipologias => Set<TrdTipologia>();
     public DbSet<TopografiaNivel> TopografiaNiveles => Set<TopografiaNivel>();
     public DbSet<TopografiaElemento> TopografiaElementos => Set<TopografiaElemento>();
+    public DbSet<Expediente> Expedientes => Set<Expediente>();
+    public DbSet<ExpedienteMetadato> ExpedienteMetadatos => Set<ExpedienteMetadato>();
+    public DbSet<Documento> Documentos => Set<Documento>();
+    public DbSet<DocumentoMetadato> DocumentoMetadatos => Set<DocumentoMetadato>();
+    public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
+    public DbSet<Plantilla> Plantillas => Set<Plantilla>();
+    public DbSet<PlantillaTipo> PlantillaTipos => Set<PlantillaTipo>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -379,6 +386,24 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<SoporteTipologia>().HaveConversion<string>().HaveMaxLength(20);
         // Topografia fisica (RQ02 - RF06): estado como texto acotado.
         configurationBuilder.Properties<TopografiaEstado>().HaveConversion<string>().HaveMaxLength(20);
+        // Gestion integral de expedientes (RQ03): estado de tramite, fase y ubicacion como texto.
+        configurationBuilder.Properties<EstadoExpediente>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FaseArchivo>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EstadoUbicacionExpediente>().HaveConversion<string>().HaveMaxLength(20);
+        // Gestion integral de documentos (RQ04): estado, firma, soporte y OCR como texto acotado.
+        configurationBuilder.Properties<EstadoDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EstadoFirmaDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<SoporteDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<OcrEstadoDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        // Tareas de validacion (RQ04 - RF11/RF12): tipo, estado y prioridad como texto acotado.
+        configurationBuilder.Properties<TipoValidacion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EstadoValidacion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<PrioridadTarea>().HaveConversion<string>().HaveMaxLength(20);
+        // Plantillas documentales (RQ04 - RF09): estado y diseno de hoja como texto acotado.
+        configurationBuilder.Properties<PlantillaEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FormatoPapel>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<OrientacionPapel>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<MargenesPapel>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
         configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EntidadEstado>().HaveConversion<string>().HaveMaxLength(20);
@@ -936,6 +961,114 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasFilter(isNpgsql ? "parent_id IS NOT NULL" : "[parent_id] IS NOT NULL");
             b.HasIndex(x => new { x.TenantId, x.Sigla }).IsUnique()
                 .HasFilter(isNpgsql ? "parent_id IS NULL" : "[parent_id] IS NULL");
+        });
+
+        // Gestion integral de expedientes (RQ03). El expediente conserva su asignacion de TRD (DAT-03,
+        // FK RESTRICT: la TRD no se borra en cascada), su nivel de clasificacion propio (RF10) y su
+        // codigo estructurado unico por tenant (RF04). Nada de borrado fisico: eliminacion logica.
+        modelBuilder.Entity<Expediente>(b =>
+        {
+            b.Property(x => x.Codigo).HasMaxLength(60).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.JustificacionEliminacion).HasMaxLength(1000);
+            b.HasOne(x => x.TrdAsignacion).WithMany()
+                .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.NivelClasificacion).WithMany()
+                .HasForeignKey(x => x.NivelClasificacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.Fase });
+            b.HasIndex(x => x.TrdAsignacionId);
+            b.HasIndex(x => x.NivelClasificacionId);
+        });
+
+        // Metadatos de expediente (RQ03, DAT-04): valor por (expediente, definicion de RQ02). Viven y
+        // mueren con el expediente (Cascade). La FK a la definicion es RESTRICT (no se borra por aqui).
+        modelBuilder.Entity<ExpedienteMetadato>(b =>
+        {
+            b.HasOne(x => x.Expediente).WithMany(x => x.Metadatos)
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdMetadato).WithMany()
+                .HasForeignKey(x => x.TrdMetadatoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ExpedienteId, x.TrdMetadatoId }).IsUnique();
+        });
+
+        // Gestion integral de documentos (RQ04). El binario vive en object storage (ADR-009): aqui solo
+        // la key + hash + tamano + formato. Las FKs a expediente/TRD/tipologia/nivel/version-padre son
+        // RESTRICT (nada se borra en cascada; el unico borrado fisico es el borrador nunca archivado,
+        // que se hace explicitamente sobre esta tabla). Metadatos EAV contexto Documento (DAT-04).
+        modelBuilder.Entity<Documento>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.NombreArchivoOriginal).HasMaxLength(260);
+            b.Property(x => x.Formato).HasMaxLength(10);
+            b.Property(x => x.HashSha256).HasMaxLength(64);
+            b.Property(x => x.RutaAlmacenamiento).HasMaxLength(500);
+            b.Property(x => x.JustificacionAnulacion).HasMaxLength(2000);
+            b.HasOne(x => x.Expediente).WithMany()
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TrdAsignacion).WithMany()
+                .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TrdTipologia).WithMany()
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.NivelClasificacion).WithMany()
+                .HasForeignKey(x => x.NivelClasificacionId).OnDelete(DeleteBehavior.Restrict);
+            // Auto-FK de versionamiento (RF03): version historica -> documento vivo. NO ACTION.
+            b.HasOne<Documento>().WithMany()
+                .HasForeignKey(x => x.DocumentoPadreId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            // Bandeja "Mis Borradores": borradores del creador. Foliacion/orden dentro del expediente.
+            b.HasIndex(x => new { x.TenantId, x.CreatedBy, x.Estado });
+            b.HasIndex(x => new { x.ExpedienteId, x.OrdenEnExpediente });
+        });
+
+        modelBuilder.Entity<DocumentoMetadato>(b =>
+        {
+            b.HasOne(x => x.Documento).WithMany(x => x.Metadatos)
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdMetadato).WithMany()
+                .HasForeignKey(x => x.TrdMetadatoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DocumentoId, x.TrdMetadatoId }).IsUnique();
+        });
+
+        // Tareas de validacion (RQ04 - RF11/RF12): revision/aprobacion asignada a un usuario. Cuelga del
+        // documento (Cascade: si el borrador se borra fisicamente, sus tareas se van con el). El usuario
+        // asignado es NO ACTION (un usuario no se borra por aqui). Indice de bandeja por asignado+estado.
+        modelBuilder.Entity<DocumentoValidacion>(b =>
+        {
+            b.Property(x => x.NombreAsignado).HasMaxLength(200);
+            b.Property(x => x.CargoAsignado).HasMaxLength(200);
+            b.Property(x => x.Instrucciones).HasMaxLength(2000);
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.UsuarioAsignado).WithMany()
+                .HasForeignKey(x => x.UsuarioAsignadoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.UsuarioAsignadoId, x.Estado });
+            b.HasIndex(x => x.DocumentoId);
+        });
+
+        // Plantillas documentales (RQ04 - RF09). La tipologia representante es RESTRICT (no se borra por
+        // cascada). Se inactivan, no se borran (invariante 8). N:N con tipologias via PlantillaTipo.
+        modelBuilder.Entity<Plantilla>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(500);
+            b.Property(x => x.Encabezado).HasMaxLength(50);
+            b.Property(x => x.PiePagina).HasMaxLength(50);
+            b.HasOne(x => x.TrdTipologia).WithMany()
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+        });
+
+        modelBuilder.Entity<PlantillaTipo>(b =>
+        {
+            b.Property(x => x.TipologiaNombre).HasMaxLength(200);
+            b.HasOne(x => x.Plantilla).WithMany(x => x.Tipos)
+                .HasForeignKey(x => x.PlantillaId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdTipologia).WithMany()
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.PlantillaId, x.TrdTipologiaId }).IsUnique();
+            b.HasIndex(x => x.TrdTipologiaId);
         });
 
         // Asignacion por nodo (ADR-0035, ola F1): que Dependencia/Cargo atiende un paso Task.

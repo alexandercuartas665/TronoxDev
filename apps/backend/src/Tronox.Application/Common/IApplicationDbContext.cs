@@ -77,6 +77,23 @@ public interface IApplicationDbContext
     DbSet<TopografiaNivel> TopografiaNiveles { get; }
     DbSet<TopografiaElemento> TopografiaElementos { get; }
 
+    // Gestion integral de expedientes (base de RQ03): el contenedor archivistico y sus metadatos
+    // dinamicos (EAV sobre el motor de RQ02, DAT-04). El consecutivo del codigo usa TenantSequences.
+    DbSet<Expediente> Expedientes { get; }
+    DbSet<ExpedienteMetadato> ExpedienteMetadatos { get; }
+
+    // Gestion integral de documentos (base de RQ04): el contenido. Binario en object storage (ADR-009,
+    // nunca BLOB); metadatos EAV sobre el motor de RQ02 (DAT-04, contexto Documento).
+    DbSet<Documento> Documentos { get; }
+    DbSet<DocumentoMetadato> DocumentoMetadatos { get; }
+    // Tareas de validacion (RQ04 - RF11/RF12): revision/aprobacion. Flujo de metadatos paralelo que NO
+    // cambia el estado del documento.
+    DbSet<DocumentoValidacion> DocumentoValidaciones { get; }
+    // Plantillas documentales (RQ04 - RF09): documento parametrizado con variables, asociado N:N a
+    // tipologias. Configuracion que se consume al crear documentos (RF10).
+    DbSet<Plantilla> Plantillas { get; }
+    DbSet<PlantillaTipo> PlantillaTipos { get; }
+
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }

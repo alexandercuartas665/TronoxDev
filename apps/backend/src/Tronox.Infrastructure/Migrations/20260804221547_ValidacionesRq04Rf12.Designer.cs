@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Tronox.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Tronox.Infrastructure.Persistence;
 namespace Tronox.Infrastructure.Migrations
 {
     [DbContext(typeof(TronoxDbContext))]
-    partial class TronoxDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260804221547_ValidacionesRq04Rf12")]
+    partial class ValidacionesRq04Rf12
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2789,163 +2792,6 @@ namespace Tronox.Infrastructure.Migrations
                     b.ToTable("password_reset_tokens", (string)null);
                 });
 
-            modelBuilder.Entity("Tronox.Domain.Entities.Plantilla", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("ContenidoHtml")
-                        .HasColumnType("text")
-                        .HasColumnName("contenido_html");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<long?>("CreatedBy")
-                        .HasColumnType("bigint")
-                        .HasColumnName("created_by");
-
-                    b.Property<string>("Descripcion")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("descripcion");
-
-                    b.Property<string>("Encabezado")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("encabezado");
-
-                    b.Property<string>("Estado")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("estado");
-
-                    b.Property<string>("FormatoPapel")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("formato_papel");
-
-                    b.Property<string>("Margenes")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("margenes");
-
-                    b.Property<string>("Nombre")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("nombre");
-
-                    b.Property<string>("Orientacion")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("orientacion");
-
-                    b.Property<string>("PiePagina")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("pie_pagina");
-
-                    b.Property<long>("TenantId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<long?>("TrdTipologiaId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("trd_tipologia_id");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long?>("UpdatedBy")
-                        .HasColumnType("bigint")
-                        .HasColumnName("updated_by");
-
-                    b.Property<int>("UsoContador")
-                        .HasColumnType("integer")
-                        .HasColumnName("uso_contador");
-
-                    b.Property<int>("VariablesNum")
-                        .HasColumnType("integer")
-                        .HasColumnName("variables_num");
-
-                    b.HasKey("Id")
-                        .HasName("pk_plantillas");
-
-                    b.HasIndex("TrdTipologiaId")
-                        .HasDatabaseName("ix_plantillas_trd_tipologia_id");
-
-                    b.HasIndex("TenantId", "Estado")
-                        .HasDatabaseName("ix_plantillas_tenant_id_estado");
-
-                    b.ToTable("plantillas", (string)null);
-                });
-
-            modelBuilder.Entity("Tronox.Domain.Entities.PlantillaTipo", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<long?>("CreatedBy")
-                        .HasColumnType("bigint")
-                        .HasColumnName("created_by");
-
-                    b.Property<long>("PlantillaId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("plantilla_id");
-
-                    b.Property<long>("TenantId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<string>("TipologiaNombre")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("tipologia_nombre");
-
-                    b.Property<long>("TrdTipologiaId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("trd_tipologia_id");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long?>("UpdatedBy")
-                        .HasColumnType("bigint")
-                        .HasColumnName("updated_by");
-
-                    b.HasKey("Id")
-                        .HasName("pk_plantilla_tipos");
-
-                    b.HasIndex("TrdTipologiaId")
-                        .HasDatabaseName("ix_plantilla_tipos_trd_tipologia_id");
-
-                    b.HasIndex("PlantillaId", "TrdTipologiaId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_plantilla_tipos_plantilla_id_trd_tipologia_id");
-
-                    b.ToTable("plantilla_tipos", (string)null);
-                });
-
             modelBuilder.Entity("Tronox.Domain.Entities.PlatformBranding", b =>
                 {
                     b.Property<long>("Id")
@@ -5184,38 +5030,6 @@ namespace Tronox.Infrastructure.Migrations
                     b.Navigation("OrgUnit");
                 });
 
-            modelBuilder.Entity("Tronox.Domain.Entities.Plantilla", b =>
-                {
-                    b.HasOne("Tronox.Domain.Entities.TrdTipologia", "TrdTipologia")
-                        .WithMany()
-                        .HasForeignKey("TrdTipologiaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_plantillas_trd_tipologias_trd_tipologia_id");
-
-                    b.Navigation("TrdTipologia");
-                });
-
-            modelBuilder.Entity("Tronox.Domain.Entities.PlantillaTipo", b =>
-                {
-                    b.HasOne("Tronox.Domain.Entities.Plantilla", "Plantilla")
-                        .WithMany("Tipos")
-                        .HasForeignKey("PlantillaId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_plantilla_tipos_plantillas_plantilla_id");
-
-                    b.HasOne("Tronox.Domain.Entities.TrdTipologia", "TrdTipologia")
-                        .WithMany()
-                        .HasForeignKey("TrdTipologiaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_plantilla_tipos_trd_tipologias_trd_tipologia_id");
-
-                    b.Navigation("Plantilla");
-
-                    b.Navigation("TrdTipologia");
-                });
-
             modelBuilder.Entity("Tronox.Domain.Entities.Rol", b =>
                 {
                     b.HasOne("Tronox.Domain.Entities.NivelClasificacion", "NivelAccesoMaximo")
@@ -5510,11 +5324,6 @@ namespace Tronox.Infrastructure.Migrations
             modelBuilder.Entity("Tronox.Domain.Entities.ListaMaestra", b =>
                 {
                     b.Navigation("Opciones");
-                });
-
-            modelBuilder.Entity("Tronox.Domain.Entities.Plantilla", b =>
-                {
-                    b.Navigation("Tipos");
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.SaasPlan", b =>

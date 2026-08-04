@@ -73,8 +73,37 @@ atrasada (faltaba la migracion RF05 `trd_tipologia_id`); se aplico. Build verde,
 | RF06 | **Topografia Fisica** | HECHO - jerarquia de niveles configurable + arbol de elementos con codigo topografico automatico (siglas raiz->hoja), ocupacion y estados. Migrado del legacy `NEWFRONT_doc_bodegas.aspx` (2026-07-28). Menu en GENERAL, bajo Datos de la Entidad (decision del usuario) |
 | RF07..RF10 | (resto de RQ02) | PENDIENTE |
 
-**Del resto (RQ03 a RQ17): nada construido.** El menu muestra las opciones del arbol canonico,
-pero la gran mayoria llevan a una ficha de "modulo pendiente". **Menu completo != sistema construido.**
+**Del resto (RQ05 a RQ17): nada construido** (salvo lo de RQ03/RQ04 abajo). El menu muestra las
+opciones del arbol canonico, pero la mayoria llevan a una ficha de "modulo pendiente".
+**Menu completo != sistema construido.**
+
+---
+
+## 2.c Fase 3 - Oleada Expedientes/Documentos (RQ03 + RQ04) - primeros slices
+
+Migracion fiel de 4 modulos del legacy VB.NET (`C:\Desarrollo\core\...\Modulos\`), en este orden
+(2026-08-04). Todos verificados end-to-end en local y con tests de reglas puras.
+
+| Modulo | Legacy | Ruta / menu | Estado |
+|---|---|---|---|
+| **Mis Expedientes** (RQ03 - RF01/RF03/RF04/RF10) | `exp_bandeja` | `modulo/expedientes-mios` (Gestion Integral de Expedientes) | HECHO (slice bandeja+crear) - codigo estructurado `[dep]-[serie]-[anio]-[consec6]` con `TenantSequence`, herencia de clasificacion SOLO ELEVAR (RF10), metadatos EAV (DAT-04), inmutabilidad de la asignacion de TRD (DAT-03), **fail-closed por clasificacion resuelto en el servicio**. Eliminacion logica. Verificado: `100-150-2026-000001`. Diferido: detalle completo, cierre/reapertura+indice/firma, transferencias/fases, compartir, ubicacion, alertas, FUID/rotulos/exportadores, vistas y columnas personalizadas |
+| **Mis Documentos** (RQ04 - RF15/RF16) | `doc_bandeja` | `modulo/documentos` (Gestion Integral de Documentos) | HECHO (slice borradores+archivar) - 3 bandejas; crear borrador (binario en **object storage Azure Blob** o Fisico), ver, editar, descargar, eliminar (unico borrado fisico), y **Archivar** en expediente (hereda asignacion TRD DAT-03, foliacion inmutable). Binario NUNCA en BD (invariante 9). Verificado con Azurite. Diferido: compartir (RF07), versionado (RF03), busqueda avanzada (RF14), OCR, editor/plantillas WYSIWYG (RF08/RF10), restricciones (RF13), referencias (RF17) |
+| **Mis Tareas** (RQ04 - RF11/RF12) | `mis_tareas` | `modulo/tramite-mis-tareas` (Gestion y Tramite) | HECHO - solicitar Revision/Aprobacion desde un documento (RF11) + bandeja Pendientes/Historial con chips + Tramitar (Aprobar/Devolver/Rechazar, comentario obligatorio al devolver/rechazar). **La validacion NO cambia el estado del documento** (RF11 CA-1): flujo de metadatos paralelo. Solo el asignado responde. Diferido: circuitos secuencial/paralelo, notificacion por correo, badge en tiempo real |
+| **Plantillas Documentales** (RQ04 - RF09) | `doc_plantillasDocumentales` | `modulo/formularios-plantillas` (Motor de Formularios, **eleccion del usuario**) | HECHO (slice CRUD) - plantilla con contenido y variables `{{...}}`, asociacion N:N a tipologias, estado Activa/Inactiva (sin borrado fisico), conteo de variables automatico. Catalogo de variables Sistema/Expediente/Firma + **Terceros deshabilitado hasta RQ07 (DAT-02)**. Diferido: editor WYSIWYG (CKEditor/TipTap) y consumo RF10 (crear documento desde plantilla) |
+
+**Object storage = Azure Blob Storage** (ADR-009, eleccion del usuario, paridad con el legacy; NO
+S3/MinIO como decia CLAUDE.md). Abstraccion `IObjectStorage` + `AzureBlobObjectStorage`; local con
+**Azurite** (`tronox-azurite`). **Pendiente: reflejar ADR-009 en el vault + CLAUDE.md.**
+
+**Menu:** se habilitaron los modulos padre `req008` (Motor de Formularios) y `req010` (Gestion y
+Tramite) de Disabled -> InDevelopment para que Plantillas y Mis Tareas salgan en el sidebar (sus
+items hermanos aun sin construir van al placeholder, como en Expedientes/Documentos).
+
+**Ubicacion de Plantillas:** el vault la pone en Configuracion Documental (RQ02); el usuario eligio
+Motor de Formularios (`modulo/formularios-plantillas`). Decision registrada aqui.
+
+4 migraciones EF nuevas (`ExpedientesRq03Bandeja`, `DocumentosRq04`, `ValidacionesRq04Rf12`,
+`PlantillasRq04Rf09`). Build verde, 540 tests.
 
 ---
 

@@ -84,6 +84,18 @@ public static class DependencyInjection
         // Topografia fisica (RF06): jerarquia de niveles + arbol de elementos con codigo topografico.
         // La logica pura (codigo, capacidad, ciclos) vive en Topografia.TopografiaRules.
         services.AddScoped<Topografia.ITopografiaService, Topografia.TopografiaService>();
+        // Gestion integral de expedientes (RQ03): bandeja, creacion con codigo estructurado, herencia
+        // de clasificacion (RF10, fail-closed) y metadatos EAV. La logica pura vive en ExpedienteRules.
+        services.AddScoped<Expedientes.IExpedienteService, Expedientes.ExpedienteService>();
+        // Gestion integral de documentos (RQ04): Mis Borradores (binario en object storage, ADR-009),
+        // archivar en expediente (RF16). La logica pura (extension/tamano/hash) vive en DocumentoRules.
+        services.AddScoped<Documentos.IDocumentoService, Documentos.DocumentoService>();
+        // Tareas de validacion (RQ04 - RF11/RF12): solicitar revision/aprobacion + bandeja Mis Tareas.
+        // La logica pura (comentario obligatorio, dias restantes) vive en ValidacionRules.
+        services.AddScoped<Validaciones.IValidacionService, Validaciones.ValidacionService>();
+        // Plantillas documentales (RQ04 - RF09): CRUD + asociacion N:N a tipologias + variables.
+        // La logica pura (conteo de variables, catalogo base) vive en PlantillaRules.
+        services.AddScoped<Plantillas.IPlantillaService, Plantillas.PlantillaService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

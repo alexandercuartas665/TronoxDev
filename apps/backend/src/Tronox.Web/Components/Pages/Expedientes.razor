@@ -1,0 +1,648 @@
+@page "/modulo/expedientes-mios"
+@attribute [Authorize(Policy = "Perm:modulo/expedientes-mios:View")]
+@* Llave de permisos = ruta de menu "modulo/expedientes-mios" (RF09 5.9.3). Bandeja principal de
+   expedientes (RQ03 - RF01): 5 vistas contextuales (Central/Historico requieren el submodulo de
+   Transferencias, diferido), busqueda/filtros, crear (RF03/RF04), editar y eliminar (logico).
+   Visibilidad por clasificacion fail-closed (RF10) resuelta en el servicio. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Expedientes
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IExpedienteService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<PageTitle>Mis Expedientes - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span>/</span>
+        <span>Gestión Documental</span>
+        <span>/</span>
+        <span>Gestión Integral de Expedientes</span>
+        <span>/</span>
+        <span class="current">Mis Expedientes</span>
+    </nav>
+
+    <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+            <h1 class="tx-ent-title">Gestión de Expedientes</h1>
+            <p class="tx-ent-sub" style="margin:2px 0 0">
+                Bandeja del expediente electrónico (contenedor archivístico). Crea, clasifica y consulta
+                los expedientes de tu competencia.
+            </p>
+        </div>
+        @if (_canCreate)
+        {
+            <button class="tx-ent-btn primary" @onclick="OpenCrear"><i class="bi bi-folder-plus"></i> Nuevo Expediente</button>
+        }
+    </div>
+
+    @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
+    @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+    @* ---- Tarjetas de estadisticas ---- *@
+    <div class="tx-ent-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0">
+        <div class="tx-ent-card" style="padding:12px 16px;min-width:120px">
+            <div class="tx-ent-hint" style="margin:0">Total</div>
+            <div style="font-size:24px;font-weight:700">@(_bandeja?.Stats.Total ?? 0)</div>
+        </div>
+        <div class="tx-ent-card" style="padding:12px 16px;min-width:120px">
+            <div class="tx-ent-hint" style="margin:0">Abiertos</div>
+            <div style="font-size:24px;font-weight:700;color:var(--kt-success,#0ab39c)">@(_bandeja?.Stats.Abiertos ?? 0)</div>
+        </div>
+        <div class="tx-ent-card" style="padding:12px 16px;min-width:120px">
+            <div class="tx-ent-hint" style="margin:0">Cerrados</div>
+            <div style="font-size:24px;font-weight:700;color:var(--kt-danger,#f06548)">@(_bandeja?.Stats.Cerrados ?? 0)</div>
+        </div>
+    </div>
+
+    @* ---- Pestanas (vistas contextuales) ---- *@
+    <div class="tx-tabs" style="display:flex;gap:6px;border-bottom:1px solid var(--kt-border,#e9ebec);margin-bottom:12px;flex-wrap:wrap">
+        @foreach (var v in _vistasVisibles)
+        {
+            var vv = v;
+            <button class="tx-tab @(_vista == vv ? "active" : "")"
+                    style="border:none;background:none;padding:8px 14px;cursor:pointer;border-bottom:2px solid @(_vista == vv ? "var(--kt-primary,#405189)" : "transparent");font-weight:@(_vista == vv ? "600" : "400")"
+                    @onclick="@(() => SwitchVista(vv))">@VistaLabel(vv)</button>
+        }
+    </div>
+
+    @* ---- Barra de busqueda / filtros ---- *@
+    <div class="tx-ent-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap;margin-bottom:12px">
+        <input class="tx-ent-input" style="flex:1;min-width:180px" placeholder="Buscar código, nombre o serie..."
+               @bind="_fTexto" @bind:event="oninput" @onkeyup="OnSearchKey" />
+        <select class="tx-ent-input" style="width:auto" @bind="_fEstado">
+            <option value="">Estado: todos</option>
+            <option value="@EstadoExpediente.Abierto">Abierto</option>
+            <option value="@EstadoExpediente.Cerrado">Cerrado</option>
+        </select>
+        <select class="tx-ent-input" style="width:auto" @bind="_fNivelId">
+            <option value="0">Clasificación: todas</option>
+            @foreach (var n in _niveles) { <option value="@n.Id">@n.Nombre</option> }
+        </select>
+        <button class="tx-ent-btn" @onclick="LoadBandeja"><i class="bi bi-funnel"></i> Filtrar</button>
+        <button class="tx-ent-btn" @onclick="ClearFilters">Limpiar</button>
+    </div>
+
+    @* ---- Grid ---- *@
+    <div class="tx-ent-table-wrap">
+        <table class="tx-ent-table">
+            <thead>
+                <tr>
+                    <th>CÓDIGO</th>
+                    <th>NOMBRE</th>
+                    <th>SERIE / SUBSERIE</th>
+                    <th>DEPENDENCIA</th>
+                    <th>APERTURA</th>
+                    <th>ESTADO</th>
+                    <th>FASE</th>
+                    <th>CLASIFICACIÓN</th>
+                    <th>CREADO POR</th>
+                    <th class="right">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_bandeja is null)
+                {
+                    <tr><td colspan="10" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr>
+                }
+                else if (_bandeja.Items.Count == 0)
+                {
+                    <tr><td colspan="10" class="tx-ent-hint" style="text-align:center;padding:18px">No hay expedientes en esta vista.</td></tr>
+                }
+                else
+                {
+                    @foreach (var e in _bandeja.Items)
+                    {
+                        <tr>
+                            <td><button class="tx-linkbtn" style="border:none;background:none;color:var(--kt-primary,#405189);cursor:pointer;padding:0;font-weight:600" @onclick="@(() => VerDetalle(e.Id))">@e.Codigo</button></td>
+                            <td>@e.Nombre</td>
+                            <td>@e.SerieCodigo <span style="color:var(--kt-text-gray-600);font-size:11.5px">@e.SerieNombre</span></td>
+                            <td>@e.DependenciaNombre</td>
+                            <td>@e.FechaApertura.ToString("yyyy-MM-dd")</td>
+                            <td><span class="tx-ent-badge @(e.Estado == EstadoExpediente.Abierto ? "ok" : "off")">@e.Estado</span></td>
+                            <td><span class="tx-ent-badge">@e.Fase</span></td>
+                            <td><span class="tx-ent-badge">@e.NivelNombre</span></td>
+                            <td>@(e.CreadoPorNombre ?? "--")</td>
+                            <td class="right">
+                                <button class="tx-ent-btn sm" title="Ver" @onclick="@(() => VerDetalle(e.Id))"><i class="bi bi-eye"></i></button>
+                                @if (_canEdit && e.PuedeEditar)
+                                {
+                                    <button class="tx-ent-btn sm" title="Editar metadatos" @onclick="@(() => OpenEditar(e.Id))"><i class="bi bi-pencil"></i></button>
+                                }
+                                @if (_canDelete)
+                                {
+                                    <button class="tx-ent-btn sm danger" title="Eliminar" @onclick="@(() => OpenEliminar(e))"><i class="bi bi-trash"></i></button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@* =================== Modal CREAR =================== *@
+@if (_showCrear)
+{
+    <div class="modal-overlay" @onclick="@(() => _showCrear = false)">
+        <div class="modal-dialog" style="max-width:820px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Nuevo Expediente</h3>
+                <button class="modal-close" @onclick="@(() => _showCrear = false)">&times;</button>
+            </div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_crearError is not null) { <div class="tx-ent-fielderr">@_crearError</div> }
+
+                <div style="font-weight:600;margin-bottom:6px">1. Clasificación TRD</div>
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field">
+                        <label>Fondo documental <span class="opt">(filtra dependencias)</span></label>
+                        <select class="tx-ent-input" @onchange="OnFondoChanged">
+                            <option value="0">Todos los fondos</option>
+                            @foreach (var f in _crearFondos) { <option value="@f.Id" selected="@(f.Id == _selFondoId)">@f.Codigo — @f.Nombre</option> }
+                        </select>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Dependencia productora <span class="req">*</span></label>
+                        <select class="tx-ent-input" @onchange="OnDepChanged">
+                            <option value="0">— Selecciona —</option>
+                            @foreach (var d in _crearDeps) { <option value="@d.Id" selected="@(d.Id == _selDepId)">@d.Codigo — @d.Nombre</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="tx-ent-field">
+                    <label>Serie / Subserie (TRD Vigente) <span class="req">*</span></label>
+                    <select class="tx-ent-input" @onchange="OnSerieChanged" disabled="@(_selDepId <= 0)">
+                        <option value="0">@(_selDepId <= 0 ? "Selecciona una dependencia primero" : "— Selecciona —")</option>
+                        @foreach (var s in _crearSeries) { <option value="@s.TrdAsignacionId" selected="@(s.TrdAsignacionId == _selAsignacionId)">@s.SerieCodigo — @s.SerieNombre</option> }
+                    </select>
+                    @if (_selDepId > 0 && _crearSeries.Count == 0)
+                    {
+                        <div class="tx-ent-hint">Esta dependencia no tiene series en la TRD Vigente.</div>
+                    }
+                </div>
+
+                @if (_selAsignacionId > 0)
+                {
+                    <div style="font-weight:600;margin:12px 0 6px">2. Datos del Expediente</div>
+                    <div class="tx-ent-field">
+                        <label>Nombre del expediente <span class="req">*</span></label>
+                        <input class="tx-ent-input" @bind="_cNombre" maxlength="200" placeholder="Ej: Contrato de suministro No. 045 de 2026" />
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Fecha de apertura <span class="req">*</span></label>
+                            <input type="date" class="tx-ent-input" @bind="_cFecha" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Nivel de clasificación <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_cNivelId">
+                                @foreach (var n in _niveles.Where(n => n.Orden >= _cNivelHeredadoOrden))
+                                {
+                                    <option value="@n.Id">@n.Nombre</option>
+                                }
+                            </select>
+                            <div class="tx-ent-hint">Heredado de la TRD; solo se puede elevar (RF10).</div>
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Código estructurado</label>
+                        <input class="tx-ent-input mono" value="@CodigoPreview()" disabled />
+                        <div class="tx-ent-hint">El consecutivo se asigna automáticamente al guardar.</div>
+                    </div>
+
+                    @if (_crearMetaDefs.Count > 0)
+                    {
+                        <div style="font-weight:600;margin:12px 0 6px">3. Metadatos de la serie</div>
+                        @foreach (var m in _crearMetaDefs)
+                        {
+                            <div class="tx-ent-field">
+                                <label>@m.Nombre @if (m.Obligatorio) { <span class="req">*</span> }</label>
+                                @MetaInput(m, _cMetaValores)
+                            </div>
+                        }
+                    }
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showCrear = false)" disabled="@_crearBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarCrear" disabled="@(_crearBusy || _selAsignacionId <= 0)">Crear expediente</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* =================== Modal DETALLE =================== *@
+@if (_showDetalle && _detalle is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showDetalle = false)">
+        <div class="modal-dialog" style="max-width:720px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3><span class="mono">@_detalle.Codigo</span></h3>
+                <button class="modal-close" @onclick="@(() => _showDetalle = false)">&times;</button>
+            </div>
+            <div class="modal-body tx-mod tx-trdc">
+                <h4 style="margin:0 0 8px">@_detalle.Nombre</h4>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+                    <span class="tx-ent-badge @(_detalle.Estado == EstadoExpediente.Abierto ? "ok" : "off")">@_detalle.Estado</span>
+                    <span class="tx-ent-badge">Fase: @_detalle.Fase</span>
+                    <span class="tx-ent-badge">@_detalle.NivelNombre</span>
+                    <span class="tx-ent-badge">Ubicación: @_detalle.EstadoUbicacion</span>
+                </div>
+                <div class="tx-ent-grid c2">
+                    <div><span class="tx-ent-hint">Serie / Subserie</span><div>@_detalle.SerieCodigo — @_detalle.SerieNombre</div></div>
+                    <div><span class="tx-ent-hint">Dependencia</span><div>@_detalle.DependenciaNombre</div></div>
+                    <div><span class="tx-ent-hint">Fondo</span><div>@(_detalle.FondoNombre ?? "--")</div></div>
+                    <div><span class="tx-ent-hint">Versión TRD</span><div>@_detalle.VersionTrd</div></div>
+                    <div><span class="tx-ent-hint">Fecha apertura</span><div>@_detalle.FechaApertura.ToString("yyyy-MM-dd")</div></div>
+                    <div><span class="tx-ent-hint">Fecha cierre</span><div>@(_detalle.FechaCierre?.ToString("yyyy-MM-dd") ?? "--")</div></div>
+                    <div><span class="tx-ent-hint">Creado por</span><div>@(_detalle.CreadoPorNombre ?? "--")</div></div>
+                    <div><span class="tx-ent-hint">Creado en sistema</span><div>@_detalle.FechaCreacion.ToString("yyyy-MM-dd HH:mm")</div></div>
+                </div>
+                @if (_detalle.Metadatos.Count > 0)
+                {
+                    <div style="font-weight:600;margin:12px 0 6px">Metadatos</div>
+                    <div class="tx-ent-table-wrap">
+                        <table class="tx-ent-table">
+                            <thead><tr><th>Metadato</th><th>Valor</th></tr></thead>
+                            <tbody>
+                                @foreach (var m in _detalle.Metadatos)
+                                {
+                                    <tr><td>@m.Nombre</td><td>@(string.IsNullOrWhiteSpace(m.Valor) ? "--" : m.Valor)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            <div class="modal-foot">
+                @if (_canEdit && _detalle.Estado == EstadoExpediente.Abierto)
+                {
+                    <button class="tx-ent-btn" @onclick="@(() => OpenEditar(_detalle!.Id))"><i class="bi bi-pencil"></i> Editar</button>
+                }
+                <button class="tx-ent-btn primary" @onclick="@(() => _showDetalle = false)">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* =================== Modal EDITAR =================== *@
+@if (_showEditar)
+{
+    <div class="modal-overlay" @onclick="@(() => _showEditar = false)">
+        <div class="modal-dialog" style="max-width:720px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Editar Expediente</h3>
+                <button class="modal-close" @onclick="@(() => _showEditar = false)">&times;</button>
+            </div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_editError is not null) { <div class="tx-ent-fielderr">@_editError</div> }
+                <div class="tx-ent-field">
+                    <label>Nombre del expediente <span class="req">*</span></label>
+                    <input class="tx-ent-input" @bind="_eNombre" maxlength="200" />
+                </div>
+                <div class="tx-ent-field">
+                    <label>Nivel de clasificación <span class="req">*</span></label>
+                    <select class="tx-ent-input" @bind="_eNivelId">
+                        @foreach (var n in _niveles.Where(n => n.Orden >= _eNivelHeredadoOrden))
+                        {
+                            <option value="@n.Id">@n.Nombre</option>
+                        }
+                    </select>
+                    <div class="tx-ent-hint">Solo se puede elevar respecto al heredado (RF10).</div>
+                </div>
+                @if (_eMetaDefs.Count > 0)
+                {
+                    <div style="font-weight:600;margin:10px 0 6px">Metadatos</div>
+                    @foreach (var m in _eMetaDefs)
+                    {
+                        <div class="tx-ent-field">
+                            <label>@m.Nombre @if (m.Obligatorio) { <span class="req">*</span> }</label>
+                            @MetaInput(m, _eMetaValores)
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showEditar = false)" disabled="@_editBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarEditar" disabled="@_editBusy">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* =================== Modal ELIMINAR =================== *@
+@if (_showEliminar)
+{
+    <div class="modal-overlay" @onclick="@(() => _showEliminar = false)">
+        <div class="modal-dialog" style="max-width:520px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Eliminar expediente</h3>
+                <button class="modal-close" @onclick="@(() => _showEliminar = false)">&times;</button>
+            </div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_delError is not null) { <div class="tx-ent-fielderr">@_delError</div> }
+                <p>Se eliminará (lógicamente, con auditoría) el expediente <strong class="mono">@_delCodigo</strong>. Indica el motivo:</p>
+                <div class="tx-ent-field">
+                    <label>Justificación <span class="req">*</span></label>
+                    <textarea class="tx-ent-input" @bind="_delJustif" rows="3" maxlength="1000"></textarea>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showEliminar = false)" disabled="@_delBusy">Cancelar</button>
+                <button class="tx-ent-btn danger" @onclick="ConfirmarEliminar" disabled="@_delBusy">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string ModuleKey = "modulo/expedientes-mios";
+
+    private bool _permView, _permCreate, _permEdit, _permDelete;
+    private bool _canCreate, _canEdit, _canDelete;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    // Bandeja
+    private BandejaVista _vista = BandejaVista.Mis;
+    private static readonly BandejaVista[] _vistasVisibles =
+        [BandejaVista.Mis, BandejaVista.Compartidos, BandejaVista.Publicos];
+    private ExpedienteBandejaDto? _bandeja;
+    private IReadOnlyList<NivelClasificacionOpcionDto> _niveles = [];
+
+    // Filtros
+    private string _fTexto = "";
+    private string _fEstado = "";
+    private long _fNivelId;
+
+    private string? _pageOk, _pageError;
+
+    // Crear
+    private bool _showCrear, _crearBusy;
+    private string? _crearError;
+    private IReadOnlyList<FondoOpcionDto> _crearFondos = [];
+    private IReadOnlyList<DependenciaOpcionDto> _crearDeps = [];
+    private IReadOnlyList<SerieOpcionDto> _crearSeries = [];
+    private IReadOnlyList<MetadatoDefDto> _crearMetaDefs = [];
+    private long _selFondoId, _selDepId, _selAsignacionId;
+    private string _cNombre = "";
+    private DateTime _cFecha = DateTime.Today;
+    private long _cNivelId;
+    private int _cNivelHeredadoOrden;
+    private string _cSerieCodigo = "", _cDepCodigo = "";
+    private readonly Dictionary<long, string?> _cMetaValores = [];
+
+    // Detalle
+    private bool _showDetalle;
+    private ExpedienteDetalleDto? _detalle;
+
+    // Editar
+    private bool _showEditar, _editBusy;
+    private string? _editError;
+    private long _editId;
+    private string _eNombre = "";
+    private long _eNivelId;
+    private int _eNivelHeredadoOrden;
+    private IReadOnlyList<MetadatoDefDto> _eMetaDefs = [];
+    private readonly Dictionary<long, string?> _eMetaValores = [];
+
+    // Eliminar
+    private bool _showEliminar, _delBusy;
+    private string? _delError;
+    private long _delId;
+    private string _delCodigo = "", _delJustif = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _permView = eff.Can(ModuleKey, PermissionAction.View);
+        _permCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _permEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _permDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+        _canCreate = _permCreate;
+        _canEdit = _permEdit;
+        _canDelete = _permDelete;
+
+        _niveles = await Svc.GetNivelesAsync();
+        await LoadBandeja();
+    }
+
+    private static string VistaLabel(BandejaVista v) => v switch
+    {
+        BandejaVista.Mis => "Mis Expedientes",
+        BandejaVista.Compartidos => "Compartidos conmigo",
+        BandejaVista.Publicos => "Públicos",
+        BandejaVista.Central => "Archivo Central",
+        BandejaVista.Historico => "Archivo Histórico",
+        _ => v.ToString()
+    };
+
+    private async Task SwitchVista(BandejaVista v)
+    {
+        _vista = v;
+        await LoadBandeja();
+    }
+
+    private async Task LoadBandeja()
+    {
+        var estado = Enum.TryParse<EstadoExpediente>(_fEstado, out var es) ? (EstadoExpediente?)es : null;
+        var filtro = new ExpedienteFiltro(
+            Texto: string.IsNullOrWhiteSpace(_fTexto) ? null : _fTexto,
+            Estado: estado,
+            NivelClasificacionId: _fNivelId > 0 ? _fNivelId : null);
+        _bandeja = await Svc.GetBandejaAsync(_vista, filtro, Actor);
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { await LoadBandeja(); }
+    }
+
+    private async Task ClearFilters()
+    {
+        _fTexto = ""; _fEstado = ""; _fNivelId = 0;
+        await LoadBandeja();
+    }
+
+    // ---- Crear ----
+
+    private async Task OpenCrear()
+    {
+        _crearError = null; _crearBusy = false;
+        _selFondoId = 0; _selDepId = 0; _selAsignacionId = 0;
+        _cNombre = ""; _cFecha = DateTime.Today; _cNivelId = 0; _cNivelHeredadoOrden = 0;
+        _cSerieCodigo = ""; _cDepCodigo = "";
+        _crearSeries = []; _crearMetaDefs = []; _cMetaValores.Clear();
+        _crearFondos = await Svc.GetFondosAsync();
+        _crearDeps = await Svc.GetDependenciasParaCrearAsync(null);
+        _pageOk = null; _pageError = null;
+        _showCrear = true;
+    }
+
+    private async Task OnFondoChanged(ChangeEventArgs e)
+    {
+        _selFondoId = long.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        _selDepId = 0; _selAsignacionId = 0; _crearSeries = []; _crearMetaDefs = []; _cMetaValores.Clear();
+        _crearDeps = await Svc.GetDependenciasParaCrearAsync(_selFondoId > 0 ? _selFondoId : null);
+    }
+
+    private async Task OnDepChanged(ChangeEventArgs e)
+    {
+        _selDepId = long.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        _selAsignacionId = 0; _crearMetaDefs = []; _cMetaValores.Clear();
+        _cDepCodigo = _crearDeps.FirstOrDefault(d => d.Id == _selDepId)?.Codigo ?? "";
+        _crearSeries = _selDepId > 0 ? await Svc.GetSeriesParaCrearAsync(_selDepId) : [];
+    }
+
+    private async Task OnSerieChanged(ChangeEventArgs e)
+    {
+        _selAsignacionId = long.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        var serie = _crearSeries.FirstOrDefault(s => s.TrdAsignacionId == _selAsignacionId);
+        _cSerieCodigo = serie?.SerieCodigo ?? "";
+        _cNivelHeredadoOrden = serie?.NivelHeredadoOrden ?? 0;
+        _cNivelId = serie?.NivelHeredadoId ?? 0;
+        _cMetaValores.Clear();
+        _crearMetaDefs = _selAsignacionId > 0 ? await Svc.GetMetadatosSerieAsync(_selAsignacionId) : [];
+    }
+
+    private string CodigoPreview()
+    {
+        var anio = _cFecha.Year;
+        return $"{_cDepCodigo}-{_cSerieCodigo}-{anio}-{new string('X', 6)}";
+    }
+
+    private async Task GuardarCrear()
+    {
+        _crearBusy = true; _crearError = null;
+        try
+        {
+            var metadatos = _crearMetaDefs
+                .Select(m => new MetadatoInput(m.TrdMetadatoId, _cMetaValores.TryGetValue(m.TrdMetadatoId, out var v) ? v : null))
+                .ToList();
+            var req = new CrearExpedienteRequest(
+                _selAsignacionId, _cNombre, DateOnly.FromDateTime(_cFecha), _cNivelId, metadatos);
+            var res = await Svc.CrearAsync(req, Actor);
+            if (!res.IsOk) { _crearError = res.Error; return; }
+            _showCrear = false;
+            _pageOk = $"Expediente {res.Value!.Codigo} creado.";
+            await LoadBandeja();
+        }
+        finally { _crearBusy = false; }
+    }
+
+    // ---- Detalle ----
+
+    private async Task VerDetalle(long id)
+    {
+        var res = await Svc.GetDetalleAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _detalle = res.Value;
+        _showDetalle = true;
+    }
+
+    // ---- Editar ----
+
+    private async Task OpenEditar(long id)
+    {
+        _editError = null; _editBusy = false;
+        var res = await Svc.GetDetalleAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        var d = res.Value!;
+        _editId = d.Id;
+        _eNombre = d.Nombre;
+        _eNivelId = d.NivelClasificacionId;
+        _eNivelHeredadoOrden = d.NivelHeredadoOrden;
+        _eMetaDefs = await Svc.GetMetadatosSerieAsync(d.TrdAsignacionId);
+        _eMetaValores.Clear();
+        foreach (var m in d.Metadatos) { _eMetaValores[m.TrdMetadatoId] = m.Valor; }
+        _showDetalle = false;
+        _showEditar = true;
+    }
+
+    private async Task GuardarEditar()
+    {
+        _editBusy = true; _editError = null;
+        try
+        {
+            var metadatos = _eMetaDefs
+                .Select(m => new MetadatoInput(m.TrdMetadatoId, _eMetaValores.TryGetValue(m.TrdMetadatoId, out var v) ? v : null))
+                .ToList();
+            var req = new EditarExpedienteRequest(_eNombre, _eNivelId, metadatos);
+            var res = await Svc.EditarAsync(_editId, req, Actor);
+            if (!res.IsOk) { _editError = res.Error; return; }
+            _showEditar = false;
+            _pageOk = "Expediente actualizado.";
+            await LoadBandeja();
+        }
+        finally { _editBusy = false; }
+    }
+
+    // ---- Eliminar ----
+
+    private void OpenEliminar(ExpedienteBandejaItemDto e)
+    {
+        _delId = e.Id; _delCodigo = e.Codigo; _delJustif = ""; _delError = null; _delBusy = false;
+        _showEliminar = true;
+    }
+
+    private async Task ConfirmarEliminar()
+    {
+        _delBusy = true; _delError = null;
+        try
+        {
+            var res = await Svc.EliminarAsync(_delId, _delJustif, Actor);
+            if (!res.IsOk) { _delError = res.Error; return; }
+            _showEliminar = false;
+            _pageOk = $"Expediente {_delCodigo} eliminado.";
+            await LoadBandeja();
+        }
+        finally { _delBusy = false; }
+    }
+
+    // ---- Render de un input de metadato segun su tipo (DAT-04) ----
+
+    private RenderFragment MetaInput(MetadatoDefDto m, Dictionary<long, string?> store) => __builder =>
+    {
+        string? current = store.TryGetValue(m.TrdMetadatoId, out var v) ? v : null;
+        void Set(ChangeEventArgs e) => store[m.TrdMetadatoId] = e.Value?.ToString();
+
+        switch (m.TipoDato)
+        {
+            case TipoDatoMetadato.TextoLargo:
+                <textarea class="tx-ent-input" rows="2" value="@current" @onchange="Set"></textarea>
+                break;
+            case TipoDatoMetadato.Numerico:
+            case TipoDatoMetadato.Moneda:
+                <input type="number" step="any" class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Fecha:
+                <input type="date" class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Booleano:
+                <select class="tx-ent-input" value="@current" @onchange="Set">
+                    <option value="">--</option>
+                    <option value="true">Sí</option>
+                    <option value="false">No</option>
+                </select>
+                break;
+            case TipoDatoMetadato.Lista:
+                <select class="tx-ent-input" value="@current" @onchange="Set">
+                    <option value="">— Selecciona —</option>
+                    @foreach (var o in m.OpcionesLista)
+                    {
+                        <option value="@o.Clave">@o.Valor</option>
+                    }
+                </select>
+                break;
+            default:
+                <input class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+        }
+    };
+}

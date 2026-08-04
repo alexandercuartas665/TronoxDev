@@ -98,6 +98,23 @@ services:
     networks:
       - tronox-net
 
+  # Object storage de documentos = Azure Blob Storage (ADR-009, decision del usuario, paridad con el
+  # legacy). En local se emula con Azurite (imagen oficial de Microsoft). El contenedor minio de
+  # arriba queda sin uso por ahora; se conserva para no romper nada (ver ADR-009).
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: tronox-azurite
+    restart: unless-stopped
+    command: ["azurite", "--blobHost", "0.0.0.0", "--loose", "--skipApiVersionCheck"]
+    ports:
+      - "${AZURITE_BLOB_PORT:-10004}:10000"
+      - "${AZURITE_QUEUE_PORT:-10005}:10001"
+      - "${AZURITE_TABLE_PORT:-10006}:10002"
+    volumes:
+      - azurite-data:/data
+    networks:
+      - tronox-net
+
   adminer:
     image: adminer:latest
     container_name: tronox-adminer
@@ -117,6 +134,7 @@ volumes:
   redis-data:
   rabbitmq-data:
   minio-data:
+  azurite-data:
 
 networks:
   tronox-net:

@@ -53,6 +53,13 @@ public static class DependencyInjection
         // Correo saliente via SMTP configurable por tenant, con la clave cifrada (RQ01 RF01-P.2).
         services.AddScoped<Application.Common.IEmailSender, Email.SmtpEmailSender>();
 
+        // Object storage de binarios de documentos = Azure Blob Storage (ADR-009). En dev apunta a
+        // Azurite; el connection string vive en configuracion/.env, nunca en el repo. Intercambiable
+        // por otra implementacion de IObjectStorage sin tocar los casos de uso.
+        services.Configure<Storage.ObjectStorageOptions>(
+            configuration.GetSection(Storage.ObjectStorageOptions.SectionName));
+        services.AddSingleton<IObjectStorage, Storage.AzureBlobObjectStorage>();
+
         // Gateway de IA multi-proveedor (base de RQ16).
         services.AddHttpClient<Tronox.Application.Tenancy.IAiProviderClient, Ai.AiProviderClient>();
         services.AddHttpClient<Tronox.Application.Auth.IGoogleOAuthClient, Auth.GoogleOAuthClient>();

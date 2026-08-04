@@ -165,7 +165,7 @@ public static class MenuCatalogo
                 new("Plantillas", "modulo/formularios-plantillas", "bi-files", "RF05"),
                 new("Bandeja de Respuestas", "modulo/formularios-respuestas", "bi-inbox", "RF07"),
                 new("Respuestas Huerfanas", "modulo/formularios-huerfanas", "bi-inboxes", "RF07")
-            ], MenuNodeState.Disabled),
+            ], MenuNodeState.InDevelopment),
 
             new("Workflow Documental", "req011", "bi-diagram-2", "RQ11",
             [
@@ -193,7 +193,7 @@ public static class MenuCatalogo
             [
                 new("Mis Tareas", "modulo/tramite-mis-tareas", "bi-check2-square", "RF12"),
                 new("Firmar", "modulo/tramite-firmar", "bi-pen", "RF08")
-            ], MenuNodeState.Disabled),
+            ], MenuNodeState.InDevelopment),
 
             new("PQRSD", "req015", "bi-megaphone", "RQ15",
             [

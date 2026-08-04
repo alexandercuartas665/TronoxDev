@@ -1,0 +1,245 @@
+@page "/modulo/formularios-plantillas"
+@attribute [Authorize(Policy = "Perm:modulo/formularios-plantillas:View")]
+@* Llave de permisos = ruta de menu "modulo/formularios-plantillas". Plantillas Documentales (RQ04 -
+   RF09): CRUD de plantillas de documento parametrizadas con variables {{...}} y asociadas a N
+   tipologias. Ubicacion elegida por el usuario (Motor de Formularios). El editor WYSIWYG (CKEditor/
+   TipTap) y el consumo RF10 (crear documento desde plantilla) quedan diferidos. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Plantillas
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IPlantillaService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<PageTitle>Plantillas Documentales - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span>/</span>
+        <span>Motor de Formularios Dinámicos</span>
+        <span>/</span>
+        <span class="current">Plantillas</span>
+    </nav>
+
+    <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+            <h1 class="tx-ent-title">Plantillas Documentales</h1>
+            <p class="tx-ent-sub" style="margin:2px 0 0">Documentos parametrizados con variables, asociados a tipos documentales. Se usan al crear documentos.</p>
+        </div>
+        @if (_canCreate)
+        {
+            <button class="tx-ent-btn primary" @onclick="OpenNueva"><i class="bi bi-plus-lg"></i> Nueva plantilla</button>
+        }
+    </div>
+
+    @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
+    @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+    <div class="tx-ent-toolbar" style="display:flex;gap:8px;align-items:center;margin:12px 0">
+        <input class="tx-ent-input" style="flex:1;min-width:200px" placeholder="Buscar por nombre o tipo..." @bind="_texto" @bind:event="oninput" @onkeyup="OnSearchKey" />
+        <button class="tx-ent-btn" @onclick="Reload"><i class="bi bi-search"></i> Buscar</button>
+    </div>
+
+    <div class="tx-ent-table-wrap">
+        <table class="tx-ent-table">
+            <thead><tr><th>NOMBRE</th><th>TIPO DOCUMENTAL</th><th>VARIABLES</th><th>USOS</th><th>TIPOS</th><th>ESTADO</th><th class="right">ACCIONES</th></tr></thead>
+            <tbody>
+                @if (_plantillas is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                else if (_plantillas.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">No hay plantillas. Crea la primera.</td></tr> }
+                else
+                {
+                    @foreach (var p in _plantillas)
+                    {
+                        <tr>
+                            <td>@p.Nombre</td>
+                            <td>@(p.TipologiaNombre ?? "Sin tipo")</td>
+                            <td>@p.VariablesNum</td>
+                            <td>@UsoBadge(p.UsoContador)</td>
+                            <td>@p.TiposNum</td>
+                            <td><span class="tx-ent-badge @(p.Estado == PlantillaEstado.Activa ? "ok" : "off")">@p.Estado</span></td>
+                            <td class="right">
+                                @if (_canEdit) { <button class="tx-ent-btn sm" title="Editar" @onclick="@(() => OpenEditar(p.Id))"><i class="bi bi-pencil"></i></button> }
+                                @if (_canEdit) { <button class="tx-ent-btn sm" title="@(p.Estado == PlantillaEstado.Activa ? "Desactivar" : "Activar")" @onclick="@(() => CambiarEstado(p.Id))">@(p.Estado == PlantillaEstado.Activa ? "Desactivar" : "Activar")</button> }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@* ============ Modal EDITOR ============ *@
+@if (_showEditor)
+{
+    <div class="modal-overlay" @onclick="@(() => _showEditor = false)">
+        <div class="modal-dialog" style="max-width:900px;width:97%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>@(_editId > 0 ? "Editar plantilla" : "Nueva plantilla")</h3><button class="modal-close" @onclick="@(() => _showEditor = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_edError is not null) { <div class="tx-ent-fielderr">@_edError</div> }
+
+                <div style="font-weight:600;margin-bottom:6px">1. Información</div>
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_edNombre" maxlength="200" /></div>
+                    <div class="tx-ent-field"><label>Descripción <span class="opt">(opcional)</span></label><input class="tx-ent-input" @bind="_edDescripcion" maxlength="500" /></div>
+                </div>
+                <div class="tx-ent-field">
+                    <label>Tipos documentales (asociados) <span class="req">*</span></label>
+                    <select class="tx-ent-input" multiple size="4" @onchange="OnTiposChanged">
+                        @foreach (var t in _tipologias)
+                        {
+                            <option value="@t.Id" selected="@_edTipoIds.Contains(t.Id)">@t.Nombre</option>
+                        }
+                    </select>
+                    <div class="tx-ent-hint">La primera seleccionada es la representante. (Ctrl/Cmd para varias.)</div>
+                </div>
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field"><label>Formato</label><select class="tx-ent-input" @bind="_edFormato"><option value="@FormatoPapel.Carta">Carta</option><option value="@FormatoPapel.Oficio">Oficio</option><option value="@FormatoPapel.A4">A4</option></select></div>
+                    <div class="tx-ent-field"><label>Orientación</label><select class="tx-ent-input" @bind="_edOrientacion"><option value="@OrientacionPapel.Vertical">Vertical</option><option value="@OrientacionPapel.Horizontal">Horizontal</option></select></div>
+                </div>
+
+                <div style="font-weight:600;margin:12px 0 6px">2. Contenido y variables</div>
+                <div style="display:flex;gap:14px;flex-wrap:wrap">
+                    <div style="flex:2;min-width:320px">
+                        <div class="tx-ent-field">
+                            <label>Contenido de la plantilla (HTML con variables)</label>
+                            <textarea class="tx-ent-input" style="min-height:220px;font-family:monospace;font-size:12.5px" @bind="_edContenido" @bind:event="oninput"></textarea>
+                            <div class="tx-ent-hint">Variables detectadas: @VarCount()</div>
+                        </div>
+                    </div>
+                    <div style="flex:1;min-width:220px">
+                        <div class="tx-ent-hint" style="font-weight:600;margin-top:22px">Variables disponibles</div>
+                        @foreach (var grupo in _variables.GroupBy(v => v.Grupo))
+                        {
+                            <div style="margin-top:8px">
+                                <div class="tx-ent-hint" style="margin:0 0 4px">@grupo.Key</div>
+                                <div style="display:flex;gap:5px;flex-wrap:wrap">
+                                    @foreach (var v in grupo)
+                                    {
+                                        @if (v.Habilitada)
+                                        {
+                                            <button type="button" class="tx-ent-btn sm" title="@v.Etiqueta" @onclick="@(() => InsertarVariable(v.Token))">@v.Token</button>
+                                        }
+                                        else
+                                        {
+                                            <span class="tx-ent-badge off" title="@v.Etiqueta" style="opacity:.6">@v.Token</span>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showEditor = false)" disabled="@_edBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="Guardar" disabled="@_edBusy">Guardar plantilla</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string ModuleKey = "modulo/formularios-plantillas";
+    private long Actor => Tenant.UserId ?? 0;
+
+    private bool _canCreate, _canEdit;
+    private string _texto = "";
+    private IReadOnlyList<PlantillaItemDto>? _plantillas;
+    private string? _pageOk, _pageError;
+
+    // Editor
+    private bool _showEditor, _edBusy;
+    private string? _edError;
+    private long _editId;
+    private string _edNombre = "";
+    private string? _edDescripcion;
+    private string? _edContenido;
+    private readonly List<long> _edTipoIds = [];
+    private FormatoPapel _edFormato = FormatoPapel.Carta;
+    private OrientacionPapel _edOrientacion = OrientacionPapel.Vertical;
+    private IReadOnlyList<TipologiaOpcionDto> _tipologias = [];
+    private IReadOnlyList<VariableDto> _variables = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        await Reload();
+    }
+
+    private async Task Reload()
+        => _plantillas = await Svc.ListarAsync(string.IsNullOrWhiteSpace(_texto) ? null : _texto);
+
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { await Reload(); } }
+
+    private static string UsoBadge(int usos) => usos >= 10 ? $"Muy usada ({usos})" : usos > 0 ? $"Usada ({usos})" : "Nueva";
+    private int VarCount() => PlantillaVarCount(_edContenido);
+    private static int PlantillaVarCount(string? html) => Tronox.Application.Plantillas.PlantillaRules.ContarVariables(html);
+
+    private async Task OpenNueva()
+    {
+        _editId = 0; _edNombre = ""; _edDescripcion = null; _edContenido = null;
+        _edTipoIds.Clear(); _edFormato = FormatoPapel.Carta; _edOrientacion = OrientacionPapel.Vertical;
+        _edError = null; _edBusy = false; _pageOk = null; _pageError = null;
+        _tipologias = await Svc.GetTipologiasAsync();
+        _variables = await Svc.GetVariablesAsync([]);
+        _showEditor = true;
+    }
+
+    private async Task OpenEditar(long id)
+    {
+        var d = await Svc.GetAsync(id);
+        if (d is null) { _pageError = "La plantilla no existe."; return; }
+        _editId = d.Id; _edNombre = d.Nombre; _edDescripcion = d.Descripcion; _edContenido = d.ContenidoHtml;
+        _edTipoIds.Clear(); _edTipoIds.AddRange(d.TipologiaIds);
+        _edFormato = d.FormatoPapel; _edOrientacion = d.Orientacion;
+        _edError = null; _edBusy = false;
+        _tipologias = await Svc.GetTipologiasAsync();
+        _variables = await Svc.GetVariablesAsync(_edTipoIds);
+        _showEditor = true;
+    }
+
+    private async Task OnTiposChanged(ChangeEventArgs e)
+    {
+        _edTipoIds.Clear();
+        if (e.Value is string[] arr)
+        {
+            foreach (var s in arr) { if (long.TryParse(s, out var id)) { _edTipoIds.Add(id); } }
+        }
+        _variables = await Svc.GetVariablesAsync(_edTipoIds);
+    }
+
+    private void InsertarVariable(string token)
+        => _edContenido = string.IsNullOrEmpty(_edContenido) ? token : _edContenido + " " + token;
+
+    private async Task Guardar()
+    {
+        _edBusy = true; _edError = null;
+        try
+        {
+            var req = new SavePlantillaRequest(
+                _edNombre, _edDescripcion, _edContenido, _edTipoIds,
+                _edFormato, _edOrientacion, MargenesPapel.Normal, null, null);
+            var res = _editId > 0
+                ? await Svc.ActualizarAsync(_editId, req, Actor)
+                : await Svc.CrearAsync(req, Actor);
+            if (!res.IsOk) { _edError = res.Error; return; }
+            _showEditor = false;
+            _pageOk = _editId > 0 ? "Plantilla actualizada." : "Plantilla creada.";
+            await Reload();
+        }
+        finally { _edBusy = false; }
+    }
+
+    private async Task CambiarEstado(long id)
+    {
+        var res = await Svc.CambiarEstadoAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _pageOk = "Estado actualizado.";
+        await Reload();
+    }
+}
