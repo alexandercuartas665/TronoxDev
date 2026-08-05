@@ -1,0 +1,575 @@
+@* Editor de flujos BPMN (RQ11, port del FlowEditor de ECOREX, ADR-010). Canvas bpmn-js
+   self-hosted + panel de propiedades del nodo (config, asignacion por organigrama, condiciones
+   de salida). El guardado exporta el XML del modeler y lo re-sincroniza (SaveBpmnAsync). Se
+   omiten los paneles de formulario/reglas/agentes (podados/diferidos). *@
+@implements IAsyncDisposable
+@using Tronox.Application.Workflows
+@using Tronox.Domain.Enums
+@inject IWorkflowDesignService DesignSvc
+@inject IWorkflowEngine Engine
+@inject IWorkflowNodePolicyService NodePolicySvc
+@inject INodeAssigneeResolver AssigneeResolver
+@inject IJSRuntime JS
+
+<div style="position:fixed;inset:0;z-index:1045;background:var(--kt-body-bg,#f3f3f9);display:flex;flex-direction:column">
+    @if (_canvas is null)
+    {
+        <div class="tx-ent-hint" style="padding:24px">@(_loadError ?? "Cargando diseñador...")</div>
+    }
+    else
+    {
+        @* ---- Barra superior ---- *@
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--kt-border,#e9ebec);background:var(--kt-card-bg,#fff);flex-wrap:wrap">
+            <button class="tx-ent-btn sm" title="Volver" @onclick="Close"><i class="bi bi-arrow-left"></i></button>
+            <span class="mono tx-ent-hint">@_canvas.ProcessCode · v@(_canvas.Version)</span>
+            <span class="tx-ent-badge @(_canvas.IsPublished ? "ok" : "")">@_canvas.Estado</span>
+            <input class="tx-ent-input" style="max-width:260px" @bind="_name" disabled="@(!_canvas.IsEditable)" />
+            <input class="tx-ent-input" style="max-width:160px" @bind="_category" list="fe-cats" placeholder="Categoría" disabled="@(!_canvas.IsEditable)" />
+            <datalist id="fe-cats">@foreach (var c in Categories) { <option value="@c" /> }</datalist>
+            <div style="flex:1"></div>
+            @if (_flash is not null) { <span class="tx-ent-hint" style="color:var(--kt-success,#0ab39c)">@_flash</span> }
+            @if (_error is not null) { <span class="tx-ent-fielderr" style="margin:0">@_error</span> }
+            @if (_canvas.IsEditable)
+            {
+                <button class="tx-ent-btn sm" @onclick="OpenImport" disabled="@_busy"><i class="bi bi-upload"></i> Importar</button>
+                <button class="tx-ent-btn sm" @onclick="ExportXml" disabled="@_busy"><i class="bi bi-download"></i> Exportar</button>
+                <button class="tx-ent-btn sm primary" @onclick="Save" disabled="@_busy">@(_busy ? "Guardando..." : "Guardar cambios")</button>
+                <button class="tx-ent-btn sm ok" @onclick="Publish" disabled="@_busy">Publicar</button>
+            }
+            else
+            {
+                <span class="tx-ent-hint">Publicado (solo lectura).</span>
+                <button class="tx-ent-btn sm primary" @onclick="EnsureDraft" disabled="@_busy">Editar (crear borrador)</button>
+            }
+            <button class="tx-ent-btn sm" @onclick="Close">Cerrar</button>
+        </div>
+
+        <div style="flex:1;display:flex;min-height:0">
+            @* ---- Canvas ---- *@
+            <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+                <div class="tx-ent-hint" style="padding:4px 12px">@_canvas.Nodes.Count nodos · @_canvas.Edges.Count conexiones</div>
+                <div id="bpmn-canvas" style="flex:1;min-height:0;background:#fff"></div>
+            </div>
+
+            @* ---- Panel de propiedades ---- *@
+            <aside style="width:340px;flex:0 0 auto;border-left:1px solid var(--kt-border,#e9ebec);background:var(--kt-card-bg,#fff);overflow:auto;padding:12px">
+                @if (_selNode is null)
+                {
+                    <div class="tx-ent-hint">Selecciona un nodo en el lienzo para configurarlo.</div>
+                }
+                else
+                {
+                    <div class="tx-ent-hint" style="font-weight:600;letter-spacing:.04em">DETALLE DE ACTIVIDAD</div>
+                    <div class="tx-ent-field" style="margin-top:8px">
+                        <label>Nombre del nodo</label>
+                        <input class="tx-ent-input" @bind="_selName" disabled="@(!_canvas.IsEditable)" @onblur="RenameNode" />
+                    </div>
+                    <div class="tx-ent-hint" style="margin-bottom:8px">Tipo: <strong>@TipoLabel(_selNode.NodeType)</strong> · <span class="mono">@_selNode.BpmnElementId</span></div>
+
+                    @* Configuracion basica *@
+                    <div class="fe-acc">
+                        <div class="fe-acc-head">Configuración básica</div>
+                        <div class="fe-acc-body">
+                            @if (_selNode.NodeType == WorkflowNodeType.Task)
+                            {
+                                <label class="tx-ent-hint" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0 0 8px">
+                                    <input type="checkbox" checked="@_selAllowsAssignment" @onchange="@(e => OnAllowsAssignmentChanged(e))" disabled="@(!_canvas.IsEditable)" /> Permite asignación manual
+                                </label>
+                            }
+                            <div class="tx-ent-field">
+                                <label>Reinicio (loop) hacia</label>
+                                <select class="tx-ent-input" value="@(_selRestart?.ToString() ?? "")" @onchange="OnRestartChanged" disabled="@(!_canvas.IsEditable)">
+                                    <option value="">— Sin reinicio —</option>
+                                    @foreach (var n in _canvas.Nodes.Where(n => n.Id != _selNode.Id))
+                                    {
+                                        <option value="@n.Id">@(n.Name ?? n.BpmnElementId) (@TipoLabel(n.NodeType))</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="tx-ent-field">
+                                <label>Color</label>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                    @foreach (var c in _palette)
+                                    {
+                                        var cc = c;
+                                        <button type="button" title="@c" @onclick="@(() => SetColor(cc))" disabled="@(!_canvas.IsEditable)"
+                                                style="width:22px;height:22px;border-radius:50%;border:2px solid @(_selColor == cc ? "#111" : "transparent");background:@Swatch(cc);cursor:pointer"></button>
+                                    }
+                                    <button type="button" title="Sin color" @onclick="@(() => SetColor(null))" disabled="@(!_canvas.IsEditable)"
+                                            style="width:22px;height:22px;border-radius:50%;border:2px solid @(_selColor is null ? "#111" : "#ccc");background:#fff;cursor:pointer">✕</button>
+                                </div>
+                            </div>
+                            <div class="tx-ent-field">
+                                <label>Nota (post-it)</label>
+                                <textarea class="tx-ent-input" rows="2" @bind="_selNote" @onblur="SaveNote" disabled="@(!_canvas.IsEditable)"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Asignar responsables por organigrama *@
+                    @if (_selNode.NodeType == WorkflowNodeType.Task)
+                    {
+                        <div class="fe-acc">
+                            <div class="fe-acc-head">Asignar responsables</div>
+                            <div class="fe-acc-body">
+                                @if (_policies is null) { <div class="tx-ent-hint">Cargando...</div> }
+                                else
+                                {
+                                    @if (_policies.Count == 0) { <div class="tx-ent-hint" style="margin-bottom:6px">Sin dependencias/cargos asignados.</div> }
+                                    @foreach (var p in _policies)
+                                    {
+                                        var pp = p;
+                                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                                            <span style="flex:1">@p.OrgUnitName <span class="tx-ent-hint">(@p.Classifier · @p.CandidateCount cand.)</span></span>
+                                            @if (_canvas.IsEditable) { <button class="tx-ent-btn sm danger" @onclick="@(() => RemovePolicy(pp.PolicyId))"><i class="bi bi-x"></i></button> }
+                                        </div>
+                                    }
+                                    @if (_canvas.IsEditable)
+                                    {
+                                        <div style="display:flex;gap:6px;margin-top:6px">
+                                            <select class="tx-ent-input" @bind="_addUnitId">
+                                                <option value="0">— Dependencia o cargo —</option>
+                                                @foreach (var u in _assignable)
+                                                {
+                                                    <option value="@u.Id">@(new string(' ', u.Depth * 2))@u.Name (@u.Classifier)</option>
+                                                }
+                                            </select>
+                                            <button class="tx-ent-btn sm primary" @onclick="AddPolicy">Agregar</button>
+                                        </div>
+                                        <div class="tx-ent-hint" style="margin-top:6px">Candidatos totales del nodo: <strong>@_candidateCount</strong></div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Reglas de salida (condiciones de aristas) *@
+                    @if (_canvas.Edges.Any(e => e.SourceNodeId == _selNode.Id))
+                    {
+                        <div class="fe-acc">
+                            <div class="fe-acc-head">Reglas de salida</div>
+                            <div class="fe-acc-body">
+                                <div class="tx-ent-hint" style="margin-bottom:6px">Condición por rama (formato: <span class="mono">approval == 'Approved'</span>; vacío = rama por defecto).</div>
+                                @foreach (var e in _canvas.Edges.Where(e => e.SourceNodeId == _selNode.Id))
+                                {
+                                    var ee = e;
+                                    var targetName = _canvas.Nodes.FirstOrDefault(n => n.Id == e.TargetNodeId)?.Name ?? "→";
+                                    <div style="margin-bottom:8px">
+                                        <div class="tx-ent-hint">hacia <strong>@targetName</strong></div>
+                                        <div style="display:flex;gap:6px">
+                                            <input class="tx-ent-input" value="@e.ConditionExpression" @onchange="@(ev => SetEdgeCondition(ee.Id, ev.Value?.ToString()))" disabled="@(!_canvas.IsEditable)" placeholder="approval == 'Approved'" />
+                                            @if (_canvas.IsEditable) { <button class="tx-ent-btn sm danger" @onclick="@(() => DeleteEdge(ee.Id))"><i class="bi bi-trash"></i></button> }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </aside>
+        </div>
+    }
+</div>
+
+@if (_showImport)
+{
+    <div class="modal-overlay" @onclick="@(() => _showImport = false)">
+        <div class="modal-dialog" style="max-width:720px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Importar BPMN</h3><button class="modal-close" @onclick="@(() => _showImport = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_importError is not null) { <div class="tx-ent-fielderr">@_importError</div> }
+                <div class="tx-ent-hint" style="margin-bottom:6px">Pega el XML BPMN 2.0 (crea un flujo nuevo en Borrador).</div>
+                <textarea class="tx-ent-input mono" rows="10" @bind="_importXml" placeholder="&lt;?xml ...&gt;"></textarea>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showImport = false)">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="DoImport" disabled="@_busy">Importar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_exportXmlText is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _exportXmlText = null)">
+        <div class="modal-dialog" style="max-width:720px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Exportar BPMN</h3><button class="modal-close" @onclick="@(() => _exportXmlText = null)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                <textarea class="tx-ent-input mono" rows="12" readonly>@_exportXmlText</textarea>
+            </div>
+            <div class="modal-foot"><button class="tx-ent-btn" @onclick="@(() => _exportXmlText = null)">Cerrar</button></div>
+        </div>
+    </div>
+}
+
+<style>
+    .fe-acc { border:1px solid var(--kt-border,#e9ebec); border-radius:8px; margin:8px 0; }
+    .fe-acc-head { font-size:12px; font-weight:700; padding:8px 10px; background:var(--kt-light,#f3f6f9); border-bottom:1px solid var(--kt-border,#e9ebec); }
+    .fe-acc-body { padding:10px; }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public long DefinitionId { get; set; }
+    [Parameter] public IReadOnlyList<string> Categories { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<long> OnDefinitionSwitched { get; set; }
+
+    private const string CanvasId = "bpmn-canvas";
+    private static readonly string[] _palette = ["violet", "blue", "green", "amber", "rose", "slate"];
+
+    private FlowCanvasDto? _canvas;
+    private string? _loadError, _error, _flash;
+    private bool _busy;
+    private string _name = "", _category = "";
+
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<FlowEditor>? _dotnetRef;
+    private readonly SemaphoreSlim _dbGate = new(1, 1);
+    private bool _pendingInit;
+    private long _initializedFor;
+
+    // Nodo seleccionado
+    private FlowCanvasNodeDto? _selNode;
+    private string? _selName, _selNote, _selColor;
+    private long? _selRestart;
+    private bool _selAllowsAssignment;
+
+    // Asignacion
+    private IReadOnlyList<NodePolicyDto>? _policies;
+    private IReadOnlyList<AssignableOrgUnitDto> _assignable = [];
+    private long _addUnitId;
+    private int _candidateCount;
+
+    // Modales
+    private bool _showImport;
+    private string _importXml = "";
+    private string? _importError, _exportXmlText;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_canvas is not null && _canvas.DefinitionId == DefinitionId) { return; }
+        await LoadCanvasAsync();
+        _pendingInit = true;
+    }
+
+    private async Task LoadCanvasAsync()
+    {
+        await _dbGate.WaitAsync();
+        try
+        {
+            _canvas = await DesignSvc.GetCanvasAsync(DefinitionId);
+            if (_canvas is null) { _loadError = "El flujo no existe."; return; }
+            _name = _canvas.Name; _category = _canvas.Category ?? "";
+            _selNode = null; _policies = null;
+        }
+        finally { _dbGate.Release(); }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingInit && _canvas is not null)
+        {
+            _pendingInit = false;
+            await InitCanvasAsync();
+        }
+    }
+
+    private async Task InitCanvasAsync()
+    {
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/tronox-bpmn.js");
+            _dotnetRef ??= DotNetObjectReference.Create(this);
+            var xml = await GetXmlAsync();
+            await _module.InvokeAsync<bool>("init", CanvasId, _dotnetRef, xml);
+            await ApplyAppearanceAsync();
+            _initializedFor = DefinitionId;
+        }
+        catch (Exception ex)
+        {
+            _error = "No se pudo cargar el lienzo BPMN. Recarga la página. " + ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<string?> GetXmlAsync()
+    {
+        await _dbGate.WaitAsync();
+        try { return await DesignSvc.GetBpmnXmlAsync(DefinitionId); }
+        finally { _dbGate.Release(); }
+    }
+
+    private async Task ApplyAppearanceAsync()
+    {
+        if (_module is null || _canvas is null) { return; }
+        var colors = _canvas.Nodes.Select(n => new { id = n.BpmnElementId, color = n.Color }).ToArray();
+        var notes = _canvas.Nodes.Select(n => new { id = n.BpmnElementId, note = n.Note }).ToArray();
+        await _module.InvokeVoidAsync("applyNodeColors", CanvasId, colors);
+        await _module.InvokeVoidAsync("applyNodeNotes", CanvasId, notes);
+    }
+
+    // ---- Callbacks desde bpmn-js ----
+
+    [JSInvokable]
+    public async Task OnElementSelected(string? id, string? type, string? name)
+    {
+        if (_canvas is null) { return; }
+        if (string.IsNullOrEmpty(id)) { _selNode = null; StateHasChanged(); return; }
+        var node = _canvas.Nodes.FirstOrDefault(n => n.BpmnElementId == id);
+        _selNode = node;
+        if (node is not null)
+        {
+            _selName = node.Name; _selNote = node.Note; _selColor = node.Color;
+            _selRestart = node.RestartNodeId; _selAllowsAssignment = node.AllowsAssignment;
+            if (node.NodeType == WorkflowNodeType.Task) { await LoadPoliciesAsync(node.Id); }
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task OnGraphChanged() => Task.CompletedTask;
+
+    // ---- Panel: config ----
+
+    private async Task RenameNode()
+    {
+        if (_selNode is null || !_canvas!.IsEditable) { return; }
+        await GuardedAsync(async () => await DesignSvc.RenameNodeAsync(_selNode.Id, _selName));
+        await RefreshAndReimportAsync();
+    }
+
+    private async Task OnAllowsAssignmentChanged(ChangeEventArgs e)
+    {
+        _selAllowsAssignment = e.Value is true;
+        await SaveNodeConfig();
+    }
+
+    private async Task OnRestartChanged(ChangeEventArgs e)
+    {
+        _selRestart = long.TryParse(e.Value?.ToString(), out var v) ? v : null;
+        await SaveNodeConfig();
+    }
+
+    private async Task SaveNodeConfig()
+    {
+        if (_selNode is null || !_canvas!.IsEditable) { return; }
+        await GuardedAsync(async () => await DesignSvc.SetNodeConfigAsync(_selNode.Id, _selAllowsAssignment, _selRestart));
+        await RefreshCanvasDataAsync();
+    }
+
+    private async Task SetColor(string? color)
+    {
+        if (_selNode is null || !_canvas!.IsEditable) { return; }
+        _selColor = color;
+        await GuardedAsync(async () => await DesignSvc.SetNodeAppearanceAsync(_selNode.Id, color, _selNote));
+        await RefreshCanvasDataAsync();
+        await ApplyAppearanceAsync();
+    }
+
+    private async Task SaveNote()
+    {
+        if (_selNode is null || !_canvas!.IsEditable) { return; }
+        await GuardedAsync(async () => await DesignSvc.SetNodeAppearanceAsync(_selNode.Id, _selColor, _selNote));
+        await RefreshCanvasDataAsync();
+        await ApplyAppearanceAsync();
+    }
+
+    // ---- Panel: asignacion ----
+
+    private async Task LoadPoliciesAsync(long nodeId)
+    {
+        await _dbGate.WaitAsync();
+        try
+        {
+            _policies = await NodePolicySvc.ListNodePoliciesAsync(nodeId);
+            _assignable = await NodePolicySvc.ListAssignableUnitsAsync();
+            _candidateCount = (await AssigneeResolver.ResolveCandidatesAsync(nodeId)).Count;
+        }
+        finally { _dbGate.Release(); }
+    }
+
+    private async Task AddPolicy()
+    {
+        if (_selNode is null || _addUnitId == 0) { return; }
+        var unitId = _addUnitId;
+        await GuardedAsync(async () =>
+        {
+            var res = await NodePolicySvc.AddNodePolicyAsync(_selNode.Id, unitId);
+            return res.IsOk ? WorkflowResult<bool>.Ok(true) : WorkflowResult<bool>.Invalid(res.Error ?? "Error");
+        });
+        _addUnitId = 0;
+        await LoadPoliciesAsync(_selNode.Id);
+    }
+
+    private async Task RemovePolicy(long policyId)
+    {
+        if (_selNode is null) { return; }
+        await GuardedAsync(async () => await NodePolicySvc.RemoveNodePolicyAsync(policyId));
+        await LoadPoliciesAsync(_selNode.Id);
+    }
+
+    // ---- Panel: reglas de salida ----
+
+    private async Task SetEdgeCondition(long edgeId, string? expr)
+    {
+        if (!_canvas!.IsEditable) { return; }
+        await GuardedAsync(async () => await DesignSvc.SetEdgeConditionAsync(edgeId, expr));
+        await RefreshCanvasDataAsync();
+    }
+
+    private async Task DeleteEdge(long edgeId)
+    {
+        if (!_canvas!.IsEditable) { return; }
+        await GuardedAsync(async () => await DesignSvc.DeleteEdgeAsync(edgeId));
+        await RefreshAndReimportAsync();
+    }
+
+    // ---- Acciones de la definicion ----
+
+    private async Task Save()
+    {
+        if (_module is null || _canvas is null) { return; }
+        _busy = true; _error = null; _flash = null;
+        try
+        {
+            var xml = await _module.InvokeAsync<string?>("exportXml", CanvasId);
+            if (string.IsNullOrWhiteSpace(xml)) { _error = "No se pudo exportar el lienzo."; return; }
+            await _dbGate.WaitAsync();
+            long savedId;
+            try
+            {
+                var saved = await DesignSvc.SaveBpmnAsync(_canvas.DefinitionId, xml);
+                if (!saved.IsOk) { _error = saved.Error; return; }
+                savedId = saved.Value!.DefinitionId;
+                await DesignSvc.UpdateDefinitionPropsAsync(savedId, _name, string.IsNullOrWhiteSpace(_category) ? null : _category, _canvas.Description);
+            }
+            finally { _dbGate.Release(); }
+
+            if (savedId != _canvas.DefinitionId) { await OnDefinitionSwitched.InvokeAsync(savedId); }
+            else { await RefreshAndReimportAsync(); _flash = "Guardado."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Publish()
+    {
+        if (_canvas is null) { return; }
+        _busy = true; _error = null; _flash = null;
+        try
+        {
+            await _dbGate.WaitAsync();
+            WorkflowResult<WorkflowDefinitionDto> res;
+            try { res = await Engine.PublishAsync(_canvas.DefinitionId); }
+            finally { _dbGate.Release(); }
+            if (!res.IsOk) { _error = res.Error; return; }
+            await LoadCanvasAsync();
+            _flash = "Flujo publicado.";
+        }
+        finally { _busy = false; StateHasChanged(); }
+    }
+
+    private async Task EnsureDraft()
+    {
+        if (_canvas is null) { return; }
+        _busy = true; _error = null;
+        try
+        {
+            await _dbGate.WaitAsync();
+            WorkflowResult<FlowCanvasDto> res;
+            try { res = await DesignSvc.EnsureDraftAsync(_canvas.DefinitionId); }
+            finally { _dbGate.Release(); }
+            if (!res.IsOk) { _error = res.Error; return; }
+            await OnDefinitionSwitched.InvokeAsync(res.Value!.DefinitionId);
+        }
+        finally { _busy = false; }
+    }
+
+    private void OpenImport() { _importXml = ""; _importError = null; _showImport = true; }
+
+    private async Task DoImport()
+    {
+        _busy = true; _importError = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_importXml)) { _importError = "Pega el XML."; return; }
+            await _dbGate.WaitAsync();
+            WorkflowResult<FlowCanvasDto> res;
+            try { res = await DesignSvc.ImportBpmnAsync(_importXml); }
+            finally { _dbGate.Release(); }
+            if (!res.IsOk) { _importError = res.Error; return; }
+            _showImport = false;
+            await OnDefinitionSwitched.InvokeAsync(res.Value!.DefinitionId);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ExportXml()
+    {
+        if (_module is null) { return; }
+        _exportXmlText = await _module.InvokeAsync<string?>("exportXml", CanvasId) ?? "";
+    }
+
+    // ---- Helpers ----
+
+    private async Task RefreshCanvasDataAsync()
+    {
+        var selId = _selNode?.Id;
+        await LoadCanvasAsync();
+        _selNode = selId is long s ? _canvas?.Nodes.FirstOrDefault(n => n.Id == s) : null;
+    }
+
+    private async Task RefreshAndReimportAsync()
+    {
+        await RefreshCanvasDataAsync();
+        if (_module is not null && _canvas is not null)
+        {
+            var xml = await GetXmlAsync();
+            await _module.InvokeAsync<bool>("importXml", CanvasId, xml);
+            await ApplyAppearanceAsync();
+        }
+    }
+
+    private async Task GuardedAsync(Func<Task> action)
+    {
+        _error = null;
+        await _dbGate.WaitAsync();
+        try { await action(); }
+        finally { _dbGate.Release(); }
+    }
+
+    private async Task GuardedAsync(Func<Task<WorkflowResult<bool>>> action)
+    {
+        _error = null;
+        await _dbGate.WaitAsync();
+        try { var r = await action(); if (!r.IsOk) { _error = r.Error; } }
+        finally { _dbGate.Release(); }
+    }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+
+    private static string TipoLabel(WorkflowNodeType t) => t switch
+    {
+        WorkflowNodeType.StartEvent => "Inicio",
+        WorkflowNodeType.Task => "Tarea",
+        WorkflowNodeType.ExclusiveGateway => "Decisión",
+        WorkflowNodeType.EndEvent => "Fin",
+        _ => t.ToString()
+    };
+
+    private static string Swatch(string key) => key switch
+    {
+        "violet" => "#7c3aed", "blue" => "#3b82f6", "green" => "#10b981",
+        "amber" => "#f59e0b", "rose" => "#f43f5e", "slate" => "#64748b", _ => "#ccc"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null) { await _module.InvokeVoidAsync("destroy", CanvasId); await _module.DisposeAsync(); }
+        }
+        catch { /* circuito cerrado */ }
+        _dotnetRef?.Dispose();
+        _dbGate.Dispose();
+    }
+}

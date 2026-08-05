@@ -1,0 +1,97 @@
+@page "/modulo/formularios/{Id:long}/respuestas"
+@attribute [Authorize(Policy = "Perm:modulo/formularios-respuestas:View")]
+@* Bandeja de respuestas de un formulario dinamico (RQ08, port ECOREX). Lista los envios con sus
+   valores por campo. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Forms
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IFormDefinitionService DefSvc
+@inject IFormResponseService RespSvc
+@inject NavigationManager Nav
+
+<PageTitle>Respuestas - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a><span>/</span>
+        <a href="/modulo/formularios">Formularios</a><span>/</span>
+        <span class="current">Respuestas</span>
+    </nav>
+
+    @if (_def is null) { <div class="tx-ent-hint" style="padding:18px">@(_loadError ?? "Cargando...")</div> }
+    else
+    {
+        <div class="tx-ent-headrow">
+            <h1 class="tx-ent-title">Respuestas · @_def.Title</h1>
+            <p class="tx-ent-sub" style="margin:2px 0 0">@(_responses?.Count ?? 0) respuestas enviadas.</p>
+        </div>
+
+        <div class="tx-ent-table-wrap" style="margin-top:12px">
+            <table class="tx-ent-table">
+                <thead>
+                    <tr>
+                        <th>#</th><th>ENVIADA</th><th>REFERENCIA</th>
+                        @foreach (var c in _cols) { <th>@c.Label</th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_responses is null) { <tr><td colspan="@(_cols.Count + 3)" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_responses.Count == 0) { <tr><td colspan="@(_cols.Count + 3)" class="tx-ent-hint" style="text-align:center;padding:18px">Aún no hay respuestas.</td></tr> }
+                    else
+                    {
+                        @foreach (var (r, i) in _responses.Select((r, i) => (r, i)))
+                        {
+                            <tr>
+                                <td>@(i + 1)</td>
+                                <td>@(r.SubmittedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "--")</td>
+                                <td>@(r.Reference ?? "--")</td>
+                                @foreach (var c in _cols) { <td>@Display(c.Code, r.Fields.TryGetValue(c.Code, out var v) ? v : null)</td> }
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        <button class="tx-ent-btn" style="margin-top:12px" @onclick="@(() => Nav.NavigateTo("/modulo/formularios"))">Volver</button>
+    }
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private FormDefinitionDetailDto? _def;
+    private string? _loadError;
+    private IReadOnlyList<FormResponseListItemDto>? _responses;
+    private List<(string Code, string Label)> _cols = [];
+    // Por campo de opciones: id -> etiqueta, para mostrar "Excelente" en vez de "opt1".
+    private readonly Dictionary<string, Dictionary<string, string>> _optLabels = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _def = await DefSvc.GetAsync(Id);
+        if (_def is null) { _loadError = "El formulario no existe."; return; }
+        var inputs = _def.Questions
+            .Where(q => !FormFieldValidator.IsNonInput(q.ControlType))
+            .OrderBy(q => q.SortOrder)
+            .ToList();
+        // Columnas = campos de captura (primeros 6 para no desbordar).
+        _cols = inputs.Take(6).Select(q => (q.FieldCode, q.Label)).ToList();
+        // Mapa de etiquetas para campos de opciones (Select/Radio/MultiCheck).
+        foreach (var q in inputs.Where(q => q.ControlType is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck))
+        {
+            _optLabels[q.FieldCode] = FormFieldValidator.ParseOptions(q.OptionsJson).ToDictionary(o => o.Id, o => o.Label);
+        }
+        _responses = await RespSvc.ListResponsesAsync(Id);
+    }
+
+    private string Display(string code, string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) { return "--"; }
+        if (!_optLabels.TryGetValue(code, out var map)) { return raw; }
+        // MultiCheck almacena un arreglo JSON de ids; Select/Radio un id simple.
+        var ids = raw.TrimStart().StartsWith('[') ? FormFieldValidator.ParseMultiValues(raw) : [raw];
+        var labels = ids.Select(id => map.TryGetValue(id, out var l) ? l : id);
+        return string.Join(", ", labels);
+    }
+}

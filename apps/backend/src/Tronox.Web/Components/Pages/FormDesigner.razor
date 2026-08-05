@@ -1,0 +1,338 @@
+@page "/modulo/formularios-disenador/{Id:long}"
+@attribute [Authorize(Policy = "Perm:modulo/formularios-disenador:View")]
+@* Constructor visual de formularios dinamicos (RQ08, port ECOREX / FormDesigner). Paleta de tipos +
+   arbol del formulario (seleccionar/reordenar/borrar) + panel de propiedades + vista previa. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Forms
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@using System.Text.Json
+@inject IFormDefinitionService Svc
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
+
+<PageTitle>Diseñador de formulario - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a><span>/</span>
+        <a href="/modulo/formularios">Formularios</a><span>/</span>
+        <span class="current">Diseñador</span>
+    </nav>
+
+    @if (_def is null)
+    {
+        <div class="tx-ent-hint" style="padding:18px">@(_loadError ?? "Cargando...")</div>
+    }
+    else
+    {
+        <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div>
+                <h1 class="tx-ent-title"><span class="mono">@_def.Code</span> · @_def.Title</h1>
+                <p class="tx-ent-sub" style="margin:2px 0 0">
+                    <span class="tx-ent-badge @(_def.Status == FormStatus.Active ? "ok" : "")">@(_def.Status == FormStatus.Active ? "Publicado" : _def.Status == FormStatus.Inactive ? "Retirado" : "Borrador")</span>
+                    Rev. @_def.Revision · @_def.Questions.Count campos
+                </p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="tx-ent-btn" @onclick="@(() => _preview = !_preview)"><i class="bi bi-eye"></i> @(_preview ? "Editar" : "Vista previa")</button>
+                @if (_def.Status != FormStatus.Active) { <button class="tx-ent-btn primary" @onclick="Publicar"><i class="bi bi-check2-circle"></i> Publicar</button> }
+                else { <button class="tx-ent-btn" @onclick="Despublicar">Despublicar</button> }
+                <button class="tx-ent-btn" @onclick="@(() => Nav.NavigateTo("/modulo/formularios"))">Volver</button>
+            </div>
+        </div>
+
+        @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
+        @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+        @if (_preview)
+        {
+            <div class="tx-ent-card" style="padding:16px;max-width:820px;margin:12px auto">
+                <DynamicFormRenderer Definition="_def" Values="_previewValues" ReadOnly="false" />
+            </div>
+        }
+        else
+        {
+            <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-top:12px">
+                @* ---- Paleta ---- *@
+                <div class="tx-ent-card" style="padding:12px;width:180px;flex:0 0 auto">
+                    <div class="tx-ent-hint" style="font-weight:600;margin:0 0 6px">Agregar campo</div>
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                        @foreach (var t in _palette)
+                        {
+                            var tt = t;
+                            <button class="tx-ent-btn sm" style="justify-content:flex-start" @onclick="@(() => AddCampo(tt.Type))"><i class="bi @tt.Icon"></i> @tt.Label</button>
+                        }
+                    </div>
+                    <div class="tx-ent-hint" style="font-weight:600;margin:12px 0 6px">Estructura</div>
+                    <button class="tx-ent-btn sm" style="justify-content:flex-start;width:100%" @onclick="AddSeccion"><i class="bi bi-collection"></i> Sección</button>
+                </div>
+
+                @* ---- Arbol ---- *@
+                <div class="tx-ent-card" style="padding:12px;flex:1;min-width:320px">
+                    <div class="tx-ent-hint" style="font-weight:600;margin:0 0 8px">Estructura del formulario</div>
+                    @if (_def.Questions.Count == 0 && _def.Containers.Count == 0)
+                    {
+                        <div class="tx-ent-hint">Vacío. Agrega campos o secciones desde la paleta.</div>
+                    }
+                    @RenderTree(null)
+                </div>
+
+                @* ---- Propiedades ---- *@
+                <div class="tx-ent-card" style="padding:12px;width:320px;flex:0 0 auto">
+                    <div class="tx-ent-hint" style="font-weight:600;margin:0 0 8px">Propiedades</div>
+                    @if (_selKind == "Q" && _selQ is not null)
+                    {
+                        <div class="tx-ent-field"><label>Etiqueta</label><input class="tx-ent-input" @bind="_pLabel" /></div>
+                        <div class="tx-ent-field"><label>Código del campo</label><input class="tx-ent-input mono" @bind="_pFieldCode" /></div>
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Ancho (1-12)</label><input type="number" min="1" max="12" class="tx-ent-input" @bind="_pWidth" /></div>
+                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_pRequired" /> Obligatorio</label>
+                        </div>
+                        <div class="tx-ent-field"><label>Placeholder</label><input class="tx-ent-input" @bind="_pPlaceholder" /></div>
+                        <div class="tx-ent-field"><label>Ayuda</label><input class="tx-ent-input" @bind="_pHelp" /></div>
+                        @if (_selQ.ControlType is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck)
+                        {
+                            <div class="tx-ent-field"><label>Opciones (una por línea)</label><textarea class="tx-ent-input" rows="4" @bind="_pOptions"></textarea></div>
+                        }
+                        @if (_selQ.ControlType is FormControlType.Text or FormControlType.TextArea)
+                        {
+                            <div class="tx-ent-grid c2">
+                                <div class="tx-ent-field"><label>Min. caract.</label><input type="number" class="tx-ent-input" @bind="_pMinLen" /></div>
+                                <div class="tx-ent-field"><label>Max. caract.</label><input type="number" class="tx-ent-input" @bind="_pMaxLen" /></div>
+                            </div>
+                        }
+                        @if (_selQ.ControlType is FormControlType.Number)
+                        {
+                            <div class="tx-ent-grid c2">
+                                <div class="tx-ent-field"><label>Min. valor</label><input type="number" step="any" class="tx-ent-input" @bind="_pMinVal" /></div>
+                                <div class="tx-ent-field"><label>Max. valor</label><input type="number" step="any" class="tx-ent-input" @bind="_pMaxVal" /></div>
+                            </div>
+                        }
+                        @if (_selQ.ControlType is FormControlType.Paragraph or FormControlType.Spacer)
+                        {
+                            <div class="tx-ent-field"><label>@(_selQ.ControlType == FormControlType.Paragraph ? "Texto" : "Alto (px)")</label><textarea class="tx-ent-input" rows="2" @bind="_pDefault"></textarea></div>
+                        }
+                        @if (_propError is not null) { <div class="tx-ent-fielderr">@_propError</div> }
+                        <div style="display:flex;gap:8px;margin-top:8px">
+                            <button class="tx-ent-btn primary sm" @onclick="GuardarCampo">Guardar</button>
+                            <button class="tx-ent-btn sm danger" @onclick="@(() => BorrarCampo(_selQ!.Id))">Eliminar</button>
+                        </div>
+                    }
+                    else if (_selKind == "C" && _selC is not null)
+                    {
+                        <div class="tx-ent-field"><label>Nombre de la sección</label><input class="tx-ent-input" @bind="_pcName" /></div>
+                        @if (_propError is not null) { <div class="tx-ent-fielderr">@_propError</div> }
+                        <div style="display:flex;gap:8px;margin-top:8px">
+                            <button class="tx-ent-btn primary sm" @onclick="GuardarSeccion">Guardar</button>
+                            <button class="tx-ent-btn sm danger" @onclick="@(() => BorrarSeccion(_selC!.Id))">Eliminar</button>
+                        </div>
+                    }
+                    else { <div class="tx-ent-hint">Selecciona un campo o sección del árbol.</div> }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    private long Actor => Tenant.UserId ?? 0;
+
+    private FormDefinitionDetailDto? _def;
+    private string? _loadError, _pageOk, _pageError;
+    private bool _preview;
+    private readonly Dictionary<string, string?> _previewValues = [];
+
+    private string _selKind = "";
+    private FormQuestionDto? _selQ;
+    private FormContainerDto? _selC;
+
+    // Property panel (question)
+    private string _pLabel = "", _pFieldCode = ""; private int _pWidth = 12; private bool _pRequired;
+    private string? _pPlaceholder, _pHelp, _pOptions, _pDefault; private int? _pMinLen, _pMaxLen; private decimal? _pMinVal, _pMaxVal;
+    private string? _propError;
+    // Property panel (container)
+    private string _pcName = "";
+
+    private sealed record PaletteItem(FormControlType Type, string Label, string Icon);
+    private static readonly PaletteItem[] _palette =
+    [
+        new(FormControlType.Text, "Texto", "bi-input-cursor-text"),
+        new(FormControlType.TextArea, "Texto largo", "bi-textarea-resize"),
+        new(FormControlType.Number, "Número", "bi-123"),
+        new(FormControlType.Date, "Fecha", "bi-calendar"),
+        new(FormControlType.Time, "Hora", "bi-clock"),
+        new(FormControlType.DateTime, "Fecha y hora", "bi-calendar-week"),
+        new(FormControlType.Toggle, "Sí / No", "bi-toggle-on"),
+        new(FormControlType.Select, "Lista", "bi-menu-button-wide"),
+        new(FormControlType.Radio, "Opción única", "bi-record-circle"),
+        new(FormControlType.MultiCheck, "Opción múltiple", "bi-ui-checks"),
+        new(FormControlType.Heading, "Título", "bi-type-h1"),
+        new(FormControlType.Paragraph, "Párrafo", "bi-text-paragraph"),
+        new(FormControlType.Divider, "Divisor", "bi-hr"),
+    ];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        _def = await Svc.GetAsync(Id);
+        if (_def is null) { _loadError = "El formulario no existe."; }
+    }
+
+    private RenderFragment RenderTree(long? parentId) => __builder =>
+    {
+        var containers = _def!.Containers.Where(c => c.ParentId == parentId).OrderBy(c => c.SortOrder).ToList();
+        var questions = _def.Questions.Where(q => q.ContainerId == parentId).OrderBy(q => q.SortOrder).ToList();
+
+        foreach (var q in questions)
+        {
+            var qq = q;
+            <div class="tx-tree-row @(_selKind == "Q" && _selQ?.Id == q.Id ? "sel" : "")"
+                 style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--kt-border,#e9ebec);border-radius:6px;margin:3px 0;cursor:pointer;background:@(_selKind == "Q" && _selQ?.Id == q.Id ? "var(--kt-light,#f3f6f9)" : "transparent")"
+                 @onclick="@(() => SelectQ(qq))">
+                <i class="bi bi-grip-vertical" style="opacity:.4"></i>
+                <span style="flex:1"><strong>@q.Label</strong> <span class="tx-ent-hint" style="margin:0">· @q.ControlType · @q.FieldCode</span></span>
+                @if (q.Required) { <span class="tx-ent-badge sm">oblig.</span> }
+                <button class="tx-ent-btn sm" title="Subir" @onclick:stopPropagation="true" @onclick="@(() => MoveQ(qq.Id, true))"><i class="bi bi-arrow-up"></i></button>
+                <button class="tx-ent-btn sm" title="Bajar" @onclick:stopPropagation="true" @onclick="@(() => MoveQ(qq.Id, false))"><i class="bi bi-arrow-down"></i></button>
+            </div>
+        }
+        foreach (var c in containers)
+        {
+            var cc = c;
+            <div style="border:1px dashed var(--kt-border,#e9ebec);border-radius:6px;margin:6px 0;padding:6px">
+                <div class="tx-tree-row @(_selKind == "C" && _selC?.Id == c.Id ? "sel" : "")"
+                     style="display:flex;align-items:center;gap:6px;cursor:pointer" @onclick="@(() => SelectC(cc))">
+                    <i class="bi bi-collection"></i>
+                    <span style="flex:1;font-weight:600">@c.Name</span>
+                    <button class="tx-ent-btn sm" title="Subir" @onclick:stopPropagation="true" @onclick="@(() => MoveC(cc.Id, true))"><i class="bi bi-arrow-up"></i></button>
+                    <button class="tx-ent-btn sm" title="Bajar" @onclick:stopPropagation="true" @onclick="@(() => MoveC(cc.Id, false))"><i class="bi bi-arrow-down"></i></button>
+                    <button class="tx-ent-btn sm" title="Agregar campo aquí" @onclick:stopPropagation="true" @onclick="@(() => AddCampoEn(cc.Id))"><i class="bi bi-plus-lg"></i></button>
+                </div>
+                <div style="padding-left:14px">@RenderTree(c.Id)</div>
+            </div>
+        }
+    };
+
+    // ---- Add ----
+
+    private async Task AddCampo(FormControlType type) => await AddCampoInterno(type, _selKind == "C" ? _selC?.Id : (_selQ?.ContainerId));
+    private async Task AddCampoEn(long containerId) => await AddCampoInterno(FormControlType.Text, containerId);
+
+    private async Task AddCampoInterno(FormControlType type, long? containerId)
+    {
+        _pageError = null;
+        var n = _def!.Questions.Count + 1;
+        var req = new SaveFormQuestionRequest(containerId, $"campo{n}", DefaultLabel(type), type,
+            OptionsJson: type is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck
+                ? JsonSerializer.Serialize(new[] { new { id = "opt1", label = "Opción 1" }, new { id = "opt2", label = "Opción 2" } })
+                : null);
+        var res = await Svc.AddQuestionAsync(Id, req, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        await Load();
+        SelectQ(_def!.Questions.First(q => q.Id == res.Value!.Id));
+    }
+
+    private async Task AddSeccion()
+    {
+        var n = _def!.Containers.Count + 1;
+        var res = await Svc.AddContainerAsync(Id, new SaveFormContainerRequest($"Sección {n}", FormContainerType.Section), Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        await Load();
+        SelectC(_def!.Containers.First(c => c.Id == res.Value!.Id));
+    }
+
+    // ---- Select ----
+
+    private void SelectQ(FormQuestionDto q)
+    {
+        _selKind = "Q"; _selQ = q; _selC = null; _propError = null;
+        _pLabel = q.Label; _pFieldCode = q.FieldCode; _pWidth = q.Width; _pRequired = q.Required;
+        _pPlaceholder = q.PlaceholderText; _pHelp = q.HelpText; _pDefault = q.DefaultValue;
+        _pOptions = OptionsToText(q.OptionsJson);
+        var rules = FormFieldValidator.ParseRules(q.ValidationJson);
+        _pMinLen = rules?.MinLength; _pMaxLen = rules?.MaxLength; _pMinVal = rules?.MinValue; _pMaxVal = rules?.MaxValue;
+    }
+
+    private void SelectC(FormContainerDto c) { _selKind = "C"; _selC = c; _selQ = null; _propError = null; _pcName = c.Name; }
+
+    // ---- Save ----
+
+    private async Task GuardarCampo()
+    {
+        _propError = null;
+        var rules = new FormValidationRules(_pMinLen, _pMaxLen, null, _pMinVal, _pMaxVal);
+        var hasRules = _pMinLen is not null || _pMaxLen is not null || _pMinVal is not null || _pMaxVal is not null;
+        var req = new SaveFormQuestionRequest(
+            _selQ!.ContainerId, _pFieldCode, _pLabel, _selQ.ControlType,
+            Caption: _selQ.Caption, HelpText: _pHelp,
+            OptionsJson: _selQ.ControlType is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck ? TextToOptions(_pOptions) : null,
+            Required: _pRequired, ValidationJson: hasRules ? JsonSerializer.Serialize(rules) : null,
+            Width: _pWidth, PlaceholderText: _pPlaceholder, DefaultValue: _pDefault);
+        var res = await Svc.UpdateQuestionAsync(_selQ.Id, req, Actor);
+        if (!res.IsOk) { _propError = res.Error; return; }
+        await Load(); SelectQ(_def!.Questions.First(q => q.Id == res.Value!.Id));
+        _pageOk = "Campo guardado.";
+    }
+
+    private async Task GuardarSeccion()
+    {
+        _propError = null;
+        var res = await Svc.UpdateContainerAsync(_selC!.Id, new SaveFormContainerRequest(_pcName, _selC.ContainerType, _selC.ParentId), Actor);
+        if (!res.IsOk) { _propError = res.Error; return; }
+        await Load(); _pageOk = "Sección guardada.";
+    }
+
+    private async Task BorrarCampo(long id)
+    {
+        var res = await Svc.DeleteQuestionAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _selKind = ""; _selQ = null; await Load();
+    }
+
+    private async Task BorrarSeccion(long id)
+    {
+        var res = await Svc.DeleteContainerAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _selKind = ""; _selC = null; await Load();
+    }
+
+    private async Task MoveQ(long id, bool up) { await Svc.MoveQuestionAsync(id, up, Actor); await Load(); }
+    private async Task MoveC(long id, bool up) { await Svc.MoveContainerAsync(id, up, Actor); await Load(); }
+
+    private async Task Publicar()
+    {
+        var res = await Svc.ActivateAsync(Id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _pageOk = "Formulario publicado."; await Load();
+    }
+
+    private async Task Despublicar()
+    {
+        var res = await Svc.DeactivateAsync(Id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _pageOk = "Formulario retirado."; await Load();
+    }
+
+    // ---- Helpers ----
+
+    private static string DefaultLabel(FormControlType t) => t switch
+    {
+        FormControlType.Heading => "Título de sección",
+        FormControlType.Paragraph => "Texto del párrafo",
+        FormControlType.Divider => "Divisor",
+        _ => "Nuevo campo"
+    };
+
+    private static string OptionsToText(string? json)
+        => string.Join("\n", FormFieldValidator.ParseOptions(json).Select(o => o.Label));
+
+    private static string TextToOptions(string? text)
+    {
+        var lines = (text ?? "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        var opts = lines.Select((l, i) => new { id = $"opt{i + 1}", label = l }).ToList();
+        return JsonSerializer.Serialize(opts);
+    }
+}

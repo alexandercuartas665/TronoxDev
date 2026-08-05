@@ -98,6 +98,16 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
     public DbSet<Plantilla> Plantillas => Set<Plantilla>();
     public DbSet<PlantillaTipo> PlantillaTipos => Set<PlantillaTipo>();
+    public DbSet<FormDefinition> FormDefinitions => Set<FormDefinition>();
+    public DbSet<FormContainer> FormContainers => Set<FormContainer>();
+    public DbSet<FormQuestion> FormQuestions => Set<FormQuestion>();
+    public DbSet<FormResponse> FormResponses => Set<FormResponse>();
+    public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
+    public DbSet<WorkflowNode> WorkflowNodes => Set<WorkflowNode>();
+    public DbSet<WorkflowEdge> WorkflowEdges => Set<WorkflowEdge>();
+    public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
+    public DbSet<WorkflowStepHistory> WorkflowStepHistories => Set<WorkflowStepHistory>();
+    public DbSet<WorkflowNodePolicy> WorkflowNodePolicies => Set<WorkflowNodePolicy>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -1071,7 +1081,139 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasIndex(x => x.TrdTipologiaId);
         });
 
-        // Asignacion por nodo (ADR-0035, ola F1): que Dependencia/Cargo atiende un paso Task.
+        // Motor de formularios dinamicos (RQ08, port ECOREX / ADR-0015). Definicion -> arbol de
+        // contenedores -> preguntas; respuestas como documento JSON (jsonb). Code unico por tenant.
+        // Concurrencia optimista (Version, ADR-0013). Los enums ya tienen conversion a texto arriba.
+        modelBuilder.Entity<FormDefinition>(b =>
+        {
+            b.Property(x => x.Code).HasMaxLength(50).IsRequired();
+            b.Property(x => x.Title).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(1000);
+            b.Property(x => x.Version).IsConcurrencyToken();
+            b.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Status });
+        });
+
+        modelBuilder.Entity<FormContainer>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Style).HasMaxLength(500);
+            b.Property(x => x.TabsJson).HasColumnType(jsonColumnType);
+            b.HasOne(x => x.Definition).WithMany(x => x.Containers)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            // Self-FK NO ACTION: el servicio reparenta el subarbol antes de borrar; la cascada de la
+            // definicion elimina todo el conjunto de una vez.
+            b.HasOne(x => x.Parent).WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DefinitionId, x.ParentId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<FormQuestion>(b =>
+        {
+            b.Property(x => x.FieldCode).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Label).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Caption).HasMaxLength(300);
+            b.Property(x => x.HelpText).HasMaxLength(1000);
+            b.Property(x => x.GridCol).HasMaxLength(30).IsRequired();
+            b.Property(x => x.Numeral).HasMaxLength(20);
+            b.Property(x => x.PlaceholderText).HasMaxLength(300);
+            b.Property(x => x.Format).HasMaxLength(30);
+            b.Property(x => x.OptionsJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.ValidationJson).HasColumnType(jsonColumnType);
+            b.HasOne(x => x.Definition).WithMany(x => x.Questions)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Container).WithMany()
+                .HasForeignKey(x => x.ContainerId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DefinitionId, x.FieldCode }).IsUnique();
+            b.HasIndex(x => new { x.DefinitionId, x.ContainerId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<FormResponse>(b =>
+        {
+            b.Property(x => x.Reference).HasMaxLength(100);
+            b.Property(x => x.Data).HasColumnType(jsonColumnType).IsRequired();
+            b.Property(x => x.Version).IsConcurrencyToken();
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.DefinitionId, x.Status });
+            b.HasIndex(x => new { x.DefinitionId, x.Reference });
+        });
+
+        // Motor de flujos BPMN (RQ11, port del motor de ECOREX). El XML BPMN se guarda tal cual
+        // (columna texto); nodos/aristas se materializan para la ejecucion. Historial append-only.
+        // Los enums (WorkflowNodeType/InstanceStatus/StepStatus) ya tienen conversion a texto arriba.
+        modelBuilder.Entity<WorkflowDefinition>(b =>
+        {
+            b.Property(x => x.ProcessCode).HasMaxLength(25).IsRequired();
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(1000);
+            b.Property(x => x.BpmnXml).IsRequired();
+            b.Property(x => x.Category).HasMaxLength(100);
+            // Version de negocio (1..n), NO token de concurrencia. Unico por (tenant, codigo, version).
+            b.HasIndex(x => new { x.TenantId, x.ProcessCode, x.Version }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.ProcessCode, x.IsPublished });
+        });
+
+        modelBuilder.Entity<WorkflowNode>(b =>
+        {
+            b.Property(x => x.BpmnElementId).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Name).HasMaxLength(300);
+            b.Property(x => x.Color).HasMaxLength(20);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.HasOne(x => x.Definition).WithMany(x => x.Nodes)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            // Self-FK del reinicio NO ACTION: nunca arrastra por cascada.
+            b.HasOne(x => x.RestartNode).WithMany()
+                .HasForeignKey(x => x.RestartNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DefinitionId, x.BpmnElementId }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkflowEdge>(b =>
+        {
+            b.Property(x => x.BpmnElementId).HasMaxLength(100);
+            b.Property(x => x.Name).HasMaxLength(300);
+            b.Property(x => x.ConditionExpression).HasMaxLength(500);
+            b.HasOne(x => x.Definition).WithMany(x => x.Edges)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            // Aristas -> nodos NO ACTION: el borrado del nodo lo maneja el servicio (borra sus
+            // aristas antes); la cascada de la definicion elimina todo el conjunto de una vez.
+            b.HasOne(x => x.SourceNode).WithMany()
+                .HasForeignKey(x => x.SourceNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TargetNode).WithMany()
+                .HasForeignKey(x => x.TargetNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.DefinitionId);
+        });
+
+        modelBuilder.Entity<WorkflowInstance>(b =>
+        {
+            // Concurrencia optimista (Version, ADR-0013): la incrementa el interceptor.
+            b.Property(x => x.Version).IsConcurrencyToken();
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Status });
+            b.HasIndex(x => x.DefinitionId);
+        });
+
+        modelBuilder.Entity<WorkflowStepHistory>(b =>
+        {
+            b.Property(x => x.ApprovalResult).HasMaxLength(100);
+            b.Property(x => x.ApprovalComment).HasMaxLength(2000);
+            b.HasOne(x => x.Instance).WithMany()
+                .HasForeignKey(x => x.InstanceId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Node).WithMany()
+                .HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.InstanceId, x.IsCurrent });
+        });
+
+        // Asignacion por nodo (RQ11 / ADR-0035): que Dependencia/Cargo atiende un paso Task.
+        modelBuilder.Entity<WorkflowNodePolicy>(b =>
+        {
+            b.HasOne(x => x.WorkflowNode).WithMany()
+                .HasForeignKey(x => x.WorkflowNodeId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.OrgUnit).WithMany()
+                .HasForeignKey(x => x.OrgUnitId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.WorkflowNodeId, x.OrgUnitId }).IsUnique();
+        });
 
         modelBuilder.Entity<ModuleDefinition>(b =>
         {

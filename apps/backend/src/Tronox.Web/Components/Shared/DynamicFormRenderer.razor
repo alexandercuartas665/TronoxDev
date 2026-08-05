@@ -1,0 +1,149 @@
+@* Renderer de captura de un formulario dinamico (RQ08, port ECOREX / DynamicFormRenderer). Pinta el
+   arbol contenedores -> preguntas y captura en un diccionario fieldCode -> valor. Primer slice:
+   tipos tier-1 + estructurales. Los errores por campo se pintan bajo cada control. *@
+@using Tronox.Application.Forms
+@using Tronox.Domain.Enums
+@using System.Text.Json
+
+<div class="tx-form-render">
+    @RenderContainer(null)
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FormDefinitionDetailDto Definition { get; set; } = null!;
+    [Parameter, EditorRequired] public Dictionary<string, string?> Values { get; set; } = null!;
+    [Parameter] public IReadOnlyDictionary<string, string>? Errors { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private static readonly JsonSerializerOptions J = new(JsonSerializerDefaults.Web);
+
+    private RenderFragment RenderContainer(long? parentId) => __builder =>
+    {
+        var containers = Definition.Containers.Where(c => c.ParentId == parentId && !c.IsHidden).OrderBy(c => c.SortOrder).ToList();
+        var questions = Definition.Questions.Where(q => q.ContainerId == parentId && !q.IsHidden).OrderBy(q => q.SortOrder).ToList();
+
+        @if (questions.Count > 0)
+        {
+            <div class="row g-3">
+                @foreach (var q in questions) { <div class="@(q.GridCol ?? "col-12")">@RenderQuestion(q)</div> }
+            </div>
+        }
+        @foreach (var c in containers)
+        {
+            <fieldset class="tx-form-section" style="border:1px solid var(--kt-border,#e9ebec);border-radius:8px;padding:12px 14px;margin:12px 0">
+                @if (!string.IsNullOrWhiteSpace(c.Name)) { <legend style="font-size:13px;font-weight:600;width:auto;padding:0 6px">@c.Name</legend> }
+                @RenderContainer(c.Id)
+            </fieldset>
+        }
+    };
+
+    private RenderFragment RenderQuestion(FormQuestionDto q) => __builder =>
+    {
+        // Estructurales (no capturan)
+        switch (q.ControlType)
+        {
+            case FormControlType.Heading:
+                <h4 style="margin:6px 0">@q.Label</h4>
+                return;
+            case FormControlType.Literal:
+                <p class="tx-ent-hint" style="margin:4px 0">@q.Label</p>
+                return;
+            case FormControlType.Paragraph:
+                <p style="margin:4px 0;white-space:pre-wrap">@q.DefaultValue</p>
+                return;
+            case FormControlType.Divider:
+                <hr />
+                return;
+            case FormControlType.Spacer:
+                <div style="height:@(ParseSpacer(q.DefaultValue))px"></div>
+                return;
+        }
+
+        var val = Values.TryGetValue(q.FieldCode, out var v) ? v : q.DefaultValue;
+        var err = Errors is not null && Errors.TryGetValue(q.FieldCode, out var e) ? e : null;
+
+        <div class="tx-ent-field" style="margin-bottom:0">
+            <label>@(string.IsNullOrWhiteSpace(q.Numeral) ? "" : q.Numeral + " ")@q.Label @if (q.Required) { <span class="req">*</span> }</label>
+            @if (!string.IsNullOrWhiteSpace(q.Caption)) { <div class="tx-ent-hint" style="margin:0 0 4px">@q.Caption</div> }
+            @RenderControl(q, val)
+            @if (!string.IsNullOrWhiteSpace(q.HelpText)) { <div class="tx-ent-hint">@q.HelpText</div> }
+            @if (err is not null) { <div class="tx-ent-fielderr" style="margin-top:4px">@err</div> }
+        </div>
+    };
+
+    private RenderFragment RenderControl(FormQuestionDto q, string? val) => __builder =>
+    {
+        void Set(ChangeEventArgs e) => SetValue(q.FieldCode, e.Value?.ToString());
+        var opts = FormFieldValidator.ParseOptions(q.OptionsJson);
+
+        switch (q.ControlType)
+        {
+            case FormControlType.TextArea:
+                <textarea class="tx-ent-input" rows="3" value="@val" @onchange="Set" disabled="@ReadOnly" placeholder="@q.PlaceholderText"></textarea>
+                break;
+            case FormControlType.Number:
+                <input type="number" step="any" class="tx-ent-input" value="@val" @onchange="Set" disabled="@ReadOnly" placeholder="@q.PlaceholderText" />
+                break;
+            case FormControlType.Date:
+                <input type="date" class="tx-ent-input" value="@val" @onchange="Set" disabled="@ReadOnly" />
+                break;
+            case FormControlType.Time:
+                <input type="time" class="tx-ent-input" value="@val" @onchange="Set" disabled="@ReadOnly" />
+                break;
+            case FormControlType.DateTime:
+                <input type="datetime-local" class="tx-ent-input" value="@val" @onchange="Set" disabled="@ReadOnly" />
+                break;
+            case FormControlType.Toggle:
+                <label class="tx-ent-hint" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+                    <input type="checkbox" checked="@(val == "true")" @onchange="@(e => SetValue(q.FieldCode, (e.Value is true).ToString().ToLower()))" disabled="@ReadOnly" /> Sí / No
+                </label>
+                break;
+            case FormControlType.Select:
+                <select class="tx-ent-input" value="@val" @onchange="Set" disabled="@ReadOnly">
+                    <option value="">— Selecciona —</option>
+                    @foreach (var o in opts) { <option value="@o.Id">@o.Label</option> }
+                </select>
+                break;
+            case FormControlType.Radio:
+                <div style="display:flex;flex-direction:column;gap:4px">
+                    @foreach (var o in opts)
+                    {
+                        <label class="tx-ent-hint" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+                            <input type="radio" name="@q.FieldCode" checked="@(val == o.Id)" @onchange="@(() => SetValue(q.FieldCode, o.Id))" disabled="@ReadOnly" /> @o.Label
+                        </label>
+                    }
+                </div>
+                break;
+            case FormControlType.MultiCheck:
+                var selected = FormFieldValidator.ParseMultiValues(val).ToHashSet();
+                <div style="display:flex;flex-direction:column;gap:4px">
+                    @foreach (var o in opts)
+                    {
+                        <label class="tx-ent-hint" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+                            <input type="checkbox" checked="@selected.Contains(o.Id)" @onchange="@(e => ToggleMulti(q.FieldCode, o.Id, e.Value is true))" disabled="@ReadOnly" /> @o.Label
+                        </label>
+                    }
+                </div>
+                break;
+            default:
+                <input class="tx-ent-input" value="@val" @onchange="Set" disabled="@ReadOnly" placeholder="@q.PlaceholderText" />
+                break;
+        }
+    };
+
+    private void SetValue(string fieldCode, string? value)
+    {
+        Values[fieldCode] = value;
+        _ = OnChanged.InvokeAsync();
+    }
+
+    private void ToggleMulti(string fieldCode, string id, bool on)
+    {
+        var list = FormFieldValidator.ParseMultiValues(Values.TryGetValue(fieldCode, out var v) ? v : null).ToList();
+        if (on) { if (!list.Contains(id)) { list.Add(id); } } else { list.Remove(id); }
+        SetValue(fieldCode, JsonSerializer.Serialize(list, J));
+    }
+
+    private static int ParseSpacer(string? v) => int.TryParse(v, out var px) && px is > 0 and <= 200 ? px : 16;
+}

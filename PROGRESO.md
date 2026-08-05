@@ -107,6 +107,56 @@ Motor de Formularios (`modulo/formularios-plantillas`). Decision registrada aqui
 
 ---
 
+## 2.d Fase 4 - Ports desde ECOREX.tareas (RQ08 Forms + RQ11 Workflow BPMN)
+
+Ports del proyecto hermano `C:\DesarrolloIA\ECOREX.tareas` (Guid->long, sin las dependencias
+podadas). Ambos verificados end-to-end en local. **Sin commit/deploy aun.**
+
+### RQ08 - Motor de Formularios Dinamicos (`modulo/formularios`)
+Port del nucleo de ECOREX (JSON-por-respuesta, ADR-0015 de ECOREX, NO EAV por fila como el vault).
+4 entidades (`FormDefinition/Container/Question/Response`), servicios `IFormDefinitionService` /
+`IFormResponseService`, validador puro `FormFieldValidator`. Web: catalogo, disenador visual
+(paleta + arbol + panel de propiedades), renderer `DynamicFormRenderer`, llenado con validacion
+servidor, bandeja de respuestas (resuelve etiquetas de opciones). Migracion `FormulariosRq08`.
+Verificado: disenar -> publicar -> llenar -> validar requerido -> respuesta persistida. Diferido:
+logica condicional, publicacion por token, registros transaccionales, lookups, maestro-detalle,
+calculados, cascada, tabs/filas/columnas (solo secciones), drag-drop (solo subir/bajar).
+**Pendiente: ADR del modelo JSON-por-respuesta (diverge del EAV del vault RQ08).**
+
+### RQ11 - Workflow Documental = motor BPMN (`modulo/workflows`) - **ADR-010**
+El usuario eligio **portar el motor BPMN de ECOREX** (canvas bpmn-js), que **contradice la spec
+RQ11 v2.0 del vault** (cadena de pasos estilo HubSpot, que rechaza BPMN explicitamente). Decision
+documentada en **ADR-010**; el vault queda por actualizar.
+
+- **Dominio (6):** `WorkflowDefinition` (XML BPMN + version inmutable), `WorkflowNode`/`Edge`
+  (grafo materializado), `WorkflowInstance` (IVersioned), `WorkflowStepHistory` (token = filas
+  append-only IsCurrent), `WorkflowNodePolicy` (asignacion por OrgUnit). Enums ya venian del clon.
+- **Application:** motor `WorkflowEngine` (avance en cascada tope 50, compuertas auto-resueltas por
+  `approval == 'X'`, reinicios por RestartNode, rechazo con reactivacion, cierre implicito),
+  logica pura (`BpmnProcessParser`/`BpmnXmlWriter`/`WorkflowConditionEvaluator`/`WorkflowAutoLayout`),
+  `WorkflowDesignService` (backend del editor bpmn-js), resolver de asignacion por organigrama
+  (`OrgAssigneeTree` puro + `NodeAssigneeResolver` + `WorkflowNodePolicyService`). Hook de reglas
+  = `NoOpWorkflowRuleHook`.
+- **Podas respecto de ECOREX:** acople a TaskItem/Tareas-Kanban (eliminado), motor de Reglas
+  (NoOp), formularios/agentes por nodo (diferidos), `BpmnXmlMerger` (no portado -> las mutaciones
+  regeneran el XML en vez de mergear).
+- **Web:** `Workflows.razor` (indice KPIs+tarjetas + editor embebido), `FlowEditor.razor` (canvas
+  bpmn-js + paneles config/asignacion/condiciones), `WorkflowRuntime.razor` (arrancar+atender).
+  bpmn-js v8.8.2 vendorizado en `wwwroot/lib/bpmnio/` (~484 KB) + `wwwroot/js/tronox-bpmn.js`.
+  Menu `req011` Disabled -> Ready (2 hojas: Mis Workflows + Ejecucion).
+- Migracion `WorkflowBpmnRq11`. Build verde, **14 tests puros nuevos**. Verificado e2e: crear ->
+  disenar (canvas monta, paleta, shapes) -> importar BPMN -> publicar -> arrancar instancia ->
+  Task -> compuerta enruta por condicion -> Task -> End -> instancia Completed.
+- **Defectos corregidos en verificacion:** (a) `AddStep` usaba navegacion en vez de FK escalar
+  para el nodo AsNoTracking (habria insertado nodos duplicados con IDs long); (b) `v@x.Version`
+  renderizaba literal; (c) el editor no cambiaba de definicion tras importar por acceso concurrente
+  al DbContext del circuito (se quito el `Reload` del switch y se anadio `@key`).
+- **Limitacion conocida (chip):** importar un `.bpmn` SIN seccion de diagrama (DI) deja el lienzo
+  en blanco (bpmn-js necesita coordenadas); el motor si computa el layout. Los flujos dibujados en
+  bpmn-js siempre traen DI y renderizan bien.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

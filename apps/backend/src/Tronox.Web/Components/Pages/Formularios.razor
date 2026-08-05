@@ -1,0 +1,159 @@
+@page "/modulo/formularios"
+@attribute [Authorize(Policy = "Perm:modulo/formularios:View")]
+@* Motor de Formularios Dinamicos (RQ08, port ECOREX). Catalogo: crea formularios, entra al
+   disenador, publica/despublica, archiva y consulta respuestas. Llave de permisos = ruta de menu
+   "modulo/formularios". *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Forms
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IFormDefinitionService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
+
+<PageTitle>Formularios - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span>/</span>
+        <span>Motor de Formularios Dinámicos</span>
+        <span>/</span>
+        <span class="current">Formularios</span>
+    </nav>
+
+    <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+            <h1 class="tx-ent-title">Formularios</h1>
+            <p class="tx-ent-sub" style="margin:2px 0 0">Diseña formularios dinámicos con constructor visual y captura de respuestas.</p>
+        </div>
+        @if (_canCreate)
+        {
+            <button class="tx-ent-btn primary" @onclick="OpenNuevo"><i class="bi bi-plus-lg"></i> Nuevo formulario</button>
+        }
+    </div>
+
+    @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
+    @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+    <div class="tx-ent-table-wrap" style="margin-top:12px">
+        <table class="tx-ent-table">
+            <thead><tr><th>CÓDIGO</th><th>TÍTULO</th><th>ESTADO</th><th>REV.</th><th>CAMPOS</th><th>RESPUESTAS</th><th class="right">ACCIONES</th></tr></thead>
+            <tbody>
+                @if (_forms is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                else if (_forms.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">No hay formularios. Crea el primero.</td></tr> }
+                else
+                {
+                    @foreach (var f in _forms)
+                    {
+                        <tr>
+                            <td><span class="mono">@f.Code</span></td>
+                            <td>@f.Title</td>
+                            <td><span class="tx-ent-badge @EstadoCss(f.Status)">@EstadoLabel(f.Status)</span></td>
+                            <td>@f.Revision</td>
+                            <td>@f.QuestionCount</td>
+                            <td>@f.ResponseCount</td>
+                            <td class="right">
+                                @if (_canEdit) { <button class="tx-ent-btn sm primary" title="Diseñar" @onclick="@(() => Nav.NavigateTo($"/modulo/formularios-disenador/{f.Id}"))"><i class="bi bi-pencil-square"></i> Diseñar</button> }
+                                @if (f.Status == FormStatus.Active) { <button class="tx-ent-btn sm" title="Llenar / Vista previa" @onclick="@(() => Nav.NavigateTo($"/modulo/formularios/{f.Id}/llenar"))"><i class="bi bi-ui-checks"></i></button> }
+                                <button class="tx-ent-btn sm" title="Respuestas" @onclick="@(() => Nav.NavigateTo($"/modulo/formularios/{f.Id}/respuestas"))"><i class="bi bi-inbox"></i></button>
+                                @if (_canEdit && f.Status == FormStatus.Draft) { <button class="tx-ent-btn sm ok" title="Publicar" @onclick="@(() => Activar(f.Id))">Publicar</button> }
+                                @if (_canEdit && f.Status == FormStatus.Active) { <button class="tx-ent-btn sm" title="Despublicar" @onclick="@(() => Desactivar(f.Id))">Despublicar</button> }
+                                @if (_canDelete) { <button class="tx-ent-btn sm danger" title="Archivar" @onclick="@(() => Archivar(f.Id))"><i class="bi bi-archive"></i></button> }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (_showNuevo)
+{
+    <div class="modal-overlay" @onclick="@(() => _showNuevo = false)">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Nuevo formulario</h3><button class="modal-close" @onclick="@(() => _showNuevo = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_nuevoError is not null) { <div class="tx-ent-fielderr">@_nuevoError</div> }
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field"><label>Código <span class="req">*</span></label><input class="tx-ent-input" @bind="_nCode" maxlength="50" placeholder="FRM-001" /></div>
+                    <div class="tx-ent-field"><label>Título <span class="req">*</span></label><input class="tx-ent-input" @bind="_nTitle" maxlength="200" /></div>
+                </div>
+                <div class="tx-ent-field"><label>Descripción <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_nDesc" rows="2" maxlength="1000"></textarea></div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showNuevo = false)" disabled="@_nBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarNuevo" disabled="@_nBusy">Crear y diseñar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string ModuleKey = "modulo/formularios";
+    private long Actor => Tenant.UserId ?? 0;
+    private bool _canCreate, _canEdit, _canDelete;
+    private IReadOnlyList<FormDefinitionListItemDto>? _forms;
+    private string? _pageOk, _pageError;
+
+    private bool _showNuevo, _nBusy;
+    private string? _nuevoError;
+    private string _nCode = "", _nTitle = "", _nDesc = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
+        await Reload();
+    }
+
+    private async Task Reload() => _forms = await Svc.ListAsync();
+
+    private static string EstadoLabel(FormStatus s) => s switch
+    { FormStatus.Draft => "Borrador", FormStatus.Active => "Publicado", FormStatus.Inactive => "Retirado", _ => s.ToString() };
+    private static string EstadoCss(FormStatus s) => s switch
+    { FormStatus.Active => "ok", FormStatus.Inactive => "off", _ => "" };
+
+    private void OpenNuevo()
+    {
+        _nCode = ""; _nTitle = ""; _nDesc = ""; _nuevoError = null; _nBusy = false;
+        _pageOk = null; _pageError = null; _showNuevo = true;
+    }
+
+    private async Task GuardarNuevo()
+    {
+        _nBusy = true; _nuevoError = null;
+        try
+        {
+            var res = await Svc.CreateAsync(new CreateFormDefinitionRequest(_nCode, _nTitle, string.IsNullOrWhiteSpace(_nDesc) ? null : _nDesc), Actor);
+            if (!res.IsOk) { _nuevoError = res.Error; return; }
+            Nav.NavigateTo($"/modulo/formularios-disenador/{res.Value!.Id}");
+        }
+        finally { _nBusy = false; }
+    }
+
+    private async Task Activar(long id)
+    {
+        var res = await Svc.ActivateAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _pageOk = "Formulario publicado."; await Reload();
+    }
+
+    private async Task Desactivar(long id)
+    {
+        var res = await Svc.DeactivateAsync(id, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _pageOk = "Formulario retirado."; await Reload();
+    }
+
+    private async Task Archivar(long id)
+    {
+        var res = await Svc.SetArchivedAsync(id, true, Actor);
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        _pageOk = "Formulario archivado."; await Reload();
+    }
+}

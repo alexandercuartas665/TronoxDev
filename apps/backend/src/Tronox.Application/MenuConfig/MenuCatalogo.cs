@@ -167,16 +167,15 @@ public static class MenuCatalogo
                 new("Respuestas Huerfanas", "modulo/formularios-huerfanas", "bi-inboxes", "RF07")
             ], MenuNodeState.InDevelopment),
 
+            // RQ11 se construye como motor BPMN (port de ECOREX, ADR-010), NO como la cadena de
+            // pasos del vault. Slice 1: disenador bpmn-js (Mis Workflows) + ejecucion. Las pantallas
+            // de la vision de cadena de pasos (estados, biblioteca, monitoreo, config) se reintroducen
+            // cuando se construyan.
             new("Workflow Documental", "req011", "bi-diagram-2", "RQ11",
             [
                 new("Mis Workflows", "modulo/workflows", "bi-diagram-2", "RF03"),
-                new("Constructor de Workflow", "modulo/workflows-constructor", "bi-diagram-3", "RF03"),
-                new("Historial de Versiones", "modulo/workflows-versiones", "bi-clock-history", "RF08"),
-                new("Estados Personalizados", "modulo/workflows-estados", "bi-flag", "RF02"),
-                new("Biblioteca de Plantillas", "modulo/workflows-biblioteca", "bi-collection", "RF09"),
-                new("Panel de Monitoreo", "modulo/workflows-monitoreo", "bi-activity", "RF11"),
-                new("Configuracion del Modulo", "modulo/workflows-config", "bi-gear", "RF01")
-            ], MenuNodeState.Disabled)
+                new("Ejecucion de Flujos", "modulo/workflows-ejecucion", "bi-play-circle", "RF10")
+            ], MenuNodeState.Ready)
         ], []),
 
         // ========================================================= GESTION Y TRAMITE

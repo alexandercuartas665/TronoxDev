@@ -96,6 +96,18 @@ public static class DependencyInjection
         // Plantillas documentales (RQ04 - RF09): CRUD + asociacion N:N a tipologias + variables.
         // La logica pura (conteo de variables, catalogo base) vive en PlantillaRules.
         services.AddScoped<Plantillas.IPlantillaService, Plantillas.PlantillaService>();
+        // Motor de formularios dinamicos (RQ08, port ECOREX): definicion + arbol (constructor) y
+        // respuestas (captura + validacion servidor). La validacion pura vive en FormFieldValidator.
+        services.AddScoped<Forms.IFormDefinitionService, Forms.FormDefinitionService>();
+        services.AddScoped<Forms.IFormResponseService, Forms.FormResponseService>();
+
+        // --- Motor de flujos BPMN (RQ11, port del motor de ECOREX) ---
+        // El hook de reglas es NoOp (motor de Reglas podado): todos los pasos Task son humanos.
+        services.AddScoped<Workflows.IWorkflowRuleHook, Workflows.NoOpWorkflowRuleHook>();
+        services.AddScoped<Workflows.IWorkflowEngine, Workflows.WorkflowEngine>();
+        services.AddScoped<Workflows.IWorkflowDesignService, Workflows.WorkflowDesignService>();
+        services.AddScoped<Workflows.INodeAssigneeResolver, Workflows.NodeAssigneeResolver>();
+        services.AddScoped<Workflows.IWorkflowNodePolicyService, Workflows.WorkflowNodePolicyService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

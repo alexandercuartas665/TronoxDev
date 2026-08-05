@@ -94,6 +94,22 @@ public interface IApplicationDbContext
     DbSet<Plantilla> Plantillas { get; }
     DbSet<PlantillaTipo> PlantillaTipos { get; }
 
+    // Motor de formularios dinamicos (RQ08, port ECOREX): definicion con arbol contenedores ->
+    // preguntas; respuestas como documento JSON (no EAV por fila).
+    DbSet<FormDefinition> FormDefinitions { get; }
+    DbSet<FormContainer> FormContainers { get; }
+    DbSet<FormQuestion> FormQuestions { get; }
+    DbSet<FormResponse> FormResponses { get; }
+
+    // Motor de flujos BPMN (RQ11, port del motor BPMN de ECOREX): definicion (XML BPMN) con
+    // nodos/aristas materializados; instancias con historial append-only; asignacion por nodo.
+    DbSet<WorkflowDefinition> WorkflowDefinitions { get; }
+    DbSet<WorkflowNode> WorkflowNodes { get; }
+    DbSet<WorkflowEdge> WorkflowEdges { get; }
+    DbSet<WorkflowInstance> WorkflowInstances { get; }
+    DbSet<WorkflowStepHistory> WorkflowStepHistories { get; }
+    DbSet<WorkflowNodePolicy> WorkflowNodePolicies { get; }
+
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }
