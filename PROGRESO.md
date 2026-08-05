@@ -110,7 +110,11 @@ Motor de Formularios (`modulo/formularios-plantillas`). Decision registrada aqui
 ## 2.d Fase 4 - Ports desde ECOREX.tareas (RQ08 Forms + RQ11 Workflow BPMN)
 
 Ports del proyecto hermano `C:\DesarrolloIA\ECOREX.tareas` (Guid->long, sin las dependencias
-podadas). Ambos verificados end-to-end en local. **Sin commit/deploy aun.**
+podadas). Ambos verificados end-to-end en local. **Commit `5ba938b` + DESPLEGADOS a prod
+(2026-08-05):** migraciones `FormulariosRq08` + `WorkflowBpmnRq11` auto-aplicadas, 10 tablas
+nuevas, 30 contenedores (sin caer vecinos), HTTP 200, 0 reinicios. Permisos concedidos a los
+roles admin de los 2 tenants de prod (formularios + workflows + workflows-ejecucion).
+Backup previo: `backup_pre_rq08_rq11_20260805_092016.sql.gz`.
 
 ### RQ08 - Motor de Formularios Dinamicos (`modulo/formularios`)
 Port del nucleo de ECOREX (JSON-por-respuesta, ADR-0015 de ECOREX, NO EAV por fila como el vault).
