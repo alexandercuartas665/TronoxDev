@@ -11,7 +11,8 @@
 @inject INodeAssigneeResolver AssigneeResolver
 @inject IJSRuntime JS
 
-<div style="position:fixed;inset:0;z-index:1045;background:var(--kt-body-bg,#f3f3f9);display:flex;flex-direction:column">
+<div class="modal-overlay" style="z-index:1050">
+  <div class="modal-dialog tx-mod tx-trdc" style="width:96vw;max-width:1680px;height:92vh;max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden" @onclick:stopPropagation="true">
     @if (_canvas is null)
     {
         <div class="tx-ent-hint" style="padding:24px">@(_loadError ?? "Cargando diseñador...")</div>
@@ -169,6 +170,7 @@
             </aside>
         </div>
     }
+  </div>
 </div>
 
 @if (_showImport)
