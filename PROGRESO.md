@@ -179,6 +179,31 @@ documentada en **ADR-010**; el vault queda por actualizar.
 
 ---
 
+## 2.e Fase 5 - Configuracion de Radicacion (RQ09 RF01)
+
+Construido 2026-08-05, **config-first** (RQ09 la operacion no opera aun). El usuario pidio migrar
+`.../Radicacion/rad_config.aspx`; **ese archivo NO existe** en el legacy (la carpeta `Radicacion/`
+es el tablero del bot de facturas DIAN, dominio ERP; la radicacion documental legacy es
+`doc_ventanillaunica.aspx`, la operacion). Se construyo **fiel al vault RQ09 RF01** (fuente de
+verdad, que ademas ubica la config en Config General). Ubicacion: Config General y Organizacional
+-> General -> **Configuracion Radicacion** (`modulo/config-radicacion`, el item ya existia como
+placeholder; ahora desarrollado). Estilo tx-*, NO el legacy.
+
+- **Dominio:** 8 enums + 5 entidades: `RadicacionConfig` (singleton: consecutivos RF01-1 + alertas
+  SLA RF01-3), `TipoComunicacion` (RF01-2), `BuzonCorreo` (RF01-4, clave AES-256), `NotificacionRadicacionConfig`
+  (RF01-5), `MigracionRadicadosLog` (RF01-6).
+- **Application:** `RadicacionConfigService` (GetConfig crea+siembra 13 tipos base + 10 eventos),
+  `TipoComunicacionService` (CRUD, base no eliminable), `BuzonCorreoService` (CRUD, ISecretProtector).
+- **Infra:** 5 tablas, migracion `ConfigRadicacionRf01`, FKs a niveles/dependencias/entidad.
+- **Web:** `ConfigRadicacion.razor` (1228 lineas) con 6 pestañas tx-* (Consecutivos con preview,
+  Tipos, Alertas SLA, Buzones, Notificaciones, Migracion). Verificado e2e: 13 tipos base + config +
+  10 eventos sembrados al primer acceso.
+- **Diferido (integracion posterior, no recorte de UI):** worker de captura de correos IMAP/Graph;
+  proceso asincrono de importacion de migracion historica; lectura del ultimo consecutivo del emisor
+  de secuencias (hoy 0). Documentado en el vault: `REQ009/RQ09_RF01_Implementacion.md`.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

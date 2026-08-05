@@ -1,0 +1,1228 @@
+@page "/modulo/config-radicacion"
+@attribute [Authorize(Policy = "Perm:modulo/config-radicacion:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IRadicacionConfigService ConfigSvc
+@inject ITipoComunicacionService TipoSvc
+@inject IBuzonCorreoService BuzonSvc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ09 - RF01 (Configuracion del modulo de Radicacion).
+
+   Pantalla unica con 6 pestanas: Consecutivos (RF01-1), Tipos de Comunicacion (RF01-2),
+   Alertas SLA (RF01-3), Buzones de Correo (RF01-4), Notificaciones (RF01-5) y Migracion
+   de radicados historicos (RF01-6). La config de consecutivos + SLA es un singleton por
+   tenant; la primera lectura la crea y siembra los tipos base y los eventos de notificacion.
+   Escrituras gateadas por permiso Editar (fail-closed, invariante 10). *@
+
+<PageTitle>Configuración de Radicación - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a>
+        <span class="sep">/</span>
+        <span>Configuración General</span>
+        <span class="sep">/</span>
+        <span class="cur">Configuración de Radicación</span>
+    </nav>
+
+    <div class="tx-ent-head">
+        <div>
+            <div class="tx-ent-eyebrow"><i class="bi bi-inboxes"></i><span>RQ09 &middot; RF01</span></div>
+            <h1 class="tx-ent-title">Configuración de Radicación</h1>
+            <p class="tx-ent-sub">
+                Parámetros de la ventanilla única: consecutivos, catálogo de tipos de comunicación,
+                alertas de vencimiento (SLA), buzones de correo de recepción, notificaciones por evento
+                y migración de radicados históricos.
+            </p>
+        </div>
+        @if (!_canEdit)
+        {
+            <div>
+                <span class="tx-ent-badge off"><i class="bi bi-eye"></i> Solo lectura</span>
+            </div>
+        }
+    </div>
+
+    @if (_pageError is not null)
+    {
+        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+    }
+    @if (_pageOk is not null)
+    {
+        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+    }
+
+    @* ===== Barra de pestanas ===== *@
+    <div class="cr-tabbar">
+        <div class="tx-ent-tabs">
+            @foreach (var (key, label, icon) in Tabs)
+            {
+                <button type="button" class="tx-ent-tab @(_tab == key ? "on" : "")"
+                        @onclick="@(() => _tab = key)">
+                    <i class="bi @icon"></i> @label
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando configuración...</em></div></div>
+    }
+    else
+    {
+        @* ================= TAB 1: CONSECUTIVOS (RF01-1) ================= *@
+        @if (_tab == "consecutivos")
+        {
+            <div class="tx-ent-card">
+                <div class="tx-ent-card-head">
+                    <div class="tx-ent-card-icon"><i class="bi bi-123"></i></div>
+                    <div>
+                        <div class="tx-ent-card-title">Consecutivos de radicación</div>
+                        <div class="tx-ent-card-sub">Número inicial por dirección, dígitos, separador y reinicio anual.</div>
+                    </div>
+                </div>
+                <div class="tx-ent-card-body">
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Consecutivo inicio Entrada <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" type="number" min="1" @bind="_cEntradaInicio" />
+                            <span class="tx-ent-hint">Actual asignado: <strong class="mono">@(_config?.ConsecutivoEntradaActual ?? 0)</strong></span>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Consecutivo inicio Salida <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" type="number" min="1" @bind="_cSalidaInicio" />
+                            <span class="tx-ent-hint">Actual asignado: <strong class="mono">@(_config?.ConsecutivoSalidaActual ?? 0)</strong></span>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Consecutivo inicio Interno <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" type="number" min="1" @bind="_cInternoInicio" />
+                            <span class="tx-ent-hint">Actual asignado: <strong class="mono">@(_config?.ConsecutivoInternoActual ?? 0)</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Dígitos del consecutivo <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" type="number" min="1" max="12" @bind="_cDigitos" />
+                            <span class="tx-ent-hint">Relleno con ceros a la izquierda (1 a 12).</span>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Separador <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" maxlength="3" @bind="_cSeparador" placeholder="-" />
+                            <span class="tx-ent-hint">Ej. guion, punto o barra.</span>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Reinicio anual</label>
+                            <label class="cr-switch">
+                                <input type="checkbox" @bind="_cReinicioAnual" />
+                                <span>Reiniciar la numeración cada año</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="cr-preview">
+                        <div class="tx-ent-hint" style="margin-bottom:6px"><i class="bi bi-eye"></i> Vista previa del número de radicado (Entrada)</div>
+                        <div class="cr-preview-val mono">@PreviewRadicado()</div>
+                    </div>
+
+                    @if (_canEdit)
+                    {
+                        <div class="tx-ent-actions">
+                            <button type="button" class="tx-ent-btn primary" @onclick="SaveConsecutivosAsync" disabled="@_busy">
+                                <i class="bi bi-save"></i> Guardar
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ================= TAB 2: TIPOS DE COMUNICACION (RF01-2) ================= *@
+        else if (_tab == "tipos")
+        {
+            <div class="tx-ent-card">
+                <div class="tx-ent-card-head">
+                    <div class="tx-ent-card-icon"><i class="bi bi-tags"></i></div>
+                    <div>
+                        <div class="tx-ent-card-title">Tipos de comunicación</div>
+                        <div class="tx-ent-card-sub">Catálogo radicable. Los tipos base normativos no se eliminan, solo se editan o inactivan.</div>
+                    </div>
+                    @if (_canEdit)
+                    {
+                        <div class="tx-ent-card-head-right">
+                            <button type="button" class="tx-ent-btn primary sm" @onclick="@(() => OpenTipo(null))">
+                                <i class="bi bi-plus-lg"></i> Nuevo tipo
+                            </button>
+                        </div>
+                    }
+                </div>
+                <div class="tx-ent-card-body">
+                    <div class="tx-ent-table-wrap">
+                        <table class="tx-ent-table">
+                            <thead>
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Nombre</th>
+                                    <th>Dirección</th>
+                                    <th>PQRSD</th>
+                                    <th>Días resp.</th>
+                                    <th>Estado</th>
+                                    <th>Base</th>
+                                    <th class="right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in _tipos)
+                                {
+                                    <tr class="@(t.Activo ? "" : "inactiva")">
+                                        <td class="mono">@t.Codigo</td>
+                                        <td>@t.Nombre</td>
+                                        <td>@DireccionLabel(t.Direccion)</td>
+                                        <td>
+                                            @if (t.EsPqrsd)
+                                            {
+                                                <span class="tx-ent-badge sm info">PQRSD</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="muted">-</span>
+                                            }
+                                        </td>
+                                        <td class="mono">@(t.DiasRespuesta?.ToString() ?? "-")</td>
+                                        <td><span class="tx-ent-badge sm @(t.Activo ? "ok" : "off")">@(t.Activo ? "Activo" : "Inactivo")</span></td>
+                                        <td>
+                                            @if (t.EsBase)
+                                            {
+                                                <span class="tx-ent-badge sm violet">Base</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="muted">-</span>
+                                            }
+                                        </td>
+                                        <td class="right">
+                                            @if (_canEdit)
+                                            {
+                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenTipo(t))">Editar</button>
+                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => ToggleTipoActivo(t))" disabled="@_busy">
+                                                    @(t.Activo ? "Inactivar" : "Activar")
+                                                </button>
+                                                @if (!t.EsBase)
+                                                {
+                                                    <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => DeleteTipoAsync(t))" disabled="@_busy">Eliminar</button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="muted">-</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                                @if (_tipos.Count == 0)
+                                {
+                                    <tr><td colspan="8"><div class="tx-ent-hint">No hay tipos de comunicación.</div></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="tx-ent-hint">
+                        <i class="bi bi-shield-lock"></i> Los tipos <strong>base</strong> son normativos: no se eliminan, únicamente se inactivan.
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ================= TAB 3: ALERTAS SLA (RF01-3) ================= *@
+        else if (_tab == "sla")
+        {
+            <div class="tx-ent-card">
+                <div class="tx-ent-card-head">
+                    <div class="tx-ent-card-icon"><i class="bi bi-alarm"></i></div>
+                    <div>
+                        <div class="tx-ent-card-title">Alertas de vencimiento (SLA)</div>
+                        <div class="tx-ent-card-sub">Umbrales de aviso sobre el término legal y escalamiento al vencer.</div>
+                    </div>
+                </div>
+                <div class="tx-ent-card-body">
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Primera alerta (% del término) <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" type="number" min="1" max="100" @bind="_a1" />
+                            <span class="tx-ent-hint">Ej. 50 = a la mitad del plazo.</span>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Segunda alerta (% del término) <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" type="number" min="1" max="100" @bind="_a2" />
+                            <span class="tx-ent-hint">Ej. 80 = cerca del vencimiento.</span>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Alerta tutela (horas) <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" type="number" min="1" @bind="_aTutela" />
+                            <span class="tx-ent-hint">Aviso especial por término corto de tutela.</span>
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Escalamiento al vencer</label>
+                            <label class="cr-switch">
+                                <input type="checkbox" @bind="_notifJefe" />
+                                <span>Notificar al jefe de la dependencia</span>
+                            </label>
+                            <label class="cr-switch">
+                                <input type="checkbox" @bind="_notifDir" />
+                                <span>Notificar a la Dirección</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    @if (_canEdit)
+                    {
+                        <div class="tx-ent-actions">
+                            <button type="button" class="tx-ent-btn primary" @onclick="SaveSlaAsync" disabled="@_busy">
+                                <i class="bi bi-save"></i> Guardar
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ================= TAB 4: BUZONES DE CORREO (RF01-4) ================= *@
+        else if (_tab == "buzones")
+        {
+            <div class="tx-ent-card">
+                <div class="tx-ent-card-head">
+                    <div class="tx-ent-card-icon"><i class="bi bi-envelope-at"></i></div>
+                    <div>
+                        <div class="tx-ent-card-title">Buzones de correo de recepción</div>
+                        <div class="tx-ent-card-sub">Cuentas monitoreadas para radicar correos entrantes. La clave se guarda cifrada.</div>
+                    </div>
+                    @if (_canEdit)
+                    {
+                        <div class="tx-ent-card-head-right">
+                            <button type="button" class="tx-ent-btn primary sm" @onclick="@(() => OpenBuzon(null))">
+                                <i class="bi bi-plus-lg"></i> Nuevo buzón
+                            </button>
+                        </div>
+                    }
+                </div>
+                <div class="tx-ent-card-body">
+                    <div class="tx-ent-table-wrap">
+                        <table class="tx-ent-table">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Dirección</th>
+                                    <th>Protocolo</th>
+                                    <th>Modo</th>
+                                    <th>Estado</th>
+                                    <th class="right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var b in _buzones)
+                                {
+                                    <tr class="@(b.Activo ? "" : "inactiva")">
+                                        <td>@b.NombreBuzon</td>
+                                        <td class="mono">@b.DireccionEmail</td>
+                                        <td>@ProtocoloLabel(b.Protocolo)</td>
+                                        <td>@ModoLabel(b.ModoRadicacion)</td>
+                                        <td><span class="tx-ent-badge sm @(b.Activo ? "ok" : "off")">@(b.Activo ? "Activo" : "Inactivo")</span></td>
+                                        <td class="right">
+                                            @if (_canEdit)
+                                            {
+                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenBuzon(b))">Editar</button>
+                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => ToggleBuzonActivo(b))" disabled="@_busy">
+                                                    @(b.Activo ? "Inactivar" : "Activar")
+                                                </button>
+                                                <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => DeleteBuzonAsync(b))" disabled="@_busy">Eliminar</button>
+                                            }
+                                            else
+                                            {
+                                                <span class="muted">-</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                                @if (_buzones.Count == 0)
+                                {
+                                    <tr><td colspan="6"><div class="tx-ent-hint">No hay buzones configurados.</div></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="tx-ent-hint">
+                        <i class="bi bi-info-circle"></i> El worker de captura de correos es una integración posterior; aquí sólo se configuran las cuentas.
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ================= TAB 5: NOTIFICACIONES (RF01-5) ================= *@
+        else if (_tab == "notificaciones")
+        {
+            <div class="tx-ent-card">
+                <div class="tx-ent-card-head">
+                    <div class="tx-ent-card-icon"><i class="bi bi-bell"></i></div>
+                    <div>
+                        <div class="tx-ent-card-title">Notificaciones por evento</div>
+                        <div class="tx-ent-card-sub">Activa o desactiva cada aviso y personaliza sus plantillas. Algunos son obligatorios por ley.</div>
+                    </div>
+                </div>
+                <div class="tx-ent-card-body">
+                    @foreach (var n in _notifs)
+                    {
+                        <div class="cr-notif">
+                            <div class="cr-notif-main">
+                                <div class="cr-notif-name">@n.EventoNombre</div>
+                                @if (n.ObligatorioPorLey)
+                                {
+                                    <span class="tx-ent-badge sm warn"><i class="bi bi-shield-check"></i> Obligatorio por ley</span>
+                                }
+                            </div>
+                            <div class="cr-notif-actions">
+                                <label class="cr-switch">
+                                    <input type="checkbox" checked="@n.Activo" disabled="@(!_canEdit || n.ObligatorioPorLey)"
+                                           @onchange="@(e => ToggleNotifActivo(n, (bool)e.Value!))" />
+                                    <span>Activa</span>
+                                </label>
+                                @if (_canEdit)
+                                {
+                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenNotif(n))">Editar plantilla</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (_notifs.Count == 0)
+                    {
+                        <div class="tx-ent-hint">No hay eventos de notificación.</div>
+                    }
+
+                    <div class="tx-ent-hint" style="margin-top:14px">
+                        <i class="bi bi-braces"></i> Variables disponibles en las plantillas:
+                        <code>@_variables</code>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ================= TAB 6: MIGRACION (RF01-6) ================= *@
+        else if (_tab == "migracion")
+        {
+            <div class="tx-ent-card">
+                <div class="tx-ent-card-head">
+                    <div class="tx-ent-card-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                    <div>
+                        <div class="tx-ent-card-title">Migración de radicados históricos</div>
+                        <div class="tx-ent-card-sub">Carga masiva de radicados previos vía plantilla Excel.</div>
+                    </div>
+                </div>
+                <div class="tx-ent-card-body">
+                    <div class="tx-ent-alert info">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <span>
+                            Descarga la plantilla, complétala con tus radicados históricos y súbela. El proceso de
+                            importación es asíncrono y valida cada fila antes de crear el radicado.
+                        </span>
+                    </div>
+
+                    <div class="tx-ent-actions" style="justify-content:flex-start">
+                        <button type="button" class="tx-ent-btn" @onclick="@(() => _pageOk = "Descarga de plantilla: disponible próximamente.")">
+                            <i class="bi bi-file-earmark-excel"></i> Descargar plantilla Excel
+                        </button>
+                        @if (_canEdit)
+                        {
+                            <button type="button" class="tx-ent-btn primary" disabled>
+                                <i class="bi bi-upload"></i> Subir archivo
+                            </button>
+                        }
+                    </div>
+                    <div class="tx-ent-hint">
+                        <i class="bi bi-hourglass-split"></i> El ejecutor de la importación es una integración posterior (worker asíncrono);
+                        por ahora esta sección lista las corridas ya registradas.
+                    </div>
+
+                    <div class="tx-ent-table-wrap" style="margin-top:14px">
+                        <table class="tx-ent-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Archivo</th>
+                                    <th>Total</th>
+                                    <th>Exitosos</th>
+                                    <th>Errores</th>
+                                    <th>Destino</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var m in _migraciones)
+                                {
+                                    <tr>
+                                        <td class="mono">@m.FechaMigracion.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                        <td>@(m.ArchivoNombre ?? "-")</td>
+                                        <td class="mono">@m.CantidadTotal</td>
+                                        <td class="mono">@m.CantidadExitosos</td>
+                                        <td class="mono">@m.CantidadErrores</td>
+                                        <td>@m.EstadoDestino</td>
+                                        <td><span class="tx-ent-badge sm info">@m.Estado</span></td>
+                                    </tr>
+                                }
+                                @if (_migraciones.Count == 0)
+                                {
+                                    <tr><td colspan="7"><div class="tx-ent-hint">No hay corridas de migración registradas.</div></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    @* ===================== MODAL: TIPO DE COMUNICACION ===================== *@
+    @if (_showTipo)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showTipo = false)">
+            <div class="modal-dialog" style="max-width:820px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_tipoEditId is null ? "Nuevo tipo de comunicación" : "Editar tipo de comunicación")</h3>
+                    <button class="modal-close" @onclick="@(() => _showTipo = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <div class="cr-section">Clasificación</div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Código <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" @bind="_tCodigo" maxlength="20" placeholder="PET" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Nombre <span class="req">*</span></label>
+                            <input class="tx-ent-input" @bind="_tNombre" maxlength="150" placeholder="Petición" />
+                        </div>
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Dirección <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_tDireccion">
+                                @foreach (var v in Enum.GetValues<RadicacionDireccion>())
+                                {
+                                    <option value="@v">@DireccionLabel(v)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Nivel de reserva por defecto <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input mono" type="number" @bind="_tNivelReservaId" placeholder="Id del nivel" />
+                        </div>
+                    </div>
+                    <div class="cr-checks">
+                        <label class="cr-switch"><input type="checkbox" @bind="_tEsPqrsd" /><span>Es PQRSD</span></label>
+                        <label class="cr-switch"><input type="checkbox" @bind="_tEsTutela" /><span>Es tutela</span></label>
+                        <label class="cr-switch"><input type="checkbox" @bind="_tEsRecurso" /><span>Es recurso</span></label>
+                        <label class="cr-switch"><input type="checkbox" @bind="_tPermiteAnonimo" /><span>Permite anónimo</span></label>
+                    </div>
+
+                    <div class="cr-section">Términos de respuesta</div>
+                    <div class="cr-checks">
+                        <label class="cr-switch"><input type="checkbox" @bind="_tRequiereRespuesta" /><span>Requiere respuesta</span></label>
+                        <label class="cr-switch"><input type="checkbox" @bind="_tProrrogable" /><span>Prorrogable</span></label>
+                    </div>
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Días de respuesta <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input mono" type="number" min="0" @bind="_tDiasRespuesta" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Tipo de día</label>
+                            <select class="tx-ent-input" @bind="_tTipoDia">
+                                @foreach (var v in Enum.GetValues<RadicacionTipoDia>())
+                                {
+                                    <option value="@v">@TipoDiaLabel(v)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Inicio del término</label>
+                            <select class="tx-ent-input" @bind="_tInicioTermino">
+                                @foreach (var v in Enum.GetValues<RadicacionInicioTermino>())
+                                {
+                                    <option value="@v">@InicioTerminoLabel(v)</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Días de prórroga <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input mono" type="number" min="0" @bind="_tDiasProrroga" />
+                        </div>
+                    </div>
+
+                    <div class="cr-section">Portal ciudadano</div>
+                    <div class="cr-checks">
+                        <label class="cr-switch"><input type="checkbox" @bind="_tHabilitadoWeb" /><span>Habilitado en el portal web</span></label>
+                        <label class="cr-switch"><input type="checkbox" @bind="_tActivo" /><span>Activo</span></label>
+                    </div>
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Ícono <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input mono" @bind="_tIcono" maxlength="60" placeholder="bi bi-file-text" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Color <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input mono" @bind="_tColor" maxlength="20" placeholder="#0d6efd" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Orden en el portal <span class="opt">(opcional)</span></label>
+                            <input class="tx-ent-input mono" type="number" @bind="_tOrdenPortal" />
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Palabras clave <span class="opt">(opcional)</span></label>
+                        <input class="tx-ent-input" @bind="_tPalabrasClave" maxlength="300" placeholder="peticion, solicitud, consulta" />
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Descripción para el ciudadano <span class="opt">(opcional)</span></label>
+                        <textarea class="tx-ent-input" @bind="_tDescripcionCiudadano" maxlength="500" rows="2"></textarea>
+                    </div>
+
+                    @if (_modalError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_modalError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showTipo = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveTipoAsync" disabled="@_busy">
+                        @(_tipoEditId is null ? "Crear" : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===================== MODAL: BUZON DE CORREO ===================== *@
+    @if (_showBuzon)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showBuzon = false)">
+            <div class="modal-dialog" style="max-width:760px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_buzonEditId is null ? "Nuevo buzón de correo" : "Editar buzón de correo")</h3>
+                    <button class="modal-close" @onclick="@(() => _showBuzon = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field">
+                            <label>Nombre del buzón <span class="req">*</span></label>
+                            <input class="tx-ent-input" @bind="_bNombre" maxlength="120" placeholder="Ventanilla única" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Dirección de correo <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" @bind="_bEmail" maxlength="200" placeholder="radicacion@entidad.gov.co" />
+                        </div>
+                    </div>
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Protocolo <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_bProtocolo">
+                                @foreach (var v in Enum.GetValues<BuzonProtocolo>())
+                                {
+                                    <option value="@v">@ProtocoloLabel(v)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Usuario <span class="req">*</span></label>
+                            <input class="tx-ent-input mono" @bind="_bUsuario" maxlength="200" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Contraseña</label>
+                            <input class="tx-ent-input" type="password" @bind="_bContrasena"
+                                   placeholder="@(_buzonTieneClave ? "(sin cambiar)" : "Clave de la cuenta")" />
+                        </div>
+                    </div>
+
+                    @if (_bProtocolo == BuzonProtocolo.Imap)
+                    {
+                        <div class="tx-ent-grid c3">
+                            <div class="tx-ent-field">
+                                <label>Servidor <span class="req">*</span></label>
+                                <input class="tx-ent-input mono" @bind="_bServidor" maxlength="200" placeholder="imap.entidad.gov.co" />
+                            </div>
+                            <div class="tx-ent-field">
+                                <label>Puerto</label>
+                                <input class="tx-ent-input mono" type="number" @bind="_bPuerto" placeholder="993" />
+                            </div>
+                            <div class="tx-ent-field">
+                                <label>Seguridad</label>
+                                <select class="tx-ent-input" @bind="_bSeguridad">
+                                    @foreach (var v in Enum.GetValues<BuzonSeguridad>())
+                                    {
+                                        <option value="@v">@SeguridadLabel(v)</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Carpeta</label>
+                            <input class="tx-ent-input mono" @bind="_bCarpeta" maxlength="120" placeholder="INBOX" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Frecuencia de revisión</label>
+                            <select class="tx-ent-input" @bind="_bFrecuencia">
+                                @foreach (var v in Enum.GetValues<BuzonFrecuenciaRevision>())
+                                {
+                                    <option value="@v">@FrecuenciaLabel(v)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Modo de radicación</label>
+                            <select class="tx-ent-input" @bind="_bModo">
+                                @foreach (var v in Enum.GetValues<BuzonModoRadicacion>())
+                                {
+                                    <option value="@v">@ModoLabel(v)</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="tx-ent-grid c3">
+                        <div class="tx-ent-field">
+                            <label>Tiempo de espera (min) <span class="opt">(semiautomático)</span></label>
+                            <input class="tx-ent-input mono" type="number" min="0" @bind="_bTiempoEspera" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Tipo de comunicación por defecto <span class="opt">(id)</span></label>
+                            <input class="tx-ent-input mono" type="number" @bind="_bTipoDefaultId" />
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Dependencia por defecto <span class="opt">(id)</span></label>
+                            <input class="tx-ent-input mono" type="number" @bind="_bDependenciaDefaultId" />
+                        </div>
+                    </div>
+
+                    <div class="cr-checks">
+                        <label class="cr-switch"><input type="checkbox" @bind="_bActivo" /><span>Activo</span></label>
+                    </div>
+
+                    @if (_modalError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_modalError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showBuzon = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveBuzonAsync" disabled="@_busy">
+                        @(_buzonEditId is null ? "Crear" : "Guardar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===================== MODAL: NOTIFICACION ===================== *@
+    @if (_showNotif && _notifEdit is not null)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showNotif = false)">
+            <div class="modal-dialog" style="max-width:640px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>Plantilla: @_notifEdit.EventoNombre</h3>
+                    <button class="modal-close" @onclick="@(() => _showNotif = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <div class="tx-ent-field">
+                        <label>Asunto</label>
+                        <input class="tx-ent-input" @bind="_nAsunto" maxlength="200"
+                               placeholder="Su radicado {{numero_radicado}} fue registrado" />
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Cuerpo</label>
+                        <textarea class="tx-ent-input" @bind="_nCuerpo" rows="6"
+                                  placeholder="Estimado {{nombre_ciudadano}}, ..."></textarea>
+                    </div>
+                    <div class="tx-ent-hint">
+                        <i class="bi bi-braces"></i> Variables: <code>@_variables</code>
+                    </div>
+                    @if (_modalError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_modalError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showNotif = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn primary" @onclick="SaveNotifAsync" disabled="@_busy">Guardar</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .tx-mod.tx-trdc .cr-tabbar { overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; }
+    .tx-mod.tx-trdc .cr-tabbar .tx-ent-tabs { flex-wrap: nowrap; }
+    .tx-mod.tx-trdc .cr-tabbar .tx-ent-tab { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .tx-mod.tx-trdc .tx-ent-card-head-right { margin-left: auto; }
+    .tx-mod.tx-trdc .cr-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; margin-right: 4px; }
+    .tx-mod.tx-trdc .cr-checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 6px 0 14px; }
+    .tx-mod.tx-trdc .cr-section { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--kt-text-gray-600); border-bottom: 1px solid var(--kt-border-color); padding-bottom: 6px; margin: 18px 0 12px; }
+    .tx-mod.tx-trdc .cr-section:first-child { margin-top: 0; }
+    .tx-mod.tx-trdc .cr-preview { background: var(--kt-input-bg); border: 1px solid var(--kt-border-color); border-radius: var(--kt-border-radius); padding: 14px 16px; margin: 10px 0 4px; }
+    .tx-mod.tx-trdc .cr-preview-val { font-size: 20px; font-weight: 700; letter-spacing: .03em; color: var(--kt-primary); }
+    .tx-mod.tx-trdc .cr-notif { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--kt-border-color); }
+    .tx-mod.tx-trdc .cr-notif:last-child { border-bottom: none; }
+    .tx-mod.tx-trdc .cr-notif-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    .tx-mod.tx-trdc .cr-notif-name { font-weight: 600; font-size: 14px; }
+    .tx-mod.tx-trdc .cr-notif-actions { display: flex; align-items: center; gap: 12px; }
+</style>
+
+@code {
+    private const string ModuleKey = "modulo/config-radicacion";
+
+    private static readonly (string Key, string Label, string Icon)[] Tabs =
+    {
+        ("consecutivos",   "Consecutivos",           "bi-123"),
+        ("tipos",          "Tipos de Comunicación",  "bi-tags"),
+        ("sla",            "Alertas SLA",            "bi-alarm"),
+        ("buzones",        "Buzones de Correo",      "bi-envelope-at"),
+        ("notificaciones", "Notificaciones",         "bi-bell"),
+        ("migracion",      "Migración",              "bi-cloud-arrow-up"),
+    };
+
+    private readonly string _variables =
+        "{{numero_radicado}}, {{fecha_radicacion}}, {{tipo_comunicacion}}, {{asunto}}, {{fecha_vencimiento}}, "
+        + "{{dias_restantes}}, {{nombre_ciudadano}}, {{dependencia_responsable}}, {{url_consulta}}";
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    private bool _loading = true;
+    private bool _busy;
+    private bool _canEdit;
+    private string _tab = "consecutivos";
+    private string? _pageOk;
+    private string? _pageError;
+    private string? _modalError;
+
+    private RadicacionConfigDto? _config;
+    private IReadOnlyList<TipoComunicacionDto> _tipos = [];
+    private IReadOnlyList<BuzonCorreoDto> _buzones = [];
+    private IReadOnlyList<NotificacionRadicacionDto> _notifs = [];
+    private IReadOnlyList<MigracionRadicadosDto> _migraciones = [];
+
+    // ---- Consecutivos (edit) ----
+    private int _cEntradaInicio = 1, _cSalidaInicio = 1, _cInternoInicio = 1, _cDigitos = 6;
+    private bool _cReinicioAnual = true;
+    private string _cSeparador = "-";
+
+    // ---- SLA (edit) ----
+    private int _a1 = 50, _a2 = 80, _aTutela = 24;
+    private bool _notifJefe, _notifDir;
+
+    // ---- Tipo modal ----
+    private bool _showTipo;
+    private long? _tipoEditId;
+    private string _tCodigo = "", _tNombre = "";
+    private RadicacionDireccion _tDireccion = RadicacionDireccion.Entrada;
+    private bool _tEsPqrsd, _tEsTutela, _tEsRecurso, _tRequiereRespuesta, _tProrrogable, _tPermiteAnonimo, _tHabilitadoWeb;
+    private bool _tActivo = true;
+    private int? _tDiasRespuesta, _tDiasProrroga, _tOrdenPortal;
+    private RadicacionTipoDia _tTipoDia = RadicacionTipoDia.Habiles;
+    private RadicacionInicioTermino _tInicioTermino = RadicacionInicioTermino.SiguienteDiaHabil;
+    private long? _tNivelReservaId;
+    private string? _tIcono, _tColor, _tPalabrasClave, _tDescripcionCiudadano;
+
+    // ---- Buzon modal ----
+    private bool _showBuzon;
+    private long? _buzonEditId;
+    private bool _buzonTieneClave;
+    private string _bNombre = "", _bEmail = "", _bUsuario = "", _bCarpeta = "INBOX";
+    private string? _bServidor, _bContrasena;
+    private int? _bPuerto, _bTiempoEspera;
+    private long? _bTipoDefaultId, _bDependenciaDefaultId;
+    private BuzonProtocolo _bProtocolo = BuzonProtocolo.Imap;
+    private BuzonSeguridad _bSeguridad = BuzonSeguridad.SslTls;
+    private BuzonFrecuenciaRevision _bFrecuencia = BuzonFrecuenciaRevision.Quince;
+    private BuzonModoRadicacion _bModo = BuzonModoRadicacion.SemiAutomatico;
+    private bool _bActivo = true;
+
+    // ---- Notif modal ----
+    private bool _showNotif;
+    private NotificacionRadicacionDto? _notifEdit;
+    private string? _nAsunto, _nCuerpo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        await LoadAllAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAllAsync()
+    {
+        // GetConfigAsync crea la config y siembra tipos + eventos en la primera lectura.
+        _config = await ConfigSvc.GetConfigAsync();
+        SyncConfigFields();
+        _tipos = await TipoSvc.ListAsync(includeInactive: true);
+        _buzones = await BuzonSvc.ListAsync();
+        _notifs = await ConfigSvc.ListNotificacionesAsync();
+        _migraciones = await ConfigSvc.ListMigracionesAsync();
+    }
+
+    private void SyncConfigFields()
+    {
+        if (_config is null) { return; }
+        _cEntradaInicio = _config.ConsecutivoEntradaInicio;
+        _cSalidaInicio = _config.ConsecutivoSalidaInicio;
+        _cInternoInicio = _config.ConsecutivoInternoInicio;
+        _cReinicioAnual = _config.ReinicioAnual;
+        _cDigitos = _config.DigitosConsecutivo;
+        _cSeparador = _config.Separador;
+        _a1 = _config.Alerta1Porcentaje;
+        _a2 = _config.Alerta2Porcentaje;
+        _aTutela = _config.AlertaTutelaHoras;
+        _notifJefe = _config.NotificarJefeAlVencer;
+        _notifDir = _config.NotificarDireccionAlVencer;
+    }
+
+    private string PreviewRadicado()
+    {
+        var sigla = string.IsNullOrWhiteSpace(_config?.SiglaEntidad) ? "ENT" : _config!.SiglaEntidad!;
+        var sep = _cSeparador ?? "";
+        var year = DateTime.Now.Year;
+        var digits = Math.Clamp(_cDigitos, 1, 12);
+        var num = Math.Max(_cEntradaInicio, 0).ToString().PadLeft(digits, '0');
+        return $"{sigla}{sep}E{sep}{year}{sep}{num}";
+    }
+
+    // ================= CONSECUTIVOS =================
+    private async Task SaveConsecutivosAsync()
+    {
+        if (!_canEdit || _config is null) { return; }
+        _busy = true; _pageOk = null; _pageError = null;
+        try
+        {
+            // Se envia la peticion COMPLETA: consecutivos editados + SLA conservado desde _config.
+            var req = new SaveRadicacionConfigRequest(
+                _cEntradaInicio, _cSalidaInicio, _cInternoInicio,
+                _cReinicioAnual, _cDigitos, _cSeparador ?? "-",
+                _config.Alerta1Porcentaje, _config.Alerta2Porcentaje, _config.AlertaTutelaHoras,
+                _config.NotificarJefeAlVencer, _config.NotificarDireccionAlVencer);
+            var res = await ConfigSvc.SaveConfigAsync(req, Actor);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _config = res.Value;
+            SyncConfigFields();
+            _pageOk = "Consecutivos guardados.";
+        }
+        finally { _busy = false; }
+    }
+
+    // ================= SLA =================
+    private async Task SaveSlaAsync()
+    {
+        if (!_canEdit || _config is null) { return; }
+        _busy = true; _pageOk = null; _pageError = null;
+        try
+        {
+            // Peticion COMPLETA: SLA editado + consecutivos conservados desde _config.
+            var req = new SaveRadicacionConfigRequest(
+                _config.ConsecutivoEntradaInicio, _config.ConsecutivoSalidaInicio, _config.ConsecutivoInternoInicio,
+                _config.ReinicioAnual, _config.DigitosConsecutivo, _config.Separador,
+                _a1, _a2, _aTutela, _notifJefe, _notifDir);
+            var res = await ConfigSvc.SaveConfigAsync(req, Actor);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _config = res.Value;
+            SyncConfigFields();
+            _pageOk = "Alertas SLA guardadas.";
+        }
+        finally { _busy = false; }
+    }
+
+    // ================= TIPOS =================
+    private void OpenTipo(TipoComunicacionDto? t)
+    {
+        _modalError = null;
+        _pageOk = null; _pageError = null;
+        _tipoEditId = t?.Id;
+        _tCodigo = t?.Codigo ?? "";
+        _tNombre = t?.Nombre ?? "";
+        _tDireccion = t?.Direccion ?? RadicacionDireccion.Entrada;
+        _tEsPqrsd = t?.EsPqrsd ?? false;
+        _tEsTutela = t?.EsTutela ?? false;
+        _tEsRecurso = t?.EsRecurso ?? false;
+        _tRequiereRespuesta = t?.RequiereRespuesta ?? false;
+        _tDiasRespuesta = t?.DiasRespuesta;
+        _tTipoDia = t?.TipoDia ?? RadicacionTipoDia.Habiles;
+        _tInicioTermino = t?.InicioTermino ?? RadicacionInicioTermino.SiguienteDiaHabil;
+        _tProrrogable = t?.Prorrogable ?? false;
+        _tDiasProrroga = t?.DiasProrroga;
+        _tPermiteAnonimo = t?.PermiteAnonimo ?? false;
+        _tHabilitadoWeb = t?.HabilitadoWeb ?? false;
+        _tNivelReservaId = t?.NivelReservaDefaultId;
+        _tIcono = t?.Icono;
+        _tColor = t?.Color;
+        _tPalabrasClave = t?.PalabrasClave;
+        _tOrdenPortal = t?.OrdenPortal;
+        _tDescripcionCiudadano = t?.DescripcionCiudadano;
+        _tActivo = t?.Activo ?? true;
+        _showTipo = true;
+    }
+
+    private async Task SaveTipoAsync()
+    {
+        if (!_canEdit) { return; }
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_tCodigo)) { _modalError = "El código es obligatorio."; return; }
+        if (string.IsNullOrWhiteSpace(_tNombre)) { _modalError = "El nombre es obligatorio."; return; }
+
+        _busy = true;
+        try
+        {
+            var req = new SaveTipoComunicacionRequest(
+                _tCodigo.Trim(), _tNombre.Trim(), _tDireccion,
+                _tEsPqrsd, _tEsTutela, _tEsRecurso, _tRequiereRespuesta,
+                _tDiasRespuesta, _tTipoDia, _tInicioTermino,
+                _tProrrogable, _tDiasProrroga, _tPermiteAnonimo, _tHabilitadoWeb,
+                _tNivelReservaId, NullIfEmpty(_tIcono), NullIfEmpty(_tColor), NullIfEmpty(_tPalabrasClave),
+                _tOrdenPortal, NullIfEmpty(_tDescripcionCiudadano), _tActivo);
+
+            var res = _tipoEditId is null
+                ? await TipoSvc.CreateAsync(req, Actor)
+                : await TipoSvc.UpdateAsync(_tipoEditId.Value, req, Actor);
+
+            if (!res.IsOk) { _modalError = res.Error; return; }
+            _showTipo = false;
+            _pageOk = _tipoEditId is null ? "Tipo creado." : "Tipo actualizado.";
+            _tipos = await TipoSvc.ListAsync(includeInactive: true);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleTipoActivo(TipoComunicacionDto t)
+    {
+        if (!_canEdit) { return; }
+        _busy = true; _pageOk = null; _pageError = null;
+        try
+        {
+            var res = await TipoSvc.SetActivoAsync(t.Id, !t.Activo, Actor);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _pageOk = t.Activo ? "Tipo inactivado." : "Tipo activado.";
+            _tipos = await TipoSvc.ListAsync(includeInactive: true);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteTipoAsync(TipoComunicacionDto t)
+    {
+        if (!_canEdit || t.EsBase) { return; }
+        _busy = true; _pageOk = null; _pageError = null;
+        try
+        {
+            var res = await TipoSvc.DeleteAsync(t.Id, Actor);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _pageOk = "Tipo eliminado.";
+            _tipos = await TipoSvc.ListAsync(includeInactive: true);
+        }
+        finally { _busy = false; }
+    }
+
+    // ================= BUZONES =================
+    private void OpenBuzon(BuzonCorreoDto? b)
+    {
+        _modalError = null;
+        _pageOk = null; _pageError = null;
+        _buzonEditId = b?.Id;
+        _buzonTieneClave = b?.TieneClave ?? false;
+        _bNombre = b?.NombreBuzon ?? "";
+        _bEmail = b?.DireccionEmail ?? "";
+        _bProtocolo = b?.Protocolo ?? BuzonProtocolo.Imap;
+        _bServidor = b?.Servidor;
+        _bPuerto = b?.Puerto;
+        _bSeguridad = b?.Seguridad ?? BuzonSeguridad.SslTls;
+        _bUsuario = b?.Usuario ?? "";
+        _bContrasena = null; // vacio = no cambiar
+        _bCarpeta = string.IsNullOrWhiteSpace(b?.Carpeta) ? "INBOX" : b!.Carpeta;
+        _bFrecuencia = b?.FrecuenciaRevision ?? BuzonFrecuenciaRevision.Quince;
+        _bModo = b?.ModoRadicacion ?? BuzonModoRadicacion.SemiAutomatico;
+        _bTiempoEspera = b?.TiempoEsperaMinutos;
+        _bTipoDefaultId = b?.TipoComunicacionDefaultId;
+        _bDependenciaDefaultId = b?.DependenciaDefaultId;
+        _bActivo = b?.Activo ?? true;
+        _showBuzon = true;
+    }
+
+    private async Task SaveBuzonAsync()
+    {
+        if (!_canEdit) { return; }
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_bNombre)) { _modalError = "El nombre es obligatorio."; return; }
+        if (string.IsNullOrWhiteSpace(_bEmail)) { _modalError = "La dirección de correo es obligatoria."; return; }
+        if (string.IsNullOrWhiteSpace(_bUsuario)) { _modalError = "El usuario es obligatorio."; return; }
+        if (_bProtocolo == BuzonProtocolo.Imap && string.IsNullOrWhiteSpace(_bServidor)) { _modalError = "El servidor IMAP es obligatorio."; return; }
+
+        _busy = true;
+        try
+        {
+            var req = new SaveBuzonCorreoRequest(
+                _bNombre.Trim(), _bEmail.Trim(), _bProtocolo,
+                NullIfEmpty(_bServidor), _bPuerto, _bSeguridad, _bUsuario.Trim(),
+                string.IsNullOrEmpty(_bContrasena) ? null : _bContrasena,   // null = conservar la cifrada
+                string.IsNullOrWhiteSpace(_bCarpeta) ? "INBOX" : _bCarpeta.Trim(),
+                _bFrecuencia, _bModo, _bTiempoEspera, _bTipoDefaultId, _bDependenciaDefaultId, _bActivo);
+
+            var res = _buzonEditId is null
+                ? await BuzonSvc.CreateAsync(req, Actor)
+                : await BuzonSvc.UpdateAsync(_buzonEditId.Value, req, Actor);
+
+            if (!res.IsOk) { _modalError = res.Error; return; }
+            _showBuzon = false;
+            _pageOk = _buzonEditId is null ? "Buzón creado." : "Buzón actualizado.";
+            _buzones = await BuzonSvc.ListAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleBuzonActivo(BuzonCorreoDto b)
+    {
+        if (!_canEdit) { return; }
+        _busy = true; _pageOk = null; _pageError = null;
+        try
+        {
+            var res = await BuzonSvc.SetActivoAsync(b.Id, !b.Activo, Actor);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _pageOk = b.Activo ? "Buzón inactivado." : "Buzón activado.";
+            _buzones = await BuzonSvc.ListAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteBuzonAsync(BuzonCorreoDto b)
+    {
+        if (!_canEdit) { return; }
+        _busy = true; _pageOk = null; _pageError = null;
+        try
+        {
+            var res = await BuzonSvc.DeleteAsync(b.Id, Actor);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _pageOk = "Buzón eliminado.";
+            _buzones = await BuzonSvc.ListAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ================= NOTIFICACIONES =================
+    private void OpenNotif(NotificacionRadicacionDto n)
+    {
+        _modalError = null;
+        _pageOk = null; _pageError = null;
+        _notifEdit = n;
+        _nAsunto = n.PlantillaAsunto;
+        _nCuerpo = n.PlantillaCuerpo;
+        _showNotif = true;
+    }
+
+    private async Task SaveNotifAsync()
+    {
+        if (!_canEdit || _notifEdit is null) { return; }
+        _busy = true; _modalError = null;
+        try
+        {
+            // Se conservan Activo, roles y usuarios actuales; solo se cambian las plantillas.
+            var req = new SaveNotificacionRadicacionRequest(
+                _notifEdit.Activo, _notifEdit.RolesIds, _notifEdit.UsuariosIds,
+                NullIfEmpty(_nAsunto), NullIfEmpty(_nCuerpo));
+            var res = await ConfigSvc.SaveNotificacionAsync(_notifEdit.Id, req, Actor);
+            if (!res.IsOk) { _modalError = res.Error; return; }
+            _showNotif = false;
+            _pageOk = "Plantilla guardada.";
+            _notifs = await ConfigSvc.ListNotificacionesAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleNotifActivo(NotificacionRadicacionDto n, bool activo)
+    {
+        if (!_canEdit || n.ObligatorioPorLey) { return; }
+        _busy = true; _pageOk = null; _pageError = null;
+        try
+        {
+            var req = new SaveNotificacionRadicacionRequest(
+                activo, n.RolesIds, n.UsuariosIds, n.PlantillaAsunto, n.PlantillaCuerpo);
+            var res = await ConfigSvc.SaveNotificacionAsync(n.Id, req, Actor);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _pageOk = activo ? "Notificación activada." : "Notificación desactivada.";
+            _notifs = await ConfigSvc.ListNotificacionesAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ================= Helpers =================
+    private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static string DireccionLabel(RadicacionDireccion d) => d switch
+    {
+        RadicacionDireccion.Entrada => "Entrada",
+        RadicacionDireccion.Salida => "Salida",
+        RadicacionDireccion.Interno => "Interno",
+        _ => d.ToString()
+    };
+
+    private static string TipoDiaLabel(RadicacionTipoDia d) => d switch
+    {
+        RadicacionTipoDia.Habiles => "Días hábiles",
+        RadicacionTipoDia.Calendario => "Días calendario",
+        _ => d.ToString()
+    };
+
+    private static string InicioTerminoLabel(RadicacionInicioTermino i) => i switch
+    {
+        RadicacionInicioTermino.SiguienteDiaHabil => "Siguiente día hábil",
+        RadicacionInicioTermino.MismoDia => "Mismo día",
+        _ => i.ToString()
+    };
+
+    private static string ProtocoloLabel(BuzonProtocolo p) => p switch
+    {
+        BuzonProtocolo.Imap => "IMAP",
+        BuzonProtocolo.GraphApi => "Microsoft Graph",
+        BuzonProtocolo.GmailApi => "Gmail API",
+        _ => p.ToString()
+    };
+
+    private static string SeguridadLabel(BuzonSeguridad s) => s switch
+    {
+        BuzonSeguridad.SslTls => "SSL/TLS",
+        BuzonSeguridad.StartTls => "STARTTLS",
+        BuzonSeguridad.Ninguna => "Ninguna",
+        _ => s.ToString()
+    };
+
+    private static string FrecuenciaLabel(BuzonFrecuenciaRevision f) => f switch
+    {
+        BuzonFrecuenciaRevision.Cinco => "Cada 5 min",
+        BuzonFrecuenciaRevision.Diez => "Cada 10 min",
+        BuzonFrecuenciaRevision.Quince => "Cada 15 min",
+        BuzonFrecuenciaRevision.Treinta => "Cada 30 min",
+        _ => f.ToString()
+    };
+
+    private static string ModoLabel(BuzonModoRadicacion m) => m switch
+    {
+        BuzonModoRadicacion.SemiAutomatico => "Semiautomático",
+        BuzonModoRadicacion.Automatico => "Automático",
+        BuzonModoRadicacion.Manual => "Manual",
+        _ => m.ToString()
+    };
+}

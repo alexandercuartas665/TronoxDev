@@ -113,6 +113,11 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
     public DbSet<WorkflowStepHistory> WorkflowStepHistories => Set<WorkflowStepHistory>();
     public DbSet<WorkflowNodePolicy> WorkflowNodePolicies => Set<WorkflowNodePolicy>();
+    public DbSet<RadicacionConfig> RadicacionConfigs => Set<RadicacionConfig>();
+    public DbSet<TipoComunicacion> TiposComunicacion => Set<TipoComunicacion>();
+    public DbSet<BuzonCorreo> BuzonesCorreo => Set<BuzonCorreo>();
+    public DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion => Set<NotificacionRadicacionConfig>();
+    public DbSet<MigracionRadicadosLog> MigracionesRadicados => Set<MigracionRadicadosLog>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -340,6 +345,15 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<FormDefaultDynamic>().HaveConversion<string>().HaveMaxLength(40);
         // Ancho de tarjeta (ola F4): enum persistido como string.
         configurationBuilder.Properties<FormCardLayout>().HaveConversion<string>().HaveMaxLength(20);
+        // Configuracion de Radicacion (RQ09 RF01): enums persistidos como string.
+        configurationBuilder.Properties<RadicacionDireccion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicacionTipoDia>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicacionInicioTermino>().HaveConversion<string>().HaveMaxLength(30);
+        configurationBuilder.Properties<BuzonProtocolo>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<BuzonSeguridad>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<BuzonModoRadicacion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<BuzonFrecuenciaRevision>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicacionEventoNotificacion>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleTriggerKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleExecutionStatus>().HaveConversion<string>().HaveMaxLength(40);
@@ -1218,6 +1232,61 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasOne(x => x.WorkflowNode).WithMany()
                 .HasForeignKey(x => x.WorkflowNodeId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.WorkflowInstanceId, x.Status });
+        });
+
+        // Configuracion de Radicacion (RQ09 RF01). Config singleton por tenant; catalogo de tipos;
+        // buzones (clave AES-256); notificaciones por evento; bitacora de migracion.
+        modelBuilder.Entity<RadicacionConfig>(b =>
+        {
+            b.Property(x => x.Separador).HasMaxLength(5).IsRequired();
+            // Singleton por tenant.
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        modelBuilder.Entity<TipoComunicacion>(b =>
+        {
+            b.Property(x => x.Codigo).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Icono).HasMaxLength(60);
+            b.Property(x => x.Color).HasMaxLength(9);
+            b.Property(x => x.PalabrasClave).HasMaxLength(500);
+            b.Property(x => x.DescripcionCiudadano).HasMaxLength(1000);
+            b.HasOne(x => x.NivelReservaDefault).WithMany()
+                .HasForeignKey(x => x.NivelReservaDefaultId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Direccion, x.Activo });
+        });
+
+        modelBuilder.Entity<BuzonCorreo>(b =>
+        {
+            b.Property(x => x.NombreBuzon).HasMaxLength(100).IsRequired();
+            b.Property(x => x.DireccionEmail).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Servidor).HasMaxLength(200);
+            b.Property(x => x.Usuario).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Carpeta).HasMaxLength(100).IsRequired();
+            b.HasOne(x => x.TipoComunicacionDefault).WithMany()
+                .HasForeignKey(x => x.TipoComunicacionDefaultId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.DependenciaDefault).WithMany()
+                .HasForeignKey(x => x.DependenciaDefaultId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Activo });
+        });
+
+        modelBuilder.Entity<NotificacionRadicacionConfig>(b =>
+        {
+            b.Property(x => x.DestinatariosRolesJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.DestinatariosUsuariosJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.PlantillaAsunto).HasMaxLength(300);
+            b.Property(x => x.PlantillaCuerpo).HasMaxLength(4000);
+            b.HasIndex(x => new { x.TenantId, x.Evento }).IsUnique();
+        });
+
+        modelBuilder.Entity<MigracionRadicadosLog>(b =>
+        {
+            b.Property(x => x.ArchivoNombre).HasMaxLength(300);
+            b.Property(x => x.EstadoDestino).HasMaxLength(20).IsRequired();
+            b.Property(x => x.Estado).HasMaxLength(20).IsRequired();
+            b.Property(x => x.ReporteJson).HasColumnType(jsonColumnType);
+            b.HasIndex(x => new { x.TenantId, x.FechaMigracion });
         });
 
         // Motor de flujos BPMN (RQ11, port del motor de ECOREX). El XML BPMN se guarda tal cual

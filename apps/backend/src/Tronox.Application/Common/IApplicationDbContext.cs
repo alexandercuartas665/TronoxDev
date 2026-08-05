@@ -117,6 +117,14 @@ public interface IApplicationDbContext
     DbSet<WorkflowStepHistory> WorkflowStepHistories { get; }
     DbSet<WorkflowNodePolicy> WorkflowNodePolicies { get; }
 
+    // Configuracion de Radicacion (RQ09 RF01): consecutivos + SLA (singleton), catalogo de tipos de
+    // comunicacion, buzones de correo, notificaciones por evento y bitacora de migracion historica.
+    DbSet<RadicacionConfig> RadicacionConfigs { get; }
+    DbSet<TipoComunicacion> TiposComunicacion { get; }
+    DbSet<BuzonCorreo> BuzonesCorreo { get; }
+    DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion { get; }
+    DbSet<MigracionRadicadosLog> MigracionesRadicados { get; }
+
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }

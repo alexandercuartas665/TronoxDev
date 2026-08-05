@@ -114,6 +114,13 @@ public static class DependencyInjection
         services.AddScoped<Workflows.INodeAssigneeResolver, Workflows.NodeAssigneeResolver>();
         services.AddScoped<Workflows.IWorkflowNodePolicyService, Workflows.WorkflowNodePolicyService>();
 
+        // --- Configuracion de Radicacion (RQ09 RF01): consecutivos + SLA (singleton), catalogo de
+        // tipos de comunicacion (13 base sembrados al crear la config), buzones de correo (clave
+        // cifrada AES-256), notificaciones por evento y bitacora de migracion historica. ---
+        services.AddScoped<Radicacion.IRadicacionConfigService, Radicacion.RadicacionConfigService>();
+        services.AddScoped<Radicacion.ITipoComunicacionService, Radicacion.TipoComunicacionService>();
+        services.AddScoped<Radicacion.IBuzonCorreoService, Radicacion.BuzonCorreoService>();
+
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();
 
