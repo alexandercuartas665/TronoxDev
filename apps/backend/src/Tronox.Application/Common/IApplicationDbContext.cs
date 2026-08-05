@@ -100,6 +100,13 @@ public interface IApplicationDbContext
     DbSet<FormContainer> FormContainers { get; }
     DbSet<FormQuestion> FormQuestions { get; }
     DbSet<FormResponse> FormResponses { get; }
+    // Formularios avanzados (fidelidad): tokens de publicacion, condiciones autocontenidas,
+    // maestro-detalle, vinculo a nodo de flujo y enlace respuesta<->paso.
+    DbSet<FormToken> FormTokens { get; }
+    DbSet<FormFieldCondition> FormFieldConditions { get; }
+    DbSet<FormRecordLink> FormRecordLinks { get; }
+    DbSet<WorkflowNodeForm> WorkflowNodeForms { get; }
+    DbSet<FormFlowLink> FormFlowLinks { get; }
 
     // Motor de flujos BPMN (RQ11, port del motor BPMN de ECOREX): definicion (XML BPMN) con
     // nodos/aristas materializados; instancias con historial append-only; asignacion por nodo.

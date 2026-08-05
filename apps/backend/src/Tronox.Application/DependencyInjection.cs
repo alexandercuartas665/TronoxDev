@@ -100,6 +100,11 @@ public static class DependencyInjection
         // respuestas (captura + validacion servidor). La validacion pura vive en FormFieldValidator.
         services.AddScoped<Forms.IFormDefinitionService, Forms.FormDefinitionService>();
         services.AddScoped<Forms.IFormResponseService, Forms.FormResponseService>();
+        // Formularios avanzados (fidelidad): condiciones autocontenidas, tokens de publicacion y
+        // framework de lookups (sin fuentes registradas aun: Tercero -> RQ07).
+        services.AddScoped<Forms.IFormConditionService, Forms.FormConditionService>();
+        services.AddScoped<Forms.IFormTokenService, Forms.FormTokenService>();
+        services.AddScoped<Forms.Lookups.IFormLookupService, Forms.Lookups.FormLookupService>();
 
         // --- Motor de flujos BPMN (RQ11, port del motor de ECOREX) ---
         // El hook de reglas es NoOp (motor de Reglas podado): todos los pasos Task son humanos.

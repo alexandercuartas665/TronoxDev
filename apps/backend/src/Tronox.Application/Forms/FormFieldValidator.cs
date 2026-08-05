@@ -6,9 +6,9 @@ using Tronox.Domain.Enums;
 namespace Tronox.Application.Forms;
 
 /// <summary>
-/// Validacion SERVIDOR de un valor contra la definicion de su pregunta (RQ08, port ECOREX /
-/// ADR-0015). Es la fuente de verdad: el renderer la reutiliza para la validacion cliente inmediata,
-/// pero el submit SIEMPRE re-valida aqui. Sin estado ni EF: puro, unit-testeable por tipo de control.
+/// Validacion SERVIDOR de un valor contra la definicion de su pregunta (RQ08, port ECOREX / ADR-0015).
+/// Es la fuente de verdad: el renderer la reutiliza para la validacion cliente inmediata, pero el submit
+/// SIEMPRE re-valida aqui (FormResponseService). Sin estado ni EF: puro, unit-testeable por tipo.
 /// </summary>
 public static class FormFieldValidator
 {
@@ -19,25 +19,33 @@ public static class FormFieldValidator
         => type is FormControlType.Heading or FormControlType.Literal
             or FormControlType.Button or FormControlType.Chart or FormControlType.Html
             or FormControlType.Paragraph or FormControlType.Divider or FormControlType.Spacer
+            // Subform (ola F5): los hijos son FormResponse propios (FormRecordLink), no un valor en el documento.
             or FormControlType.Subform;
 
     /// <summary>
-    /// Controles multimedia/captura SIN implementacion aun (firma, foto, gps, archivo, barras, imagen,
-    /// audio): el renderer pinta el placeholder deshabilitado y la validacion IGNORA Required a proposito.
+    /// Campos que capturan un valor escalar y por tanto pueden ser origen/objetivo de una regla
+    /// condicional: ni estructura (IsNonInput) ni multimedia placeholder ni el propio GridDetail.
+    /// </summary>
+    public static bool IsCapture(FormControlType type)
+        => !IsNonInput(type) && !IsPlaceholderCapture(type) && type != FormControlType.GridDetail;
+
+    /// <summary>Controles Tier 1 con componente en el DynamicFormRenderer.</summary>
+    public static bool IsTier1(FormControlType type)
+        => type <= FormControlType.Literal
+            || type is FormControlType.GridDetail or FormControlType.Paragraph
+                or FormControlType.Divider or FormControlType.Spacer;
+
+    /// <summary>
+    /// Controles multimedia/captura SIN implementacion real todavia: el renderer pinta el placeholder
+    /// DESHABILITADO y la validacion IGNORA Required a proposito (marcar requerido un control que no
+    /// puede capturarse bloquearia todo submit).
     /// </summary>
     public static bool IsPlaceholderCapture(FormControlType type)
         => type is FormControlType.Image or FormControlType.Photo or FormControlType.Audio
             or FormControlType.Signature or FormControlType.Gps or FormControlType.File
             or FormControlType.Barcode;
 
-    /// <summary>Controles con componente en el renderer de captura (tier 1) en este slice.</summary>
-    public static bool IsTier1(FormControlType type)
-        => type is FormControlType.Text or FormControlType.TextArea or FormControlType.Select
-            or FormControlType.MultiCheck or FormControlType.Radio or FormControlType.Toggle
-            or FormControlType.Number or FormControlType.Date or FormControlType.Time
-            or FormControlType.DateTime or FormControlType.Heading or FormControlType.Literal
-            or FormControlType.Paragraph or FormControlType.Divider or FormControlType.Spacer;
-
+    /// <summary>Opciones de la pregunta ([{id,label,value}]); lista vacia si el JSON es nulo o invalido.</summary>
     public static IReadOnlyList<FormOption> ParseOptions(string? optionsJson)
     {
         if (string.IsNullOrWhiteSpace(optionsJson)) { return []; }
@@ -45,6 +53,7 @@ public static class FormFieldValidator
         catch (JsonException) { return []; }
     }
 
+    /// <summary>Reglas de validacion (minLength, maxLength, pattern, minValue, maxValue).</summary>
     public static FormValidationRules? ParseRules(string? validationJson)
     {
         if (string.IsNullOrWhiteSpace(validationJson)) { return null; }
@@ -52,6 +61,7 @@ public static class FormFieldValidator
         catch (JsonException) { return null; }
     }
 
+    /// <summary>Valores seleccionados de un MultiCheck (el value del campo es un arreglo JSON de ids).</summary>
     public static IReadOnlyList<string> ParseMultiValues(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) { return []; }
@@ -59,29 +69,86 @@ public static class FormFieldValidator
         catch (JsonException) { return []; }
     }
 
-    /// <summary>Valida un valor contra su pregunta. Devuelve el mensaje de error o null si es valido.</summary>
+    /// <summary>
+    /// Valida un valor contra su pregunta. Devuelve el mensaje de error o null si es valido.
+    /// El pattern invalido (no compilable) se ignora aqui: se rechaza al GUARDAR la pregunta.
+    /// </summary>
     public static string? Validate(
         FormControlType type, bool required, string? value,
-        IReadOnlyList<FormOption>? options = null, FormValidationRules? rules = null)
+        IReadOnlyList<FormOption>? options = null, FormValidationRules? rules = null,
+        string? optionsJson = null)
     {
-        if (IsNonInput(type) || IsPlaceholderCapture(type)) { return null; }
+        if (IsNonInput(type)) { return null; }
+        // Multimedia sin captura real: Required se ignora a proposito.
+        if (IsPlaceholderCapture(type)) { return null; }
 
-        var isEmpty = type == FormControlType.MultiCheck
-            ? ParseMultiValues(value).Count == 0
-            : string.IsNullOrWhiteSpace(value);
+        var isEmpty = type switch
+        {
+            FormControlType.MultiCheck => ParseMultiValues(value).Count == 0,
+            FormControlType.GridDetail => ParseGridRows(value).Count == 0,
+            _ => string.IsNullOrWhiteSpace(value)
+        };
         if (isEmpty) { return required ? "Este campo es obligatorio." : null; }
 
         return type switch
         {
             FormControlType.Text or FormControlType.TextArea => ValidateText(value!, rules),
             FormControlType.Number => ValidateNumber(value!, rules),
-            FormControlType.Date or FormControlType.DateTime => ValidateDate(value!),
+            FormControlType.Date => ValidateDate(value!),
             FormControlType.Time => ValidateTime(value!),
+            FormControlType.DateTime => ValidateDate(value!),
             FormControlType.Toggle => ValidateToggle(value!),
             FormControlType.Select or FormControlType.Radio => ValidateOption(value!, options),
             FormControlType.MultiCheck => ValidateMulti(value!, options),
+            FormControlType.GridDetail => ValidateGrid(value!, optionsJson),
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Filas capturadas de una tabla (GridDetail): el value del campo es un arreglo JSON de objetos
+    /// { colId: "valor" }. Lista vacia si el JSON es nulo o invalido.
+    /// </summary>
+    public static IReadOnlyList<Dictionary<string, string?>> ParseGridRows(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { return []; }
+        try { return JsonSerializer.Deserialize<List<Dictionary<string, string?>>>(value, JsonOptions) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
+    private static string? ValidateGrid(string value, string? optionsJson)
+    {
+        List<Dictionary<string, string?>>? rows;
+        try
+        {
+            rows = JsonSerializer.Deserialize<List<Dictionary<string, string?>>>(value, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return "Las filas de la tabla no tienen un formato valido.";
+        }
+        if (rows is null || rows.Count == 0) { return null; }
+
+        // Requerido y opcion valida POR COLUMNA. Sin columnas no hay nada que exigir mas alla del formato.
+        var columns = Calc.FormGridCalculator.ParseColumns(optionsJson);
+        foreach (var col in columns)
+        {
+            if (col.Calc is not null) { continue; }   // las calculadas no se capturan
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var cell = rows[i].GetValueOrDefault(col.Id);
+                if (col.Required && string.IsNullOrWhiteSpace(cell))
+                {
+                    return $"La columna '{col.Label}' es obligatoria (fila {i + 1}).";
+                }
+                if (col.IsSelect && !string.IsNullOrWhiteSpace(cell)
+                    && !(col.Options ?? []).Any(o => OptionMatches(o, cell!)))
+                {
+                    return $"El valor de '{col.Label}' en la fila {i + 1} no es una opcion valida.";
+                }
+            }
+        }
+        return null;
     }
 
     private static string? ValidateText(string value, FormValidationRules? rules)

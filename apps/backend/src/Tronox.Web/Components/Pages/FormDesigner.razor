@@ -1,338 +1,2315 @@
 @page "/modulo/formularios-disenador/{Id:long}"
 @attribute [Authorize(Policy = "Perm:modulo/formularios-disenador:View")]
-@* Constructor visual de formularios dinamicos (RQ08, port ECOREX / FormDesigner). Paleta de tipos +
-   arbol del formulario (seleccionar/reordenar/borrar) + panel de propiedades + vista previa. *@
+@* Constructor visual de formularios dinamicos (RQ08, port fiel de ECOREX / ADR-0015 en estilo TRONOX).
+   3 columnas: paleta + arbol (izq), lienzo con presets de dispositivo (centro) y panel de propiedades
+   con tabs Diseno / Datos / Reglas (der). PERSISTE-POR-CAMBIO: cada mutacion llama al servicio real y
+   recarga (Guardar confirma/refresca). Estilo tx-* + Velzon; NADA de clases fb-*/ECOREX. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text.Json
+@using System.Text.Json.Nodes
 @using Tronox.Application.Forms
+@using Tronox.Application.Forms.Calc
+@using Tronox.Application.Forms.Lookups
+@using Tronox.Application.MenuConfig
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
-@using System.Text.Json
 @inject IFormDefinitionService Svc
-@inject Tronox.Application.Common.ITenantContext Tenant
+@inject IFormConditionService CondSvc
+@inject IFormTokenService TokenSvc
+@inject Tronox.Application.Forms.Lookups.IFormLookupService LookupSvc
+@inject IMenuConfigService MenuSvc
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Diseñador de formulario - TRONOX SGDEA</PageTitle>
 
-<div class="tx-mod tx-dep tx-trdc">
-    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
-        <a href="/inicio">Inicio</a><span>/</span>
-        <a href="/modulo/formularios">Formularios</a><span>/</span>
-        <span class="current">Diseñador</span>
-    </nav>
+@if (_loading)
+{
+    <div class="tx-ent-hint" style="padding:24px">Cargando constructor...</div>
+}
+else if (_def is null)
+{
+    <div style="padding:40px 24px;text-align:center">
+        <h3 class="tx-ent-title">Formulario no encontrado</h3>
+        <button class="tx-ent-btn" style="margin-top:14px" @onclick="@(() => Nav.NavigateTo("/modulo/formularios"))">Volver a formularios</button>
+    </div>
+}
+else
+{
+<div class="tx-mod tx-dep tx-trdc fd-root">
+    @* ===================== HEADER ===================== *@
+    <div class="fd-header">
+        <button class="fd-back" title="Volver" @onclick="@(() => Nav.NavigateTo("/modulo/formularios"))"><i class="bi bi-arrow-left"></i></button>
+        <span class="fd-code mono">FORX-@_def.Code</span>
+        @if (_editingTitle)
+        {
+            <input class="fd-title-input" value="@_titleDraft" @oninput="@(e => _titleDraft = e.Value?.ToString() ?? "")"
+                   @onblur="SaveTitleAsync" @onkeydown="@(async e => { if (e.Key == "Enter") { await SaveTitleAsync(); } })" />
+        }
+        else
+        {
+            <div class="fd-title" title="Clic para renombrar" @onclick="@(() => { _titleDraft = _def.Title; _editingTitle = true; })">@_def.Title</div>
+        }
+        <span class="tx-ent-badge @StatusCss()">@StatusLabel()</span>
+        <div class="fd-header-actions">
+            <button class="tx-ent-btn sm" @onclick="OpenFormPropsAsync"><i class="bi bi-sliders"></i> Propiedades</button>
+            <button class="tx-ent-btn sm" @onclick="@(() => { _previewValues.Clear(); _showPreview = true; })"><i class="bi bi-eye"></i> Vista previa</button>
+            @if (_def.Status == FormStatus.Active)
+            {
+                <button class="tx-ent-btn sm" @onclick="DeactivateAsync" disabled="@_busy"><i class="bi bi-slash-circle"></i> Desactivar</button>
+                <button class="tx-ent-btn sm" @onclick="OpenTokenModalAsync" disabled="@_busy"><i class="bi bi-link-45deg"></i> Publicar por URL</button>
+            }
+            else
+            {
+                <button class="tx-ent-btn sm" @onclick="ActivateAsync" disabled="@_busy"><i class="bi bi-check2-circle"></i> Activar</button>
+            }
+            <button class="tx-ent-btn sm primary" @onclick="SaveFlashAsync" disabled="@_busy">@(_savedFlash ? "Guardado" : "Guardar")</button>
+            <button class="tx-ent-btn sm" @onclick="@(() => Nav.NavigateTo("/modulo/formularios"))">Cerrar</button>
+        </div>
+    </div>
 
-    @if (_def is null)
+    @if (_pageError is not null)
     {
-        <div class="tx-ent-hint" style="padding:18px">@(_loadError ?? "Cargando...")</div>
+        <div class="tx-ent-fielderr fd-error">
+            <span>@_pageError</span>
+            <button class="fd-error-x" @onclick="@(() => _pageError = null)">&times;</button>
+        </div>
     }
-    else
-    {
-        <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <div>
-                <h1 class="tx-ent-title"><span class="mono">@_def.Code</span> · @_def.Title</h1>
-                <p class="tx-ent-sub" style="margin:2px 0 0">
-                    <span class="tx-ent-badge @(_def.Status == FormStatus.Active ? "ok" : "")">@(_def.Status == FormStatus.Active ? "Publicado" : _def.Status == FormStatus.Inactive ? "Retirado" : "Borrador")</span>
-                    Rev. @_def.Revision · @_def.Questions.Count campos
-                </p>
+
+    @* ===================== BODY 3 COLUMNAS ===================== *@
+    <div class="fd-body">
+        @* ---------- IZQUIERDA: paleta + arbol ---------- *@
+        <aside class="fd-left">
+            <div class="fd-left-scroll">
+                <div class="fd-group">ELEMENTOS</div>
+                <div class="fd-group-hint">Arrastra al lienzo o toca para agregar</div>
+                @RenderPaletteCard("container", null, "Contenedor", "Filas, columnas o secciones", "bi-columns-gap", "#7c3aed", "#ede9fe")
+                @RenderPaletteCard("control", FormControlType.Text, "Campo", "Texto, fecha, lista, numero...", "bi-input-cursor-text", "#2563eb", "#dbeafe")
+
+                <div class="fd-group" style="margin-top:10px">CAMPOS</div>
+                <div class="fd-palgrid">
+                    @foreach (var t in _fieldPalette)
+                    {
+                        var reg = RegOf(t);
+                        var ct = t;
+                        <button class="fd-palchip" draggable="true"
+                                @onclick="@(() => AddControlAsync(ct))"
+                                @ondragstart="@(() => { _dragCtrl = ct; _dragIsContainer = false; _dragNodeId = null; })">
+                            <span class="fd-palchip-ic" style="color:@reg.Color;background:@reg.Soft"><i class="bi @reg.Icon"></i></span>
+                            <span class="fd-palchip-tx">@reg.Name</span>
+                        </button>
+                    }
+                </div>
+
+                <div class="fd-group" style="margin-top:10px">DOCUMENTO</div>
+                <div class="fd-palgrid">
+                    @foreach (var t in _docPalette)
+                    {
+                        var reg = RegOf(t);
+                        var ct = t;
+                        <button class="fd-palchip" draggable="true"
+                                @onclick="@(() => AddControlAsync(ct))"
+                                @ondragstart="@(() => { _dragCtrl = ct; _dragIsContainer = false; _dragNodeId = null; })">
+                            <span class="fd-palchip-ic" style="color:@reg.Color;background:@reg.Soft"><i class="bi @reg.Icon"></i></span>
+                            <span class="fd-palchip-tx">@reg.Name</span>
+                        </button>
+                    }
+                </div>
+
+                <div class="fd-group fd-structhead" style="margin-top:12px">ESTRUCTURA <span class="tx-ent-badge sm">@TotalNodes()</span></div>
+                <div class="fd-tree">
+                    <div class="fd-tree-root @(Sel is null ? "sel" : "")" @onclick="@(() => Select(null))">
+                        <i class="bi bi-file-earmark-text"></i>
+                        <span class="fd-tree-name">Formulario</span>
+                        <span class="tx-ent-badge sm">@TotalNodes()</span>
+                    </div>
+                    @foreach (var row in TreeRows())
+                    {
+                        var node = row.Node;
+                        <div class="fd-tree-row @(IsSelected(node) ? "sel" : "") @(node.Hidden ? "dim" : "")"
+                             style="padding-left:@(8 + row.Depth * 15)px" @onclick="@(() => Select(node))">
+                            @if (row.HasKids)
+                            {
+                                <span class="fd-tree-chev @(_collapsed.Contains(node.Id) ? "" : "open")"
+                                      @onclick="@(() => ToggleCollapse(node.Id))" @onclick:stopPropagation="true"><i class="bi bi-chevron-right"></i></span>
+                            }
+                            else { <span class="fd-tree-spc"></span> }
+                            <span class="fd-tree-ic" style="color:@node.Reg.Color"><i class="bi @node.Reg.Icon"></i></span>
+                            <span class="fd-tree-name">@node.Label</span>
+                            <span class="tx-ent-badge sm">@row.Badge</span>
+                            <button class="fd-tree-tgl @(node.Locked ? "on" : "")" title="Fijo / bloqueado"
+                                    @onclick="@(() => ToggleLockAsync(node))" @onclick:stopPropagation="true"><i class="bi @(node.Locked ? "bi-lock-fill" : "bi-unlock")"></i></button>
+                            <button class="fd-tree-tgl @(node.Hidden ? "on" : "")" title="Visible / oculto"
+                                    @onclick="@(() => ToggleHideAsync(node))" @onclick:stopPropagation="true"><i class="bi @(node.Hidden ? "bi-eye-slash" : "bi-eye")"></i></button>
+                        </div>
+                    }
+                </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="tx-ent-btn" @onclick="@(() => _preview = !_preview)"><i class="bi bi-eye"></i> @(_preview ? "Editar" : "Vista previa")</button>
-                @if (_def.Status != FormStatus.Active) { <button class="tx-ent-btn primary" @onclick="Publicar"><i class="bi bi-check2-circle"></i> Publicar</button> }
-                else { <button class="tx-ent-btn" @onclick="Despublicar">Despublicar</button> }
-                <button class="tx-ent-btn" @onclick="@(() => Nav.NavigateTo("/modulo/formularios"))">Volver</button>
+        </aside>
+
+        @* ---------- CENTRO: device bar + lienzo ---------- *@
+        <div class="fd-center">
+            <div class="fd-devicebar">
+                <div class="fd-devicetabs">
+                    <button class="fd-devicetab @(_device == "nav" ? "on" : "")" @onclick="@(() => _device = "nav")"><i class="bi bi-window"></i> Navegador</button>
+                    <button class="fd-devicetab @(_device == "tab" ? "on" : "")" @onclick="@(() => _device = "tab")"><i class="bi bi-tablet"></i> Tableta</button>
+                    <button class="fd-devicetab @(_device == "mov" ? "on" : "")" @onclick="@(() => _device = "mov")"><i class="bi bi-phone"></i> Movil</button>
+                </div>
+                <span class="fd-devicelabel">Lienzo @CanvasWidth()</span>
+            </div>
+            <div class="fd-canvas" @ondragover:preventDefault @ondrop="@(() => DropOnAsync(null, null))" @ondrop:preventDefault>
+                <div class="fd-sheet" style="width:@CanvasWidth()">
+                    <div class="fd-sheet-grid" @onclick="@(() => Select(null))">
+                        @foreach (var node in NodesOf(null))
+                        {
+                            @RenderNode(node, true)
+                        }
+                        @if (NodesOf(null).Count == 0)
+                        {
+                            <div class="fd-empty-root">Lienzo vacio - arrastra o toca un elemento de la paleta</div>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
 
-        @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
-        @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+        @* ---------- DERECHA: propiedades ---------- *@
+        <aside class="fd-right">
+            <div class="fd-props-head">
+                <span class="fd-props-ic" style="color:@(Sel?.Reg.Color ?? "#475569");background:@(Sel?.Reg.Soft ?? "#e2e8f0")"><i class="bi @(Sel?.Reg.Icon ?? "bi-file-earmark-text")"></i></span>
+                <div>
+                    <div class="fd-props-name">@(Sel?.Label ?? "Formulario")</div>
+                    <div class="fd-props-tipo">@(Sel?.Reg.Tipo ?? "Definicion")</div>
+                </div>
+            </div>
+            <div class="fd-props-tabs">
+                <button class="fd-props-tab @(_propTab == "diseno" ? "on" : "")" @onclick="@(() => _propTab = "diseno")">Diseño</button>
+                <button class="fd-props-tab @(_propTab == "datos" ? "on" : "")" @onclick="@(() => _propTab = "datos")">Datos</button>
+                <button class="fd-props-tab @(_propTab == "reglas" ? "on" : "")" @onclick="@(() => _propTab = "reglas")">Reglas</button>
+            </div>
+            <div class="fd-props-body">
+                @if (Sel is null)
+                {
+                    <div class="fd-hintbox">
+                        <div class="fd-group">SUGERENCIA</div>
+                        <p class="tx-ent-hint">Selecciona un contenedor o un campo en el lienzo o en el arbol para editar sus propiedades.</p>
+                    </div>
+                }
+                else
+                {
+                    @if (_propTab == "diseno") { @RenderDisenoTab(Sel) }
+                    else if (_propTab == "datos") { @RenderDatosTab(Sel) }
+                    else { @RenderReglasTab(Sel) }
+                    <button class="tx-ent-btn sm danger fd-delbtn" @onclick="@(() => DeleteNodeAsync(Sel))" disabled="@_busy"><i class="bi bi-trash"></i> Eliminar elemento</button>
+                }
+            </div>
+        </aside>
+    </div>
+</div>
+}
 
-        @if (_preview)
+@* ===================== MODAL VISTA PREVIA ===================== *@
+@if (_showPreview && _def is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showPreview = false)">
+        <div class="modal-dialog" style="max-width:920px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Vista previa - @_def.Title</h3><button class="modal-close" @onclick="@(() => _showPreview = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                <DynamicFormRenderer Definition="_def" Values="_previewValues" ReadOnly="@(_def.Status != FormStatus.Active)" />
+            </div>
+        </div>
+    </div>
+}
+
+@* ===================== MODAL PUBLICAR POR URL ===================== *@
+@if (_showTokenModal && _def is not null)
+{
+    <div class="modal-overlay" @onclick="CloseTokenModal">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Publicar por URL</h3><button class="modal-close" @onclick="CloseTokenModal">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_emittedUrl is null)
+                {
+                    <div class="tx-ent-field"><label>Referencia (opcional)</label><input class="tx-ent-input" @bind="_tReference" maxlength="100" placeholder="T00042" /></div>
+                    <div class="tx-ent-grid c2">
+                        <div class="tx-ent-field"><label>Expira en (horas)</label><input type="number" class="tx-ent-input" @bind="_tHours" min="1" max="8760" /></div>
+                        <div class="tx-ent-field" style="justify-content:flex-end;gap:6px">
+                            <label class="fd-check"><input type="checkbox" @bind="_tSingleUse" /> Un solo uso</label>
+                            <label class="fd-check"><input type="checkbox" @bind="_tAllowAnonymous" /> Permitir anonimo</label>
+                        </div>
+                    </div>
+                    @if (_modalError is not null) { <div class="tx-ent-fielderr">@_modalError</div> }
+                }
+                else
+                {
+                    <p style="font-size:13px;margin-bottom:8px">Comparte esta URL. <strong>Se muestra una sola vez</strong>: solo se guarda el hash del token.</p>
+                    <div class="fd-tokenurl">
+                        <span class="mono" style="flex:1;word-break:break-all">@_emittedUrl</span>
+                        <button class="tx-ent-btn sm" @onclick="@(() => CopyAsync(_emittedUrl!))"><i class="bi bi-clipboard"></i></button>
+                    </div>
+                    <p class="tx-ent-hint" style="margin-top:8px">Expira: @_emittedExpiresAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm")</p>
+                }
+
+                @if (_tokens.Count > 0)
+                {
+                    <div style="margin-top:16px">
+                        <label class="tx-ent-hint" style="font-weight:600">Tokens emitidos</label>
+                        @foreach (var t in _tokens)
+                        {
+                            <div class="fd-tokenrow">
+                                <span class="tx-ent-badge @(TokenStateLabel(t) == "Vigente" ? "ok" : "off")">@TokenStateLabel(t)</span>
+                                <span style="flex:1">@(t.Reference ?? "(sin referencia)") - expira @t.ExpiresAt.ToLocalTime().ToString("dd MMM HH:mm")@(t.SingleUse ? " - un solo uso" : "")</span>
+                                @if (t.RevokedAt is null)
+                                {
+                                    <button class="tx-ent-btn sm danger" @onclick="@(() => RevokeTokenAsync(t.Id))" disabled="@_busy">Revocar</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="CloseTokenModal" disabled="@_busy">Cerrar</button>
+                @if (_emittedUrl is null)
+                {
+                    <button class="tx-ent-btn primary" @onclick="EmitTokenAsync" disabled="@_busy">Emitir URL</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ===================== MODAL PROPIEDADES DEL FORMULARIO ===================== *@
+@if (_showFormProps && _def is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showFormProps = false)">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Propiedades del formulario</h3><button class="modal-close" @onclick="@(() => _showFormProps = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                <div class="tx-ent-field">
+                    <label>Ancho del formulario</label>
+                    <select class="tx-ent-input" @bind="_cardLayout">
+                        <option value="@FormCardLayout.Normal">Normal (~720px)</option>
+                        <option value="@FormCardLayout.Ancho">Ancho (~1160px)</option>
+                        <option value="@FormCardLayout.Completo">Completo (casi toda la ventana)</option>
+                    </select>
+                    <div class="tx-ent-hint">Se aplica al llenar (URL publica, modulo y vista previa).</div>
+                </div>
+                <hr class="fd-hr" />
+                <label class="fd-check"><input type="checkbox" @bind="_txIsTransactional" /> Es transaccional (cada envio confirmado es un registro)</label>
+                @if (_txIsTransactional)
+                {
+                    <div class="tx-ent-field" style="margin-top:12px">
+                        <label>Identidad del registro</label>
+                        <select class="tx-ent-input" @bind="_txMode">
+                            <option value="@nameof(FormIdentityMode.None)">Ninguna</option>
+                            <option value="@nameof(FormIdentityMode.Sequence)">Consecutivo del sistema</option>
+                            <option value="@nameof(FormIdentityMode.NaturalKey)">Por dato (clave natural)</option>
+                        </select>
+                    </div>
+                    @if (_txMode == nameof(FormIdentityMode.NaturalKey))
+                    {
+                        <div class="tx-ent-field">
+                            <label>Campo clave (unico por tenant)</label>
+                            <select class="tx-ent-input" @bind="_txField">
+                                <option value="">Selecciona...</option>
+                                @foreach (var q in _def.Questions.Where(x => FormFieldValidator.IsCapture(x.ControlType) && string.IsNullOrWhiteSpace(x.CalcExpression)))
+                                {
+                                    <option value="@q.FieldCode">@q.Label (@q.FieldCode)</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    @if (_txMode == nameof(FormIdentityMode.Sequence))
+                    {
+                        <div class="tx-ent-hint">El numero se genera con el prefijo del codigo del formulario (ej. @_def.Code-000001).</div>
+                    }
+                }
+
+                <hr class="fd-hr" />
+                <label class="fd-check"><input type="checkbox" @bind="_isModule" @bind:after="OnModuleToggledAsync" /> Es un modulo del sistema (menu propio + bandeja)</label>
+                @if (_isModule)
+                {
+                    <div class="tx-ent-grid c2" style="margin-top:12px">
+                        <div class="tx-ent-field">
+                            <label>Menu (vista)</label>
+                            <select class="tx-ent-input" value="@(_moduleViewId?.ToString() ?? "")"
+                                    @onchange="@(e => OnModuleViewChangedAsync(long.TryParse(e.Value?.ToString(), out var v) ? v : (long?)null))">
+                                <option value="">Selecciona...</option>
+                                @foreach (var view in _menuViews)
+                                {
+                                    <option value="@view.Id" selected="@(view.Id == _moduleViewId)">@view.Name@(view.IsDefault ? " (por defecto)" : "")</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="tx-ent-field">
+                            <label>Grupo del menu</label>
+                            <select class="tx-ent-input" @bind="_moduleParentId">
+                                <option value="">Raiz del menu</option>
+                                @foreach (var g in _menuGroups)
+                                {
+                                    <option value="@g.Id">@g.Label</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Nombre en el menu</label>
+                        <input class="tx-ent-input" @bind="_moduleLabel" maxlength="80" placeholder="@_def.Title" />
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Icono</label>
+                        <MenuIconPicker @bind-Value="_moduleIcon" />
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Columnas de la bandeja</label>
+                        <div class="fd-chkgrid">
+                            @foreach (var q in _def.Questions.Where(x => !FormFieldValidator.IsNonInput(x.ControlType)))
+                            {
+                                <label class="fd-check"><input type="checkbox" checked="@_moduleColumns.Contains(q.FieldCode)"
+                                    @onchange="@(e => ToggleSet(_moduleColumns, q.FieldCode, (bool)e.Value!))" /> @q.Label</label>
+                            }
+                        </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Campos de filtro</label>
+                        <div class="fd-chkgrid">
+                            @foreach (var q in _def.Questions.Where(x => !FormFieldValidator.IsNonInput(x.ControlType)))
+                            {
+                                <label class="fd-check"><input type="checkbox" checked="@_moduleFilters.Contains(q.FieldCode)"
+                                    @onchange="@(e => ToggleSet(_moduleFilters, q.FieldCode, (bool)e.Value!))" /> @q.Label</label>
+                            }
+                        </div>
+                    </div>
+                    @if (_def.IsModule) { <div class="tx-ent-hint" style="color:#16a34a">Ya publicado como modulo. Ruta: /m/@_def.Code</div> }
+                }
+                @if (_modalError is not null) { <div class="tx-ent-fielderr">@_modalError</div> }
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showFormProps = false)" disabled="@_busy">Cerrar</button>
+                <button class="tx-ent-btn primary" @onclick="SaveFormPropsAsync" disabled="@_busy">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private FormDefinitionDetailDto? _def;
+    private IReadOnlyList<FormDefinitionListItemDto> _allDefs = [];
+    private IReadOnlyList<FormFieldConditionDto> _conditions = [];
+    private bool _loading = true;
+    private bool _busy;
+    private bool _savedFlash;
+    private string? _pageError;
+    private string? _modalError;
+
+    // Seleccion / UI del constructor.
+    private long? _selId;
+    private bool _selIsQuestion;
+    private string _propTab = "diseno";
+    private string _device = "nav";
+    private readonly HashSet<long> _collapsed = new();
+    private bool _editingTitle;
+    private string _titleDraft = "";
+
+    // Drag and drop nativo.
+    private FormControlType? _dragCtrl;
+    private bool _dragIsContainer;
+    private long? _dragNodeId;
+    private bool _dragNodeIsQuestion;
+
+    // Vista previa.
+    private bool _showPreview;
+    private readonly Dictionary<string, string?> _previewValues = new();
+
+    // Publicar por URL.
+    private bool _showTokenModal;
+    private string _tReference = "";
+    private int _tHours = 24;
+    private bool _tSingleUse;
+    private bool _tAllowAnonymous = true;
+    private string? _emittedUrl;
+    private DateTimeOffset? _emittedExpiresAt;
+    private List<FormTokenDto> _tokens = new();
+
+    // Propiedades del formulario (transaccionalidad + modulo).
+    private bool _showFormProps;
+    private bool _txIsTransactional;
+    private string _txMode = nameof(FormIdentityMode.None);
+    private string? _txField;
+    private FormCardLayout _cardLayout = FormCardLayout.Normal;
+    private bool _isModule;
+    private long? _moduleViewId;
+    private string? _moduleParentId;
+    private string? _moduleIcon;
+    private string? _moduleLabel;
+    private IReadOnlyList<MenuViewDto> _menuViews = [];
+    private readonly List<(long Id, string Label)> _menuGroups = new();
+    private readonly HashSet<string> _moduleColumns = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _moduleFilters = new(StringComparer.Ordinal);
+
+    // Editor de condicion inline (tab Reglas).
+    private bool _condOpen;
+    private string _condSource = "";
+    private string _condOp = "equals";
+    private string _condValue = "";
+    private string _condEffect = "show";
+    private string _condTarget = "";
+    private string _condSetValue = "";
+    private string? _condError;
+
+    // Columna del GridDetail cuyo panel esta abierto (clave "questionId:columnId").
+    private string? _openGridCol;
+
+    // ---- Paletas ----
+    private static readonly FormControlType[] _fieldPalette =
+    {
+        FormControlType.Text, FormControlType.TextArea, FormControlType.Number,
+        FormControlType.Date, FormControlType.Time, FormControlType.DateTime,
+        FormControlType.Toggle, FormControlType.Select, FormControlType.Radio,
+        FormControlType.MultiCheck, FormControlType.GridDetail, FormControlType.Subform,
+        FormControlType.CascadeConfigurator, FormControlType.Signature, FormControlType.Photo,
+        FormControlType.Gps, FormControlType.File, FormControlType.Barcode, FormControlType.Button
+    };
+    private static readonly FormControlType[] _docPalette =
+    {
+        FormControlType.Heading, FormControlType.Paragraph, FormControlType.Divider, FormControlType.Spacer
+    };
+
+    private static readonly string[] TenantRoles = { "Administrador", "Supervisor", "Gestor", "Consulta" };
+
+    // ---- Registro de tipos (nombre, tipo corto, icono bootstrap, color, soft) ----
+    private sealed record Reg(string Name, string Tipo, string Icon, string Color, string Soft, string Cat);
+
+    private static readonly Dictionary<FormControlType, Reg> ControlReg = new()
+    {
+        [FormControlType.Text] = new("Texto corto", "Texto", "bi-input-cursor-text", "#7c3aed", "#ede9fe", "control"),
+        [FormControlType.TextArea] = new("Area de texto", "Area", "bi-textarea-resize", "#7c3aed", "#ede9fe", "control"),
+        [FormControlType.Number] = new("Numerico", "Numero", "bi-123", "#2563eb", "#dbeafe", "control"),
+        [FormControlType.Select] = new("Lista desplegable", "Lista", "bi-menu-button-wide", "#2563eb", "#dbeafe", "control"),
+        [FormControlType.Radio] = new("Opcion unica", "Radio", "bi-record-circle", "#2563eb", "#dbeafe", "control"),
+        [FormControlType.MultiCheck] = new("Seleccion multiple", "Multiple", "bi-ui-checks", "#2563eb", "#dbeafe", "control"),
+        [FormControlType.Date] = new("Fecha", "Fecha", "bi-calendar-event", "#16a34a", "#dcfce7", "control"),
+        [FormControlType.Time] = new("Hora", "Hora", "bi-clock", "#16a34a", "#dcfce7", "control"),
+        [FormControlType.DateTime] = new("Fecha y hora", "F+H", "bi-calendar-week", "#16a34a", "#dcfce7", "control"),
+        [FormControlType.Toggle] = new("Si / No", "Bool", "bi-toggle-on", "#16a34a", "#dcfce7", "control"),
+        [FormControlType.GridDetail] = new("Tabla", "Tabla", "bi-table", "#d97706", "#fef3c7", "control"),
+        [FormControlType.Subform] = new("Subformulario", "Detalle", "bi-diagram-2", "#d97706", "#fef3c7", "control"),
+        [FormControlType.CascadeConfigurator] = new("Configurador en cascada", "Cascada", "bi-diagram-3", "#2563eb", "#dbeafe", "control"),
+        [FormControlType.Signature] = new("Firma", "Firma", "bi-pen", "#e11d48", "#ffe4e6", "control"),
+        [FormControlType.Photo] = new("Foto", "Foto", "bi-camera", "#e11d48", "#ffe4e6", "control"),
+        [FormControlType.Gps] = new("GPS", "GPS", "bi-geo-alt", "#16a34a", "#dcfce7", "control"),
+        [FormControlType.File] = new("Archivo", "Archivo", "bi-paperclip", "#475569", "#e2e8f0", "control"),
+        [FormControlType.Barcode] = new("Codigo de barras", "Barras", "bi-upc-scan", "#475569", "#e2e8f0", "control"),
+        [FormControlType.Button] = new("Boton", "Boton", "bi-hand-index", "#7c3aed", "#ede9fe", "control"),
+        [FormControlType.Heading] = new("Titulo", "Titulo", "bi-type-h1", "#475569", "#e2e8f0", "doc"),
+        [FormControlType.Paragraph] = new("Texto", "Parrafo", "bi-text-paragraph", "#d97706", "#fef3c7", "doc"),
+        [FormControlType.Divider] = new("Divisor", "Divisor", "bi-dash-lg", "#d97706", "#fef3c7", "doc"),
+        [FormControlType.Spacer] = new("Espacio", "Espacio", "bi-arrows-expand", "#d97706", "#fef3c7", "doc"),
+        [FormControlType.Literal] = new("Texto fijo", "Literal", "bi-fonts", "#475569", "#e2e8f0", "control"),
+        [FormControlType.Image] = new("Imagen", "Imagen", "bi-image", "#e11d48", "#ffe4e6", "control"),
+        [FormControlType.Audio] = new("Audio", "Audio", "bi-mic", "#475569", "#e2e8f0", "control"),
+        [FormControlType.Chart] = new("Grafico", "Grafico", "bi-bar-chart", "#475569", "#e2e8f0", "control"),
+        [FormControlType.Html] = new("HTML", "Html", "bi-code-slash", "#475569", "#e2e8f0", "control")
+    };
+
+    private static readonly Dictionary<FormContainerType, Reg> ContainerReg = new()
+    {
+        [FormContainerType.Row] = new("Fila", "Fila", "bi-distribute-vertical", "#2563eb", "#dbeafe", "container"),
+        [FormContainerType.Col] = new("Columna", "Columna", "bi-distribute-horizontal", "#2563eb", "#dbeafe", "container"),
+        [FormContainerType.Section] = new("Seccion", "Seccion", "bi-collection", "#7c3aed", "#ede9fe", "container"),
+        [FormContainerType.Segment] = new("Seccion", "Seccion", "bi-collection", "#7c3aed", "#ede9fe", "container"),
+        [FormContainerType.Tabs] = new("Pestañas", "Tabs", "bi-segmented-nav", "#d97706", "#fef3c7", "container"),
+        [FormContainerType.Modal] = new("Modal", "Modal", "bi-window-stack", "#e11d48", "#ffe4e6", "container"),
+        [FormContainerType.Table] = new("Tabla", "Tabla", "bi-grid-3x3", "#d97706", "#fef3c7", "container")
+    };
+
+    private static Reg RegOf(FormControlType t) => ControlReg.GetValueOrDefault(t, ControlReg[FormControlType.Text]);
+    private static Reg RegOf(FormContainerType t) => ContainerReg.GetValueOrDefault(t, ContainerReg[FormContainerType.Section]);
+
+    // ---- Nodo unificado (contenedor o pregunta) ----
+    private sealed class Node
+    {
+        public required long Id { get; init; }
+        public required bool IsQuestion { get; init; }
+        public FormQuestionDto? Q { get; init; }
+        public FormContainerDto? C { get; init; }
+        public required Reg Reg { get; init; }
+        public string Label => IsQuestion ? Q!.Label : C!.Name;
+        public int Width => IsQuestion ? Q!.Width : C!.Width;
+        public bool Locked => IsQuestion ? Q!.IsLocked : C!.IsLocked;
+        public bool Hidden => IsQuestion ? Q!.IsHidden : C!.IsHidden;
+        public bool IsContainer => !IsQuestion;
+        public bool IsDoc => IsQuestion && Reg.Cat == "doc";
+    }
+
+    private Node ToNode(FormQuestionDto q) => new() { Id = q.Id, IsQuestion = true, Q = q, Reg = RegOf(q.ControlType) };
+    private Node ToNode(FormContainerDto c) => new() { Id = c.Id, IsQuestion = false, C = c, Reg = RegOf(c.ContainerType) };
+
+    private List<Node> NodesOf(long? containerId)
+    {
+        var nodes = new List<Node>();
+        nodes.AddRange(_def!.Questions.Where(q => q.ContainerId == containerId).OrderBy(q => q.SortOrder).Select(ToNode));
+        nodes.AddRange(_def!.Containers.Where(c => c.ParentId == containerId).OrderBy(c => c.SortOrder).Select(ToNode));
+        return nodes;
+    }
+
+    private int TotalNodes() => _def is null ? 0 : _def.Questions.Count + _def.Containers.Count;
+
+    private Node? Sel => _selId is long id
+        ? (_selIsQuestion
+            ? _def!.Questions.Where(q => q.Id == id).Select(ToNode).FirstOrDefault()
+            : _def!.Containers.Where(c => c.Id == id).Select(ToNode).FirstOrDefault())
+        : null;
+
+    private bool IsSelected(Node n) => _selId == n.Id;
+
+    private void Select(Node? n)
+    {
+        _selId = n?.Id;
+        _selIsQuestion = n?.IsQuestion ?? false;
+        _condOpen = false;
+        _openGridCol = null;
+    }
+
+    private sealed record TreeRow(Node Node, int Depth, bool HasKids, string Badge);
+
+    private List<TreeRow> TreeRows()
+    {
+        var rows = new List<TreeRow>();
+        void Walk(long? parentId, int depth)
         {
-            <div class="tx-ent-card" style="padding:16px;max-width:820px;margin:12px auto">
-                <DynamicFormRenderer Definition="_def" Values="_previewValues" ReadOnly="false" />
+            foreach (var node in NodesOf(parentId))
+            {
+                var kids = node.IsContainer ? NodesOf(node.Id) : new List<Node>();
+                var badge = node.IsContainer ? kids.Count.ToString() : $"{node.Width}/12";
+                rows.Add(new TreeRow(node, depth, node.IsContainer && kids.Count > 0, badge));
+                if (node.IsContainer && !_collapsed.Contains(node.Id)) { Walk(node.Id, depth + 1); }
+            }
+        }
+        Walk(null, 0);
+        return rows;
+    }
+
+    private void ToggleCollapse(long id) { if (!_collapsed.Remove(id)) { _collapsed.Add(id); } }
+
+    private string CanvasWidth() => _device switch { "tab" => "620px", "mov" => "380px", _ => "820px" };
+
+    // ---- Ciclo de vida ----
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await ReloadAsync();
+        _allDefs = await Svc.ListAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _def = await Svc.GetAsync(Id);
+        if (_def is not null) { _conditions = await CondSvc.ListAsync(Id); }
+    }
+
+    private async Task SaveFlashAsync()
+    {
+        await ReloadAsync();
+        _savedFlash = true;
+        StateHasChanged();
+        await Task.Delay(1300);
+        _savedFlash = false;
+    }
+
+    private string StatusLabel() => _def!.IsArchived ? "Archivado" : _def.Status switch
+    { FormStatus.Active => "Publicado", FormStatus.Draft => "Borrador", _ => "Retirado" };
+
+    private string StatusCss() => _def!.IsArchived ? "off" : _def.Status switch
+    { FormStatus.Active => "ok", FormStatus.Draft => "", _ => "off" };
+
+    private async Task SaveTitleAsync()
+    {
+        _editingTitle = false;
+        var title = _titleDraft.Trim();
+        if (title.Length == 0 || title == _def!.Title) { return; }
+        var result = await Svc.UpdateHeaderAsync(Id, new UpdateFormDefinitionRequest(title, _def.Description, _def.Version));
+        if (!result.IsOk) { _pageError = result.Error; return; }
+        _def = result.Value;
+    }
+
+    // ---- Paleta: agregar elementos ----
+    private RenderFragment RenderPaletteCard(string kind, FormControlType? ctrl,
+        string name, string desc, string icon, string color, string soft) => __builder =>
+    {
+        <button class="fd-palcard" draggable="true"
+                @onclick="@(() => (kind == "container" ? AddContainerAsync() : AddControlAsync(ctrl!.Value)))"
+                @ondragstart="@(() => { _dragIsContainer = kind == "container"; _dragCtrl = ctrl; _dragNodeId = null; })">
+            <span class="fd-palcard-ic" style="color:@color;background:@soft"><i class="bi @icon"></i></span>
+            <span class="fd-palcard-tx"><span class="fd-palcard-name">@name</span><span class="fd-palcard-desc">@desc</span></span>
+            <i class="bi bi-grip-vertical fd-palcard-grip"></i>
+        </button>
+    };
+
+    private long? DropTarget() => Sel is { IsContainer: true } ? Sel.Id : null;
+
+    private Task AddContainerAsync() => AddContainerToAsync(DropTarget());
+    private Task AddControlAsync(FormControlType type) => AddControlToAsync(type, DropTarget());
+
+    private async Task AddContainerToAsync(long? containerId)
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            var result = await Svc.AddContainerAsync(Id, new SaveFormContainerRequest("Fila", FormContainerType.Row, containerId));
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            await ReloadAsync();
+            _selId = result.Value!.Id; _selIsQuestion = false; _propTab = "diseno";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task AddControlToAsync(FormControlType type, long? containerId)
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            var request = new SaveFormQuestionRequest(
+                containerId, NewFieldCode(type), DefaultLabel(type), type,
+                OptionsJson: DefaultOptions(type),
+                DefaultValue: type switch
+                {
+                    FormControlType.Paragraph => "Texto del documento...",
+                    FormControlType.Spacer => "24",
+                    _ => null
+                });
+            var result = await Svc.AddQuestionAsync(Id, request);
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            await ReloadAsync();
+            _selId = result.Value!.Id; _selIsQuestion = true; _propTab = "diseno";
+        }
+        finally { _busy = false; }
+    }
+
+    private static string NewFieldCode(FormControlType type)
+        => $"{type.ToString().ToLowerInvariant()}_{Guid.NewGuid().ToString("N")[..5]}";
+
+    private static string DefaultLabel(FormControlType type) => type switch
+    {
+        FormControlType.Heading => "Titulo de seccion",
+        FormControlType.Paragraph => "Texto",
+        FormControlType.Divider => "Divisor",
+        FormControlType.Spacer => "Espacio",
+        _ => RegOf(type).Name
+    };
+
+    private static string? DefaultOptions(FormControlType type) => type switch
+    {
+        FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck =>
+            """[{"id":"opcion_1","label":"Opcion 1"},{"id":"opcion_2","label":"Opcion 2"}]""",
+        FormControlType.GridDetail =>
+            """[{"id":"columna_1","label":"Columna 1"},{"id":"columna_2","label":"Columna 2"}]""",
+        _ => null
+    };
+
+    // ---- Drag and drop ----
+    private async Task DropOnAsync(long? containerId, Node? before)
+    {
+        if (_dragIsContainer) { _dragIsContainer = false; await AddContainerToAsync(containerId); return; }
+        if (_dragCtrl is FormControlType ct && _dragNodeId is null) { _dragCtrl = null; await AddControlToAsync(ct, containerId); return; }
+        if (_dragNodeId is not long dragId) { return; }
+        _dragNodeId = null; _dragCtrl = null;
+        if (dragId == containerId || before?.Id == dragId) { return; }
+        _busy = true;
+        try
+        {
+            if (_dragNodeIsQuestion)
+            {
+                var siblings = _def!.Questions.Where(q => q.ContainerId == containerId && q.Id != dragId).OrderBy(q => q.SortOrder).ToList();
+                var index = before is { IsQuestion: true } ? Math.Max(siblings.FindIndex(q => q.Id == before.Id), 0) : siblings.Count;
+                var result = await Svc.MoveQuestionToAsync(dragId, containerId, index);
+                if (!result.IsOk) { _pageError = result.Error; }
+            }
+            else
+            {
+                var siblings = _def!.Containers.Where(c => c.ParentId == containerId && c.Id != dragId).OrderBy(c => c.SortOrder).ToList();
+                var index = before is { IsQuestion: false } ? Math.Max(siblings.FindIndex(c => c.Id == before.Id), 0) : siblings.Count;
+                var result = await Svc.MoveContainerToAsync(dragId, containerId, index);
+                if (!result.IsOk) { _pageError = result.Error; }
+            }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private void OnNodeDragStart(Node node)
+    {
+        if (node.Locked) { return; }
+        _dragNodeId = node.Id;
+        _dragNodeIsQuestion = node.IsQuestion;
+        _dragCtrl = null; _dragIsContainer = false;
+    }
+
+    // ---- Mutaciones (persisten por cambio) ----
+    private static SaveFormQuestionRequest ToRequest(FormQuestionDto q) => new(
+        q.ContainerId, q.FieldCode, q.Label, q.ControlType, q.Caption, q.HelpText,
+        q.OptionsJson, q.Required, q.GridCol, q.Numeral, q.ValidationJson,
+        q.Width, q.PlaceholderText, q.DefaultValue, q.IsLocked, q.IsHidden,
+        q.SourceKind, q.SourceRef, q.DisplayField, q.ValueField, q.FilterJson,
+        q.AutofillMapJson, q.Presentation, q.CalcExpression, q.Aggregate, q.SubformDefinitionId,
+        q.DefaultDynamic, q.Format, q.FieldVisibilityJson, q.CascadeConfigJson);
+
+    private static SaveFormContainerRequest ToRequest(FormContainerDto c) => new(
+        c.Name, c.ContainerType, c.ParentId, c.Style, c.TabsJson, c.Width, c.IsLocked, c.IsHidden, c.InlineLabels);
+
+    private async Task PatchQuestionAsync(FormQuestionDto q, Func<SaveFormQuestionRequest, SaveFormQuestionRequest> patch)
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            var result = await Svc.UpdateQuestionAsync(q.Id, patch(ToRequest(q)));
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task PatchContainerAsync(FormContainerDto c, Func<SaveFormContainerRequest, SaveFormContainerRequest> patch)
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            var result = await Svc.UpdateContainerAsync(c.Id, patch(ToRequest(c)));
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleLockAsync(Node n)
+    {
+        if (n.IsQuestion) { await PatchQuestionAsync(n.Q!, r => r with { IsLocked = !n.Locked }); }
+        else { await PatchContainerAsync(n.C!, r => r with { IsLocked = !n.Locked }); }
+    }
+
+    private async Task ToggleHideAsync(Node n)
+    {
+        if (n.IsQuestion) { await PatchQuestionAsync(n.Q!, r => r with { IsHidden = !n.Hidden }); }
+        else { await PatchContainerAsync(n.C!, r => r with { IsHidden = !n.Hidden }); }
+    }
+
+    private async Task SetWidthAsync(Node n, int width)
+    {
+        if (n.IsQuestion) { await PatchQuestionAsync(n.Q!, r => r with { Width = width, GridCol = width >= 12 ? "col-12" : $"col-md-{width}" }); }
+        else { await PatchContainerAsync(n.C!, r => r with { Width = width }); }
+    }
+
+    private async Task MoveNodeAsync(Node n, bool up)
+    {
+        if (n.Locked) { return; }
+        _busy = true;
+        try
+        {
+            if (n.IsQuestion) { await Svc.MoveQuestionAsync(n.Id, up); }
+            else { await Svc.MoveContainerAsync(n.Id, up); }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DuplicateNodeAsync(Node n)
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            if (n.IsQuestion)
+            {
+                var q = n.Q!;
+                var result = await Svc.AddQuestionAsync(Id, ToRequest(q) with { FieldCode = NewFieldCode(q.ControlType) });
+                if (!result.IsOk) { _pageError = result.Error; return; }
+                await Svc.MoveQuestionToAsync(result.Value!.Id, q.ContainerId, q.SortOrder + 1);
+                await ReloadAsync();
+                _selId = result.Value.Id; _selIsQuestion = true;
+            }
+            else
+            {
+                var copyId = await DuplicateContainerRecursiveAsync(n.C!, n.C!.ParentId);
+                if (copyId is long cid)
+                {
+                    await Svc.MoveContainerToAsync(cid, n.C.ParentId, n.C.SortOrder + 1);
+                    await ReloadAsync();
+                    _selId = cid; _selIsQuestion = false;
+                }
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task<long?> DuplicateContainerRecursiveAsync(FormContainerDto source, long? parentId)
+    {
+        var created = await Svc.AddContainerAsync(Id, ToRequest(source) with { ParentId = parentId });
+        if (!created.IsOk) { _pageError = created.Error; return null; }
+        foreach (var q in _def!.Questions.Where(q => q.ContainerId == source.Id).OrderBy(q => q.SortOrder))
+        {
+            await Svc.AddQuestionAsync(Id, ToRequest(q) with { ContainerId = created.Value!.Id, FieldCode = NewFieldCode(q.ControlType) });
+        }
+        foreach (var child in _def.Containers.Where(c => c.ParentId == source.Id).OrderBy(c => c.SortOrder))
+        {
+            await DuplicateContainerRecursiveAsync(child, created.Value!.Id);
+        }
+        return created.Value!.Id;
+    }
+
+    private async Task DeleteNodeAsync(Node n)
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            var result = n.IsQuestion ? await Svc.DeleteQuestionAsync(n.Id) : await Svc.DeleteContainerAsync(n.Id);
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            if (_selId == n.Id) { _selId = null; }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Activacion ----
+    private async Task ActivateAsync()
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            var result = await Svc.ActivateAsync(Id);
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            _def = result.Value; _conditions = await CondSvc.ListAsync(Id);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeactivateAsync()
+    {
+        _pageError = null; _busy = true;
+        try
+        {
+            var result = await Svc.DeactivateAsync(Id);
+            if (!result.IsOk) { _pageError = result.Error; return; }
+            _def = result.Value;
+        }
+        finally { _busy = false; }
+    }
+
+    private static void ToggleSet(HashSet<string> set, string code, bool on) { if (on) { set.Add(code); } else { set.Remove(code); } }
+
+    // ---- Propiedades del formulario ----
+    private static IReadOnlyList<string> ParseCodeList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) { return Array.Empty<string>(); }
+        try { return JsonSerializer.Deserialize<List<string>>(json) ?? new(); }
+        catch (JsonException) { return Array.Empty<string>(); }
+    }
+
+    private async Task OpenFormPropsAsync()
+    {
+        _modalError = null;
+        _txIsTransactional = _def!.IsTransactional;
+        _txMode = _def.IdentityMode.ToString();
+        _txField = _def.IdentitySourceFieldCode;
+        _cardLayout = _def.CardLayout;
+        _isModule = _def.IsModule;
+        _moduleIcon = _def.ModuleIcon;
+        _moduleLabel = _def.Title;
+        _moduleParentId = null;
+        _moduleColumns.Clear(); _moduleFilters.Clear();
+        foreach (var c in ParseCodeList(_def.ListColumnsJson)) { _moduleColumns.Add(c); }
+        foreach (var f in ParseCodeList(_def.FilterFieldsJson)) { _moduleFilters.Add(f); }
+        _showFormProps = true;
+        _menuViews = await MenuSvc.ListViewsAsync();
+        _moduleViewId = _menuViews.FirstOrDefault(v => v.IsDefault)?.Id ?? _menuViews.FirstOrDefault()?.Id;
+        if (_isModule && _moduleViewId is long vid) { await LoadMenuGroupsAsync(vid); }
+    }
+
+    private async Task OnModuleToggledAsync()
+    {
+        if (_isModule && _menuGroups.Count == 0 && _moduleViewId is long vid) { await LoadMenuGroupsAsync(vid); }
+    }
+
+    private async Task OnModuleViewChangedAsync(long? viewId)
+    {
+        _moduleViewId = viewId; _moduleParentId = null;
+        if (viewId is long vid) { await LoadMenuGroupsAsync(vid); } else { _menuGroups.Clear(); }
+    }
+
+    private async Task LoadMenuGroupsAsync(long viewId)
+    {
+        _menuGroups.Clear();
+        var tree = await MenuSvc.GetViewTreeAsync(viewId);
+        if (!tree.IsOk || tree.Value is null) { return; }
+        void Walk(IReadOnlyList<MenuEditorNodeDto> nodes, int depth)
+        {
+            foreach (var n in nodes)
+            {
+                if (n.Kind is MenuNodeKind.Section or MenuNodeKind.Subgroup)
+                {
+                    _menuGroups.Add((n.Id, new string(' ', depth * 3) + n.Name));
+                }
+                if (n.Children.Count > 0) { Walk(n.Children, depth + 1); }
+            }
+        }
+        Walk(tree.Value.Roots, 0);
+    }
+
+    private async Task SaveFormPropsAsync()
+    {
+        _modalError = null;
+        var mode = Enum.TryParse<FormIdentityMode>(_txMode, out var m) ? m : FormIdentityMode.None;
+        if (_txIsTransactional && mode == FormIdentityMode.NaturalKey && string.IsNullOrWhiteSpace(_txField))
+        {
+            _modalError = "Elige el campo clave para la identidad por dato."; return;
+        }
+        if (_isModule && !_def!.IsModule && _moduleViewId is null)
+        {
+            _modalError = "Elige la vista de menu donde publicar el modulo."; return;
+        }
+        _busy = true;
+        try
+        {
+            var tx = await Svc.SetTransactionalAsync(_def!.Id, new SetFormTransactionalRequest(_txIsTransactional, mode, _txField, _cardLayout));
+            if (!tx.IsOk) { _modalError = tx.Error; return; }
+            _def = tx.Value;
+
+            long? parent = long.TryParse(_moduleParentId, out var pid) ? pid : null;
+            var mod = await Svc.SetModuleAsync(_def!.Id, new SetFormModuleRequest(
+                _isModule, _moduleViewId, parent, _moduleIcon, _moduleColumns.ToList(), _moduleFilters.ToList(), _moduleLabel));
+            if (!mod.IsOk) { _modalError = mod.Error; return; }
+            _def = mod.Value;
+            _showFormProps = false;
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Publicar por URL ----
+    private async Task OpenTokenModalAsync()
+    {
+        _modalError = null; _emittedUrl = null; _emittedExpiresAt = null;
+        _tReference = ""; _tHours = 24; _tSingleUse = false; _tAllowAnonymous = true;
+        _tokens = (await TokenSvc.ListAsync(Id)).ToList();
+        _showTokenModal = true;
+    }
+
+    private void CloseTokenModal() { _showTokenModal = false; _emittedUrl = null; }
+
+    private async Task EmitTokenAsync()
+    {
+        _modalError = null; _busy = true;
+        try
+        {
+            var result = await TokenSvc.EmitAsync(Id, new EmitFormTokenRequest(
+                string.IsNullOrWhiteSpace(_tReference) ? null : _tReference.Trim(), _tHours, _tSingleUse, _tAllowAnonymous));
+            if (!result.IsOk || result.Value is null) { _modalError = result.Error; return; }
+            _emittedUrl = $"{Nav.BaseUri}f/{result.Value.Token}";
+            _emittedExpiresAt = result.Value.ExpiresAt;
+            _tokens = (await TokenSvc.ListAsync(Id)).ToList();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RevokeTokenAsync(long tokenId)
+    {
+        _busy = true;
+        try { await TokenSvc.RevokeAsync(tokenId); _tokens = (await TokenSvc.ListAsync(Id)).ToList(); }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyAsync(string text)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); } catch { /* clipboard no disponible */ }
+    }
+
+    private static string TokenStateLabel(FormTokenDto t)
+        => t.RevokedAt is not null ? "Revocado"
+            : t.ExpiresAt <= DateTimeOffset.UtcNow ? "Expirado"
+            : t.SingleUse && t.UsedAt is not null ? "Usado" : "Vigente";
+
+    // =========================================================
+    // Render del lienzo (recursivo)
+    // =========================================================
+    private RenderFragment RenderNode(Node node, bool inRow) => __builder =>
+    {
+        var span = inRow ? Math.Clamp(node.Width, 1, 12) : 12;
+        @if (node.Hidden)
+        {
+            <div class="fd-node fd-node-hidden @(IsSelected(node) ? "sel" : "")" style="grid-column:span @span" draggable="true"
+                 @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+                 @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+                 @ondragover:preventDefault @ondragover:stopPropagation
+                 @ondrop="@(() => DropOnAsync(ParentOf(node), node))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+                @if (IsSelected(node)) { @RenderNodeActions(node) }
+                <i class="bi bi-eye-slash"></i> <span>@node.Label - oculto</span>
+            </div>
+            return;
+        }
+        @if (node.IsContainer)
+        {
+            var c = node.C!;
+            var kids = NodesOf(c.Id);
+            var isRow = c.ContainerType == FormContainerType.Row;
+            <div class="fd-node fd-node-container @(IsSelected(node) ? "sel" : "")" style="grid-column:span @span" draggable="true"
+                 @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+                 @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+                 @ondragover:preventDefault @ondragover:stopPropagation
+                 @ondrop="@(() => DropOnAsync(c.Id, null))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+                @if (IsSelected(node)) { @RenderNodeActions(node) }
+                <div class="fd-node-label" style="color:@node.Reg.Color;background:@node.Reg.Soft"><i class="bi @node.Reg.Icon"></i> @c.Name</div>
+                <div class="@(isRow ? "fd-kids-row" : "fd-kids-col")">
+                    @foreach (var kid in kids) { @RenderNode(kid, isRow) }
+                    @if (kids.Count == 0)
+                    {
+                        <div class="fd-node-empty" style="@(isRow ? "grid-column:span 12" : "")">Contenedor vacio - arrastra o toca un elemento</div>
+                    }
+                </div>
+            </div>
+            return;
+        }
+        @if (node.IsDoc)
+        {
+            var q = node.Q!;
+            @if (q.ControlType == FormControlType.Divider)
+            {
+                <div class="fd-node fd-node-divider @(IsSelected(node) ? "sel" : "")" style="grid-column:span @span" draggable="true"
+                     @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+                     @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+                     @ondragover:preventDefault @ondragover:stopPropagation
+                     @ondrop="@(() => DropOnAsync(ParentOf(node), node))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+                    @if (IsSelected(node)) { @RenderNodeActions(node) }
+                    <div class="fd-divider-line"></div>
+                </div>
+            }
+            else if (q.ControlType == FormControlType.Spacer)
+            {
+                <div class="fd-node fd-node-spacer @(IsSelected(node) ? "sel" : "")"
+                     style="grid-column:span @span;min-height:@(int.TryParse(q.DefaultValue, out var h) && h > 0 ? h : 24)px" draggable="true"
+                     @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+                     @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+                     @ondragover:preventDefault @ondragover:stopPropagation
+                     @ondrop="@(() => DropOnAsync(ParentOf(node), node))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+                    @if (IsSelected(node)) { @RenderNodeActions(node) }
+                </div>
+            }
+            else if (q.ControlType == FormControlType.Heading)
+            {
+                <div class="fd-node fd-node-heading @(IsSelected(node) ? "sel" : "")" style="grid-column:span @span" draggable="true"
+                     @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+                     @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+                     @ondragover:preventDefault @ondragover:stopPropagation
+                     @ondrop="@(() => DropOnAsync(ParentOf(node), node))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+                    @if (IsSelected(node)) { @RenderNodeActions(node) }
+                    <h4>@q.Label</h4>
+                </div>
+            }
+            else
+            {
+                <div class="fd-node fd-node-paragraph @(IsSelected(node) ? "sel" : "")" style="grid-column:span @span" draggable="true"
+                     @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+                     @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+                     @ondragover:preventDefault @ondragover:stopPropagation
+                     @ondrop="@(() => DropOnAsync(ParentOf(node), node))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+                    @if (IsSelected(node)) { @RenderNodeActions(node) }
+                    @(string.IsNullOrWhiteSpace(q.DefaultValue) ? "Texto del documento..." : q.DefaultValue)
+                </div>
+            }
+            return;
+        }
+        @if (node.Q!.ControlType == FormControlType.Button)
+        {
+            <div class="fd-node fd-node-btnwrap @(IsSelected(node) ? "sel" : "")" style="grid-column:span @span" draggable="true"
+                 @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+                 @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+                 @ondragover:preventDefault @ondragover:stopPropagation
+                 @ondrop="@(() => DropOnAsync(ParentOf(node), node))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+                @if (IsSelected(node)) { @RenderNodeActions(node) }
+                <span class="fd-node-btn"><i class="bi bi-hand-index"></i> @(string.IsNullOrWhiteSpace(node.Q!.Label) ? "Boton" : node.Q!.Label)</span>
+            </div>
+            return;
+        }
+        @* Control de captura *@
+        <div class="fd-node fd-node-control @(IsSelected(node) ? "sel" : "")" style="grid-column:span @span" draggable="true"
+             @onclick="@(() => Select(node))" @onclick:stopPropagation="true"
+             @ondragstart="@(() => OnNodeDragStart(node))" @ondragstart:stopPropagation="true"
+             @ondragover:preventDefault @ondragover:stopPropagation
+             @ondrop="@(() => DropOnAsync(ParentOf(node), node))" @ondrop:preventDefault @ondrop:stopPropagation="true">
+            @if (IsSelected(node)) { @RenderNodeActions(node) }
+            <div class="fd-ctrl-head">
+                <span class="fd-ctrl-ic" style="color:@node.Reg.Color"><i class="bi @node.Reg.Icon"></i></span>
+                <span class="fd-ctrl-label">@node.Q!.Label@if (node.Q.Required) { <span class="fd-ctrl-req"> *</span> }</span>
+                <span class="fd-ctrl-badge">@(node.Width)/12</span>
+            </div>
+            @RenderCtrlPreview(node.Q!)
+        </div>
+    };
+
+    private long? ParentOf(Node node) => node.IsQuestion ? node.Q!.ContainerId : node.C!.ParentId;
+
+    private RenderFragment RenderNodeActions(Node node) => __builder =>
+    {
+        <div class="fd-node-actions" @onclick:stopPropagation="true">
+            <button title="Subir" disabled="@node.Locked" @onclick="@(() => MoveNodeAsync(node, true))"><i class="bi bi-chevron-up"></i></button>
+            <button title="Bajar" disabled="@node.Locked" @onclick="@(() => MoveNodeAsync(node, false))"><i class="bi bi-chevron-down"></i></button>
+            <button title="Duplicar" @onclick="@(() => DuplicateNodeAsync(node))"><i class="bi bi-files"></i></button>
+            <button class="danger" title="Eliminar" @onclick="@(() => DeleteNodeAsync(node))"><i class="bi bi-trash"></i></button>
+        </div>
+    };
+
+    private RenderFragment RenderCtrlPreview(FormQuestionDto q) => __builder =>
+    {
+        var ph = string.IsNullOrWhiteSpace(q.PlaceholderText) ? "Escribe aqui..." : q.PlaceholderText;
+        switch (q.ControlType)
+        {
+            case FormControlType.TextArea:
+                <div class="fd-prev-area">@ph</div>
+                break;
+            case FormControlType.Select:
+            case FormControlType.Radio:
+            case FormControlType.MultiCheck:
+                var first = FormFieldValidator.ParseOptions(q.OptionsJson).FirstOrDefault()?.Label ?? "Selecciona...";
+                <div class="fd-prev-select"><span>@first</span><i class="bi bi-chevron-down"></i></div>
+                break;
+            case FormControlType.Date:
+                <div class="fd-prev-input">dd / mm / aaaa</div>
+                break;
+            case FormControlType.Time:
+                <div class="fd-prev-input">hh : mm</div>
+                break;
+            case FormControlType.DateTime:
+                <div class="fd-prev-input">dd / mm / aaaa  hh : mm</div>
+                break;
+            case FormControlType.Number:
+                <div class="fd-prev-input">0</div>
+                break;
+            case FormControlType.Toggle:
+                <div class="fd-prev-sino"><div class="on">Si</div><div>No</div></div>
+                break;
+            case FormControlType.GridDetail:
+                var cols = FormFieldValidator.ParseOptions(q.OptionsJson);
+                if (cols.Count == 0) { cols = new List<FormOption> { new("c1", "Columna 1"), new("c2", "Columna 2") }; }
+                <div class="fd-prev-table">
+                    <div class="fd-prev-thead" style="grid-template-columns:repeat(@cols.Count,1fr)">
+                        @for (var i = 0; i < cols.Count; i++) { <div class="@(i > 0 ? "bl" : "")">@cols[i].Label</div> }
+                    </div>
+                    <div class="fd-prev-trow" style="grid-template-columns:repeat(@cols.Count,1fr)">
+                        @for (var i = 0; i < cols.Count; i++) { <div class="@(i > 0 ? "bl" : "")">-</div> }
+                    </div>
+                </div>
+                break;
+            case FormControlType.Subform:
+                <div class="fd-prev-capture"><i class="bi bi-diagram-2"></i> Registros hijo (subformulario)</div>
+                break;
+            case FormControlType.CascadeConfigurator:
+                <div class="fd-prev-capture"><i class="bi bi-diagram-3"></i> Configurador en cascada</div>
+                break;
+            case FormControlType.Signature:
+                <div class="fd-prev-capture dashed"><i class="bi bi-pen"></i> Firma aqui</div>
+                break;
+            case FormControlType.Photo:
+            case FormControlType.Image:
+                <div class="fd-prev-capture dashed"><i class="bi bi-camera"></i> Capturar</div>
+                break;
+            case FormControlType.Gps:
+                <div class="fd-prev-capture"><i class="bi bi-geo-alt"></i> Ubicacion</div>
+                break;
+            case FormControlType.File:
+            case FormControlType.Audio:
+                <div class="fd-prev-capture dashed"><i class="bi bi-paperclip"></i> Subir archivo</div>
+                break;
+            case FormControlType.Barcode:
+                <div class="fd-prev-input">|| ||| |  escanear</div>
+                break;
+            default:
+                <div class="fd-prev-input">@ph</div>
+                break;
+        }
+    };
+
+    // =========================================================
+    // Panel de propiedades: DISENO
+    // =========================================================
+    private RenderFragment RenderDisenoTab(Node node) => __builder =>
+    {
+        <div class="tx-ent-field">
+            <label>Tipo de elemento</label>
+            @if (node.IsContainer)
+            {
+                <select class="tx-ent-input" value="@node.C!.ContainerType"
+                        @onchange="@(e => PatchContainerAsync(node.C!, r => r with { ContainerType = Enum.Parse<FormContainerType>(e.Value!.ToString()!) }))">
+                    <option value="@FormContainerType.Row">Fila</option>
+                    <option value="@FormContainerType.Col">Columna</option>
+                    <option value="@FormContainerType.Section">Seccion</option>
+                    <option value="@FormContainerType.Tabs">Pestañas</option>
+                    <option value="@FormContainerType.Modal">Modal</option>
+                    @if (node.C!.ContainerType is FormContainerType.Segment or FormContainerType.Table)
+                    {
+                        <option value="@node.C.ContainerType">@RegOf(node.C.ContainerType).Name</option>
+                    }
+                </select>
+            }
+            else
+            {
+                var q = node.Q!;
+                var opts = node.IsDoc ? _docPalette : _fieldPalette;
+                <select class="tx-ent-input" value="@q.ControlType" @onchange="@(e => ChangeTypeAsync(q, e.Value!.ToString()!))">
+                    @foreach (var t in opts) { <option value="@t">@RegOf(t).Name</option> }
+                    @if (!opts.Contains(q.ControlType)) { <option value="@q.ControlType">@RegOf(q.ControlType).Name</option> }
+                </select>
+            }
+        </div>
+        <div class="tx-ent-field">
+            <label>Etiqueta visible</label>
+            <input class="tx-ent-input" value="@node.Label" @onchange="@(e => RenameAsync(node, e.Value?.ToString() ?? ""))" />
+        </div>
+        @if (!node.IsDoc)
+        {
+            <div class="tx-ent-field">
+                <label>Ancho (columnas)</label>
+                <div class="fd-widthgrid">
+                    @for (var w = 1; w <= 12; w++)
+                    {
+                        var width = w;
+                        <button class="@(node.Width == width ? "on" : width < node.Width ? "in" : "")" @onclick="@(() => SetWidthAsync(node, width))">@width</button>
+                    }
+                </div>
+                <div class="fd-widthinfo"><span><b>@node.Width col</b></span><span>@(Math.Round(node.Width / 12d * 100))%</span></div>
+            </div>
+        }
+        @if (node is { IsDoc: true, Q.ControlType: FormControlType.Paragraph })
+        {
+            <div class="tx-ent-field">
+                <label>Contenido</label>
+                <textarea class="tx-ent-input" rows="3" value="@node.Q!.DefaultValue"
+                          @onchange="@(e => PatchQuestionAsync(node.Q!, r => r with { DefaultValue = e.Value?.ToString() }))"></textarea>
+            </div>
+        }
+        @if (node is { IsDoc: true, Q.ControlType: FormControlType.Spacer })
+        {
+            <div class="tx-ent-field">
+                <label>Alto (px)</label>
+                <input type="number" class="tx-ent-input" value="@(node.Q!.DefaultValue ?? "24")"
+                       @onchange="@(e => PatchQuestionAsync(node.Q!, r => r with { DefaultValue = (int.TryParse(e.Value?.ToString(), out var px) && px > 0 ? px : 24).ToString() }))" />
+            </div>
+        }
+        @if (node.IsContainer && node.C!.ContainerType == FormContainerType.Tabs)
+        {
+            <div class="tx-ent-field">
+                <label>Pestañas</label>
+                @RenderChipList(TabsOf(node.C), "#d97706",
+                    (i, v) => PatchTabsAsync(node.C!, i, v),
+                    i => PatchTabsAsync(node.C!, i, null),
+                    () => PatchTabsAsync(node.C!, -1, $"Pestana {TabsOf(node.C).Count + 1}"))
+            </div>
+        }
+        @if (!node.IsDoc)
+        {
+            @RenderToggleRow("Fijo en el layout", "No se puede reordenar", node.Locked, () => ToggleLockAsync(node))
+            @RenderToggleRow("Oculto", "No visible en el formulario", node.Hidden, () => ToggleHideAsync(node))
+            @if (node.IsContainer && node.C!.ContainerType is FormContainerType.Row or FormContainerType.Col)
+            {
+                @RenderToggleRow("Etiquetas en linea", "El label va al frente del valor", node.C!.InlineLabels,
+                    () => PatchContainerAsync(node.C!, r => r with { InlineLabels = !node.C!.InlineLabels }))
+            }
+        }
+    };
+
+    // =========================================================
+    // Panel de propiedades: DATOS
+    // =========================================================
+    private RenderFragment RenderDatosTab(Node node) => __builder =>
+    {
+        var slug = node.IsQuestion ? node.Q!.FieldCode
+            : new string(node.Label.ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+        <div class="tx-ent-field"><label>Nombre interno (FORX_DATA)</label><input class="tx-ent-input mono" readonly value="@slug" /></div>
+        <div class="tx-ent-field"><label>Tipo de respuesta</label><input class="tx-ent-input" readonly value="@node.Reg.Tipo" /></div>
+
+        @if (node is { IsQuestion: true, Q.ControlType: FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck })
+        {
+            <div class="tx-ent-field">
+                <label>Opciones de la lista</label>
+                @RenderChipList(OptionLabels(node.Q!), "#2563eb",
+                    (i, v) => PatchOptionAsync(node.Q!, i, v),
+                    i => PatchOptionAsync(node.Q!, i, null),
+                    () => PatchOptionAsync(node.Q!, -1, $"Opcion {OptionLabels(node.Q!).Count + 1}"))
+            </div>
+        }
+        @if (node is { IsQuestion: true, Q.ControlType: FormControlType.GridDetail })
+        {
+            @RenderGridColumnsEditor(node.Q!)
+        }
+        @if (node is { IsQuestion: true, Q.ControlType: FormControlType.CascadeConfigurator })
+        {
+            <div class="tx-ent-field">
+                <label>Taxonomia del configurador (JSON)</label>
+                <textarea class="tx-ent-input mono" rows="6" value="@node.Q!.CascadeConfigJson"
+                          @onchange="@(e => PatchQuestionAsync(node.Q!, r => r with { CascadeConfigJson = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString() }))"></textarea>
+                <div class="tx-ent-hint">Config-driven por niveles/columnas/juegos. Editor visual pendiente; por ahora se edita el JSON.</div>
+            </div>
+        }
+        @if (node is { IsQuestion: true, Q.ControlType: FormControlType.Subform })
+        {
+            <div class="tx-ent-field">
+                <label>Formulario hijo (detalle)</label>
+                <select class="tx-ent-input" value="@(node.Q!.SubformDefinitionId?.ToString() ?? "")"
+                        @onchange="@(e => PatchQuestionAsync(node.Q!, r => r with { SubformDefinitionId = long.TryParse(e.Value?.ToString(), out var id) ? id : (long?)null }))">
+                    <option value="">Selecciona una definicion...</option>
+                    @foreach (var d in _allDefs.Where(d => d.Id != _def!.Id))
+                    {
+                        <option value="@d.Id" selected="@(d.Id == node.Q!.SubformDefinitionId)">@d.Title (@d.Code)</option>
+                    }
+                </select>
+                <div class="tx-ent-hint">Cada registro hijo es una respuesta de esa definicion, enlazada a este registro.</div>
+            </div>
+        }
+        @if (node.IsQuestion && !node.IsDoc)
+        {
+            var q = node.Q!;
+            <div class="tx-ent-field"><label>Texto de ayuda (placeholder)</label><input class="tx-ent-input" value="@q.PlaceholderText" @onchange="@(e => PatchQuestionAsync(q, r => r with { PlaceholderText = e.Value?.ToString() }))" /></div>
+            <div class="tx-ent-field"><label>Valor por defecto</label><input class="tx-ent-input" value="@q.DefaultValue" @onchange="@(e => PatchQuestionAsync(q, r => r with { DefaultValue = e.Value?.ToString() }))" /></div>
+            <div class="tx-ent-field">
+                <label>Valor por defecto dinamico (al abrir)</label>
+                <select class="tx-ent-input" value="@q.DefaultDynamic"
+                        @onchange="@(e => PatchQuestionAsync(q, r => r with { DefaultDynamic = Enum.TryParse<FormDefaultDynamic>(e.Value?.ToString(), out var d) ? d : FormDefaultDynamic.None }))">
+                    <option value="@nameof(FormDefaultDynamic.None)">Ninguno</option>
+                    <option value="@nameof(FormDefaultDynamic.Today)">Hoy (fecha)</option>
+                    <option value="@nameof(FormDefaultDynamic.CurrentUser)">Usuario actual</option>
+                </select>
+            </div>
+            <div class="tx-ent-field">
+                <label>Formato (presentacion)</label>
+                <select class="tx-ent-input" value="@(q.Format ?? "")"
+                        @onchange="@(e => PatchQuestionAsync(q, r => r with { Format = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString() }))">
+                    <option value="">Sin formato</option>
+                    <option value="currency">Moneda ($)</option>
+                    <option value="percent">Porcentaje (%)</option>
+                    <option value="integer">Entero (miles)</option>
+                    <option value="decimal">Decimal</option>
+                    <option value="phone">Telefono (mascara)</option>
+                    <option value="document">Documento (miles)</option>
+                </select>
+            </div>
+            <div class="tx-ent-field">
+                <label>Ocultar para roles</label>
+                <div class="fd-chkgrid">
+                    @foreach (var role in TenantRoles)
+                    {
+                        <label class="fd-check"><input type="checkbox" checked="@FieldVisHas(q, "hide", role)" @onchange="@(e => ToggleFieldVisAsync(q, "hide", role, (bool)e.Value!))" /> @role</label>
+                    }
+                </div>
+            </div>
+            <div class="tx-ent-field">
+                <label>Solo lectura para roles</label>
+                <div class="fd-chkgrid">
+                    @foreach (var role in TenantRoles)
+                    {
+                        <label class="fd-check"><input type="checkbox" checked="@FieldVisHas(q, "readonly", role)" @onchange="@(e => ToggleFieldVisAsync(q, "readonly", role, (bool)e.Value!))" /> @role</label>
+                    }
+                </div>
+            </div>
+            @RenderToggleRow("Campo obligatorio", "No permite envio vacio", q.Required, () => PatchQuestionAsync(q, r => r with { Required = !q.Required }))
+            <div class="tx-ent-field">
+                <label>Formula (campo calculado)</label>
+                <input class="tx-ent-input mono" value="@q.CalcExpression" placeholder="{cantidad} * {precio}"
+                       @onchange="@(e => PatchQuestionAsync(q, r => r with { CalcExpression = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString() }))" />
+                <div class="tx-ent-hint">Usa {codigo} para referenciar otros campos. Solo lectura al llenar.</div>
+            </div>
+            @RenderOrigenDatos(q)
+        }
+    };
+
+    // ---- Origen de datos / lookup (fuentes DIFERIDAS en TRONOX hasta RQ07) ----
+    private RenderFragment RenderOrigenDatos(FormQuestionDto q) => __builder =>
+    {
+        <div class="fd-origen">
+            <div class="tx-ent-field">
+                <label>Origen de datos</label>
+                <select class="tx-ent-input" value="@q.SourceKind" @onchange="@(e => ChangeSourceKindAsync(q, e.Value?.ToString()))">
+                    <option value="@nameof(FormSourceKind.Options)">Opciones fijas</option>
+                    <option value="@nameof(FormSourceKind.DataContainer)">Contenedor de datos</option>
+                    <option value="@nameof(FormSourceKind.Tercero)">Directorio (terceros)</option>
+                    <option value="@nameof(FormSourceKind.Item)">Inventario (items)</option>
+                </select>
+            </div>
+            @if (q.SourceKind != FormSourceKind.Options)
+            {
+                _ = EnsureLookupMetaAsync(q.SourceKind, q.SourceRef);
+                var fields = LookupFieldsFor(q.SourceKind, q.SourceRef);
+                var sources = _lookupSources.GetValueOrDefault(q.SourceKind) ?? Array.Empty<FormLookupSourceInfo>();
+
+                @if (!LookupSvc.HasSource(q.SourceKind))
+                {
+                    <div class="fd-rq07">Fuentes de datos disponibles cuando exista el Catalogo de Terceros (RQ07). Puedes configurar el origen; el renderer avisara hasta que la fuente exista.</div>
+                }
+                @if (q.SourceKind == FormSourceKind.DataContainer)
+                {
+                    <div class="tx-ent-field">
+                        <label>Fuente (contenedor)</label>
+                        <select class="tx-ent-input" value="@(q.SourceRef ?? "")"
+                                @onchange="@(e => PatchQuestionAsync(q, r => r with { SourceRef = e.Value?.ToString(), DisplayField = null }))">
+                            <option value="">Selecciona...</option>
+                            @foreach (var s in sources) { <option value="@s.Ref" selected="@(s.Ref == q.SourceRef)">@s.Name</option> }
+                        </select>
+                    </div>
+                }
+                <div class="tx-ent-field">
+                    <label>Presentacion</label>
+                    <select class="tx-ent-input" value="@q.Presentation"
+                            @onchange="@(e => PatchQuestionAsync(q, r => r with { Presentation = Enum.TryParse<FormFieldPresentation>(e.Value?.ToString(), out var p) ? p : FormFieldPresentation.Autocomplete }))">
+                        <option value="@nameof(FormFieldPresentation.Autocomplete)">Autocompletar</option>
+                        <option value="@nameof(FormFieldPresentation.Dropdown)">Lista</option>
+                        <option value="@nameof(FormFieldPresentation.Modal)">Buscador</option>
+                    </select>
+                </div>
+                <div class="tx-ent-field">
+                    <label>Mostrar (etiqueta)</label>
+                    <select class="tx-ent-input" value="@(q.DisplayField ?? "")"
+                            @onchange="@(e => PatchQuestionAsync(q, r => r with { DisplayField = e.Value?.ToString() }))">
+                        <option value="">Automatico</option>
+                        @foreach (var f in fields) { <option value="@f.Name" selected="@(f.Name == q.DisplayField)">@f.Label</option> }
+                    </select>
+                </div>
+                <div class="tx-ent-field">
+                    <label>Filtro (JSON opcional)</label>
+                    <input class="tx-ent-input mono" value="@q.FilterJson" placeholder='{"perfil":"Cliente"}'
+                           @onchange="@(e => PatchQuestionAsync(q, r => r with { FilterJson = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString() }))" />
+                </div>
+                @if (fields.Count > 0)
+                {
+                    <div class="tx-ent-field">
+                        <label>Autollenar campos (al elegir, copia)</label>
+                        @RenderAutofillMap(q, fields)
+                    </div>
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment RenderAutofillMap(FormQuestionDto q, IReadOnlyList<FormLookupField> fields) => __builder =>
+    {
+        var map = ParseAutofillMap(q.AutofillMapJson).ToList();
+        var targets = _def!.Questions.Where(x => x.Id != q.Id && x.SourceKind == FormSourceKind.Options).Select(x => x.FieldCode).ToList();
+        <div class="fd-autofill">
+            @foreach (var pair in map)
+            {
+                var src = pair.Key;
+                <div class="fd-autofill-row">
+                    <select class="tx-ent-input" value="@src" @onchange="@(e => SetAutofillAsync(q, src, e.Value?.ToString(), pair.Value))">
+                        @foreach (var f in fields) { <option value="@f.Name" selected="@(f.Name == src)">@f.Label</option> }
+                    </select>
+                    <span class="fd-autofill-arrow">&rarr;</span>
+                    <select class="tx-ent-input" value="@pair.Value" @onchange="@(e => SetAutofillAsync(q, src, src, e.Value?.ToString()))">
+                        <option value="">Campo destino...</option>
+                        @foreach (var t in targets) { <option value="@t" selected="@(t == pair.Value)">@t</option> }
+                    </select>
+                    <button class="fd-chip-x" title="Quitar" @onclick="@(() => RemoveAutofillAsync(q, src))">&times;</button>
+                </div>
+            }
+            <button class="fd-chip-add" @onclick="@(() => AddAutofillAsync(q, fields))">+ Agregar mapeo</button>
+        </div>
+    };
+
+    // ---- Metadata de lookup cacheada ----
+    private readonly Dictionary<string, IReadOnlyList<FormLookupField>> _lookupFields = new(StringComparer.Ordinal);
+    private readonly Dictionary<FormSourceKind, IReadOnlyList<FormLookupSourceInfo>> _lookupSources = new();
+    private readonly HashSet<string> _lookupMetaLoading = new(StringComparer.Ordinal);
+
+    private static string MetaKey(FormSourceKind kind, string? sourceRef) => $"{kind}|{sourceRef}";
+    private IReadOnlyList<FormLookupField> LookupFieldsFor(FormSourceKind kind, string? sourceRef)
+        => _lookupFields.GetValueOrDefault(MetaKey(kind, sourceRef)) ?? Array.Empty<FormLookupField>();
+
+    private async Task EnsureLookupMetaAsync(FormSourceKind kind, string? sourceRef)
+    {
+        if (kind == FormSourceKind.Options) { return; }
+        var key = MetaKey(kind, sourceRef);
+        if (_lookupFields.ContainsKey(key) || !_lookupMetaLoading.Add(key)) { return; }
+        try
+        {
+            if (!_lookupSources.ContainsKey(kind)) { _lookupSources[kind] = await LookupSvc.ListSourcesAsync(kind); }
+            _lookupFields[key] = await LookupSvc.DescribeFieldsAsync(kind, sourceRef ?? "");
+        }
+        catch (Exception) { _lookupFields[key] = Array.Empty<FormLookupField>(); }
+        finally { _lookupMetaLoading.Remove(key); }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ChangeSourceKindAsync(FormQuestionDto q, string? kindStr)
+    {
+        var kind = Enum.TryParse<FormSourceKind>(kindStr, out var k) ? k : FormSourceKind.Options;
+        await PatchQuestionAsync(q, r => r with
+        {
+            SourceKind = kind,
+            ValueField = kind == FormSourceKind.Options ? null : "id",
+            SourceRef = kind == FormSourceKind.DataContainer ? r.SourceRef : null
+        });
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseAutofillMap(string? json)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) { return map; }
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) { return map; }
+            foreach (var p in doc.RootElement.EnumerateObject())
+            {
+                map[p.Name] = p.Value.ValueKind == JsonValueKind.String ? (p.Value.GetString() ?? "") : "";
+            }
+        }
+        catch (JsonException) { }
+        return map;
+    }
+
+    private async Task AddAutofillAsync(FormQuestionDto q, IReadOnlyList<FormLookupField> fields)
+    {
+        var map = new Dictionary<string, string>(ParseAutofillMap(q.AutofillMapJson), StringComparer.OrdinalIgnoreCase);
+        var candidate = fields.Select(f => f.Name).FirstOrDefault(k => !map.ContainsKey(k));
+        if (candidate is null) { return; }
+        map[candidate] = "";
+        await PatchAutofillAsync(q, map);
+    }
+
+    private async Task SetAutofillAsync(FormQuestionDto q, string oldSource, string? newSource, string? target)
+    {
+        var map = new Dictionary<string, string>(ParseAutofillMap(q.AutofillMapJson), StringComparer.OrdinalIgnoreCase);
+        map.Remove(oldSource);
+        if (!string.IsNullOrWhiteSpace(newSource)) { map[newSource] = target ?? ""; }
+        await PatchAutofillAsync(q, map);
+    }
+
+    private async Task RemoveAutofillAsync(FormQuestionDto q, string source)
+    {
+        var map = new Dictionary<string, string>(ParseAutofillMap(q.AutofillMapJson), StringComparer.OrdinalIgnoreCase);
+        map.Remove(source);
+        await PatchAutofillAsync(q, map);
+    }
+
+    private Task PatchAutofillAsync(FormQuestionDto q, Dictionary<string, string> map)
+        => PatchQuestionAsync(q, r => r with { AutofillMapJson = map.Count == 0 ? null : JsonSerializer.Serialize(map) });
+
+    // =========================================================
+    // Panel de propiedades: REGLAS (IFormConditionService, autocontenido)
+    // =========================================================
+    private RenderFragment RenderReglasTab(Node node) => __builder =>
+    {
+        <p class="tx-ent-hint">Reglas condicionales de este formulario (mostrar / ocultar / requerir segun otro campo).</p>
+        @if (!node.IsQuestion)
+        {
+            <div class="fd-rules-empty">Las reglas se autoran desde un campo de captura. Selecciona un campo.</div>
+            return;
+        }
+        var q = node.Q!;
+        var related = _conditions.Where(c =>
+            string.Equals(c.SourceFieldCode, q.FieldCode, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(c.TargetFieldCode, q.FieldCode, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        @if (related.Count > 0)
+        {
+            @foreach (var c in related)
+            {
+                <div class="fd-rule-row">
+                    <span class="fd-rule-dot"></span>
+                    <div class="fd-rule-tx">@ConditionSentence(c)</div>
+                    <button class="fd-rule-x" title="Eliminar" @onclick="@(() => DeleteConditionAsync(c.Id))" disabled="@_busy">&times;</button>
+                </div>
+            }
+        }
+        else { <div class="fd-rules-empty">Sin reglas para este campo.</div> }
+
+        @if (_condOpen)
+        {
+            var captureFields = _def!.Questions.Where(x => FormFieldValidator.IsCapture(x.ControlType)).ToList();
+            <div class="fd-cond">
+                <div class="fd-cond-line">
+                    <span>Si el campo</span>
+                    <select class="tx-ent-input" value="@_condSource" @onchange="@(e => _condSource = e.Value?.ToString() ?? "")">
+                        <option value="">(este campo)</option>
+                        @foreach (var f in captureFields) { <option value="@f.FieldCode">@f.Label</option> }
+                    </select>
+                    <select class="tx-ent-input" value="@_condOp" @onchange="@(e => _condOp = e.Value?.ToString() ?? "equals")">
+                        <option value="equals">es igual a</option>
+                        <option value="notEquals">es distinto de</option>
+                        <option value="empty">esta vacio</option>
+                        <option value="notEmpty">tiene valor</option>
+                        <option value="contains">contiene</option>
+                        <option value="gt">es mayor que</option>
+                        <option value="lt">es menor que</option>
+                    </select>
+                    @if (_condOp is not ("empty" or "notEmpty"))
+                    {
+                        <input class="tx-ent-input" placeholder="valor" value="@_condValue" @onchange="@(e => _condValue = e.Value?.ToString() ?? "")" />
+                    }
+                </div>
+                <div class="fd-cond-line">
+                    <span>entonces</span>
+                    <select class="tx-ent-input" value="@_condEffect" @onchange="@(e => _condEffect = e.Value?.ToString() ?? "show")">
+                        <option value="show">mostrar</option>
+                        <option value="hide">ocultar</option>
+                        <option value="require">hacer obligatorio</option>
+                        <option value="optional">hacer opcional</option>
+                        <option value="setValue">fijar valor</option>
+                    </select>
+                    <span>el campo</span>
+                    <select class="tx-ent-input" value="@_condTarget" @onchange="@(e => _condTarget = e.Value?.ToString() ?? "")">
+                        <option value="">Selecciona...</option>
+                        @foreach (var f in captureFields) { <option value="@f.FieldCode">@f.Label</option> }
+                    </select>
+                </div>
+                @if (_condEffect == "setValue")
+                {
+                    <div class="fd-cond-line"><span>con valor</span><input class="tx-ent-input" placeholder="valor a fijar" value="@_condSetValue" @onchange="@(e => _condSetValue = e.Value?.ToString() ?? "")" /></div>
+                }
+                @if (_condError is not null) { <div class="tx-ent-fielderr">@_condError</div> }
+                <div style="display:flex;gap:8px;margin-top:6px">
+                    <button class="tx-ent-btn sm" style="flex:1" @onclick="@(() => _condOpen = false)">Cancelar</button>
+                    <button class="tx-ent-btn sm primary" style="flex:1" disabled="@_busy" @onclick="@(() => SaveConditionAsync(q))">Crear regla</button>
+                </div>
             </div>
         }
         else
         {
-            <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-top:12px">
-                @* ---- Paleta ---- *@
-                <div class="tx-ent-card" style="padding:12px;width:180px;flex:0 0 auto">
-                    <div class="tx-ent-hint" style="font-weight:600;margin:0 0 6px">Agregar campo</div>
-                    <div style="display:flex;flex-direction:column;gap:4px">
-                        @foreach (var t in _palette)
+            <button class="fd-rule-add" @onclick="@(() => { _condOpen = true; _condError = null; _condSource = ""; _condTarget = ""; _condOp = "equals"; _condEffect = "show"; _condValue = ""; _condSetValue = ""; })">+ Condicion (mostrar/ocultar segun otro campo)</button>
+        }
+    };
+
+    private string ConditionSentence(FormFieldConditionDto c)
+    {
+        var op = c.Operator switch
+        {
+            "equals" => $"= '{c.Value}'", "notEquals" => $"!= '{c.Value}'",
+            "empty" => "vacio", "notEmpty" => "con valor",
+            "contains" => $"contiene '{c.Value}'", "gt" => $"> {c.Value}", "lt" => $"< {c.Value}",
+            _ => c.Operator
+        };
+        var act = c.Action switch
+        {
+            "show" => "mostrar", "hide" => "ocultar", "require" => "requerir",
+            "optional" => "opcional", "setValue" => $"fijar '{c.SetValue}'", _ => c.Action
+        };
+        var src = LabelOf(c.SourceFieldCode);
+        var tgt = LabelOf(c.TargetFieldCode);
+        return $"Si {src} {op} entonces {act} {tgt}";
+    }
+
+    private string LabelOf(string fieldCode)
+        => _def?.Questions.FirstOrDefault(x => string.Equals(x.FieldCode, fieldCode, StringComparison.OrdinalIgnoreCase))?.Label ?? fieldCode;
+
+    private async Task SaveConditionAsync(FormQuestionDto q)
+    {
+        _condError = null;
+        if (string.IsNullOrWhiteSpace(_condTarget)) { _condError = "Elige el campo objetivo."; return; }
+        var source = string.IsNullOrWhiteSpace(_condSource) ? q.FieldCode : _condSource;
+        if (string.Equals(source, _condTarget, StringComparison.OrdinalIgnoreCase))
+        {
+            _condError = "El campo evaluado y el objetivo no pueden ser el mismo."; return;
+        }
+        _busy = true;
+        try
+        {
+            var value = _condOp is "empty" or "notEmpty" ? null : _condValue;
+            var setValue = _condEffect == "setValue" ? _condSetValue : null;
+            var res = await CondSvc.AddAsync(Id, new SaveFormFieldConditionRequest(source, _condOp, value, _condEffect, _condTarget, setValue));
+            if (!res.IsOk) { _condError = res.Error ?? "No se pudo crear la regla."; return; }
+            _condOpen = false;
+            _conditions = await CondSvc.ListAsync(Id);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteConditionAsync(long conditionId)
+    {
+        _busy = true;
+        try
+        {
+            var res = await CondSvc.DeleteAsync(conditionId);
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _conditions = await CondSvc.ListAsync(Id);
+        }
+        finally { _busy = false; }
+    }
+
+    // =========================================================
+    // Helpers de UI reutilizables
+    // =========================================================
+    private RenderFragment RenderToggleRow(string label, string desc, bool on, Func<Task> toggle) => __builder =>
+    {
+        <div class="fd-toggle-row" @onclick="@(() => toggle())">
+            <div><div class="fd-toggle-label">@label</div><div class="fd-toggle-desc">@desc</div></div>
+            <div class="fd-toggle @(on ? "on" : "")"><span></span></div>
+        </div>
+    };
+
+    private RenderFragment RenderChipList(List<string> items, string accent,
+        Func<int, string?, Task> setAt, Func<int, Task> removeAt, Func<Task> add) => __builder =>
+    {
+        <div class="fd-chips">
+            @for (var i = 0; i < items.Count; i++)
+            {
+                var index = i;
+                <div class="fd-chip">
+                    <span class="fd-chip-dot" style="background:@accent"></span>
+                    <input value="@items[index]" @onchange="@(e => setAt(index, e.Value?.ToString()))" />
+                    <span class="fd-chip-x" @onclick="@(() => removeAt(index))">&times;</span>
+                </div>
+            }
+            <button class="fd-chip-add" @onclick="@(() => add())">+ Agregar</button>
+        </div>
+    };
+
+    private async Task RenameAsync(Node node, string label)
+    {
+        label = label.Trim();
+        if (label.Length == 0) { return; }
+        if (node.IsQuestion) { await PatchQuestionAsync(node.Q!, r => r with { Label = label }); }
+        else { await PatchContainerAsync(node.C!, r => r with { Name = label }); }
+    }
+
+    private async Task ChangeTypeAsync(FormQuestionDto q, string value)
+    {
+        var type = Enum.Parse<FormControlType>(value);
+        await PatchQuestionAsync(q, r => r with
+        {
+            ControlType = type,
+            OptionsJson = FormFieldValidator.ParseOptions(q.OptionsJson).Count > 0 ? q.OptionsJson : DefaultOptions(type)
+        });
+    }
+
+    private static List<string> TabsOf(FormContainerDto c)
+    {
+        if (string.IsNullOrWhiteSpace(c.TabsJson)) { return new List<string> { "Pestana 1", "Pestana 2" }; }
+        try { return JsonSerializer.Deserialize<List<string>>(c.TabsJson) ?? new List<string>(); }
+        catch (JsonException) { return new List<string>(); }
+    }
+
+    private async Task PatchTabsAsync(FormContainerDto c, int index, string? value)
+    {
+        var tabs = TabsOf(c);
+        if (index < 0) { tabs.Add(value ?? $"Pestana {tabs.Count + 1}"); }
+        else if (value is null) { if (index < tabs.Count) { tabs.RemoveAt(index); } }
+        else if (index < tabs.Count) { tabs[index] = value; }
+        await PatchContainerAsync(c, r => r with { TabsJson = JsonSerializer.Serialize(tabs) });
+    }
+
+    private static List<string> OptionLabels(FormQuestionDto q)
+        => FormFieldValidator.ParseOptions(q.OptionsJson).Select(o => o.Label).ToList();
+
+    private async Task PatchOptionAsync(FormQuestionDto q, int index, string? value)
+    {
+        var options = FormFieldValidator.ParseOptions(q.OptionsJson).ToList();
+        if (index < 0)
+        {
+            var n = options.Count + 1;
+            options.Add(new FormOption($"opcion_{n}_{Guid.NewGuid().ToString("N")[..4]}", value ?? $"Opcion {n}"));
+        }
+        else if (value is null) { if (index < options.Count) { options.RemoveAt(index); } }
+        else if (index < options.Count) { options[index] = options[index] with { Label = value }; }
+        var json = JsonSerializer.Serialize(options, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        await PatchQuestionAsync(q, r => r with { OptionsJson = json });
+    }
+
+    // ---- Permisos por campo (FieldVisibilityJson) ----
+    private static Dictionary<string, List<string>> ParseFieldVis(string? json)
+    {
+        var map = new Dictionary<string, List<string>>(StringComparer.Ordinal) { ["hide"] = new(), ["readonly"] = new() };
+        if (string.IsNullOrWhiteSpace(json)) { return map; }
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            foreach (var key in new[] { "hide", "readonly" })
+            {
+                if (doc.RootElement.TryGetProperty(key, out var arr) && arr.ValueKind == JsonValueKind.Array)
+                {
+                    map[key] = arr.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToList();
+                }
+            }
+        }
+        catch (JsonException) { }
+        return map;
+    }
+
+    private static bool FieldVisHas(FormQuestionDto q, string key, string role)
+        => ParseFieldVis(q.FieldVisibilityJson)[key].Contains(role, StringComparer.OrdinalIgnoreCase);
+
+    private Task ToggleFieldVisAsync(FormQuestionDto q, string key, string role, bool on)
+    {
+        var map = ParseFieldVis(q.FieldVisibilityJson);
+        map[key].RemoveAll(r => string.Equals(r, role, StringComparison.OrdinalIgnoreCase));
+        if (on) { map[key].Add(role); }
+        var isEmpty = map["hide"].Count == 0 && map["readonly"].Count == 0;
+        var json = isEmpty ? null : JsonSerializer.Serialize(map);
+        return PatchQuestionAsync(q, r => r with { FieldVisibilityJson = json });
+    }
+
+    // =========================================================
+    // Editor de columnas del GridDetail
+    // =========================================================
+    private RenderFragment RenderGridColumnsEditor(FormQuestionDto q) => __builder =>
+    {
+        var gcols = GridColumns(q);
+        <div class="tx-ent-field">
+            <label>Columnas de la tabla</label>
+            <div class="fd-gridcols">
+                @for (var ci = 0; ci < gcols.Count; ci++)
+                {
+                    var idx = ci;
+                    var col = gcols[idx];
+                    var hasLookup = GridColHasLookup(q, col.Id);
+                    var colType = hasLookup ? "lookup" : col.Calc is not null ? "formula" : col.IsSelect ? "select" : "text";
+                    var open = _openGridCol == $"{q.Id}:{col.Id}";
+                    <div class="fd-gridcol @(open ? "open" : "")">
+                        <div class="fd-gridcol-head">
+                            <input class="tx-ent-input" value="@col.Label" placeholder="Etiqueta"
+                                   @onchange="@(e => PatchGridColumnAsync(q, idx, c => c with { Label = e.Value?.ToString() ?? c.Label }))" />
+                            <span class="fd-gridcol-badge @colType">@(colType switch { "lookup" => "Lookup", "formula" => "fx", "select" => "Lista", _ => "Texto" })</span>
+                            <button class="fd-gridcol-mv" title="Izquierda" disabled="@(idx == 0)" @onclick="@(() => MoveGridColumnAsync(q, idx, -1))"><i class="bi bi-chevron-left"></i></button>
+                            <button class="fd-gridcol-mv" title="Derecha" disabled="@(idx == gcols.Count - 1)" @onclick="@(() => MoveGridColumnAsync(q, idx, 1))"><i class="bi bi-chevron-right"></i></button>
+                            <button class="fd-gridcol-cog @(open ? "on" : "")" title="Propiedades" @onclick="@(() => ToggleGridCol(q, col.Id))"><i class="bi bi-gear"></i></button>
+                            <button class="fd-gridcol-del" title="Quitar" @onclick="@(() => RemoveGridColumnAsync(q, idx))">&times;</button>
+                        </div>
+                        @if (open)
                         {
-                            var tt = t;
-                            <button class="tx-ent-btn sm" style="justify-content:flex-start" @onclick="@(() => AddCampo(tt.Type))"><i class="bi @tt.Icon"></i> @tt.Label</button>
+                            <div class="fd-gridcol-body">
+                                <div class="fd-gcp-row">
+                                    <div class="tx-ent-field"><label>Nombre interno</label><input class="tx-ent-input mono" readonly value="@col.Id" /></div>
+                                    <div class="tx-ent-field"><label>Ancho (px)</label><input type="number" class="tx-ent-input" min="40" max="2000" step="10" value="@col.Width" placeholder="auto"
+                                        @onchange="@(e => PatchGridColumnAsync(q, idx, c => c with { Width = ParseColWidth(e.Value?.ToString()) }))" /></div>
+                                </div>
+                                <div class="tx-ent-field">
+                                    <label>Tipo de columna</label>
+                                    <select class="tx-ent-input" value="@colType" @onchange="@(e => ChangeGridColumnTypeAsync(q, idx, e.Value?.ToString() ?? "text"))">
+                                        <option value="text">Texto</option>
+                                        <option value="select">Lista de opciones</option>
+                                        <option value="formula">Formula (calculada)</option>
+                                        <option value="lookup">Lookup (autollenar)</option>
+                                    </select>
+                                </div>
+                                <div class="tx-ent-field">
+                                    <label>Formato numerico</label>
+                                    <select class="tx-ent-input" @onchange="@(e => PatchGridColumnAsync(q, idx, c => c with { Format = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString() }))">
+                                        <option value="" selected="@string.IsNullOrEmpty(col.Format)">Sin formato</option>
+                                        <option value="currency" selected="@(col.Format == "currency")">Moneda</option>
+                                        <option value="integer" selected="@(col.Format == "integer")">Entero</option>
+                                        <option value="decimal" selected="@(col.Format == "decimal")">Decimal</option>
+                                        <option value="percent" selected="@(col.Format == "percent")">Porcentaje</option>
+                                    </select>
+                                </div>
+                                @if (col.Calc is null && !hasLookup)
+                                {
+                                    <label class="fd-check"><input type="checkbox" checked="@col.Required"
+                                        @onchange="@(e => PatchGridColumnAsync(q, idx, c => c with { Required = (bool)e.Value! }))" /> Columna obligatoria</label>
+                                }
+                                @if (colType == "select")
+                                {
+                                    <div class="tx-ent-field">
+                                        <label>Opciones de la lista</label>
+                                        @RenderChipList((col.Options ?? new List<FormOption>()).Select(o => o.Label).ToList(), "#2563eb",
+                                            (oi, v) => PatchGridColumnOptionAsync(q, idx, oi, v),
+                                            oi => PatchGridColumnOptionAsync(q, idx, oi, null),
+                                            () => PatchGridColumnOptionAsync(q, idx, -1, null))
+                                    </div>
+                                }
+                                @if (colType == "formula")
+                                {
+                                    <div class="tx-ent-field">
+                                        <label>Formula</label>
+                                        <textarea class="tx-ent-input mono" rows="2" placeholder="{cantidad} * {precio}"
+                                            @onchange="@(e => PatchGridColumnAsync(q, idx, c => c with { Calc = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? "0" : e.Value!.ToString() }))">@col.Calc</textarea>
+                                        <div class="tx-ent-hint">Referencia otras columnas con {nombre_interno}.</div>
+                                    </div>
+                                }
+                                @if (colType == "lookup")
+                                {
+                                    var lkSource = GridColLookupSource(q, col.Id);
+                                    <div class="fd-rq07">Fuentes de datos disponibles cuando exista el Catalogo de Terceros (RQ07).</div>
+                                    <div class="tx-ent-field">
+                                        <label>Fuente de datos</label>
+                                        <select class="tx-ent-input" value="@lkSource" @onchange="@(e => ChangeGridLookupSourceAsync(q, idx, e.Value?.ToString()))">
+                                            <option value="Tercero">Directorio (terceros)</option>
+                                            <option value="DataContainer">Contenedor de datos</option>
+                                            <option value="Item">Inventario (items)</option>
+                                        </select>
+                                    </div>
+                                    <div class="fd-gcp-row">
+                                        <div class="tx-ent-field"><label>Campo clave</label><input class="tx-ent-input mono" value="@GridColLookupField(q, col.Id, "valueField")" placeholder="id"
+                                            @onchange="@(e => PatchGridLookupFieldAsync(q, idx, "valueField", e.Value?.ToString()))" /></div>
+                                        <div class="tx-ent-field"><label>Campo a mostrar</label><input class="tx-ent-input mono" value="@GridColLookupField(q, col.Id, "displayField")" placeholder="name"
+                                            @onchange="@(e => PatchGridLookupFieldAsync(q, idx, "displayField", e.Value?.ToString()))" /></div>
+                                    </div>
+                                }
+                                <div class="tx-ent-field">
+                                    <label>Total al pie</label>
+                                    <select class="tx-ent-input" @onchange="@(e => PatchGridColumnAsync(q, idx, c => c with { Agg = Enum.TryParse<FormAggregate>(e.Value?.ToString(), out var a) ? a : FormAggregate.None }))">
+                                        <option value="None" selected="@(col.Agg == FormAggregate.None)">Sin total</option>
+                                        <option value="Sum" selected="@(col.Agg == FormAggregate.Sum)">Suma</option>
+                                        <option value="Count" selected="@(col.Agg == FormAggregate.Count)">Conteo</option>
+                                        <option value="Avg" selected="@(col.Agg == FormAggregate.Avg)">Promedio</option>
+                                        <option value="Min" selected="@(col.Agg == FormAggregate.Min)">Minimo</option>
+                                        <option value="Max" selected="@(col.Agg == FormAggregate.Max)">Maximo</option>
+                                    </select>
+                                </div>
+                            </div>
                         }
                     </div>
-                    <div class="tx-ent-hint" style="font-weight:600;margin:12px 0 6px">Estructura</div>
-                    <button class="tx-ent-btn sm" style="justify-content:flex-start;width:100%" @onclick="AddSeccion"><i class="bi bi-collection"></i> Sección</button>
-                </div>
-
-                @* ---- Arbol ---- *@
-                <div class="tx-ent-card" style="padding:12px;flex:1;min-width:320px">
-                    <div class="tx-ent-hint" style="font-weight:600;margin:0 0 8px">Estructura del formulario</div>
-                    @if (_def.Questions.Count == 0 && _def.Containers.Count == 0)
-                    {
-                        <div class="tx-ent-hint">Vacío. Agrega campos o secciones desde la paleta.</div>
-                    }
-                    @RenderTree(null)
-                </div>
-
-                @* ---- Propiedades ---- *@
-                <div class="tx-ent-card" style="padding:12px;width:320px;flex:0 0 auto">
-                    <div class="tx-ent-hint" style="font-weight:600;margin:0 0 8px">Propiedades</div>
-                    @if (_selKind == "Q" && _selQ is not null)
-                    {
-                        <div class="tx-ent-field"><label>Etiqueta</label><input class="tx-ent-input" @bind="_pLabel" /></div>
-                        <div class="tx-ent-field"><label>Código del campo</label><input class="tx-ent-input mono" @bind="_pFieldCode" /></div>
-                        <div class="tx-ent-grid c2">
-                            <div class="tx-ent-field"><label>Ancho (1-12)</label><input type="number" min="1" max="12" class="tx-ent-input" @bind="_pWidth" /></div>
-                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_pRequired" /> Obligatorio</label>
-                        </div>
-                        <div class="tx-ent-field"><label>Placeholder</label><input class="tx-ent-input" @bind="_pPlaceholder" /></div>
-                        <div class="tx-ent-field"><label>Ayuda</label><input class="tx-ent-input" @bind="_pHelp" /></div>
-                        @if (_selQ.ControlType is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck)
-                        {
-                            <div class="tx-ent-field"><label>Opciones (una por línea)</label><textarea class="tx-ent-input" rows="4" @bind="_pOptions"></textarea></div>
-                        }
-                        @if (_selQ.ControlType is FormControlType.Text or FormControlType.TextArea)
-                        {
-                            <div class="tx-ent-grid c2">
-                                <div class="tx-ent-field"><label>Min. caract.</label><input type="number" class="tx-ent-input" @bind="_pMinLen" /></div>
-                                <div class="tx-ent-field"><label>Max. caract.</label><input type="number" class="tx-ent-input" @bind="_pMaxLen" /></div>
-                            </div>
-                        }
-                        @if (_selQ.ControlType is FormControlType.Number)
-                        {
-                            <div class="tx-ent-grid c2">
-                                <div class="tx-ent-field"><label>Min. valor</label><input type="number" step="any" class="tx-ent-input" @bind="_pMinVal" /></div>
-                                <div class="tx-ent-field"><label>Max. valor</label><input type="number" step="any" class="tx-ent-input" @bind="_pMaxVal" /></div>
-                            </div>
-                        }
-                        @if (_selQ.ControlType is FormControlType.Paragraph or FormControlType.Spacer)
-                        {
-                            <div class="tx-ent-field"><label>@(_selQ.ControlType == FormControlType.Paragraph ? "Texto" : "Alto (px)")</label><textarea class="tx-ent-input" rows="2" @bind="_pDefault"></textarea></div>
-                        }
-                        @if (_propError is not null) { <div class="tx-ent-fielderr">@_propError</div> }
-                        <div style="display:flex;gap:8px;margin-top:8px">
-                            <button class="tx-ent-btn primary sm" @onclick="GuardarCampo">Guardar</button>
-                            <button class="tx-ent-btn sm danger" @onclick="@(() => BorrarCampo(_selQ!.Id))">Eliminar</button>
-                        </div>
-                    }
-                    else if (_selKind == "C" && _selC is not null)
-                    {
-                        <div class="tx-ent-field"><label>Nombre de la sección</label><input class="tx-ent-input" @bind="_pcName" /></div>
-                        @if (_propError is not null) { <div class="tx-ent-fielderr">@_propError</div> }
-                        <div style="display:flex;gap:8px;margin-top:8px">
-                            <button class="tx-ent-btn primary sm" @onclick="GuardarSeccion">Guardar</button>
-                            <button class="tx-ent-btn sm danger" @onclick="@(() => BorrarSeccion(_selC!.Id))">Eliminar</button>
-                        </div>
-                    }
-                    else { <div class="tx-ent-hint">Selecciona un campo o sección del árbol.</div> }
-                </div>
+                }
             </div>
-        }
-    }
-</div>
-
-@code {
-    [Parameter] public long Id { get; set; }
-    private long Actor => Tenant.UserId ?? 0;
-
-    private FormDefinitionDetailDto? _def;
-    private string? _loadError, _pageOk, _pageError;
-    private bool _preview;
-    private readonly Dictionary<string, string?> _previewValues = [];
-
-    private string _selKind = "";
-    private FormQuestionDto? _selQ;
-    private FormContainerDto? _selC;
-
-    // Property panel (question)
-    private string _pLabel = "", _pFieldCode = ""; private int _pWidth = 12; private bool _pRequired;
-    private string? _pPlaceholder, _pHelp, _pOptions, _pDefault; private int? _pMinLen, _pMaxLen; private decimal? _pMinVal, _pMaxVal;
-    private string? _propError;
-    // Property panel (container)
-    private string _pcName = "";
-
-    private sealed record PaletteItem(FormControlType Type, string Label, string Icon);
-    private static readonly PaletteItem[] _palette =
-    [
-        new(FormControlType.Text, "Texto", "bi-input-cursor-text"),
-        new(FormControlType.TextArea, "Texto largo", "bi-textarea-resize"),
-        new(FormControlType.Number, "Número", "bi-123"),
-        new(FormControlType.Date, "Fecha", "bi-calendar"),
-        new(FormControlType.Time, "Hora", "bi-clock"),
-        new(FormControlType.DateTime, "Fecha y hora", "bi-calendar-week"),
-        new(FormControlType.Toggle, "Sí / No", "bi-toggle-on"),
-        new(FormControlType.Select, "Lista", "bi-menu-button-wide"),
-        new(FormControlType.Radio, "Opción única", "bi-record-circle"),
-        new(FormControlType.MultiCheck, "Opción múltiple", "bi-ui-checks"),
-        new(FormControlType.Heading, "Título", "bi-type-h1"),
-        new(FormControlType.Paragraph, "Párrafo", "bi-text-paragraph"),
-        new(FormControlType.Divider, "Divisor", "bi-hr"),
-    ];
-
-    protected override async Task OnParametersSetAsync() => await Load();
-
-    private async Task Load()
-    {
-        _def = await Svc.GetAsync(Id);
-        if (_def is null) { _loadError = "El formulario no existe."; }
-    }
-
-    private RenderFragment RenderTree(long? parentId) => __builder =>
-    {
-        var containers = _def!.Containers.Where(c => c.ParentId == parentId).OrderBy(c => c.SortOrder).ToList();
-        var questions = _def.Questions.Where(q => q.ContainerId == parentId).OrderBy(q => q.SortOrder).ToList();
-
-        foreach (var q in questions)
-        {
-            var qq = q;
-            <div class="tx-tree-row @(_selKind == "Q" && _selQ?.Id == q.Id ? "sel" : "")"
-                 style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--kt-border,#e9ebec);border-radius:6px;margin:3px 0;cursor:pointer;background:@(_selKind == "Q" && _selQ?.Id == q.Id ? "var(--kt-light,#f3f6f9)" : "transparent")"
-                 @onclick="@(() => SelectQ(qq))">
-                <i class="bi bi-grip-vertical" style="opacity:.4"></i>
-                <span style="flex:1"><strong>@q.Label</strong> <span class="tx-ent-hint" style="margin:0">· @q.ControlType · @q.FieldCode</span></span>
-                @if (q.Required) { <span class="tx-ent-badge sm">oblig.</span> }
-                <button class="tx-ent-btn sm" title="Subir" @onclick:stopPropagation="true" @onclick="@(() => MoveQ(qq.Id, true))"><i class="bi bi-arrow-up"></i></button>
-                <button class="tx-ent-btn sm" title="Bajar" @onclick:stopPropagation="true" @onclick="@(() => MoveQ(qq.Id, false))"><i class="bi bi-arrow-down"></i></button>
-            </div>
-        }
-        foreach (var c in containers)
-        {
-            var cc = c;
-            <div style="border:1px dashed var(--kt-border,#e9ebec);border-radius:6px;margin:6px 0;padding:6px">
-                <div class="tx-tree-row @(_selKind == "C" && _selC?.Id == c.Id ? "sel" : "")"
-                     style="display:flex;align-items:center;gap:6px;cursor:pointer" @onclick="@(() => SelectC(cc))">
-                    <i class="bi bi-collection"></i>
-                    <span style="flex:1;font-weight:600">@c.Name</span>
-                    <button class="tx-ent-btn sm" title="Subir" @onclick:stopPropagation="true" @onclick="@(() => MoveC(cc.Id, true))"><i class="bi bi-arrow-up"></i></button>
-                    <button class="tx-ent-btn sm" title="Bajar" @onclick:stopPropagation="true" @onclick="@(() => MoveC(cc.Id, false))"><i class="bi bi-arrow-down"></i></button>
-                    <button class="tx-ent-btn sm" title="Agregar campo aquí" @onclick:stopPropagation="true" @onclick="@(() => AddCampoEn(cc.Id))"><i class="bi bi-plus-lg"></i></button>
-                </div>
-                <div style="padding-left:14px">@RenderTree(c.Id)</div>
-            </div>
-        }
+            <button class="fd-chip-add" @onclick="@(() => AddGridColumnAsync(q))">+ Columna</button>
+        </div>
     };
 
-    // ---- Add ----
+    private static List<FormGridColumn> GridColumns(FormQuestionDto q) => FormGridCalculator.ParseColumns(q.OptionsJson).ToList();
 
-    private async Task AddCampo(FormControlType type) => await AddCampoInterno(type, _selKind == "C" ? _selC?.Id : (_selQ?.ContainerId));
-    private async Task AddCampoEn(long containerId) => await AddCampoInterno(FormControlType.Text, containerId);
-
-    private async Task AddCampoInterno(FormControlType type, long? containerId)
+    private static int? ParseColWidth(string? raw)
     {
-        _pageError = null;
-        var n = _def!.Questions.Count + 1;
-        var req = new SaveFormQuestionRequest(containerId, $"campo{n}", DefaultLabel(type), type,
-            OptionsJson: type is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck
-                ? JsonSerializer.Serialize(new[] { new { id = "opt1", label = "Opción 1" }, new { id = "opt2", label = "Opción 2" } })
-                : null);
-        var res = await Svc.AddQuestionAsync(Id, req, Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        await Load();
-        SelectQ(_def!.Questions.First(q => q.Id == res.Value!.Id));
+        if (string.IsNullOrWhiteSpace(raw) || !int.TryParse(raw, out var v) || v <= 0) { return null; }
+        return Math.Clamp(v, 40, 2000);
     }
 
-    private async Task AddSeccion()
+    private void ToggleGridCol(FormQuestionDto q, string colId)
     {
-        var n = _def!.Containers.Count + 1;
-        var res = await Svc.AddContainerAsync(Id, new SaveFormContainerRequest($"Sección {n}", FormContainerType.Section), Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        await Load();
-        SelectC(_def!.Containers.First(c => c.Id == res.Value!.Id));
+        var k = $"{q.Id}:{colId}";
+        _openGridCol = _openGridCol == k ? null : k;
     }
 
-    // ---- Select ----
+    // Claves gestionadas por el round-trip; el resto (lookup/default/...) se preserva.
+    private static readonly HashSet<string> GridCoreKeys = new(StringComparer.OrdinalIgnoreCase)
+        { "id", "label", "type", "options", "required", "calc", "agg", "aggWhen", "rollup", "width", "format" };
 
-    private void SelectQ(FormQuestionDto q)
+    private static Dictionary<string, Dictionary<string, JsonElement>> RawColumnExtras(string? optionsJson)
     {
-        _selKind = "Q"; _selQ = q; _selC = null; _propError = null;
-        _pLabel = q.Label; _pFieldCode = q.FieldCode; _pWidth = q.Width; _pRequired = q.Required;
-        _pPlaceholder = q.PlaceholderText; _pHelp = q.HelpText; _pDefault = q.DefaultValue;
-        _pOptions = OptionsToText(q.OptionsJson);
-        var rules = FormFieldValidator.ParseRules(q.ValidationJson);
-        _pMinLen = rules?.MinLength; _pMaxLen = rules?.MaxLength; _pMinVal = rules?.MinValue; _pMaxVal = rules?.MaxValue;
+        var map = new Dictionary<string, Dictionary<string, JsonElement>>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(optionsJson)) { return map; }
+        try
+        {
+            using var doc = JsonDocument.Parse(optionsJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) { return map; }
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.ValueKind != JsonValueKind.Object) { continue; }
+                if (!el.TryGetProperty("id", out var pid) || pid.GetString() is not { Length: > 0 } id) { continue; }
+                var extra = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                foreach (var p in el.EnumerateObject()) { if (!GridCoreKeys.Contains(p.Name)) { extra[p.Name] = p.Value.Clone(); } }
+                if (extra.Count > 0) { map[id] = extra; }
+            }
+        }
+        catch (JsonException) { }
+        return map;
     }
 
-    private void SelectC(FormContainerDto c) { _selKind = "C"; _selC = c; _selQ = null; _propError = null; _pcName = c.Name; }
-
-    // ---- Save ----
-
-    private async Task GuardarCampo()
+    private async Task SaveGridColumnsAsync(FormQuestionDto q, IReadOnlyList<FormGridColumn> cols)
     {
-        _propError = null;
-        var rules = new FormValidationRules(_pMinLen, _pMaxLen, null, _pMinVal, _pMaxVal);
-        var hasRules = _pMinLen is not null || _pMaxLen is not null || _pMinVal is not null || _pMaxVal is not null;
-        var req = new SaveFormQuestionRequest(
-            _selQ!.ContainerId, _pFieldCode, _pLabel, _selQ.ControlType,
-            Caption: _selQ.Caption, HelpText: _pHelp,
-            OptionsJson: _selQ.ControlType is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck ? TextToOptions(_pOptions) : null,
-            Required: _pRequired, ValidationJson: hasRules ? JsonSerializer.Serialize(rules) : null,
-            Width: _pWidth, PlaceholderText: _pPlaceholder, DefaultValue: _pDefault);
-        var res = await Svc.UpdateQuestionAsync(_selQ.Id, req, Actor);
-        if (!res.IsOk) { _propError = res.Error; return; }
-        await Load(); SelectQ(_def!.Questions.First(q => q.Id == res.Value!.Id));
-        _pageOk = "Campo guardado.";
+        var preserved = RawColumnExtras(q.OptionsJson);
+        var shaped = cols.Select(c =>
+        {
+            var o = new Dictionary<string, object?> { ["id"] = c.Id, ["label"] = c.Label };
+            if (c.IsSelect)
+            {
+                o["type"] = "select";
+                o["options"] = (c.Options ?? new List<FormOption>()).Select(x => new { id = x.Id, label = x.Label }).ToList();
+            }
+            if (c.Required) { o["required"] = true; }
+            if (!string.IsNullOrWhiteSpace(c.Calc)) { o["calc"] = c.Calc; }
+            if (c.Agg != FormAggregate.None) { o["agg"] = c.Agg.ToString(); }
+            if (!string.IsNullOrWhiteSpace(c.AggWhen)) { o["aggWhen"] = c.AggWhen; }
+            if (!string.IsNullOrWhiteSpace(c.Rollup)) { o["rollup"] = c.Rollup; }
+            if (c.Width is int w and > 0) { o["width"] = w; }
+            if (!string.IsNullOrWhiteSpace(c.Format)) { o["format"] = c.Format; }
+            if (preserved.TryGetValue(c.Id, out var extra)) { foreach (var kv in extra) { o[kv.Key] = kv.Value; } }
+            return o;
+        }).ToList();
+        var json = JsonSerializer.Serialize(shaped, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        await PatchQuestionAsync(q, r => r with { OptionsJson = json });
     }
 
-    private async Task GuardarSeccion()
+    private async Task PatchGridColumnJsonAsync(FormQuestionDto q, int index, Action<JsonObject> mutate)
     {
-        _propError = null;
-        var res = await Svc.UpdateContainerAsync(_selC!.Id, new SaveFormContainerRequest(_pcName, _selC.ContainerType, _selC.ParentId), Actor);
-        if (!res.IsOk) { _propError = res.Error; return; }
-        await Load(); _pageOk = "Sección guardada.";
+        JsonArray arr;
+        try { arr = (JsonNode.Parse(string.IsNullOrWhiteSpace(q.OptionsJson) ? "[]" : q.OptionsJson) as JsonArray) ?? new JsonArray(); }
+        catch (JsonException) { return; }
+        if (index < 0 || index >= arr.Count || arr[index] is not JsonObject obj) { return; }
+        mutate(obj);
+        await PatchQuestionAsync(q, r => r with { OptionsJson = arr.ToJsonString() });
     }
 
-    private async Task BorrarCampo(long id)
+    private Task ChangeGridColumnTypeAsync(FormQuestionDto q, int index, string type)
+        => PatchGridColumnJsonAsync(q, index, obj =>
+        {
+            obj.Remove("lookup");
+            switch (type)
+            {
+                case "select":
+                    obj["type"] = "select"; obj.Remove("calc");
+                    if (obj["options"] is not JsonArray) { obj["options"] = new JsonArray(new JsonObject { ["id"] = "op_1", ["label"] = "Opcion 1" }); }
+                    break;
+                case "formula":
+                    obj["type"] = "text"; obj.Remove("options");
+                    if (obj["calc"] is null) { obj["calc"] = "0"; }
+                    break;
+                case "lookup":
+                    obj["type"] = "text"; obj.Remove("calc"); obj.Remove("options");
+                    obj["lookup"] = new JsonObject { ["source"] = "Tercero", ["valueField"] = "id", ["displayField"] = "name" };
+                    break;
+                default:
+                    obj["type"] = "text"; obj.Remove("calc"); obj.Remove("options");
+                    break;
+            }
+        });
+
+    private Task PatchGridLookupFieldAsync(FormQuestionDto q, int index, string key, string? value)
+        => PatchGridColumnJsonAsync(q, index, obj =>
+        {
+            if (obj["lookup"] is not JsonObject lk) { return; }
+            var v = value?.Trim();
+            if (string.IsNullOrEmpty(v)) { lk.Remove(key); } else { lk[key] = v; }
+        });
+
+    private Task ChangeGridLookupSourceAsync(FormQuestionDto q, int index, string? kindStr)
+        => PatchGridColumnJsonAsync(q, index, obj =>
+        {
+            if (obj["lookup"] is not JsonObject lk) { return; }
+            lk["source"] = kindStr;
+        });
+
+    private bool GridColHasLookup(FormQuestionDto q, string colId) => GridColLookupObj(q, colId) is not null;
+
+    private string GridColLookupSource(FormQuestionDto q, string colId)
+        => GridColLookupObj(q, colId)?["source"]?.GetValue<string>() ?? "Tercero";
+
+    private string GridColLookupField(FormQuestionDto q, string colId, string key)
+        => GridColLookupObj(q, colId)?[key]?.GetValue<string>() ?? "";
+
+    private static JsonObject? GridColLookupObj(FormQuestionDto q, string colId)
     {
-        var res = await Svc.DeleteQuestionAsync(id, Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        _selKind = ""; _selQ = null; await Load();
+        if (string.IsNullOrWhiteSpace(q.OptionsJson)) { return null; }
+        try
+        {
+            if (JsonNode.Parse(q.OptionsJson) is not JsonArray arr) { return null; }
+            foreach (var n in arr)
+            {
+                if (n is JsonObject o && o["id"]?.GetValue<string>() == colId && o["lookup"] is JsonObject lk) { return lk; }
+            }
+        }
+        catch (JsonException) { }
+        return null;
     }
 
-    private async Task BorrarSeccion(long id)
+    private Task AddGridColumnAsync(FormQuestionDto q)
     {
-        var res = await Svc.DeleteContainerAsync(id, Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        _selKind = ""; _selC = null; await Load();
+        var cols = GridColumns(q);
+        var n = cols.Count + 1;
+        cols.Add(new FormGridColumn($"col_{n}_{Guid.NewGuid().ToString("N")[..4]}", $"Columna {n}", null, FormAggregate.None, null));
+        return SaveGridColumnsAsync(q, cols);
     }
 
-    private async Task MoveQ(long id, bool up) { await Svc.MoveQuestionAsync(id, up, Actor); await Load(); }
-    private async Task MoveC(long id, bool up) { await Svc.MoveContainerAsync(id, up, Actor); await Load(); }
-
-    private async Task Publicar()
+    private Task RemoveGridColumnAsync(FormQuestionDto q, int index)
     {
-        var res = await Svc.ActivateAsync(Id, Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        _pageOk = "Formulario publicado."; await Load();
+        var cols = GridColumns(q);
+        if (index >= 0 && index < cols.Count) { cols.RemoveAt(index); }
+        return SaveGridColumnsAsync(q, cols);
     }
 
-    private async Task Despublicar()
+    private Task PatchGridColumnAsync(FormQuestionDto q, int index, Func<FormGridColumn, FormGridColumn> patch)
     {
-        var res = await Svc.DeactivateAsync(Id, Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        _pageOk = "Formulario retirado."; await Load();
+        var cols = GridColumns(q);
+        if (index < 0 || index >= cols.Count) { return Task.CompletedTask; }
+        cols[index] = patch(cols[index]);
+        return SaveGridColumnsAsync(q, cols);
     }
 
-    // ---- Helpers ----
-
-    private static string DefaultLabel(FormControlType t) => t switch
+    private Task MoveGridColumnAsync(FormQuestionDto q, int index, int delta)
     {
-        FormControlType.Heading => "Título de sección",
-        FormControlType.Paragraph => "Texto del párrafo",
-        FormControlType.Divider => "Divisor",
-        _ => "Nuevo campo"
-    };
-
-    private static string OptionsToText(string? json)
-        => string.Join("\n", FormFieldValidator.ParseOptions(json).Select(o => o.Label));
-
-    private static string TextToOptions(string? text)
-    {
-        var lines = (text ?? "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
-        var opts = lines.Select((l, i) => new { id = $"opt{i + 1}", label = l }).ToList();
-        return JsonSerializer.Serialize(opts);
+        var cols = GridColumns(q);
+        var j = index + delta;
+        if (index < 0 || index >= cols.Count || j < 0 || j >= cols.Count) { return Task.CompletedTask; }
+        (cols[index], cols[j]) = (cols[j], cols[index]);
+        return SaveGridColumnsAsync(q, cols);
     }
+
+    private Task PatchGridColumnOptionAsync(FormQuestionDto q, int colIndex, int optIndex, string? value)
+        => PatchGridColumnAsync(q, colIndex, c =>
+        {
+            var opts = (c.Options ?? new List<FormOption>()).ToList();
+            if (optIndex < 0)
+            {
+                var n = opts.Count + 1;
+                opts.Add(new FormOption($"op_{n}_{Guid.NewGuid().ToString("N")[..4]}", value ?? $"Opcion {n}"));
+            }
+            else if (value is null) { if (optIndex < opts.Count) { opts.RemoveAt(optIndex); } }
+            else if (optIndex < opts.Count) { opts[optIndex] = opts[optIndex] with { Label = value }; }
+            return c with { Options = opts, Kind = "select" };
+        });
 }
+
+<style>
+    /* ============ Constructor de formularios (TRONOX / builder-specific) ============ */
+    .fd-root { padding-bottom: 8px; }
+    .fd-header { display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid var(--kt-border,#e9ebec); flex-wrap:wrap; }
+    .fd-back { width:32px; height:32px; border:1px solid var(--kt-border,#e9ebec); border-radius:8px; background:#fff; cursor:pointer; color:#495057; }
+    .fd-back:hover { background:#f3f6f9; }
+    .fd-code { font-size:12px; font-weight:700; color:#0c478a; background:#e7f0fb; padding:3px 8px; border-radius:6px; }
+    .fd-title { font-size:17px; font-weight:600; cursor:pointer; padding:2px 6px; border-radius:6px; }
+    .fd-title:hover { background:#f3f6f9; }
+    .fd-title-input { font-size:17px; font-weight:600; padding:2px 6px; border:1px solid #0c478a; border-radius:6px; min-width:220px; }
+    .fd-header-actions { margin-left:auto; display:flex; gap:6px; flex-wrap:wrap; }
+    .fd-error { display:flex; align-items:center; justify-content:space-between; margin:8px 0; }
+    .fd-error-x { background:none; border:none; font-size:20px; cursor:pointer; color:inherit; }
+
+    .fd-body { display:grid; grid-template-columns:280px 1fr 320px; gap:12px; margin-top:12px; align-items:start; }
+    @@media (max-width: 1200px) { .fd-body { grid-template-columns:240px 1fr 300px; } }
+
+    .fd-left, .fd-right { border:1px solid var(--kt-border,#e9ebec); border-radius:10px; background:#fff; }
+    .fd-left-scroll, .fd-props-body { max-height:calc(100vh - 190px); overflow-y:auto; padding:12px; }
+    .fd-group { font-size:11px; font-weight:700; letter-spacing:.05em; color:#6c757d; display:flex; align-items:center; gap:6px; }
+    .fd-group-hint { font-size:11px; color:#adb5bd; margin:2px 0 8px; }
+    .fd-structhead { justify-content:space-between; }
+
+    .fd-palcard { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:9px 10px; border:1px solid var(--kt-border,#e9ebec); border-radius:9px; background:#fff; cursor:grab; margin-bottom:6px; }
+    .fd-palcard:hover { border-color:#0c478a; box-shadow:0 1px 5px rgba(12,71,138,.08); }
+    .fd-palcard-ic { width:32px; height:32px; border-radius:8px; display:grid; place-items:center; font-size:16px; flex:0 0 auto; }
+    .fd-palcard-tx { display:flex; flex-direction:column; flex:1; }
+    .fd-palcard-name { font-size:13px; font-weight:600; }
+    .fd-palcard-desc { font-size:11px; color:#868e96; }
+    .fd-palcard-grip { color:#ced4da; }
+
+    .fd-palgrid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+    .fd-palchip { display:flex; align-items:center; gap:6px; padding:6px 7px; border:1px solid var(--kt-border,#e9ebec); border-radius:7px; background:#fff; cursor:grab; font-size:12px; text-align:left; }
+    .fd-palchip:hover { border-color:#0c478a; }
+    .fd-palchip-ic { width:22px; height:22px; border-radius:6px; display:grid; place-items:center; font-size:12px; flex:0 0 auto; }
+    .fd-palchip-tx { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    .fd-tree { margin-top:4px; }
+    .fd-tree-root, .fd-tree-row { display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:7px; cursor:pointer; font-size:12.5px; }
+    .fd-tree-root { font-weight:600; }
+    .fd-tree-root.sel, .fd-tree-row.sel { background:#e7f0fb; }
+    .fd-tree-row:hover { background:#f3f6f9; }
+    .fd-tree-row.dim { opacity:.55; }
+    .fd-tree-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .fd-tree-chev { width:14px; cursor:pointer; transition:transform .15s; color:#adb5bd; }
+    .fd-tree-chev.open { transform:rotate(90deg); }
+    .fd-tree-spc { width:14px; }
+    .fd-tree-tgl { border:none; background:none; cursor:pointer; color:#adb5bd; padding:2px; font-size:12px; }
+    .fd-tree-tgl.on { color:#0c478a; }
+
+    .fd-center { min-width:0; }
+    .fd-devicebar { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; border:1px solid var(--kt-border,#e9ebec); border-radius:10px; background:#fff; margin-bottom:10px; }
+    .fd-devicetabs { display:flex; gap:4px; }
+    .fd-devicetab { padding:5px 12px; border:1px solid transparent; border-radius:7px; background:none; cursor:pointer; font-size:12.5px; color:#6c757d; }
+    .fd-devicetab.on { background:#e7f0fb; color:#0c478a; font-weight:600; }
+    .fd-devicelabel { font-size:11px; color:#adb5bd; }
+    .fd-canvas { padding:20px; background:#f3f6f9; border:1px solid var(--kt-border,#e9ebec); border-radius:10px; display:flex; justify-content:center; min-height:calc(100vh - 250px); overflow:auto; }
+    .fd-sheet { background:#fff; box-shadow:0 1px 10px rgba(0,0,0,.06); border-radius:8px; padding:22px; transition:width .2s; max-width:100%; }
+    .fd-sheet-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:10px; }
+    .fd-empty-root { grid-column:span 12; text-align:center; padding:40px; color:#adb5bd; border:2px dashed var(--kt-border,#e9ebec); border-radius:10px; font-size:13px; }
+
+    .fd-node { position:relative; border:1px solid transparent; border-radius:8px; cursor:pointer; }
+    .fd-node.sel { border-color:#0c478a; box-shadow:0 0 0 2px rgba(12,71,138,.12); }
+    .fd-node-container { border:1px dashed #ced4da; padding:8px; background:#fbfcfd; }
+    .fd-node-label { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:5px; margin-bottom:7px; }
+    .fd-kids-row { display:grid; grid-template-columns:repeat(12,1fr); gap:8px; }
+    .fd-kids-col { display:flex; flex-direction:column; gap:8px; }
+    .fd-node-empty { text-align:center; padding:16px; color:#adb5bd; border:1.5px dashed var(--kt-border,#e9ebec); border-radius:7px; font-size:12px; }
+    .fd-node-control { padding:9px 11px; background:#fff; border:1px solid var(--kt-border,#e9ebec); }
+    .fd-ctrl-head { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+    .fd-ctrl-ic { font-size:13px; }
+    .fd-ctrl-label { font-size:12.5px; font-weight:500; flex:1; }
+    .fd-ctrl-req { color:#e11d48; }
+    .fd-ctrl-badge { font-size:10px; color:#adb5bd; background:#f3f6f9; padding:1px 6px; border-radius:5px; }
+    .fd-prev-input, .fd-prev-area, .fd-prev-select { border:1px solid var(--kt-border,#e9ebec); border-radius:6px; padding:6px 9px; font-size:12px; color:#adb5bd; background:#fbfcfd; }
+    .fd-prev-area { min-height:44px; }
+    .fd-prev-select { display:flex; align-items:center; justify-content:space-between; }
+    .fd-prev-sino { display:inline-flex; border:1px solid var(--kt-border,#e9ebec); border-radius:6px; overflow:hidden; font-size:12px; }
+    .fd-prev-sino > div { padding:4px 12px; color:#adb5bd; }
+    .fd-prev-sino > .on { background:#dcfce7; color:#16a34a; font-weight:600; }
+    .fd-prev-capture { border:1px solid var(--kt-border,#e9ebec); border-radius:6px; padding:10px; font-size:12px; color:#868e96; text-align:center; background:#fbfcfd; }
+    .fd-prev-capture.dashed { border-style:dashed; }
+    .fd-prev-table { border:1px solid var(--kt-border,#e9ebec); border-radius:6px; overflow:hidden; font-size:11.5px; }
+    .fd-prev-thead { display:grid; background:#f3f6f9; font-weight:600; }
+    .fd-prev-thead > div, .fd-prev-trow > div { padding:5px 8px; color:#6c757d; }
+    .fd-prev-trow { display:grid; }
+    .fd-prev-thead .bl, .fd-prev-trow .bl { border-left:1px solid var(--kt-border,#e9ebec); }
+    .fd-node-divider { padding:8px 0; }
+    .fd-divider-line { border-top:2px solid var(--kt-border,#e9ebec); }
+    .fd-node-spacer { background:repeating-linear-gradient(45deg,#f8f9fa,#f8f9fa 6px,#eef1f4 6px,#eef1f4 12px); border-radius:6px; }
+    .fd-node-paragraph { padding:8px 10px; font-size:13px; color:#495057; white-space:pre-wrap; }
+    .fd-node-heading h4 { margin:6px 4px; }
+    .fd-node-hidden { padding:8px 10px; font-size:12px; color:#adb5bd; background:#f3f6f9; border:1px dashed var(--kt-border,#e9ebec); }
+    .fd-node-btnwrap { padding:6px; }
+    .fd-node-btn { display:inline-flex; align-items:center; gap:6px; padding:7px 16px; background:#0c478a; color:#fff; border-radius:7px; font-size:13px; font-weight:500; }
+    .fd-node-actions { position:absolute; top:-13px; right:6px; display:flex; gap:2px; background:#fff; border:1px solid var(--kt-border,#e9ebec); border-radius:7px; padding:2px; box-shadow:0 1px 6px rgba(0,0,0,.1); z-index:2; }
+    .fd-node-actions button { border:none; background:none; cursor:pointer; padding:3px 6px; border-radius:5px; color:#495057; font-size:12px; }
+    .fd-node-actions button:hover { background:#f3f6f9; }
+    .fd-node-actions button.danger:hover { background:#ffe4e6; color:#e11d48; }
+    .fd-node-actions button:disabled { opacity:.35; cursor:not-allowed; }
+
+    .fd-props-head { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--kt-border,#e9ebec); }
+    .fd-props-ic { width:36px; height:36px; border-radius:9px; display:grid; place-items:center; font-size:17px; }
+    .fd-props-name { font-size:14px; font-weight:600; }
+    .fd-props-tipo { font-size:11px; color:#adb5bd; }
+    .fd-props-tabs { display:flex; border-bottom:1px solid var(--kt-border,#e9ebec); }
+    .fd-props-tab { flex:1; padding:9px; border:none; background:none; cursor:pointer; font-size:12.5px; color:#6c757d; border-bottom:2px solid transparent; }
+    .fd-props-tab.on { color:#0c478a; font-weight:600; border-bottom-color:#0c478a; }
+    .fd-hintbox { padding:6px; }
+    .fd-delbtn { width:100%; justify-content:center; margin-top:14px; }
+
+    .fd-widthgrid { display:grid; grid-template-columns:repeat(12,1fr); gap:3px; }
+    .fd-widthgrid button { padding:5px 0; border:1px solid var(--kt-border,#e9ebec); border-radius:5px; background:#fff; cursor:pointer; font-size:11px; color:#868e96; }
+    .fd-widthgrid button.in { background:#e7f0fb; border-color:#bcd4ef; }
+    .fd-widthgrid button.on { background:#0c478a; color:#fff; border-color:#0c478a; }
+    .fd-widthinfo { display:flex; justify-content:space-between; font-size:11px; color:#868e96; margin-top:5px; }
+
+    .fd-chips { display:flex; flex-direction:column; gap:5px; }
+    .fd-chip { display:flex; align-items:center; gap:6px; border:1px solid var(--kt-border,#e9ebec); border-radius:7px; padding:3px 6px; }
+    .fd-chip-dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+    .fd-chip input { border:none; outline:none; flex:1; font-size:12.5px; background:none; }
+    .fd-chip-x { cursor:pointer; color:#adb5bd; font-size:16px; padding:0 3px; }
+    .fd-chip-x:hover { color:#e11d48; }
+    .fd-chip-add { align-self:flex-start; border:1px dashed var(--kt-border,#e9ebec); background:none; border-radius:7px; padding:4px 10px; cursor:pointer; font-size:12px; color:#0c478a; }
+
+    .fd-toggle-row { display:flex; align-items:center; justify-content:space-between; padding:8px 2px; cursor:pointer; border-top:1px solid #f1f3f5; }
+    .fd-toggle-label { font-size:12.5px; font-weight:500; }
+    .fd-toggle-desc { font-size:11px; color:#adb5bd; }
+    .fd-toggle { width:36px; height:20px; border-radius:11px; background:#ced4da; position:relative; transition:background .15s; flex:0 0 auto; }
+    .fd-toggle span { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .15s; }
+    .fd-toggle.on { background:#0c478a; }
+    .fd-toggle.on span { left:18px; }
+
+    .fd-check { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer; margin:0; }
+    .fd-chkgrid { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+    .fd-origen { border:1px solid #f1f3f5; border-radius:9px; padding:8px; margin-top:8px; background:#fbfcfd; }
+    .fd-rq07 { font-size:11.5px; color:#92610a; background:#fef3c7; border-radius:7px; padding:7px 9px; margin-bottom:8px; }
+    .fd-autofill { display:flex; flex-direction:column; gap:5px; }
+    .fd-autofill-row { display:flex; align-items:center; gap:5px; }
+    .fd-autofill-arrow { color:#adb5bd; }
+
+    .fd-gridcols { display:flex; flex-direction:column; gap:6px; margin-bottom:6px; }
+    .fd-gridcol { border:1px solid var(--kt-border,#e9ebec); border-radius:8px; }
+    .fd-gridcol.open { border-color:#0c478a; }
+    .fd-gridcol-head { display:flex; align-items:center; gap:4px; padding:5px 6px; }
+    .fd-gridcol-head input { flex:1; }
+    .fd-gridcol-badge { font-size:10px; padding:1px 6px; border-radius:5px; background:#e2e8f0; color:#475569; }
+    .fd-gridcol-badge.select { background:#dbeafe; color:#2563eb; }
+    .fd-gridcol-badge.formula { background:#fef3c7; color:#92610a; }
+    .fd-gridcol-badge.lookup { background:#dcfce7; color:#16a34a; }
+    .fd-gridcol-mv, .fd-gridcol-cog, .fd-gridcol-del { border:none; background:none; cursor:pointer; color:#868e96; padding:2px 4px; font-size:13px; }
+    .fd-gridcol-cog.on { color:#0c478a; }
+    .fd-gridcol-del:hover { color:#e11d48; }
+    .fd-gridcol-body { padding:8px; border-top:1px solid #f1f3f5; background:#fbfcfd; display:flex; flex-direction:column; gap:8px; }
+    .fd-gcp-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+    .fd-rules-empty { font-size:12px; color:#adb5bd; padding:12px; text-align:center; border:1px dashed var(--kt-border,#e9ebec); border-radius:8px; margin:8px 0; }
+    .fd-rule-row { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--kt-border,#e9ebec); border-radius:8px; margin-bottom:5px; }
+    .fd-rule-dot { width:8px; height:8px; border-radius:50%; background:#16a34a; flex:0 0 auto; }
+    .fd-rule-tx { flex:1; font-size:12px; }
+    .fd-rule-x { cursor:pointer; color:#adb5bd; font-size:18px; border:none; background:none; }
+    .fd-rule-x:hover { color:#e11d48; }
+    .fd-rule-add { width:100%; border:1px dashed var(--kt-border,#e9ebec); background:none; border-radius:8px; padding:8px; cursor:pointer; font-size:12.5px; color:#0c478a; margin-top:6px; }
+    .fd-cond { border:1px solid #bcd4ef; border-radius:9px; padding:10px; margin-top:8px; background:#f7fafe; display:flex; flex-direction:column; gap:8px; }
+    .fd-cond-line { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12px; }
+    .fd-cond-line select, .fd-cond-line input { flex:1; min-width:90px; }
+
+    .fd-hr { border:none; border-top:1px solid var(--kt-border,#e9ebec); margin:14px 0; }
+    .fd-tokenurl { display:flex; align-items:center; gap:8px; background:#f3f6f9; border-radius:8px; padding:9px 11px; font-size:12px; }
+    .fd-tokenrow { display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid #f1f3f5; font-size:12px; }
+</style>

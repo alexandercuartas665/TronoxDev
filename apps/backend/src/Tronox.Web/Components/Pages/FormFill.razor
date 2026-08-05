@@ -1,14 +1,13 @@
 @page "/modulo/formularios/{Id:long}/llenar"
 @attribute [Authorize(Policy = "Perm:modulo/formularios:View")]
-@* Llenado de un formulario dinamico publicado (RQ08, port ECOREX). Crea un borrador, captura con el
-   renderer y envia con validacion servidor (errores por campo). *@
+@* Llenado de un formulario dinamico publicado (RQ08, port ECOREX). Envoltura del DynamicFormRenderer
+   en modo Fill: el renderer crea el borrador, captura y envia con validacion servidor. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Tronox.Application.Forms
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
+@using Tronox.Web.Components.Shared
 @inject IFormDefinitionService DefSvc
-@inject IFormResponseService RespSvc
-@inject Tronox.Application.Common.ITenantContext Tenant
 @inject NavigationManager Nav
 
 <PageTitle>Llenar formulario - TRONOX SGDEA</PageTitle>
@@ -20,80 +19,33 @@
         <span class="current">Llenar</span>
     </nav>
 
-    @if (_def is null)
+    @if (_loadError is not null)
     {
-        <div class="tx-ent-hint" style="padding:18px">@(_loadError ?? "Cargando...")</div>
+        <div class="tx-ent-hint" style="padding:18px">@_loadError</div>
     }
-    else if (_enviado)
+    else if (_ready)
     {
-        <div class="tx-ent-card" style="padding:24px;max-width:640px;margin:24px auto;text-align:center">
-            <i class="bi bi-check-circle" style="font-size:38px;color:var(--kt-success,#0ab39c)"></i>
-            <h3 style="margin:10px 0 4px">¡Respuesta enviada!</h3>
-            <p class="tx-ent-hint">Gracias. Tu respuesta al formulario <strong>@_def.Title</strong> se registró.</p>
-            <div style="margin-top:12px;display:flex;gap:8px;justify-content:center">
-                <button class="tx-ent-btn" @onclick="Reiniciar">Enviar otra</button>
-                <button class="tx-ent-btn primary" @onclick="@(() => Nav.NavigateTo("/modulo/formularios"))">Volver</button>
-            </div>
-        </div>
-    }
-    else
-    {
-        <div class="tx-ent-card" style="padding:20px;max-width:820px;margin:12px auto">
-            <h1 class="tx-ent-title" style="margin-bottom:2px">@_def.Title</h1>
-            @if (!string.IsNullOrWhiteSpace(_def.Description)) { <p class="tx-ent-sub" style="margin:0 0 12px">@_def.Description</p> }
-            @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
-
-            <DynamicFormRenderer Definition="_def" Values="_values" Errors="_errors" ReadOnly="false" />
-
-            <div class="modal-foot" style="margin-top:16px;border-top:1px solid var(--kt-border,#e9ebec);padding-top:12px">
-                <button class="tx-ent-btn primary" @onclick="Enviar" disabled="@_busy">@(_busy ? "Enviando..." : "Enviar")</button>
-            </div>
+        <div style="max-width:920px;margin:12px auto">
+            <DynamicFormRenderer DefinitionId="Id" Reference="@Reference" Mode="FormRenderMode.Fill"
+                                 ShowHeader="true" ApplyCardWidth="true" OnSubmitted="OnSubmitted" />
         </div>
     }
 </div>
 
 @code {
     [Parameter] public long Id { get; set; }
-    private long Actor => Tenant.UserId ?? 0;
+    [SupplyParameterFromQuery] public string? Reference { get; set; }
 
-    private FormDefinitionDetailDto? _def;
-    private long _responseId;
-    private string? _loadError, _pageError;
-    private bool _busy, _enviado;
-    private readonly Dictionary<string, string?> _values = [];
-    private IReadOnlyDictionary<string, string>? _errors;
+    private bool _ready;
+    private string? _loadError;
 
     protected override async Task OnParametersSetAsync()
     {
-        _def = await DefSvc.GetAsync(Id);
-        if (_def is null) { _loadError = "El formulario no existe."; return; }
-        if (_def.Status != FormStatus.Active) { _loadError = "El formulario no está publicado."; _def = null; return; }
-        await NuevoBorrador();
+        var def = await DefSvc.GetAsync(Id);
+        if (def is null) { _loadError = "El formulario no existe."; return; }
+        if (def.Status != FormStatus.Active) { _loadError = "El formulario no está publicado."; return; }
+        _ready = true;
     }
 
-    private async Task NuevoBorrador()
-    {
-        var res = await RespSvc.GetOrCreateDraftAsync(Id, null, Actor);
-        if (!res.IsOk) { _loadError = res.Error; _def = null; return; }
-        _responseId = res.Value!.Id;
-        _values.Clear(); _errors = null;
-    }
-
-    private async Task Enviar()
-    {
-        _busy = true; _pageError = null; _errors = null;
-        try
-        {
-            var data = _def!.Questions
-                .Where(q => !FormFieldValidator.IsNonInput(q.ControlType))
-                .ToDictionary(q => q.FieldCode, q => new FormFieldValue(_values.TryGetValue(q.FieldCode, out var v) ? v : null, q.ControlType.ToString()));
-            var res = await RespSvc.SaveAsync(_responseId, data, submit: true, Actor);
-            if (res.Status == FormServiceStatus.ValidationFailed) { _errors = res.FieldErrors; _pageError = "Revisa los campos marcados."; return; }
-            if (!res.IsOk) { _pageError = res.Error; return; }
-            _enviado = true;
-        }
-        finally { _busy = false; }
-    }
-
-    private async Task Reiniciar() { _enviado = false; await NuevoBorrador(); }
+    private void OnSubmitted() => Nav.NavigateTo("/modulo/formularios");
 }

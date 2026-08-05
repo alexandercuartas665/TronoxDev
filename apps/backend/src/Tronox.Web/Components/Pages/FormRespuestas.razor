@@ -1,7 +1,7 @@
 @page "/modulo/formularios/{Id:long}/respuestas"
 @attribute [Authorize(Policy = "Perm:modulo/formularios-respuestas:View")]
-@* Bandeja de respuestas de un formulario dinamico (RQ08, port ECOREX). Lista los envios con sus
-   valores por campo. *@
+@* Bandeja simple de respuestas de un formulario dinamico (RQ08, port ECOREX). Lista los envios con
+   sus valores por campo. La bandeja rica de un formulario-modulo vive en /m/{code} (FormModule). *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Tronox.Application.Forms
 @using Tronox.Domain.Enums
@@ -24,7 +24,7 @@
     {
         <div class="tx-ent-headrow">
             <h1 class="tx-ent-title">Respuestas · @_def.Title</h1>
-            <p class="tx-ent-sub" style="margin:2px 0 0">@(_responses?.Count ?? 0) respuestas enviadas.</p>
+            <p class="tx-ent-sub" style="margin:2px 0 0">@(_records?.Count ?? 0) respuestas enviadas.</p>
         </div>
 
         <div class="tx-ent-table-wrap" style="margin-top:12px">
@@ -33,20 +33,23 @@
                     <tr>
                         <th>#</th><th>ENVIADA</th><th>REFERENCIA</th>
                         @foreach (var c in _cols) { <th>@c.Label</th> }
+                        <th class="right"></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @if (_responses is null) { <tr><td colspan="@(_cols.Count + 3)" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
-                    else if (_responses.Count == 0) { <tr><td colspan="@(_cols.Count + 3)" class="tx-ent-hint" style="text-align:center;padding:18px">Aún no hay respuestas.</td></tr> }
+                    @if (_records is null) { <tr><td colspan="@(_cols.Count + 4)" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_records.Count == 0) { <tr><td colspan="@(_cols.Count + 4)" class="tx-ent-hint" style="text-align:center;padding:18px">Aún no hay respuestas.</td></tr> }
                     else
                     {
-                        @foreach (var (r, i) in _responses.Select((r, i) => (r, i)))
+                        @foreach (var (r, i) in _records.Select((r, i) => (r, i)))
                         {
+                            var rr = r;
                             <tr>
                                 <td>@(i + 1)</td>
                                 <td>@(r.SubmittedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "--")</td>
                                 <td>@(r.Reference ?? "--")</td>
                                 @foreach (var c in _cols) { <td>@Display(c.Code, r.Fields.TryGetValue(c.Code, out var v) ? v : null)</td> }
+                                <td class="right"><a class="tx-ent-btn sm" href="/modulo/formularios/imprimir/@r.Id" target="_blank"><i class="bi bi-printer"></i></a></td>
                             </tr>
                         }
                     }
@@ -62,9 +65,8 @@
 
     private FormDefinitionDetailDto? _def;
     private string? _loadError;
-    private IReadOnlyList<FormResponseListItemDto>? _responses;
+    private IReadOnlyList<FormRecordListItemDto>? _records;
     private List<(string Code, string Label)> _cols = [];
-    // Por campo de opciones: id -> etiqueta, para mostrar "Excelente" en vez de "opt1".
     private readonly Dictionary<string, Dictionary<string, string>> _optLabels = [];
 
     protected override async Task OnParametersSetAsync()
@@ -75,23 +77,19 @@
             .Where(q => !FormFieldValidator.IsNonInput(q.ControlType))
             .OrderBy(q => q.SortOrder)
             .ToList();
-        // Columnas = campos de captura (primeros 6 para no desbordar).
         _cols = inputs.Take(6).Select(q => (q.FieldCode, q.Label)).ToList();
-        // Mapa de etiquetas para campos de opciones (Select/Radio/MultiCheck).
         foreach (var q in inputs.Where(q => q.ControlType is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck))
         {
             _optLabels[q.FieldCode] = FormFieldValidator.ParseOptions(q.OptionsJson).ToDictionary(o => o.Id, o => o.Label);
         }
-        _responses = await RespSvc.ListResponsesAsync(Id);
+        _records = await RespSvc.ListRecordsAsync(Id);
     }
 
     private string Display(string code, string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) { return "--"; }
         if (!_optLabels.TryGetValue(code, out var map)) { return raw; }
-        // MultiCheck almacena un arreglo JSON de ids; Select/Radio un id simple.
         var ids = raw.TrimStart().StartsWith('[') ? FormFieldValidator.ParseMultiValues(raw) : [raw];
-        var labels = ids.Select(id => map.TryGetValue(id, out var l) ? l : id);
-        return string.Join(", ", labels);
+        return string.Join(", ", ids.Select(id => map.TryGetValue(id, out var l) ? l : id));
     }
 }

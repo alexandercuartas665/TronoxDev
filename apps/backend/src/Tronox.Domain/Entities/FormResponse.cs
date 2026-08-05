@@ -7,9 +7,6 @@ namespace Tronox.Domain.Entities;
 /// Respuesta de un formulario dinamico como DOCUMENTO JSON (RQ08, port ECOREX / ADR-0015: se abandona
 /// el EAV por-fila). Data = { fieldCode: { value, type } } en jsonb. Reference ancla la respuesta a un
 /// caso externo (ej. numero de expediente o de tarea). TENANT-SCOPED, concurrencia optimista portable.
-///
-/// Primer slice: ciclo Draft -> Submitted. Se difieren los campos de registro transaccional
-/// (RecordNumber, RecordStatus, void) y la conversion a documento/vinculacion a expediente.
 /// </summary>
 public class FormResponse : TenantEntity, IVersioned
 {
@@ -30,4 +27,20 @@ public class FormResponse : TenantEntity, IVersioned
 
     /// <summary>Token de concurrencia optimista portable (lo incrementa el interceptor).</summary>
     public long Version { get; set; }
+
+    // ---- Registro transaccional (ola F3). Solo aplica cuando la definicion es transaccional;
+    // INDEPENDIENTE de Status (Draft/Submitted, ciclo de envio). ----
+
+    /// <summary>Numero/clave del registro (consecutivo o clave natural). Null hasta confirmar.</summary>
+    public string? RecordNumber { get; set; }
+
+    /// <summary>Ciclo del registro: Draft -> Confirmed -> Voided (anular no borra ni libera el numero).</summary>
+    public FormRecordStatus RecordStatus { get; set; } = FormRecordStatus.Draft;
+
+    /// <summary>Fecha del hecho (por sistema al confirmar; los campos fecha del formulario son aparte).</summary>
+    public DateTimeOffset? TransactionDate { get; set; }
+
+    public DateTimeOffset? VoidedAt { get; set; }
+    public long? VoidedByTenantUserId { get; set; }
+    public string? VoidReason { get; set; }
 }

@@ -102,6 +102,11 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<FormContainer> FormContainers => Set<FormContainer>();
     public DbSet<FormQuestion> FormQuestions => Set<FormQuestion>();
     public DbSet<FormResponse> FormResponses => Set<FormResponse>();
+    public DbSet<FormToken> FormTokens => Set<FormToken>();
+    public DbSet<FormFieldCondition> FormFieldConditions => Set<FormFieldCondition>();
+    public DbSet<FormRecordLink> FormRecordLinks => Set<FormRecordLink>();
+    public DbSet<WorkflowNodeForm> WorkflowNodeForms => Set<WorkflowNodeForm>();
+    public DbSet<FormFlowLink> FormFlowLinks => Set<FormFlowLink>();
     public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
     public DbSet<WorkflowNode> WorkflowNodes => Set<WorkflowNode>();
     public DbSet<WorkflowEdge> WorkflowEdges => Set<WorkflowEdge>();
@@ -333,6 +338,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<FormRecordStatus>().HaveConversion<string>().HaveMaxLength(40);
         // Transversales (ola F6).
         configurationBuilder.Properties<FormDefaultDynamic>().HaveConversion<string>().HaveMaxLength(40);
+        // Ancho de tarjeta (ola F4): enum persistido como string.
+        configurationBuilder.Properties<FormCardLayout>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<RuleStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleTriggerKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleExecutionStatus>().HaveConversion<string>().HaveMaxLength(40);
@@ -1090,6 +1097,12 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.Title).HasMaxLength(200).IsRequired();
             b.Property(x => x.Description).HasMaxLength(1000);
             b.Property(x => x.Version).IsConcurrencyToken();
+            // Transaccionalidad + modulo (olas F3/F4): claves/columnas/filtros como documento JSON.
+            b.Property(x => x.IdentitySourceFieldCode).HasMaxLength(100);
+            b.Property(x => x.UniqueKeyFieldsJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.ModuleIcon).HasMaxLength(60);
+            b.Property(x => x.ListColumnsJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.FilterFieldsJson).HasColumnType(jsonColumnType);
             b.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.Status });
         });
@@ -1120,6 +1133,16 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.Format).HasMaxLength(30);
             b.Property(x => x.OptionsJson).HasColumnType(jsonColumnType);
             b.Property(x => x.ValidationJson).HasColumnType(jsonColumnType);
+            // Origen de datos / lookup + cascada + permisos por campo (olas F1/F2/F6).
+            b.Property(x => x.SourceRef).HasMaxLength(200);
+            b.Property(x => x.DisplayField).HasMaxLength(100);
+            b.Property(x => x.ValueField).HasMaxLength(100);
+            b.Property(x => x.Format).HasMaxLength(30);
+            b.Property(x => x.CalcExpression).HasMaxLength(1000);
+            b.Property(x => x.FilterJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.AutofillMapJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.FieldVisibilityJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.CascadeConfigJson).HasColumnType(jsonColumnType);
             b.HasOne(x => x.Definition).WithMany(x => x.Questions)
                 .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne(x => x.Container).WithMany()
@@ -1133,10 +1156,68 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.Reference).HasMaxLength(100);
             b.Property(x => x.Data).HasColumnType(jsonColumnType).IsRequired();
             b.Property(x => x.Version).IsConcurrencyToken();
+            // Registro transaccional (ola F3).
+            b.Property(x => x.RecordNumber).HasMaxLength(100);
+            b.Property(x => x.VoidReason).HasMaxLength(2000);
             b.HasOne(x => x.Definition).WithMany()
                 .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TenantId, x.DefinitionId, x.Status });
             b.HasIndex(x => new { x.DefinitionId, x.Reference });
+            b.HasIndex(x => new { x.TenantId, x.DefinitionId, x.RecordStatus });
+        });
+
+        // Formularios avanzados: tokens de publicacion, condiciones autocontenidas, maestro-detalle,
+        // y vinculo formulario<->nodo/paso de flujo BPMN (RQ08 x RQ11).
+        modelBuilder.Entity<FormToken>(b =>
+        {
+            b.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
+            b.Property(x => x.Reference).HasMaxLength(100);
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.TokenHash }).IsUnique();
+        });
+
+        modelBuilder.Entity<FormFieldCondition>(b =>
+        {
+            b.Property(x => x.SourceFieldCode).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Operator).HasMaxLength(20).IsRequired();
+            b.Property(x => x.Value).HasMaxLength(500);
+            b.Property(x => x.Action).HasMaxLength(20).IsRequired();
+            b.Property(x => x.TargetFieldCode).HasMaxLength(100).IsRequired();
+            b.Property(x => x.SetValue).HasMaxLength(500);
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.DefinitionId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<FormRecordLink>(b =>
+        {
+            b.Property(x => x.ParentFieldCode).HasMaxLength(100).IsRequired();
+            b.HasOne(x => x.ParentResponse).WithMany()
+                .HasForeignKey(x => x.ParentResponseId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ChildResponse).WithMany()
+                .HasForeignKey(x => x.ChildResponseId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ParentResponseId, x.ParentFieldCode, x.SortOrder });
+        });
+
+        modelBuilder.Entity<WorkflowNodeForm>(b =>
+        {
+            b.HasOne(x => x.Node).WithMany()
+                .HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.NodeId).IsUnique();
+        });
+
+        modelBuilder.Entity<FormFlowLink>(b =>
+        {
+            b.HasOne(x => x.FormResponse).WithMany()
+                .HasForeignKey(x => x.FormResponseId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.WorkflowInstance).WithMany()
+                .HasForeignKey(x => x.WorkflowInstanceId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.WorkflowNode).WithMany()
+                .HasForeignKey(x => x.WorkflowNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.WorkflowInstanceId, x.Status });
         });
 
         // Motor de flujos BPMN (RQ11, port del motor de ECOREX). El XML BPMN se guarda tal cual

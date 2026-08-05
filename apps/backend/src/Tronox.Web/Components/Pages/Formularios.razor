@@ -1,32 +1,30 @@
 @page "/modulo/formularios"
 @attribute [Authorize(Policy = "Perm:modulo/formularios:View")]
-@* Motor de Formularios Dinamicos (RQ08, port ECOREX). Catalogo: crea formularios, entra al
-   disenador, publica/despublica, archiva y consulta respuestas. Llave de permisos = ruta de menu
-   "modulo/formularios". *@
+@* Motor de Formularios Dinamicos (RQ08, port fiel de ECOREX). Catalogo con vista de TARJETAS + TABLA
+   (toggle), KPIs, tabs Activos/Archivados, buscador y archivar/restaurar. Abre el disenador. Llave de
+   permisos = ruta de menu "modulo/formularios". *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Tronox.Application.Forms
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
 @inject IFormDefinitionService Svc
 @inject ICurrentPermissions Perms
-@inject Tronox.Application.Common.ITenantContext Tenant
 @inject NavigationManager Nav
 
 <PageTitle>Formularios - TRONOX SGDEA</PageTitle>
 
 <div class="tx-mod tx-dep tx-trdc">
     <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
-        <a href="/inicio">Inicio</a>
-        <span>/</span>
-        <span>Motor de Formularios Dinámicos</span>
-        <span>/</span>
+        <a href="/inicio">Inicio</a><span>/</span>
+        <span>Motor de Formularios Dinámicos</span><span>/</span>
         <span class="current">Formularios</span>
     </nav>
 
     <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div>
+            <div class="tx-ent-hint" style="letter-spacing:.06em;font-weight:600">MOTOR DE FORMULARIOS DINÁMICOS</div>
             <h1 class="tx-ent-title">Formularios</h1>
-            <p class="tx-ent-sub" style="margin:2px 0 0">Diseña formularios dinámicos con constructor visual y captura de respuestas.</p>
+            <p class="tx-ent-sub" style="margin:2px 0 0">Diseña formularios con constructor visual, captura respuestas y publícalos como módulo o por URL.</p>
         </div>
         @if (_canCreate)
         {
@@ -37,37 +35,91 @@
     @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
     @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
 
-    <div class="tx-ent-table-wrap" style="margin-top:12px">
-        <table class="tx-ent-table">
-            <thead><tr><th>CÓDIGO</th><th>TÍTULO</th><th>ESTADO</th><th>REV.</th><th>CAMPOS</th><th>RESPUESTAS</th><th class="right">ACCIONES</th></tr></thead>
-            <tbody>
-                @if (_forms is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
-                else if (_forms.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">No hay formularios. Crea el primero.</td></tr> }
-                else
-                {
-                    @foreach (var f in _forms)
+    @* KPIs *@
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:12px">
+        <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint"><i class="bi bi-ui-checks-grid"></i> Formularios</div><div style="font-size:26px;font-weight:700">@_all.Count</div></div>
+        <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint"><i class="bi bi-check-circle"></i> Publicados</div><div style="font-size:26px;font-weight:700">@_all.Count(f => f.Status == FormStatus.Active && !f.IsArchived)</div></div>
+        <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint"><i class="bi bi-inbox"></i> Respuestas</div><div style="font-size:26px;font-weight:700">@_all.Sum(f => f.ResponseCount).ToString("N0", _co)</div></div>
+        <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint"><i class="bi bi-diagram-3"></i> Con reglas</div><div style="font-size:26px;font-weight:700">@_all.Count(f => f.RuleCount > 0)</div></div>
+    </div>
+
+    @* Toolbar: buscador + tabs estado + toggle vista *@
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px">
+        <input class="tx-ent-input" style="max-width:280px" placeholder="Buscar por nombre o código..." @bind="_query" @bind:event="oninput" />
+        <div style="display:flex;gap:6px">
+            <button class="tx-ent-btn sm @(_tab == "act" ? "primary" : "")" @onclick='() => _tab = "act"'>Activos <span class="tx-ent-badge sm">@_all.Count(f => !f.IsArchived)</span></button>
+            <button class="tx-ent-btn sm @(_tab == "arch" ? "primary" : "")" @onclick='() => _tab = "arch"' disabled="@(_all.All(f => !f.IsArchived))">Archivados <span class="tx-ent-badge sm">@_all.Count(f => f.IsArchived)</span></button>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;gap:4px">
+            <button class="tx-ent-btn sm @(!_listView ? "primary" : "")" title="Tarjetas" @onclick="() => _listView = false"><i class="bi bi-grid-3x3-gap"></i> Tarjetas</button>
+            <button class="tx-ent-btn sm @(_listView ? "primary" : "")" title="Lista" @onclick="() => _listView = true"><i class="bi bi-list-ul"></i> Lista</button>
+        </div>
+    </div>
+
+    @if (_all is null) { <div class="tx-ent-hint" style="padding:18px">Cargando...</div> }
+    else if (Filtered.Count == 0) { <div class="tx-ent-hint" style="padding:18px">@(_tab == "arch" ? "No hay formularios archivados." : "No hay formularios. Crea el primero.")</div> }
+    else if (!_listView)
+    {
+        @* ---- Vista TARJETAS ---- *@
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:14px">
+            @foreach (var f in Filtered)
+            {
+                var ff = f;
+                <div class="tx-ent-card" style="padding:14px;position:relative;cursor:pointer" @onclick="@(() => Open(ff.Id))">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                        <i class="bi bi-file-earmark-text" style="font-size:22px;color:var(--kt-primary,#0c478a)"></i>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span class="tx-ent-badge @EstadoCss(f.Status, f.IsArchived)">@EstadoLabel(f.Status, f.IsArchived)</span>
+                            @if (_canDelete)
+                            {
+                                <button class="tx-ent-btn sm @(f.IsArchived ? "" : "danger")" title="@(f.IsArchived ? "Restaurar" : "Archivar")"
+                                        @onclick:stopPropagation="true" @onclick="@(() => Archivar(ff.Id, !ff.IsArchived))">
+                                    <i class="bi @(f.IsArchived ? "bi-arrow-counterclockwise" : "bi-archive")"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div style="font-weight:600;margin:8px 0 2px">@f.Title</div>
+                    <div class="mono tx-ent-hint" style="margin-bottom:10px">FORX-@f.Code · rev @f.Revision</div>
+                    <div style="display:flex;gap:14px;font-size:12px">
+                        <span title="Campos"><i class="bi bi-input-cursor-text"></i> @f.QuestionCount</span>
+                        <span title="Respuestas"><i class="bi bi-inbox"></i> @f.ResponseCount</span>
+                        <span title="Reglas" style="color:#f59e0b"><i class="bi bi-diagram-3"></i> @f.RuleCount</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        @* ---- Vista TABLA ---- *@
+        <div class="tx-ent-table-wrap" style="margin-top:14px">
+            <table class="tx-ent-table">
+                <thead><tr><th>FORMULARIO</th><th>ESTADO</th><th>CAMPOS</th><th>RESPUESTAS</th><th>REGLAS</th><th class="right">ACCIONES</th></tr></thead>
+                <tbody>
+                    @foreach (var f in Filtered)
                     {
-                        <tr>
-                            <td><span class="mono">@f.Code</span></td>
-                            <td>@f.Title</td>
-                            <td><span class="tx-ent-badge @EstadoCss(f.Status)">@EstadoLabel(f.Status)</span></td>
-                            <td>@f.Revision</td>
+                        var ff = f;
+                        <tr style="cursor:pointer" @onclick="@(() => Open(ff.Id))">
+                            <td><div style="font-weight:600">@f.Title</div><div class="mono tx-ent-hint">FORX-@f.Code · rev @f.Revision</div></td>
+                            <td><span class="tx-ent-badge @EstadoCss(f.Status, f.IsArchived)">@EstadoLabel(f.Status, f.IsArchived)</span></td>
                             <td>@f.QuestionCount</td>
                             <td>@f.ResponseCount</td>
+                            <td>@f.RuleCount</td>
                             <td class="right">
-                                @if (_canEdit) { <button class="tx-ent-btn sm primary" title="Diseñar" @onclick="@(() => Nav.NavigateTo($"/modulo/formularios-disenador/{f.Id}"))"><i class="bi bi-pencil-square"></i> Diseñar</button> }
-                                @if (f.Status == FormStatus.Active) { <button class="tx-ent-btn sm" title="Llenar / Vista previa" @onclick="@(() => Nav.NavigateTo($"/modulo/formularios/{f.Id}/llenar"))"><i class="bi bi-ui-checks"></i></button> }
-                                <button class="tx-ent-btn sm" title="Respuestas" @onclick="@(() => Nav.NavigateTo($"/modulo/formularios/{f.Id}/respuestas"))"><i class="bi bi-inbox"></i></button>
-                                @if (_canEdit && f.Status == FormStatus.Draft) { <button class="tx-ent-btn sm ok" title="Publicar" @onclick="@(() => Activar(f.Id))">Publicar</button> }
-                                @if (_canEdit && f.Status == FormStatus.Active) { <button class="tx-ent-btn sm" title="Despublicar" @onclick="@(() => Desactivar(f.Id))">Despublicar</button> }
-                                @if (_canDelete) { <button class="tx-ent-btn sm danger" title="Archivar" @onclick="@(() => Archivar(f.Id))"><i class="bi bi-archive"></i></button> }
+                                <button class="tx-ent-btn sm primary" title="Diseñar" @onclick:stopPropagation="true" @onclick="@(() => Open(ff.Id))"><i class="bi bi-pencil-square"></i></button>
+                                @if (_canDelete)
+                                {
+                                    <button class="tx-ent-btn sm @(f.IsArchived ? "" : "danger")" title="@(f.IsArchived ? "Restaurar" : "Archivar")" @onclick:stopPropagation="true" @onclick="@(() => Archivar(ff.Id, !ff.IsArchived))"><i class="bi @(f.IsArchived ? "bi-arrow-counterclockwise" : "bi-archive")"></i></button>
+                                }
                             </td>
                         </tr>
                     }
-                }
-            </tbody>
-        </table>
-    </div>
+                </tbody>
+            </table>
+        </div>
+    }
 </div>
 
 @if (_showNuevo)
@@ -93,10 +145,14 @@
 
 @code {
     private const string ModuleKey = "modulo/formularios";
-    private long Actor => Tenant.UserId ?? 0;
+    private static readonly System.Globalization.CultureInfo _co = new("es-CO");
     private bool _canCreate, _canEdit, _canDelete;
-    private IReadOnlyList<FormDefinitionListItemDto>? _forms;
+    private IReadOnlyList<FormDefinitionListItemDto> _all = [];
     private string? _pageOk, _pageError;
+
+    private string _query = "";
+    private string _tab = "act";
+    private bool _listView;
 
     private bool _showNuevo, _nBusy;
     private string? _nuevoError;
@@ -111,12 +167,28 @@
         await Reload();
     }
 
-    private async Task Reload() => _forms = await Svc.ListAsync();
+    private async Task Reload() => _all = await Svc.ListAsync(includeArchived: true);
 
-    private static string EstadoLabel(FormStatus s) => s switch
+    private IReadOnlyList<FormDefinitionListItemDto> Filtered
+    {
+        get
+        {
+            var q = (_all ?? []).Where(f => _tab == "arch" ? f.IsArchived : !f.IsArchived);
+            if (!string.IsNullOrWhiteSpace(_query))
+            {
+                var t = _query.Trim().ToLowerInvariant();
+                q = q.Where(f => f.Title.ToLowerInvariant().Contains(t) || f.Code.ToLowerInvariant().Contains(t));
+            }
+            return q.OrderBy(f => f.Title).ToList();
+        }
+    }
+
+    private static string EstadoLabel(FormStatus s, bool archived) => archived ? "Archivado" : s switch
     { FormStatus.Draft => "Borrador", FormStatus.Active => "Publicado", FormStatus.Inactive => "Retirado", _ => s.ToString() };
-    private static string EstadoCss(FormStatus s) => s switch
+    private static string EstadoCss(FormStatus s, bool archived) => archived ? "off" : s switch
     { FormStatus.Active => "ok", FormStatus.Inactive => "off", _ => "" };
+
+    private void Open(long id) => Nav.NavigateTo($"/modulo/formularios-disenador/{id}");
 
     private void OpenNuevo()
     {
@@ -129,31 +201,18 @@
         _nBusy = true; _nuevoError = null;
         try
         {
-            var res = await Svc.CreateAsync(new CreateFormDefinitionRequest(_nCode, _nTitle, string.IsNullOrWhiteSpace(_nDesc) ? null : _nDesc), Actor);
+            var res = await Svc.CreateAsync(new CreateFormDefinitionRequest(_nCode, _nTitle, string.IsNullOrWhiteSpace(_nDesc) ? null : _nDesc));
             if (!res.IsOk) { _nuevoError = res.Error; return; }
             Nav.NavigateTo($"/modulo/formularios-disenador/{res.Value!.Id}");
         }
         finally { _nBusy = false; }
     }
 
-    private async Task Activar(long id)
+    private async Task Archivar(long id, bool archived)
     {
-        var res = await Svc.ActivateAsync(id, Actor);
+        var res = await Svc.SetArchivedAsync(id, archived);
         if (!res.IsOk) { _pageError = res.Error; return; }
-        _pageOk = "Formulario publicado."; await Reload();
-    }
-
-    private async Task Desactivar(long id)
-    {
-        var res = await Svc.DeactivateAsync(id, Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        _pageOk = "Formulario retirado."; await Reload();
-    }
-
-    private async Task Archivar(long id)
-    {
-        var res = await Svc.SetArchivedAsync(id, true, Actor);
-        if (!res.IsOk) { _pageError = res.Error; return; }
-        _pageOk = "Formulario archivado."; await Reload();
+        _pageOk = archived ? "Formulario archivado." : "Formulario restaurado.";
+        await Reload();
     }
 }

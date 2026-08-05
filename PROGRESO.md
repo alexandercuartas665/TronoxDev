@@ -116,16 +116,34 @@ nuevas, 30 contenedores (sin caer vecinos), HTTP 200, 0 reinicios. Permisos conc
 roles admin de los 2 tenants de prod (formularios + workflows + workflows-ejecucion).
 Backup previo: `backup_pre_rq08_rq11_20260805_092016.sql.gz`.
 
-### RQ08 - Motor de Formularios Dinamicos (`modulo/formularios`)
-Port del nucleo de ECOREX (JSON-por-respuesta, ADR-0015 de ECOREX, NO EAV por fila como el vault).
-4 entidades (`FormDefinition/Container/Question/Response`), servicios `IFormDefinitionService` /
-`IFormResponseService`, validador puro `FormFieldValidator`. Web: catalogo, disenador visual
-(paleta + arbol + panel de propiedades), renderer `DynamicFormRenderer`, llenado con validacion
-servidor, bandeja de respuestas (resuelve etiquetas de opciones). Migracion `FormulariosRq08`.
-Verificado: disenar -> publicar -> llenar -> validar requerido -> respuesta persistida. Diferido:
-logica condicional, publicacion por token, registros transaccionales, lookups, maestro-detalle,
-calculados, cascada, tabs/filas/columnas (solo secciones), drag-drop (solo subir/bajar).
-**Pendiente: ADR del modelo JSON-por-respuesta (diverge del EAV del vault RQ08).**
+### RQ08 - Motor de Formularios Dinamicos (`modulo/formularios`) - PORT FIEL
+Primer slice recortado (commit 5ba938b) fue calificado "mediocre" por el usuario: la idea era un
+port MILIMETRICO. Se REHIZO como port fiel de ECOREX (JSON-por-respuesta, ADR-011; sobre tx-*, no
+copiando el CSS de ECOREX; decision del usuario).
+
+- **Dominio a fidelidad:** los 28 tipos de control (incl. CascadeConfigurator), FormQuestion con
+  todos los campos (origen de datos/lookup, calculados, cascada, visibilidad por rol, formato,
+  subform), FormDefinition transaccional + modulo + CardLayout, FormResponse con campos de registro;
+  5 entidades nuevas: FormToken, FormRecordLink, WorkflowNodeForm, FormFlowLink y FormFieldCondition
+  (regla condicional AUTOCONTENIDA que reemplaza el motor de Reglas podado).
+- **Application:** motores puros (FormExpressionEvaluator calculados, FormGridCalculator + xlsx,
+  Cascade config+runtime), validador completo (28 tipos + grilla por columna), evaluador de
+  condiciones puro, servicios `FormDefinitionService` (913) + `FormResponseService` (571) completos
+  (CRUD + move/duplicate, transaccional + consecutivo via ISequenceService, bandeja + export,
+  maestro-detalle), tokens (SHA-256), framework de lookups (sin fuentes: diferidas).
+- **Web (tx-*):** catalogo TARJETAS + TABLA (toggle, 4 KPIs, tabs Activos/Archivados, buscador,
+  archivar/restaurar); disenador 3-COLUMNAS (paleta + arbol, barra de dispositivo, drag-drop,
+  pestanas Diseno/Datos/Reglas, todos los contenedores/tipos, duplicar, publicar por URL); renderer
+  de los 28 tipos (grilla dinamica, subform, cascada, firma/GPS/archivo, condiciones en vivo,
+  autosave, anular); bandeja de modulo `/m/{code}`; impresion `/formularios/imprimir/{id}`.
+- Migracion `FormsFidelidadRq08`. Build verde, 334 tests Application (incl. condiciones). Verificado
+  e2e: catalogo tarjetas+tabla, disenador 3-col, llenar -> validar -> respuesta persistida (id 5).
+
+**Diferido (con nota, no por recorte unilateral):** lookups de Tercero (hasta RQ07); Item/
+DataContainer (modulos de ECOREX que no aplican a TRONOX); visor publico anonimo `/f/{token}`
+(necesita plumbing de tenant-ambiente sin sesion); binding runtime formulario<->paso de flujo BPMN
+(entidades listas); VLOOKUP de grilla. Ruido menor: 404 de choices.js/flatpickr (plugins Velzon).
+**Pendientes de gobernanza: ADR del CSS tx-* (se aparta de Velzon-only para el diseñador) + vault.**
 
 ### RQ11 - Workflow Documental = motor BPMN (`modulo/workflows`) - **ADR-010**
 El usuario eligio **portar el motor BPMN de ECOREX** (canvas bpmn-js), que **contradice la spec
