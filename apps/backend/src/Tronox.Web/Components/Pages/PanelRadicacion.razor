@@ -1,0 +1,368 @@
+@page "/modulo/radicacion-panel"
+@attribute [Authorize(Policy = "Perm:modulo/radicacion-panel:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@inject IRadicacionPanelService PanelSvc
+@inject NavigationManager Nav
+
+@* RQ09 - RF12-1 (Panel de Control de la Ventanilla Unica / Radicacion).
+
+   Port milimetrico del legacy rad_panel.aspx + rad_panel_op.ashx (accion "dashboard"): dashboard de
+   SOLO LECTURA sobre los radicados de la sucursal (tenant). 6 KPIs (actuales/hoy), 7 graficos por
+   rango y actividad reciente (ultimos 6). Los graficos se dibujan a mano (SVG/CSS) como en el legacy.
+   El calculo vive en RadicacionPanelService (LINQ parametrizado, filtro por tenant global). El pop-up
+   de detalle abre rad_detalle (modulo posterior): por ahora enlaza a la bandeja como marcador. *@
+
+<PageTitle>Panel de Control - Radicacion - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Workspace</a>
+    <span class="sep">/</span>
+    <span>Gestion y Tramite</span>
+    <span class="sep">/</span>
+    <span>Ventanilla Unica / Radicacion</span>
+    <span class="sep">/</span>
+    <span class="cur">Panel de Control</span>
+</nav>
+
+<div class="pn-wrap">
+    <div class="pn-header">
+        <div>
+            <h1 class="page-title" style="margin:0;">Panel de Control</h1>
+            <p class="page-sub" style="margin:4px 0 0;">Actividad de radicacion de la entidad.</p>
+        </div>
+        <div class="pn-period">
+            <span class="pn-period-lbl">Periodo:</span>
+            @foreach (var (key, label) in _periods)
+            {
+                <button class="pn-chip @(_period == key ? "on" : "")" @onclick="@(() => SetPeriodAsync(key))" disabled="@_busy">@label</button>
+            }
+            @if (_period == "rango")
+            {
+                <span class="pn-range">
+                    <input type="date" class="form-control form-control-sm" @bind="_desde" />
+                    <span>-</span>
+                    <input type="date" class="form-control form-control-sm" @bind="_hasta" />
+                    <button class="btn btn-sm btn-primary" @onclick="ReloadAsync" disabled="@_busy">Aplicar</button>
+                </span>
+            }
+        </div>
+    </div>
+
+    @if (_dash is null)
+    {
+        <p><em>Cargando panel...</em></p>
+    }
+    else
+    {
+        var k = _dash.Kpi;
+        <div class="pn-kpis">
+            @KpiCard("Radicados hoy", k.Hoy.ToString(), $"↑ {k.HoyEntrada} Entrada · {k.HoySalida} Salida · {k.HoyInterno} Interno", "#405189", null)
+            @KpiCard("Sin distribuir", k.SinDistribuir.ToString(), "Pendientes de asignar dependencia", "#D97706", null)
+            @KpiCard("Proximos a vencer", k.Proximos.ToString(), "En los proximos 3 dias - clic para abrir la bandeja", "#F59E0B", "modulo/radicacion?tab=prox")
+            @KpiCard("Vencidos", k.Vencidos.ToString(), "Requieren atencion inmediata", "#EF4444", "modulo/radicacion?tab=venc")
+            @KpiCard("Tutelas activas", k.Tutelas.ToString(), "Control estricto de terminos", "#7C3AED", null)
+            @KpiCard("Correos por revisar", k.Correos.ToString(), k.CorreosDetalle, "#0891B2", "modulo/radicacion-correos")
+        </div>
+
+        <div class="pn-grid">
+            <div class="pn-card"><div class="pn-card-h">Radicados por tipo</div>@Hbars(_dash.PorTipo, true)</div>
+            <div class="pn-card"><div class="pn-card-h">Radicados por canal</div>@Donut(_dash.PorCanal, CanalColor)</div>
+            <div class="pn-card"><div class="pn-card-h">Cumplimiento SLA</div>@Gauge(_dash.Sla)</div>
+        </div>
+
+        <div class="pn-grid2">
+            <div class="pn-card"><div class="pn-card-h">Radicados por dia</div>@Line(_dash.PorDia, "#405189")</div>
+            <div class="pn-card"><div class="pn-card-h">Radicados por estado</div>@Hbars(RemapEstados(_dash.PorEstado), false)</div>
+        </div>
+
+        <div class="pn-grid2">
+            <div class="pn-card"><div class="pn-card-h">Radicados por dependencia</div>@Vbars(_dash.PorDependencia)</div>
+            <div class="pn-card"><div class="pn-card-h">Tiempo promedio de respuesta (dias)</div>@Line(_dash.Promedio, "#0ab39c")</div>
+        </div>
+
+        <div class="pn-card">
+            <div class="pn-card-h pn-act-h">
+                <span>Actividad reciente <small>Ultimos radicados</small></span>
+                <a href="/modulo/radicacion">Ver todos -&gt;</a>
+            </div>
+            @if (_dash.Actividad.Count == 0)
+            {
+                <div class="pn-empty">Sin radicados aun.</div>
+            }
+            else
+            {
+                <table class="pn-tabla">
+                    <thead><tr><th>Radicado</th><th>Fecha</th><th>Tipo</th><th>Canal</th><th>Remitente</th><th>Estado</th><th>SLA</th></tr></thead>
+                    <tbody>
+                        @foreach (var a in _dash.Actividad)
+                        {
+                            <tr>
+                                <td><button class="pn-num" @onclick="@(() => OpenDetalle(a.Reg, a.Numero))">@a.Numero</button></td>
+                                <td>@a.Fecha</td>
+                                <td><span class="pn-dot" style="background:@(a.TipoColor ?? "#405189")"></span>@a.TipoNombre</td>
+                                <td>@a.Canal</td>
+                                <td>@a.Remitente</td>
+                                <td>@EstadoLabel(a.Estado)</td>
+                                <td>@SlaPill(a.Dias)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <p class="pn-nota">Panel informativo (RF12-1). El filtro de visibilidad por usuario (RF11-8) se integra al portar la bandeja.</p>
+    }
+</div>
+
+@if (_detalle is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _detalle = null)">
+        <div class="modal-dialog" style="max-width:520px;" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Radicado @_detalle</h3>
+                <button class="modal-close" @onclick="@(() => _detalle = null)">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="page-sub" style="margin-top:0;">El detalle completo del radicado (visor de <code>rad_detalle</code>) se habilita al portar ese modulo. Por ahora puedes abrir la bandeja.</p>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="@(() => _detalle = null)">Cerrar</button>
+                <button class="btn btn-primary" @onclick="@(() => Nav.NavigateTo("/modulo/radicacion"))">Ir a la bandeja</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .pn-wrap { padding: 4px 2px 40px; }
+    .pn-header { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+    .pn-period { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .pn-period-lbl { font-size:.82rem; color:var(--ink-3,#64748b); margin-right:2px; }
+    .pn-chip { border:1px solid var(--tx-border,#e2e8f0); background:var(--tx-surface,#fff); color:var(--ink-2,#334155); border-radius:8px; padding:5px 12px; font-size:.82rem; cursor:pointer; }
+    .pn-chip.on { background:#405189; border-color:#405189; color:#fff; }
+    .pn-range { display:inline-flex; align-items:center; gap:6px; }
+    .pn-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-bottom:16px; }
+    .pn-kpi { background:var(--tx-surface,#fff); border:1px solid var(--tx-border,#e2e8f0); border-top:3px solid #405189; border-radius:12px; padding:16px 18px; }
+    .pn-kpi.link { cursor:pointer; text-decoration:none; display:block; color:inherit; transition:box-shadow .15s; }
+    .pn-kpi.link:hover { box-shadow:0 4px 14px rgba(2,6,23,.08); }
+    .pn-kpi-lbl { font-size:.8rem; color:var(--ink-3,#64748b); }
+    .pn-kpi-val { font-size:1.9rem; font-weight:700; line-height:1.1; margin:4px 0 2px; color:var(--ink-1,#0f172a); }
+    .pn-kpi-sub { font-size:.76rem; color:var(--ink-3,#64748b); }
+    .pn-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:14px; }
+    .pn-grid2 { display:grid; grid-template-columns:2fr 1fr; gap:14px; margin-bottom:14px; }
+    .pn-card { background:var(--tx-surface,#fff); border:1px solid var(--tx-border,#e2e8f0); border-radius:12px; padding:16px 18px; }
+    .pn-card-h { font-size:.9rem; font-weight:600; color:var(--ink-1,#0f172a); margin-bottom:12px; }
+    .pn-hbars { display:flex; flex-direction:column; gap:9px; }
+    .pn-hbar-row { display:grid; grid-template-columns:120px 1fr 34px; align-items:center; gap:8px; font-size:.78rem; }
+    .pn-hbar-lbl { color:var(--ink-2,#334155); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pn-hbar-track { background:var(--tx-muted,#f1f5f9); border-radius:6px; height:14px; overflow:hidden; }
+    .pn-hbar-fill { height:100%; border-radius:6px; }
+    .pn-hbar-val { text-align:right; color:var(--ink-2,#334155); font-variant-numeric:tabular-nums; }
+    .pn-vbars { display:flex; align-items:flex-end; gap:10px; height:150px; padding-top:8px; }
+    .pn-vbar { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:6px; height:100%; }
+    .pn-vbar-bar { width:70%; background:#405189; border-radius:6px 6px 0 0; min-height:2px; }
+    .pn-vbar-lbl { font-size:.68rem; color:var(--ink-3,#64748b); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+    .pn-donut-wrap { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+    .pn-legend { display:flex; flex-direction:column; gap:6px; font-size:.78rem; }
+    .pn-legend-i { display:flex; align-items:center; gap:6px; color:var(--ink-2,#334155); }
+    .pn-legend-sw { width:11px; height:11px; border-radius:3px; }
+    .pn-gauge-txt { font-size:1.5rem; font-weight:700; fill:var(--ink-1,#0f172a); }
+    .pn-empty2 { color:var(--ink-3,#94a3b8); font-size:.82rem; padding:14px 0; text-align:center; }
+    .pn-tabla { width:100%; border-collapse:collapse; font-size:.82rem; }
+    .pn-tabla th { text-align:left; color:var(--ink-3,#64748b); font-weight:600; padding:7px 8px; border-bottom:1px solid var(--tx-border,#e2e8f0); }
+    .pn-tabla td { padding:8px; border-bottom:1px solid var(--tx-muted,#f1f5f9); color:var(--ink-2,#334155); }
+    .pn-num { background:none; border:none; color:#405189; font-weight:600; cursor:pointer; padding:0; }
+    .pn-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+    .pn-pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:.72rem; font-weight:600; }
+    .pn-act-h { display:flex; justify-content:space-between; align-items:center; }
+    .pn-act-h small { color:var(--ink-3,#94a3b8); font-weight:400; margin-left:6px; }
+    .pn-act-h a { font-size:.8rem; color:#405189; text-decoration:none; }
+    .pn-empty { color:var(--ink-3,#94a3b8); font-size:.85rem; padding:20px 0; text-align:center; }
+    .pn-nota { font-size:.74rem; color:var(--ink-3,#94a3b8); margin-top:14px; }
+    @@media (max-width:1100px){ .pn-grid,.pn-grid2 { grid-template-columns:1fr; } }
+</style>
+
+@code {
+    private readonly (string key, string label)[] _periods =
+    {
+        ("hoy", "Hoy"), ("semana", "Esta semana"), ("mes", "Este mes"), ("anio", "Este anio"), ("rango", "Personalizado")
+    };
+
+    private RadicacionDashboardDto? _dash;
+    private bool _busy;
+    private string _period = "mes";
+    private DateOnly _desde = DateOnly.FromDateTime(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task SetPeriodAsync(string p)
+    {
+        _period = p;
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        switch (p)
+        {
+            case "hoy": _desde = hoy; _hasta = hoy; break;
+            case "semana": _desde = hoy.AddDays(-(((int)DateTime.Today.DayOfWeek + 6) % 7)); _hasta = hoy; break;
+            case "mes": _desde = new DateOnly(hoy.Year, hoy.Month, 1); _hasta = hoy; break;
+            case "anio": _desde = new DateOnly(hoy.Year, 1, 1); _hasta = hoy; break;
+            case "rango": return; // el usuario elige el rango y pulsa Aplicar
+        }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        try { _dash = await PanelSvc.GetDashboardAsync(_desde, _hasta); }
+        finally { _busy = false; }
+    }
+
+    private long? _detalle;
+    private void OpenDetalle(long reg, string numero) => _detalle = reg;
+
+    // ---------- Colores/etiquetas (fieles al legacy) ----------
+    private static string CanalColor(string k) => k switch
+    {
+        "Presencial" => "#64748B", "Web" => "#0891B2", "Correo" => "#7C3AED",
+        "Interno" => "#0ab39c", "Migracion" => "#D97706", _ => "#405189"
+    };
+    private static string EstadoColor(string k) => k switch
+    {
+        "Radicado" => "#1D4ED8", "Distribuido" => "#6D28D9", "EnTramite" => "#7C3AED",
+        "Respondido" => "#0a7d6f", "Archivado" => "#0F766E", "Anulado" => "#991B1B", _ => "#64748B"
+    };
+    private static string EstadoLabel(string k) => k switch
+    {
+        "EnTramite" => "En tramite", _ => k
+    };
+    private IReadOnlyList<SerieItemDto> RemapEstados(IReadOnlyList<SerieItemDto> src)
+        => src.Select(s => new SerieItemDto(EstadoLabel(s.K), s.V, EstadoColor(s.K))).ToList();
+
+    // ---------- Render de graficos (SVG/CSS a mano) ----------
+    private RenderFragment Hbars(IReadOnlyList<SerieItemDto> items, bool useItemColor) => __builder =>
+    {
+        if (items.Count == 0) { <div class="pn-empty2">Sin datos en el periodo.</div> return; }
+        var max = items.Max(i => i.V); if (max <= 0) { max = 1; }
+        <div class="pn-hbars">
+            @foreach (var it in items)
+            {
+                var color = useItemColor ? (it.C ?? "#405189") : (it.C ?? EstadoColor(it.K));
+                <div class="pn-hbar-row">
+                    <span class="pn-hbar-lbl" title="@it.K">@it.K</span>
+                    <span class="pn-hbar-track"><span class="pn-hbar-fill" style="width:@Pct(it.V, max)%;background:@color"></span></span>
+                    <span class="pn-hbar-val">@Num(it.V)</span>
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment Vbars(IReadOnlyList<SerieItemDto> items) => __builder =>
+    {
+        if (items.Count == 0) { <div class="pn-empty2">Sin datos en el periodo.</div> return; }
+        var max = items.Max(i => i.V); if (max <= 0) { max = 1; }
+        <div class="pn-vbars">
+            @foreach (var it in items)
+            {
+                <div class="pn-vbar" title="@it.K (@Num(it.V))">
+                    <div class="pn-vbar-bar" style="height:@Pct(it.V, max)%"></div>
+                    <span class="pn-vbar-lbl">@it.K</span>
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment Donut(IReadOnlyList<SerieItemDto> items, Func<string, string> colorOf) => __builder =>
+    {
+        if (items.Count == 0) { <div class="pn-empty2">Sin datos en el periodo.</div> return; }
+        var total = items.Sum(i => i.V); if (total <= 0) { total = 1; }
+        double acc = 0; var stops = new List<string>();
+        foreach (var it in items)
+        {
+            var start = acc / total * 360; acc += it.V; var end = acc / total * 360;
+            stops.Add($"{colorOf(it.K)} {start.ToString(System.Globalization.CultureInfo.InvariantCulture)}deg {end.ToString(System.Globalization.CultureInfo.InvariantCulture)}deg");
+        }
+        var grad = string.Join(",", stops);
+        <div class="pn-donut-wrap">
+            <div style="width:120px;height:120px;border-radius:50%;background:conic-gradient(@grad);-webkit-mask:radial-gradient(circle 34px at center,transparent 98%,#000 100%);mask:radial-gradient(circle 34px at center,transparent 98%,#000 100%);"></div>
+            <div class="pn-legend">
+                @foreach (var it in items)
+                {
+                    <span class="pn-legend-i"><span class="pn-legend-sw" style="background:@colorOf(it.K)"></span>@it.K <b>&nbsp;@Num(it.V)</b></span>
+                }
+            </div>
+        </div>
+    };
+
+    private RenderFragment Gauge(SlaDto sla) => __builder =>
+    {
+        var total = sla.ATiempo + sla.Vencidos;
+        var pct = total == 0 ? 100 : (int)Math.Round(sla.ATiempo * 100.0 / total);
+        var color = pct >= 80 ? "#0ab39c" : pct >= 60 ? "#F59E0B" : "#EF4444";
+        var r = 52; var circ = 2 * Math.PI * r; var dash = circ * pct / 100.0;
+        var dashStr = dash.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var circStr = circ.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        <div style="display:flex;justify-content:center;">
+            <svg viewBox="0 0 130 130" width="150" height="150">
+                <circle cx="65" cy="65" r="52" fill="none" stroke="var(--tx-muted,#f1f5f9)" stroke-width="14" />
+                <circle cx="65" cy="65" r="52" fill="none" stroke="@color" stroke-width="14" stroke-linecap="round"
+                        stroke-dasharray="@dashStr @circStr" transform="rotate(-90 65 65)" />
+                <text x="65" y="72" text-anchor="middle" class="pn-gauge-txt">@pct%</text>
+            </svg>
+        </div>
+        <div style="text-align:center;font-size:.76rem;color:var(--ink-3,#64748b);">@sla.ATiempo a tiempo · @sla.Vencidos vencidos</div>
+    };
+
+    private RenderFragment Line(IReadOnlyList<SerieItemDto> items, string color) => __builder =>
+    {
+        if (items.Count == 0) { <div class="pn-empty2">Sin datos en el periodo.</div> return; }
+        var max = items.Max(i => i.V); if (max <= 0) { max = 1; }
+        int w = 300, h = 110, pad = 6; var n = items.Count;
+        string X(int i) => n <= 1 ? (w / 2.0).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : (pad + i * (double)(w - 2 * pad) / (n - 1)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string Y(double v) => (h - pad - (v / max) * (h - 2 * pad)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var pts = string.Join(" ", items.Select((it, i) => $"{X(i)},{Y(it.V)}"));
+        <svg viewBox="0 0 @w @h" width="100%" height="130" preserveAspectRatio="none">
+            <polyline points="@pts" fill="none" stroke="@color" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+            @for (int i = 0; i < n; i++)
+            {
+                <circle cx="@X(i)" cy="@Y(items[i].V)" r="2.5" fill="@color" />
+            }
+        </svg>
+    };
+
+    private RenderFragment KpiCard(string label, string val, string sub, string color, string? href) => __builder =>
+    {
+        if (href is null)
+        {
+            <div class="pn-kpi" style="border-top-color:@color">
+                <div class="pn-kpi-lbl">@label</div>
+                <div class="pn-kpi-val">@val</div>
+                <div class="pn-kpi-sub">@sub</div>
+            </div>
+        }
+        else
+        {
+            <a class="pn-kpi link" style="border-top-color:@color" href="/@href">
+                <div class="pn-kpi-lbl">@label</div>
+                <div class="pn-kpi-val">@val</div>
+                <div class="pn-kpi-sub">@sub</div>
+            </a>
+        }
+    };
+
+    private RenderFragment SlaPill(int? dias) => __builder =>
+    {
+        if (dias is null) { <span>—</span> return; }
+        var d = dias.Value;
+        var (bg, fg, txt) = d < 0 ? ("#FEE2E2", "#991B1B", $"{Math.Abs(d)}d vencido")
+            : d <= 3 ? ("#FEF3C7", "#92400E", $"{d}d restantes")
+            : ("#D1FAE5", "#065F46", $"{d}d restantes");
+        <span class="pn-pill" style="background:@bg;color:@fg">@txt</span>
+    };
+
+    private static string Pct(double v, double max) => Math.Round(v / max * 100, 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private static string Num(double v) => v == Math.Floor(v) ? ((long)v).ToString() : v.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+}

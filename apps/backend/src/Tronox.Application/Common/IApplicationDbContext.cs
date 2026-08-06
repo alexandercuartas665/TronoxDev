@@ -124,6 +124,9 @@ public interface IApplicationDbContext
     DbSet<BuzonCorreo> BuzonesCorreo { get; }
     DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion { get; }
     DbSet<MigracionRadicadosLog> MigracionesRadicados { get; }
+    DbSet<Radicado> Radicados { get; }
+    DbSet<RadicadoTrazabilidad> RadicadosTrazabilidad { get; }
+    DbSet<CorreoRecibido> CorreosRecibidos { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }

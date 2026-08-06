@@ -224,6 +224,38 @@ Build verde. Pendiente: e2e visual (requiere login, que no automatizo por no tec
 
 ---
 
+## 2.g Port Radicacion legacy VB.NET - Modulo 1: Panel de Control (2026-08-06)
+
+Arranca el port MILIMETRICO del modulo de Radicacion desde el legacy VB.NET
+(`C:\Desarrollo\core\Bootstrap\Formularios\Modulos\Radicacion\`), modulo por modulo, al sistema
+nuevo. Decisiones del usuario: dominio REAL milimetrico; legacy manda y solo se adaptan invariantes;
+config PQR (rad_config) se reconcilia al llegar. El legacy es SOLO LECTURA (nunca se escribe en el).
+
+**Modulo 1 - Panel de Control** (legacy `rad_panel.aspx` + `rad_panel_op.ashx` -> `modulo/radicacion-panel`,
+nodo de menu ya existente en MenuCatalogo bajo Gestion y Tramite / Ventanilla Unica). Dashboard de
+SOLO LECTURA. Spec milimetrica del legacy en `scratchpad/spec_rad_panel.md`.
+
+- **Dominio:** `Radicado` (espejo RAD_RADICADOS), `RadicadoTrazabilidad` (RAD_TRAZABILIDAD, append-only),
+  `CorreoRecibido` (RAD_CORREOS) + 5 enums. Adaptaciones de invariante: tenant_id + filtro global;
+  dependencias/funcionarios como FK (OrgUnit/TenantUser) en vez de codigos; remitente inline
+  (RemitenteNombre/Anonimo) hasta que exista RQ07 Terceros (entonces FK RemitenteTerceroId).
+- **Infra:** DbSets + config EF (indices por tenant, FK NO ACTION, trazas cascade) + migracion
+  `RadicacionOperativaPanel` (3 tablas).
+- **Application:** `RadicacionPanelService.GetDashboardAsync(desde,hasta)` = replica de AccDashboard
+  (6 KPIs, 7 series, actividad) en LINQ parametrizado. QUIRKS del legacy conservados a proposito: los
+  KPIs son "actuales/hoy" e ignoran el rango; actividad = ultimos 6.
+- **Web:** `PanelRadicacion.razor` (`/modulo/radicacion-panel`): selector de periodo (5 chips + rango),
+  6 tarjetas KPI, 7 graficos SVG/CSS a mano (hbars, donut, gauge SLA, lineas, vbars) fieles al legacy,
+  tabla de actividad. Estilo tx-/tema (no el CSS legacy). Pop-up de detalle = marcador hasta portar
+  rad_detalle.
+- **Seed demo LOCAL** (solo tenant 1, `scratchpad/seed_panel_demo.sql`): 4 tipos, 3 dependencias,
+  36 radicados, 5 trazas, 3 correos. Para probar el panel con datos (arranca vacio en prod).
+
+Build verde. Diferido honesto: el panel se llena con datos reales al portar rad_radicar/rad_bandeja;
+el filtro de visibilidad RF11-8 se integra con la bandeja.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

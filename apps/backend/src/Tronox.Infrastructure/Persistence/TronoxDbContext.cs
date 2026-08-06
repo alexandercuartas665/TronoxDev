@@ -118,6 +118,9 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<BuzonCorreo> BuzonesCorreo => Set<BuzonCorreo>();
     public DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion => Set<NotificacionRadicacionConfig>();
     public DbSet<MigracionRadicadosLog> MigracionesRadicados => Set<MigracionRadicadosLog>();
+    public DbSet<Radicado> Radicados => Set<Radicado>();
+    public DbSet<RadicadoTrazabilidad> RadicadosTrazabilidad => Set<RadicadoTrazabilidad>();
+    public DbSet<CorreoRecibido> CorreosRecibidos => Set<CorreoRecibido>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -354,6 +357,12 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<BuzonModoRadicacion>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<BuzonFrecuenciaRevision>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<RadicacionEventoNotificacion>().HaveConversion<string>().HaveMaxLength(40);
+        // Radicacion operativa (RQ09 - panel/bandeja/correos): enums persistidos como string.
+        configurationBuilder.Properties<RadicadoTipo>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicadoEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicadoCanal>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicadoPrioridad>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<CorreoRevisionEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<RuleStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleTriggerKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleExecutionStatus>().HaveConversion<string>().HaveMaxLength(40);
@@ -1287,6 +1296,45 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.Estado).HasMaxLength(20).IsRequired();
             b.Property(x => x.ReporteJson).HasColumnType(jsonColumnType);
             b.HasIndex(x => new { x.TenantId, x.FechaMigracion });
+        });
+
+        // Radicacion operativa (RQ09): radicado + trazabilidad + correos. Espejo de RAD_RADICADOS /
+        // RAD_TRAZABILIDAD / RAD_CORREOS. Dependencias/funcionarios como FK referenciales (NO ACTION,
+        // evita rutas de cascada multiples); trazas en cascada con el radicado.
+        modelBuilder.Entity<Radicado>(b =>
+        {
+            b.Property(x => x.NumeroRadicado).HasMaxLength(60).IsRequired();
+            b.Property(x => x.Asunto).HasMaxLength(500);
+            b.Property(x => x.RemitenteNombre).HasMaxLength(300);
+            b.HasOne(x => x.TipoComunicacion).WithMany()
+                .HasForeignKey(x => x.TipoComunicacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.DependenciaDestino).WithMany()
+                .HasForeignKey(x => x.DependenciaDestinoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.DependenciaOrigen).WithMany()
+                .HasForeignKey(x => x.DependenciaOrigenId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.NumeroRadicado }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.FechaRadicacion });
+            b.HasIndex(x => new { x.TenantId, x.FechaVencimiento });
+        });
+
+        modelBuilder.Entity<RadicadoTrazabilidad>(b =>
+        {
+            b.Property(x => x.Accion).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Detalle).HasMaxLength(1000);
+            b.HasOne(x => x.Radicado).WithMany(r => r.Trazas)
+                .HasForeignKey(x => x.RadicadoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.RadicadoId, x.Accion });
+        });
+
+        modelBuilder.Entity<CorreoRecibido>(b =>
+        {
+            b.Property(x => x.BuzonEmail).HasMaxLength(200);
+            b.Property(x => x.Remitente).HasMaxLength(300);
+            b.Property(x => x.Asunto).HasMaxLength(500);
+            b.HasOne(x => x.BuzonCorreo).WithMany()
+                .HasForeignKey(x => x.BuzonCorreoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Estado });
         });
 
         // Motor de flujos BPMN (RQ11, port del motor de ECOREX). El XML BPMN se guarda tal cual
