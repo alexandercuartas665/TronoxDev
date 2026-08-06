@@ -127,6 +127,10 @@ public interface IApplicationDbContext
     DbSet<Radicado> Radicados { get; }
     DbSet<RadicadoTrazabilidad> RadicadosTrazabilidad { get; }
     DbSet<CorreoRecibido> CorreosRecibidos { get; }
+    DbSet<RadicadoTarea> RadicadosTareas { get; }
+    DbSet<RadicadoArchivo> RadicadosArchivos { get; }
+    DbSet<RadicadoComunicacion> RadicadosComunicaciones { get; }
+    DbSet<RadicadoVisibilidadPermiso> RadicadosVisibilidad { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }

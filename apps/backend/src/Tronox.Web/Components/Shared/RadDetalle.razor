@@ -1,0 +1,253 @@
+@using Tronox.Application.Radicacion
+@using Tronox.Domain.Enums
+@inject IRadicadoDetalleService DetalleSvc
+
+@* Detalle de radicado (port de rad_detalle) como drawer. 5 pestanas: Informacion, Documentos,
+   Trazabilidad, Terminos/SLA, Comunicaciones. Callbacks al host por EventCallback (no window.parent).
+   El visor de documentos (stream desde object storage) llega con el upload de rad_radicar. *@
+
+<div class="dt-top">
+    <span>Detalle del Radicado</span>
+    <button class="modal-close" @onclick="OnClose">&times;</button>
+</div>
+
+@if (_loading)
+{
+    <p style="padding:20px;"><em>Cargando detalle...</em></p>
+}
+else if (_d is null)
+{
+    <div class="dt-empty">No se encontro el radicado o no tiene permisos para verlo.</div>
+}
+else
+{
+    var i = _d.Info;
+    <div class="dt-head">
+        <div class="dt-head-top">
+            <span class="dt-numero">@i.Numero</span>
+            <span class="dt-badge">@EstadoLabel(i.Estado)</span>
+            @if (i.EsPqrsd) { <span class="dt-badge dt-pqrsd">PQRSD</span> }
+            @if (i.EsTutela) { <span class="dt-badge dt-tutela">TUTELA</span> }
+            @SlaBadge(i)
+        </div>
+        <div class="dt-asunto">@(i.Asunto ?? "(Sin asunto)")</div>
+        <div class="dt-meta">
+            <span>@i.Fecha</span><span>&middot;</span>
+            <span>@(i.Anonimo ? "Anonimo" : (i.Remitente ?? "-"))</span><span>&middot;</span>
+            <span>@(i.DepNombre ?? "Sin distribuir")</span><span>&middot;</span>
+            <span>@i.Canal</span>
+        </div>
+        <div class="dt-acts">
+            @if (i.Tipo == RadicadoTipo.Entrada && !Cerrado(i.Estado))
+            {
+                <button class="btn btn-sm btn-success" @onclick="@(() => OnResponder.InvokeAsync(i.Numero))">Responder</button>
+            }
+            @if (i.Tipo != RadicadoTipo.Salida && !Cerrado(i.Estado))
+            {
+                <button class="btn btn-sm btn-primary" @onclick="@(() => OnDistribuir.InvokeAsync(i.Reg))">
+                    @(_d.TareasActivas > 0 ? "Redirigir" : "Distribuir")
+                </button>
+            }
+        </div>
+        <div class="dt-tabs">
+            @foreach (var (key, label) in _tabs)
+            {
+                <button class="dt-tab @(_tab == key ? "on" : "")" @onclick="@(() => _tab = key)">@label</button>
+            }
+        </div>
+    </div>
+
+    <div class="dt-content">
+        @if (_tab == "info")
+        {
+            <div class="dt-card"><h4>Clasificacion</h4>
+                @Row("Numero", i.Numero) @Row("Tipo de comunicacion", i.TipoNombre) @Row("Documento", DocLabel(i.Tipo))
+                @Row("Canal", i.Canal) @Row("Nivel", i.Nivel) @Row("Fecha y hora", i.Fecha) @Row("Operador", i.Operador)
+            </div>
+            @if (i.Tipo == RadicadoTipo.Interno)
+            {
+                <div class="dt-card"><h4>Remitente-origen interno</h4>
+                    @Row("Dependencia que envia", i.DepOrigenNombre) @Row("Funcionario que envia", i.FuncOrigen)
+                </div>
+            }
+            else
+            {
+                <div class="dt-card"><h4>@(i.Tipo == RadicadoTipo.Salida ? "Destinatario" : "Remitente")</h4>
+                    @Row("Nombre", i.Anonimo ? "Anonimo" : i.Remitente)
+                    @Row("Documento", string.IsNullOrEmpty(i.RemDocumento) ? null : $"{i.RemTipoDoc} {i.RemDocumento}")
+                    @Row("Correo", i.RemEmail) @Row("Telefono", i.RemTelefono)
+                </div>
+            }
+            <div class="dt-card"><h4>Documento</h4>
+                @Row("Asunto", i.Asunto) @Row("Descripcion", i.Descripcion)
+                @Row("Folios", i.Folios?.ToString()) @Row("Anexos", i.Anexos?.ToString())
+                @Row("Soporte", i.Soporte) @Row("Relacionado", i.Relacionado)
+            </div>
+            @if (_d.Padre is not null || _d.Salidas.Count > 0)
+            {
+                <div class="dt-card"><h4>Radicados vinculados</h4>
+                    @if (_d.Padre is not null) { @Row("Responde a", $"{_d.Padre.Numero} ({EstadoLabel(_d.Padre.Estado)})") }
+                    @foreach (var s in _d.Salidas)
+                    {
+                        @Row(s.Definitiva ? "Respuesta definitiva" : "Salida parcial", $"{s.Numero} - {s.EstadoEnvio ?? "pendiente"}")
+                    }
+                </div>
+            }
+            <div class="dt-card"><h4>Distribucion (RF07)</h4>
+                @Row("Estado", EstadoLabel(i.Estado)) @Row("Dependencia", i.DepNombre)
+                @RowRaw("Funcionario", string.IsNullOrEmpty(i.Funcionario) ? "<span style='color:#b91c1c'>(Sin asignar)</span>" : i.Funcionario)
+                @Row("Prioridad", i.Prioridad) @Row("Fecha distribucion", i.FechaDist)
+                @if (_d.Tareas.Count > 0)
+                {
+                    <div class="dt-tareas">
+                        @foreach (var t in _d.Tareas)
+                        {
+                            <div class="dt-tarea @(t.Activa ? "act" : "")">
+                                <b>@t.DepNombre</b> &middot; @(t.Funcionario ?? "sin funcionario") &middot; <span>@t.Estado</span>
+                                <div class="dt-sub">@t.Fecha &middot; prioridad @t.Prioridad @(t.DistribuidoPor is null ? "" : $"· por {t.DistribuidoPor}")</div>
+                                @if (!string.IsNullOrEmpty(t.Instrucciones)) { <div class="dt-sub">Instrucciones: @t.Instrucciones</div> }
+                                @if (!string.IsNullOrEmpty(t.Observacion)) { <div class="dt-sub">Observacion: @t.Observacion</div> }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else if (_tab == "docs")
+        {
+            @if (_d.Docs.Count == 0)
+            {
+                <div class="dt-fisico">Radicado de soporte fisico - sin documentos digitales.</div>
+            }
+            else
+            {
+                @foreach (var doc in _d.Docs)
+                {
+                    <div class="dt-doc">
+                        <span class="dt-doc-ico">@(doc.Ext?.ToUpper() ?? "?")</span>
+                        <div><b>@doc.Nombre</b><div class="dt-sub">@doc.Kb KB &middot; @doc.Fecha</div></div>
+                    </div>
+                }
+                <p class="dt-sub" style="margin-top:8px;">El visor/descarga se habilita con el upload de rad_radicar (stream desde object storage).</p>
+            }
+        }
+        else if (_tab == "traza")
+        {
+            @if (_d.Traza.Count == 0) { <div class="dt-fisico">Sin eventos de trazabilidad.</div> }
+            else
+            {
+                <div class="dt-tl">
+                    @foreach (var ev in _d.Traza)
+                    {
+                        <div class="dt-ev">
+                            <div class="dt-ev-dot"></div>
+                            <div><b>@ev.Accion</b> <span class="dt-sub">@ev.Fecha @(ev.Usuario is null ? "" : $"· {ev.Usuario}")</span>
+                                @if (!string.IsNullOrEmpty(ev.Detalle)) { <div class="dt-sub">@ev.Detalle</div> }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (_tab == "sla")
+        {
+            var i2 = i;
+            <div class="dt-card"><h4>Terminos y SLA</h4>
+                @Row("Radicacion", i2.Fecha) @Row("Vencimiento", i2.Vence)
+                @Row("Termino", i2.DiasTermino is null ? null : $"{i2.DiasTermino} dias {(i2.TipoDia ?? "")}")
+                @Row("Dias restantes", i2.Dias?.ToString())
+            </div>
+            <div class="dt-card dt-muted"><h4>Prorroga</h4><p class="dt-sub">Gestion de prorroga (RF09): pendiente de portar.</p></div>
+        }
+        else if (_tab == "comun")
+        {
+            @if (_d.Comunicaciones.Count == 0) { <div class="dt-fisico">Sin comunicaciones registradas.</div> }
+            else
+            {
+                @foreach (var c in _d.Comunicaciones)
+                {
+                    <div class="dt-card"><h4>@c.Canal &rarr; @c.Destino</h4>
+                        @Row("Estado", c.Estado) @Row("Fecha", c.Fecha) @Row("Usuario", c.Usuario) @Row("Detalle", c.Detalle)
+                    </div>
+                }
+            }
+        }
+    </div>
+}
+
+<style>
+    .dt-top { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--tx-border,#e2e8f0); font-weight:600; }
+    .dt-empty, .dt-fisico { padding:28px; text-align:center; color:var(--ink-3,#94a3b8); font-size:.86rem; }
+    .dt-head { padding:16px 18px; border-bottom:1px solid var(--tx-border,#e2e8f0); }
+    .dt-head-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .dt-numero { font-size:1.1rem; font-weight:700; color:var(--ink-1,#0f172a); }
+    .dt-badge { background:var(--tx-muted,#f1f5f9); border-radius:6px; padding:2px 8px; font-size:.72rem; font-weight:600; color:var(--ink-2,#334155); }
+    .dt-pqrsd { background:#FEF3C7; color:#92400E; } .dt-tutela { background:#EDE9FE; color:#5B21B6; }
+    .dt-asunto { font-size:.95rem; margin:8px 0 4px; color:var(--ink-1,#0f172a); }
+    .dt-meta { display:flex; gap:8px; flex-wrap:wrap; font-size:.78rem; color:var(--ink-3,#64748b); }
+    .dt-acts { display:flex; gap:8px; margin-top:12px; }
+    .dt-tabs { display:flex; gap:4px; margin-top:14px; flex-wrap:wrap; }
+    .dt-tab { border:none; background:none; padding:6px 12px; font-size:.82rem; color:var(--ink-3,#64748b); cursor:pointer; border-bottom:2px solid transparent; }
+    .dt-tab.on { color:#405189; border-bottom-color:#405189; font-weight:600; }
+    .dt-content { padding:16px 18px; }
+    .dt-card { border:1px solid var(--tx-border,#e2e8f0); border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+    .dt-card h4 { font-size:.82rem; font-weight:700; margin:0 0 8px; color:var(--ink-1,#0f172a); }
+    .dt-card.dt-muted { opacity:.7; }
+    .dt-row { display:flex; gap:8px; font-size:.8rem; padding:2px 0; }
+    .dt-row .k { min-width:150px; color:var(--ink-3,#64748b); } .dt-row .v { color:var(--ink-2,#334155); }
+    .dt-sub { font-size:.74rem; color:var(--ink-3,#94a3b8); }
+    .dt-tareas { margin-top:8px; display:flex; flex-direction:column; gap:8px; }
+    .dt-tarea { border:1px solid var(--tx-border,#e2e8f0); border-radius:8px; padding:8px 10px; font-size:.8rem; }
+    .dt-tarea.act { border-left:3px solid #0ab39c; }
+    .dt-doc { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--tx-border,#e2e8f0); border-radius:8px; margin-bottom:8px; }
+    .dt-doc-ico { width:34px; height:34px; line-height:34px; text-align:center; background:var(--tx-muted,#f1f5f9); border-radius:6px; font-size:.68rem; font-weight:700; color:var(--ink-2,#334155); }
+    .dt-tl { display:flex; flex-direction:column; gap:10px; }
+    .dt-ev { display:flex; gap:10px; }
+    .dt-ev-dot { width:10px; height:10px; border-radius:50%; background:#405189; margin-top:5px; flex-shrink:0; }
+</style>
+
+@code {
+    [Parameter] public long Reg { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnResponder { get; set; }
+    [Parameter] public EventCallback<long> OnDistribuir { get; set; }
+
+    private RadicadoDetalleDto? _d;
+    private bool _loading = true;
+    private long _loadedReg = -1;
+    private string _tab = "info";
+    private readonly (string, string)[] _tabs =
+    {
+        ("info", "Informacion"), ("docs", "Documentos"), ("traza", "Trazabilidad"), ("sla", "Terminos y SLA"), ("comun", "Comunicaciones")
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Reg == _loadedReg) { return; }
+        _loadedReg = Reg; _loading = true; _tab = "info";
+        _d = await DetalleSvc.ObtenerAsync(Reg);
+        _loading = false;
+    }
+
+    private RenderFragment Row(string k, string? v) => __builder =>
+    {
+        <div class="dt-row"><span class="k">@k</span><span class="v">@(string.IsNullOrWhiteSpace(v) ? "-" : v)</span></div>
+    };
+    private RenderFragment RowRaw(string k, string html) => __builder =>
+    {
+        <div class="dt-row"><span class="k">@k</span><span class="v">@((MarkupString)html)</span></div>
+    };
+    private RenderFragment SlaBadge(RadicadoInfoDto i) => __builder =>
+    {
+        if (Cerrado(i.Estado)) { <span class="dt-badge">Termino cerrado</span> return; }
+        if (i.Dias is null) { return; }
+        var d = i.Dias.Value;
+        var (bg, fg, txt) = d < 0 ? ("#FEE2E2", "#991B1B", $"{Math.Abs(d)}d vencido")
+            : d <= 3 ? ("#FEF3C7", "#92400E", $"{d}d restantes") : ("#D1FAE5", "#065F46", $"{d}d restantes");
+        <span class="dt-badge" style="background:@bg;color:@fg">@txt</span>
+    };
+
+    private static string EstadoLabel(string e) => e == "EnTramite" ? "En tramite" : e;
+    private static string DocLabel(RadicadoTipo t) => t switch { RadicadoTipo.Entrada => "Entrada", RadicadoTipo.Salida => "Salida", _ => "Interno" };
+    private static bool Cerrado(string e) => e is "Respondido" or "Archivado" or "Anulado" or "Borrador";
+}

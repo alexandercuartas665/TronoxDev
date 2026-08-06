@@ -122,6 +122,11 @@ public static class DependencyInjection
         services.AddScoped<Radicacion.IBuzonCorreoService, Radicacion.BuzonCorreoService>();
         // Panel de Control operativo (RQ09 RF12-1): dashboard de radicacion (solo lectura).
         services.AddScoped<Radicacion.IRadicacionPanelService, Radicacion.RadicacionPanelService>();
+        // Bandeja + distribucion + detalle (RQ09 RF07/RF11), port de rad_bandeja/rad_tramites/rad_detalle.
+        services.AddScoped<Radicacion.RadicacionVisibilidadService>();
+        services.AddScoped<Radicacion.IRadicacionBandejaService, Radicacion.RadicacionBandejaService>();
+        services.AddScoped<Radicacion.IRadicacionDistribucionService, Radicacion.RadicacionDistribucionService>();
+        services.AddScoped<Radicacion.IRadicadoDetalleService, Radicacion.RadicadoDetalleService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

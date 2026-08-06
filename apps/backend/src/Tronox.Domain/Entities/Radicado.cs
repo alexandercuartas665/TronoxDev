@@ -27,13 +27,29 @@ public class Radicado : TenantEntity
     public long? TipoComunicacionId { get; set; }
     public TipoComunicacion? TipoComunicacion { get; set; }
 
-    /// <summary>Asunto/descripcion breve del radicado.</summary>
+    /// <summary>Asunto del radicado.</summary>
     public string? Asunto { get; set; }
 
-    // ---- Remitente (inline, espejo de RAD_RADICADOS.REMITENTE_NOMBRE/ANONIMO). Cuando exista RQ07
-    // Terceros se agrega RemitenteTerceroId como fuente unica (invariante 2); por ahora snapshot. ----
+    /// <summary>Descripcion ampliada (detalle).</summary>
+    public string? Descripcion { get; set; }
+
+    /// <summary>Numero de folios y de anexos, tipo de soporte (Fisico/Electronico/Hibrido).</summary>
+    public int? Folios { get; set; }
+    public int? NumAnexos { get; set; }
+    public string? Soporte { get; set; }
+
+    /// <summary>Nivel de clasificacion/reserva (FK NivelClasificacion, RF06 de RQ02). NO ACTION.</summary>
+    public long? NivelReservaId { get; set; }
+    public NivelClasificacion? NivelReserva { get; set; }
+
+    // ---- Remitente (inline, espejo de RAD_RADICADOS.REMITENTE_*). Cuando exista RQ07 Terceros se
+    // agrega RemitenteTerceroId como fuente unica (invariante 2, DAT-02); por ahora snapshot. ----
     public string? RemitenteNombre { get; set; }
     public bool Anonimo { get; set; }
+    public string? RemitenteTipoDoc { get; set; }
+    public string? RemitenteDocumento { get; set; }
+    public string? RemitenteEmail { get; set; }
+    public string? RemitenteTelefono { get; set; }
 
     // ---- Ruteo organico (FK a OrgUnit clasificador Dependencia; el legacy guardaba codigos). NO ACTION. ----
     public long? DependenciaDestinoId { get; set; }
@@ -53,6 +69,28 @@ public class Radicado : TenantEntity
     public DateTime? FechaVencimiento { get; set; }
     public DateTime? FechaDistribucion { get; set; }
 
+    // ---- Vinculacion padre/salidas (el legacy relaciona por NUMERO string; aqui FK self-ref robusta).
+    // Padre = entrada a la que responde esta salida; las salidas de una entrada son los radicados que la
+    // referencian. NO ACTION (self-ref, evita rutas de cascada multiples). ----
+    public long? RadicadoRelacionadoId { get; set; }
+    public Radicado? RadicadoRelacionado { get; set; }
+
+    /// <summary>Solo en salidas (S): marca la respuesta definitiva vs parcial.</summary>
+    public bool EsRespuestaDefinitiva { get; set; }
+
+    // ---- Bloque de envio (se completa al portar rad_salida; el detalle lo lee para las salidas). ----
+    public string? EstadoEnvio { get; set; }
+    public string? CanalEnvio { get; set; }
+
     /// <summary>Pistas de trazabilidad del radicado (append-only, RNF-04).</summary>
     public ICollection<RadicadoTrazabilidad> Trazas { get; set; } = new List<RadicadoTrazabilidad>();
+
+    /// <summary>Tareas de distribucion (RF07).</summary>
+    public ICollection<RadicadoTarea> Tareas { get; set; } = new List<RadicadoTarea>();
+
+    /// <summary>Archivos/anexos (referencia a object storage, invariante 9).</summary>
+    public ICollection<RadicadoArchivo> Archivos { get; set; } = new List<RadicadoArchivo>();
+
+    /// <summary>Comunicaciones/envios (RAD_COMUNICACIONES).</summary>
+    public ICollection<RadicadoComunicacion> Comunicaciones { get; set; } = new List<RadicadoComunicacion>();
 }

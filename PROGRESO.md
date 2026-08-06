@@ -256,6 +256,34 @@ el filtro de visibilidad RF11-8 se integra con la bandeja.
 
 ---
 
+## 2.h Port Radicacion - Modulo 2: Bandeja + Distribucion + Detalle (2026-08-06)
+
+Segundo lote del port de Radicacion (rad_bandeja + dependencias). Decision del usuario: bandeja de
+listado completa + **Distribuir funcional** + **rad_detalle portado milimetrico** (no marcador).
+Responder / Registrar envio / + Nuevo Radicado quedan como marcadores hasta portar rad_radicar /
+rad_salida. Specs milimetricas en scratchpad (spec_rad_bandeja / spec_rad_detalle / spec_distribucion).
+
+- **Dominio (delta):** `RadicadoTarea` (RAD_TAREAS), `RadicadoArchivo` (RAD_RADICADO_ARCHIVOS ->
+  object storage, invariante 9, sin BLOB), `RadicadoComunicacion` (RAD_COMUNICACIONES),
+  `RadicadoVisibilidadPermiso` (RAD_PERMISOS_VISIBILIDAD) + enums `RadicadoTareaEstado`/`VisibilidadNivel`.
+  Columnas nuevas en `Radicado`: descripcion, remitente (tipo_doc/documento/email/telefono), nivel_reserva,
+  folios, num_anexos, soporte, radicado_relacionado (self-FK padre/salidas), es_respuesta_definitiva,
+  estado/canal_envio. Migracion `RadicacionBandejaDistribucion` (4 tablas + columnas).
+- **Application:** `RadicacionVisibilidadService` (resolver fail-closed, ADR-013),
+  `RadicacionBandejaService` (listado con 6 tabs + filtros + contadores + catalogos), `RadicacionDistribucionService`
+  (distribuir/reasignar en UNA transaccion, FK a OrgUnit/TenantUser, traza DISTRIBUIR/REASIGNAR),
+  `RadicadoDetalleService` (DTO info+docs+traza+tareas+comunicaciones+padre+salidas). LINQ parametrizado.
+- **Web:** `/modulo/radicacion` (Radicacion.razor): tabs con contadores, filtros, grilla E/S/I, export CSV,
+  acciones Ver/Distribuir; modal Distribuir funcional. Detalle como drawer `RadDetalle.razor` (5 pestanas).
+  Marcadores: Responder/Nuevo (rad_radicar), Registrar envio (rad_salida), visor de documentos (upload).
+- **ADR-013:** visibilidad fail-closed - el permiso del modulo es el gate; la visibilidad es tightening
+  aditivo; error -> Propios, nunca Todos (invierte el fail-open del legacy).
+
+Build verde. Quirks del legacy NO replicados: fail-open, SQL concatenado, sin transaccion, SELECT MAX(REG),
+funcionario por nombre, BLOB en BD, callbacks window.parent.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).
