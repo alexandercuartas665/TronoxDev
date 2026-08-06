@@ -26,12 +26,13 @@ public sealed class RadicacionPanelService : IRadicacionPanelService
     public async Task<RadicacionDashboardDto> GetDashboardAsync(
         DateOnly? desde, DateOnly? hasta, CancellationToken cancellationToken = default)
     {
-        var hoy = DateTime.Today;
+        // Las columnas de fecha son timestamptz: Npgsql exige DateTime Kind=Utc en los parametros.
+        var hoy = DateTime.UtcNow.Date; // Kind=Utc; AddDays conserva el Kind.
         var manana = hoy.AddDays(1);
 
         // Rango: default ultimos 30 dias (fiel al servidor legacy). Hasta inclusive -> < hasta+1dia.
-        var d = desde?.ToDateTime(TimeOnly.MinValue) ?? hoy.AddDays(-29);
-        var h = hasta?.ToDateTime(TimeOnly.MinValue) ?? hoy;
+        var d = desde is DateOnly ds ? DateTime.SpecifyKind(ds.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc) : hoy.AddDays(-29);
+        var h = hasta is DateOnly hs ? DateTime.SpecifyKind(hs.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc) : hoy;
         if (h < d) { h = d; }
         var hExcl = h.AddDays(1);
 
