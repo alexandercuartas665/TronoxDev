@@ -352,6 +352,26 @@ System.Drawing, SQL concatenado, BLOB, rate-limit en memoria. Build verde.
 
 ---
 
+## 2.l Port Radicacion - Mis Tareas / Bandeja de Tramites (2026-08-06)
+
+Port de rad_tramites (RF07-3). Renombrado a "Tramites (mis tareas)" en el menu (decision del usuario).
+Primer modulo con el VISUAL CALCADO del legacy desde el inicio (clases tr-, navy #405189, Poppins), por
+la nueva regla del usuario (ports calcan el legacy, no la plantilla nueva). Spec en scratchpad/spec_rad_tramites.md.
+
+- **Dominio:** sin cambios (RadicadoTarea, Radicado.FechaVencimiento, RadPrioridad ya existian).
+- **Application:** `RadicacionTramitesService` (Listar con 4 tabs + contadores + filtros; Aceptar; Rechazar
+  con recreacion de tarea/devolucion del radicado; Asignar por el jefe). Visibilidad FAIL-CLOSED (mias +
+  las de mi dependencia sin asignar), corrige el fail-open del legacy. Transaccion por accion. Redirigir
+  reutiliza el servicio de distribucion existente.
+- **Web:** `/modulo/tramite-mis-tareas` (MisTareas.razor) calcado: KPIs, toolbar (busqueda+filtros+export),
+  4 tabs, grilla de 8 columnas con semaforo SLA, acciones Ver(drawer)/Aceptar/Rechazar/Asignar/Redirigir,
+  modales calcados. Detalle via drawer RadDetalle (no iframe).
+
+Quirks legacy NO replicados: fail-open, SQL concatenado, MAX(REG), funcionario por texto, sin transaccion,
+iframe de detalle. Build verde.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

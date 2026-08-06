@@ -190,7 +190,7 @@ public static class MenuCatalogo
 
             new("Gestion y Tramite", "req010", "bi-list-task", "RQ10",
             [
-                new("Mis Tareas", "modulo/tramite-mis-tareas", "bi-check2-square", "RF12"),
+                new("Tramites (mis tareas)", "modulo/tramite-mis-tareas", "bi-check2-square", "RF12"),
                 new("Firmar", "modulo/tramite-firmar", "bi-pen", "RF08")
             ], MenuNodeState.InDevelopment),
 

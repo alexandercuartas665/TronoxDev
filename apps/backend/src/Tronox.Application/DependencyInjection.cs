@@ -136,6 +136,8 @@ public static class DependencyInjection
         services.AddScoped<Radicacion.IConfiguracionPqrService, Radicacion.ConfiguracionPqrService>();
         // Portal ciudadano publico (RQ09 RF03), port de rad_portal.
         services.AddScoped<Radicacion.IPortalCiudadanoService, Radicacion.PortalCiudadanoService>();
+        // Bandeja de Tramites / Mis Tareas (RQ09 RF07-3), port de rad_tramites.
+        services.AddScoped<Radicacion.IRadicacionTramitesService, Radicacion.RadicacionTramitesService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

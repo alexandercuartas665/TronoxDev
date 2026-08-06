@@ -1,205 +1,378 @@
 @page "/modulo/tramite-mis-tareas"
 @attribute [Authorize(Policy = "Perm:modulo/tramite-mis-tareas:View")]
-@* Llave de permisos = ruta de menu "modulo/tramite-mis-tareas". Bandeja "Mis Tareas" (RQ04 - RF12):
-   tareas de validacion (Revision/Aprobacion) asignadas al usuario. La respuesta (Aprobar/Devolver/
-   Rechazar) es traza paralela y NO cambia el estado del documento (RF11 CA-1). La creacion (RF11)
-   se inicia desde un documento (modulo de Documentos). *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
-@using Tronox.Application.Validaciones
+@using Tronox.Application.Radicacion
 @using Tronox.Domain.Enums
-@using Tronox.Web.Auth
-@inject IValidacionService Svc
-@inject ICurrentPermissions Perms
-@inject Tronox.Application.Common.ITenantContext Tenant
+@inject IRadicacionTramitesService TramitesSvc
+@inject IRadicacionBandejaService BandejaSvc
+@inject IRadicacionDistribucionService DistSvc
+@inject IJSRuntime JS
 
-<PageTitle>Mis Tareas - TRONOX SGDEA</PageTitle>
+@* RQ09 - RF07-3 (Bandeja de Tramites / Mis Tareas, port de rad_tramites). Diseno CALCADO del legacy
+   (clases tr-, navy #405189, Poppins). Visibilidad fail-closed: mis tareas + las de mi dependencia sin
+   asignar. Acciones: Ver (drawer), Aceptar, Rechazar, Asignar (jefe), Redirigir (distribuir, ya portado). *@
 
-<div class="tx-mod tx-dep tx-trdc">
-    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
-        <a href="/inicio">Inicio</a>
-        <span>/</span>
-        <span>Gestión y Trámite</span>
-        <span>/</span>
-        <span class="current">Mis Tareas</span>
-    </nav>
+<PageTitle>Bandeja de Tramites - TRONOX SGDEA</PageTitle>
 
-    <div class="tx-ent-headrow">
-        <h1 class="tx-ent-title">Mis Tareas</h1>
-        <p class="tx-ent-sub" style="margin:2px 0 0">Revisiones y aprobaciones de documentos asignadas a ti (RF12). Responder no cambia el estado del documento.</p>
+<div class="tr-wrap2">
+    <h1 class="tr-title">Bandeja de Tramites</h1>
+    <p class="tr-sub">Tareas generadas al distribuir radicados. Aceptar, rechazar y gestionar el tramite (RF07-3).</p>
+
+    @if (_flash is not null) { <div class="mc-flash @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+    <div class="tr-kpis">
+        @Kpi("Asignadas a mi", _c.Asig, "#405189")
+        @Kpi("En gestion", _c.Acep, "#0ab39c")
+        @Kpi("Proximas a vencer", _c.Prox, "#F59E0B")
+        @Kpi("Vencidas", _c.Venc, "#f06548")
     </div>
 
-    @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
-    @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
-
-    <div class="tx-tabs" style="display:flex;gap:6px;border-bottom:1px solid var(--kt-border,#e9ebec);margin:12px 0">
-        <button class="tx-tab" style="border:none;background:none;padding:8px 14px;cursor:pointer;border-bottom:2px solid @(_tab == "PEND" ? "var(--kt-primary,#405189)" : "transparent");font-weight:@(_tab == "PEND" ? "600" : "400")" @onclick="@(() => SwitchTab("PEND"))">Pendientes @(_cont is null ? "" : $"({_cont.Total})")</button>
-        <button class="tx-tab" style="border:none;background:none;padding:8px 14px;cursor:pointer;border-bottom:2px solid @(_tab == "HIST" ? "var(--kt-primary,#405189)" : "transparent");font-weight:@(_tab == "HIST" ? "600" : "400")" @onclick="@(() => SwitchTab("HIST"))">Historial</button>
+    <div class="tr-toolbar">
+        <div class="tr-search"><span class="ic">&#128269;</span>
+            <input placeholder="Buscar por radicado, remitente, asunto..." @bind="_q" @bind:event="oninput" @bind:after="LoadAsync" />
+        </div>
+        <button class="tr-btn @(_showFiltros ? "on" : "")" @onclick="@(() => _showFiltros = !_showFiltros)">&#9881; Filtros</button>
+        <button class="tr-btn" @onclick="ExportCsvAsync">Exportar CSV</button>
     </div>
 
-    @if (_tab == "PEND")
+    @if (_showFiltros)
     {
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-            <button class="tx-ent-btn sm @(_filtroTipo is null ? "primary" : "")" @onclick="@(() => SetFiltro(null))">Todas @(_cont is null ? "" : $"· {_cont.Total}")</button>
-            <button class="tx-ent-btn sm @(_filtroTipo == TipoValidacion.Revision ? "primary" : "")" @onclick="@(() => SetFiltro(TipoValidacion.Revision))">Revisión @(_cont is null ? "" : $"· {_cont.Revision}")</button>
-            <button class="tx-ent-btn sm @(_filtroTipo == TipoValidacion.Aprobacion ? "primary" : "")" @onclick="@(() => SetFiltro(TipoValidacion.Aprobacion))">Aprobación @(_cont is null ? "" : $"· {_cont.Aprobacion}")</button>
+        <div class="tr-filtros open">
+            <div><label>Dependencia</label>
+                <select @bind="_fDepId" @bind:after="LoadAsync">
+                    <option value="">Todas</option>
+                    @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+                </select>
+            </div>
+            <div><label>Prioridad</label>
+                <select @bind="_fPrio" @bind:after="LoadAsync">
+                    <option value="">Todas</option>
+                    @foreach (var p in Enum.GetValues<RadicadoPrioridad>()) { <option value="@p">@p</option> }
+                </select>
+            </div>
         </div>
+    }
 
-        <div class="tx-ent-table-wrap">
-            <table class="tx-ent-table">
-                <thead><tr><th>DOCUMENTO</th><th>TIPO</th><th>PRIORIDAD</th><th>VENCIMIENTO</th><th>SOLICITADO POR</th><th>ASIGNADA</th><th class="right">ACCIONES</th></tr></thead>
-                <tbody>
-                    @if (_pendientes is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
-                    else if (_pendientes.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes tareas pendientes.</td></tr> }
-                    else
-                    {
-                        @foreach (var t in _pendientes)
+    <div class="tr-card">
+        <div class="tr-tabs">
+            @foreach (var (key, label, cnt) in Tabs)
+            {
+                <button class="tr-tab @(_tab == key ? "on" : "")" @onclick="@(() => SetTabAsync(key))">@label <span class="cnt">@cnt</span></button>
+            }
+        </div>
+        <div class="tr-tablewrap">
+            @if (_loading)
+            {
+                <div class="tr-vacio">Cargando...</div>
+            }
+            else if (_items.Count == 0)
+            {
+                <div class="tr-vacio">No hay tareas en esta pestana.</div>
+            }
+            else
+            {
+                <table class="tr-grid">
+                    <thead><tr>
+                        <th>Radicado</th><th>Tipo</th><th>Remitente</th><th>Asunto</th><th>Prioridad</th><th>SLA</th><th>Recibida</th><th>Acciones</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var t in _items)
                         {
                             <tr>
-                                <td>@t.DocumentoNombre @if (t.ExpedienteCodigo is not null) { <span style="color:var(--kt-text-gray-600);font-size:11.5px">· @t.ExpedienteCodigo</span> }</td>
-                                <td><span class="tx-ent-badge @(t.Tipo == TipoValidacion.Aprobacion ? "primary" : "")">@t.Tipo</span></td>
-                                <td><span class="tx-ent-badge @PrioridadCss(t.Prioridad)">@t.Prioridad</span></td>
-                                <td>@VencimientoTexto(t)</td>
-                                <td>@(t.SolicitanteNombre ?? "--")</td>
-                                <td>@t.FechaAsignacion.ToString("yyyy-MM-dd HH:mm")</td>
-                                <td class="right"><button class="tx-ent-btn sm primary" @onclick="@(() => OpenTramitar(t))"><i class="bi bi-gear"></i> Tramitar</button></td>
+                                <td>
+                                    <button class="tr-num" @onclick="@(() => _detalleReg = t.Reg)">@t.Numero</button>
+                                    @if (string.IsNullOrEmpty(t.Funcionario) && t.Estado == "Asignada") { <span class="tr-sinfunc">&#128100; Por asignar (jefe)</span> }
+                                </td>
+                                <td><span style="color:@(t.TipoColor ?? "#405189");font-size:11px;font-weight:600">@(t.TipoNombre ?? "-")</span></td>
+                                <td>@t.Remitente</td>
+                                <td><div class="tr-asunto" title="@t.Asunto">@(t.Asunto ?? "-")</div><div class="tr-dep">@t.DepNombre @(string.IsNullOrEmpty(t.Funcionario) ? "" : $"· 👤 {t.Funcionario}")</div></td>
+                                <td>@PrioPill(t.Prioridad)</td>
+                                <td>@SlaPill(t.Dias, t.RadEstado)</td>
+                                <td>@t.Recibida</td>
+                                <td>
+                                    <div class="tr-acc">
+                                        <button class="rnd" title="Ver radicado" @onclick="@(() => _detalleReg = t.Reg)">&#128065;</button>
+                                        @if (t.Estado == "Asignada")
+                                        {
+                                            <button class="rnd ok" title="Aceptar" @onclick="@(() => AceptarAsync(t))" disabled="@_busy">&#10003;</button>
+                                            <button class="rnd no" title="Rechazar" @onclick="@(() => OpenRechazar(t))" disabled="@_busy">&#10005;</button>
+                                            @if (string.IsNullOrEmpty(t.Funcionario))
+                                            {
+                                                <button class="txt" @onclick="@(() => OpenAsignarAsync(t))" disabled="@_busy">&#128100; Asignar</button>
+                                            }
+                                        }
+                                        else if (t.Estado == "Aceptada")
+                                        {
+                                            <button class="txt" @onclick="@(() => _detalleReg = t.Reg)">Gestionar</button>
+                                        }
+                                        <button class="txt" title="Redirigir" @onclick="@(() => OpenRedirigirAsync(t))" disabled="@_busy">&#8618;</button>
+                                    </div>
+                                </td>
                             </tr>
                         }
-                    }
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            }
         </div>
-    }
-    else
-    {
-        <div class="tx-ent-table-wrap">
-            <table class="tx-ent-table">
-                <thead><tr><th>DOCUMENTO</th><th>EXPEDIENTE</th><th>TIPO</th><th>SOLICITADO POR</th><th>RESPUESTA</th><th>COMENTARIOS</th><th>FECHA RESPUESTA</th></tr></thead>
-                <tbody>
-                    @if (_historial is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
-                    else if (_historial.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Sin historial.</td></tr> }
-                    else
-                    {
-                        @foreach (var t in _historial)
-                        {
-                            <tr>
-                                <td>@t.DocumentoNombre</td>
-                                <td>@(t.ExpedienteCodigo is null ? "--" : t.ExpedienteCodigo)</td>
-                                <td><span class="tx-ent-badge">@t.Tipo</span></td>
-                                <td>@(t.SolicitanteNombre ?? "--")</td>
-                                <td><span class="tx-ent-badge @EstadoCss(t.Estado)">@t.Estado</span></td>
-                                <td style="max-width:260px">@(string.IsNullOrWhiteSpace(t.Comentarios) ? "--" : t.Comentarios)</td>
-                                <td>@(t.FechaRespuesta?.ToString("yyyy-MM-dd HH:mm") ?? "--")</td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
+    </div>
+    <p class="tr-note">RF07-3: bandeja del funcionario. Ve sus tareas y las de su dependencia sin asignar (fail-closed).</p>
 </div>
 
-@* ============ Modal TRAMITAR ============ *@
-@if (_showTramitar && _tarea is not null)
+@* Modal Rechazar *@
+@if (_rechTarea is not null)
 {
-    <div class="modal-overlay" @onclick="@(() => _showTramitar = false)">
-        <div class="modal-dialog" style="max-width:620px;width:96%" @onclick:stopPropagation="true">
-            <div class="modal-head"><h3>Tarea de @_tarea.Tipo</h3><button class="modal-close" @onclick="@(() => _showTramitar = false)">&times;</button></div>
-            <div class="modal-body tx-mod tx-trdc">
-                @if (_tramError is not null) { <div class="tx-ent-fielderr">@_tramError</div> }
-                <h4 style="margin:0 0 6px">@_tarea.DocumentoNombre</h4>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-                    <span class="tx-ent-badge @(_tarea.Tipo == TipoValidacion.Aprobacion ? "primary" : "")">@_tarea.Tipo</span>
-                    <span class="tx-ent-badge @PrioridadCss(_tarea.Prioridad)">@_tarea.Prioridad</span>
-                    @if (_tarea.ExpedienteCodigo is not null) { <span class="tx-ent-badge">@_tarea.ExpedienteCodigo</span> }
-                </div>
-                <div class="tx-ent-hint">Solicitado por @(_tarea.SolicitanteNombre ?? "--") · @_tarea.FechaAsignacion.ToString("yyyy-MM-dd HH:mm")</div>
-                @if (!string.IsNullOrWhiteSpace(_tarea.Instrucciones))
-                {
-                    <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>@_tarea.Instrucciones</span></div>
-                }
-                <div class="tx-ent-field" style="margin-top:8px">
-                    <label>Comentario <span class="opt">(obligatorio al devolver o rechazar)</span></label>
-                    <textarea class="tx-ent-input" @bind="_tramComentario" rows="3" maxlength="2000"></textarea>
-                </div>
-                <div class="tx-ent-alert"><i class="bi bi-exclamation-circle"></i><span>Responder deja trazabilidad y NO cambia el estado del documento ni bloquea el archivado (RF11).</span></div>
+    <div class="tr-modal-back open" @onclick="@(() => _rechTarea = null)">
+        <div class="tr-modal" @onclick:stopPropagation="true">
+            <div class="h"><b>Rechazar tarea @_rechTarea.Numero</b><button class="tr-x" @onclick="@(() => _rechTarea = null)">&times;</button></div>
+            <div class="b">
+                <div class="tr-just">Al rechazar, el radicado vuelve a su dependencia (o a la bandeja general) para reasignacion.</div>
+                <div class="tr-fld"><label>Observacion del rechazo *</label><textarea class="tr-in" rows="3" @bind="_rechObs"></textarea></div>
+                @if (_rechError is not null) { <div class="tk-field-error">@_rechError</div> }
             </div>
-            <div class="modal-foot">
-                <button class="tx-ent-btn" @onclick="@(() => _showTramitar = false)" disabled="@_tramBusy">Cancelar</button>
-                <button class="tx-ent-btn danger" @onclick="@(() => Responder(EstadoValidacion.Rechazado))" disabled="@_tramBusy">Rechazar</button>
-                <button class="tx-ent-btn" @onclick="@(() => Responder(EstadoValidacion.Devuelto))" disabled="@_tramBusy">Devolver</button>
-                <button class="tx-ent-btn primary" @onclick="@(() => Responder(EstadoValidacion.Aprobado))" disabled="@_tramBusy">Aprobar</button>
-            </div>
+            <div class="f"><button class="tr-b" @onclick="@(() => _rechTarea = null)">Cancelar</button><button class="tr-b rojo" @onclick="ConfirmRechazarAsync" disabled="@_busy">Rechazar</button></div>
         </div>
     </div>
 }
 
+@* Modal Asignar (jefe) *@
+@if (_asigTarea is not null)
+{
+    <div class="tr-modal-back open" @onclick="@(() => _asigTarea = null)">
+        <div class="tr-modal" @onclick:stopPropagation="true">
+            <div class="h"><b>Asignar funcionario - @_asigTarea.Numero</b><button class="tr-x" @onclick="@(() => _asigTarea = null)">&times;</button></div>
+            <div class="b">
+                <div class="tr-fld"><label>Funcionario *</label>
+                    <select class="tr-in" @bind="_asigFuncId"><option value="">Selecciona...</option>
+                        @foreach (var fu in _asigFuncs) { <option value="@fu.Id">@fu.Nombre</option> }
+                    </select>
+                </div>
+                @if (_asigError is not null) { <div class="tk-field-error">@_asigError</div> }
+            </div>
+            <div class="f"><button class="tr-b" @onclick="@(() => _asigTarea = null)">Cancelar</button><button class="tr-b navy" @onclick="ConfirmAsignarAsync" disabled="@_busy">Asignar</button></div>
+        </div>
+    </div>
+}
+
+@* Modal Redirigir (distribuir) *@
+@if (_redTarea is not null)
+{
+    <div class="tr-modal-back open" @onclick="@(() => _redTarea = null)">
+        <div class="tr-modal ancho" @onclick:stopPropagation="true">
+            <div class="h"><b>Redirigir @_redTarea.Numero</b><button class="tr-x" @onclick="@(() => _redTarea = null)">&times;</button></div>
+            <div class="b">
+                <div class="tr-fld"><label>Dependencia destino *</label>
+                    <select class="tr-in" @bind="_redDepId" @bind:after="OnRedDepChangedAsync"><option value="">Selecciona...</option>
+                        @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+                    </select>
+                </div>
+                <div class="tr-fld"><label>Funcionario (opcional)</label>
+                    <select class="tr-in" @bind="_redFuncId"><option value="">Pendiente de asignar</option>
+                        @foreach (var fu in _redFuncs) { <option value="@fu.Id">@fu.Nombre</option> }
+                    </select>
+                </div>
+                <div class="tr-fld"><label>Instrucciones</label><textarea class="tr-in" rows="2" @bind="_redInstr"></textarea></div>
+                <div class="tr-just">Redirigir es una reasignacion: la justificacion es obligatoria (RF07-2).</div>
+                <div class="tr-fld"><label>Justificacion *</label><textarea class="tr-in" rows="2" @bind="_redJust"></textarea></div>
+                @if (_redError is not null) { <div class="tk-field-error">@_redError</div> }
+            </div>
+            <div class="f"><button class="tr-b" @onclick="@(() => _redTarea = null)">Cancelar</button><button class="tr-b navy" @onclick="ConfirmRedirigirAsync" disabled="@_busy">Redirigir</button></div>
+        </div>
+    </div>
+}
+
+@* Drawer detalle *@
+@if (_detalleReg is long reg)
+{
+    <div class="modal-overlay rb-detalle-overlay" @onclick="@(() => _detalleReg = null)">
+        <div class="rb-detalle-panel" @onclick:stopPropagation="true">
+            <RadDetalle Reg="reg" OnClose="@(() => _detalleReg = null)" OnResponder="@(n => { })" OnDistribuir="@(r => { })" />
+        </div>
+    </div>
+}
+
+<style>
+    .tr-wrap2 { padding: 4px 2px 30px; font-family: Poppins, 'Segoe UI', sans-serif; }
+    .tr-title { font-size:20px; font-weight:800; color:#0F172A; margin:0 0 4px; }
+    .tr-sub { font-size:13px; color:#878a99; margin:0 0 16px; }
+    .tr-kpis { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+    .tr-kpi { background:#fff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.07); padding:8px 14px; display:flex; align-items:center; gap:10px; }
+    .tr-kpi b { font-size:20px; font-weight:800; color:#212529; line-height:1; }
+    .tr-kpi span { font-size:11.5px; color:#878a99; }
+    .tr-toolbar { background:#fff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.07); padding:12px 16px; margin-bottom:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .tr-search { flex:1; position:relative; min-width:240px; max-width:360px; }
+    .tr-search .ic { position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:14px; color:#94A3B8; }
+    .tr-search input { width:100%; padding:8px 12px 8px 32px; border-radius:8px; border:1px solid #D5DDE9; font-size:13px; color:#212529; box-sizing:border-box; font-family:inherit; outline:none; }
+    .tr-btn { padding:8px 14px; border-radius:8px; border:1px solid #D5DDE9; background:#fff; color:#566980; font-size:13px; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:6px; }
+    .tr-btn.on { background:#eaecf5; color:#405189; }
+    .tr-filtros { background:#fff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.07); padding:14px 16px; margin-bottom:14px; display:flex; flex-wrap:wrap; gap:14px; }
+    .tr-filtros label { font-size:11px; font-weight:600; color:#566980; display:block; margin-bottom:4px; }
+    .tr-filtros select { padding:6px 10px; border-radius:6px; border:1px solid #D5DDE9; font-size:12px; color:#212529; background:#fff; font-family:inherit; min-width:180px; }
+    .tr-card { background:#fff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.07); overflow:hidden; }
+    .tr-tabs { display:flex; border-bottom:1px solid #f0f0f3; padding:0 12px; overflow-x:auto; }
+    .tr-tab { padding:12px 14px; border:none; background:transparent; cursor:pointer; font-size:13px; color:#566980; border-bottom:2px solid transparent; font-family:inherit; display:inline-flex; gap:6px; align-items:center; white-space:nowrap; }
+    .tr-tab.on { font-weight:700; color:#405189; border-bottom-color:#405189; }
+    .tr-tab .cnt { font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; background:#F1F5F9; color:#566980; }
+    .tr-tab.on .cnt { background:#DBEAFE; color:#1D4ED8; }
+    .tr-tablewrap { overflow-x:auto; }
+    table.tr-grid { width:100%; border-collapse:collapse; font-size:13px; }
+    table.tr-grid th { padding:10px 12px; text-align:left; font-size:10.5px; font-weight:700; color:#878a99; text-transform:uppercase; white-space:nowrap; background:#f8f9fb; }
+    table.tr-grid td { padding:11px 12px; border-top:1px solid #f0f0f3; vertical-align:middle; }
+    table.tr-grid tbody tr:nth-child(even) td { background:#fafbfc; }
+    table.tr-grid tbody tr:hover td { background:#eef0f7; }
+    .tr-num { color:#0d6efd; font-weight:700; font-size:12px; font-family:Consolas,monospace; background:none; border:none; cursor:pointer; padding:0; text-decoration:underline; }
+    .tr-sinfunc { font-size:10px; color:#EF4444; font-weight:700; display:block; }
+    .tr-asunto { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; max-width:240px; }
+    .tr-dep { font-size:11px; color:#94A3B8; }
+    .tr-pill { font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; white-space:nowrap; }
+    .tr-sla { font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px; white-space:nowrap; }
+    .tr-vacio { padding:36px; text-align:center; color:#94A3B8; font-size:13px; }
+    .tr-note { margin-top:12px; font-size:11px; color:#94A3B8; }
+    .tr-acc { display:flex; gap:5px; align-items:center; }
+    .tr-acc .rnd { width:30px; height:30px; border-radius:50%; border:1px solid #d5dbe5; background:#fff; color:#405189; cursor:pointer; font-size:13px; display:inline-flex; align-items:center; justify-content:center; }
+    .tr-acc .ok { border:none; background:#d6f5ef; color:#0a7d6f; font-weight:700; }
+    .tr-acc .no { border:none; background:#fde2dd; color:#dc2626; font-weight:700; }
+    .tr-acc .txt { padding:4px 10px; border-radius:5px; border:1px solid #D5DDE9; background:#fff; color:#566980; cursor:pointer; font-size:11px; font-family:inherit; }
+    .tr-modal-back { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:1090; overflow-y:auto; padding:5vh 16px; }
+    .tr-modal { background:#fff; border-radius:12px; max-width:560px; margin:0 auto; box-shadow:0 20px 60px rgba(0,0,0,.3); font-family:Poppins,sans-serif; }
+    .tr-modal.ancho { max-width:720px; }
+    .tr-modal .h { padding:15px 22px; border-bottom:1px solid #f0f0f3; display:flex; justify-content:space-between; align-items:center; }
+    .tr-modal .h b { font-size:15px; }
+    .tr-modal .b { padding:20px 22px; }
+    .tr-modal .f { padding:13px 22px; border-top:1px solid #f0f0f3; display:flex; justify-content:flex-end; gap:10px; }
+    .tr-fld { margin-bottom:14px; }
+    .tr-fld label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#1A2B3C; }
+    .tr-in { width:100%; padding:9px 12px; border-radius:7px; border:1px solid #D5DDE9; font-size:13px; font-family:inherit; outline:none; box-sizing:border-box; background:#fff; }
+    .tr-x { background:none; border:none; font-size:17px; color:#878a99; cursor:pointer; }
+    .tr-b { padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; border:1px solid #D5DDE9; background:#fff; color:#566980; }
+    .tr-b.navy { background:#405189; border-color:#405189; color:#fff; font-weight:700; }
+    .tr-b.rojo { background:#f06548; border-color:#f06548; color:#fff; font-weight:700; }
+    .tr-just { padding:10px 12px; border-radius:8px; background:#FFFBEB; border:1px solid #FDE68A; color:#92400E; font-size:12px; margin-bottom:12px; }
+    .rb-detalle-overlay { justify-content:flex-end; }
+    .rb-detalle-panel { background:var(--tx-surface,#fff); width:min(920px,96vw); height:100%; box-shadow:-8px 0 24px rgba(2,6,23,.18); overflow:auto; }
+</style>
+
 @code {
-    private const string ModuleKey = "modulo/tramite-mis-tareas";
-    private long Actor => Tenant.UserId ?? 0;
+    private bool _loading = true, _busy;
+    private string? _flash; private bool _flashOk;
+    private string _tab = "asignadas", _q = "", _fDepId = "", _fPrio = "";
+    private bool _showFiltros;
+    private IReadOnlyList<TareaItemDto> _items = Array.Empty<TareaItemDto>();
+    private TramitesContadores _c = new(0, 0, 0, 0);
+    private IReadOnlyList<OpcionDto> _deps = Array.Empty<OpcionDto>();
+    private long? _detalleReg;
 
-    private string _tab = "PEND";
-    private TipoValidacion? _filtroTipo;
-    private IReadOnlyList<TareaItemDto>? _pendientes;
-    private IReadOnlyList<TareaHistorialDto>? _historial;
-    private TareaContadoresDto? _cont;
-    private string? _pageOk, _pageError;
+    private TareaItemDto? _rechTarea; private string _rechObs = ""; private string? _rechError;
+    private TareaItemDto? _asigTarea; private string _asigFuncId = ""; private IReadOnlyList<OpcionDto> _asigFuncs = Array.Empty<OpcionDto>(); private string? _asigError;
+    private TareaItemDto? _redTarea; private string _redDepId = "", _redFuncId = "", _redInstr = "", _redJust = ""; private IReadOnlyList<OpcionDto> _redFuncs = Array.Empty<OpcionDto>(); private string? _redError;
 
-    private bool _showTramitar, _tramBusy;
-    private string? _tramError;
-    private TareaItemDto? _tarea;
-    private string _tramComentario = "";
-
-    protected override async Task OnInitializedAsync() => await ReloadPendientes();
-
-    private async Task ReloadPendientes()
+    private (string key, string label, int cnt)[] Tabs => new[]
     {
-        _cont = await Svc.GetContadoresAsync(Actor);
-        _pendientes = await Svc.ListarPendientesAsync(Actor, _filtroTipo);
+        ("asignadas", "Asignadas a mi", _c.Asig), ("aceptadas", "En gestion", _c.Acep),
+        ("proximas", "Proximas a vencer", _c.Prox), ("vencidas", "Vencidas", _c.Venc)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _deps = await BandejaSvc.DependenciasAsync();
+        await LoadAsync();
     }
 
-    private async Task SwitchTab(string t)
+    private TramitesFiltro BuildFiltro() => new(_tab,
+        string.IsNullOrWhiteSpace(_q) ? null : _q,
+        long.TryParse(_fDepId, out var d) ? d : null,
+        string.IsNullOrEmpty(_fPrio) ? null : _fPrio);
+
+    private async Task LoadAsync()
     {
-        _tab = t;
-        if (t == "PEND") { await ReloadPendientes(); }
-        else { _historial = await Svc.ListarHistorialAsync(Actor); }
+        _loading = true; _busy = true;
+        try { var r = await TramitesSvc.ListarAsync(BuildFiltro()); _items = r.Lista; _c = r.Contadores; }
+        finally { _loading = false; _busy = false; }
     }
 
-    private async Task SetFiltro(TipoValidacion? tipo) { _filtroTipo = tipo; _pendientes = await Svc.ListarPendientesAsync(Actor, _filtroTipo); }
+    private async Task SetTabAsync(string tab) { _tab = tab; await LoadAsync(); }
 
-    private void OpenTramitar(TareaItemDto t) { _tarea = t; _tramComentario = ""; _tramError = null; _tramBusy = false; _pageOk = null; _showTramitar = true; }
-
-    private async Task Responder(EstadoValidacion nuevoEstado)
+    private async Task AceptarAsync(TareaItemDto t)
     {
-        _tramBusy = true; _tramError = null;
+        _busy = true;
+        try { var r = await TramitesSvc.AceptarAsync(t.Tarea); Flash(r.Ok ? "Tarea aceptada." : (r.Error ?? "Error."), r.Ok); if (r.Ok) { await LoadAsync(); } }
+        finally { _busy = false; }
+    }
+
+    private void OpenRechazar(TareaItemDto t) { _rechTarea = t; _rechObs = ""; _rechError = null; }
+    private async Task ConfirmRechazarAsync()
+    {
+        if (_rechTarea is null) { return; }
+        _rechError = null;
+        if (string.IsNullOrWhiteSpace(_rechObs)) { _rechError = "La observacion es obligatoria."; return; }
+        _busy = true;
+        try { var r = await TramitesSvc.RechazarAsync(_rechTarea.Tarea, _rechObs); if (!r.Ok) { _rechError = r.Error; return; } _rechTarea = null; Flash("Tarea rechazada.", true); await LoadAsync(); }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenAsignarAsync(TareaItemDto t) { _asigTarea = t; _asigFuncId = ""; _asigError = null; _asigFuncs = await BandejaSvc.FuncionariosAsync(null); }
+    private async Task ConfirmAsignarAsync()
+    {
+        if (_asigTarea is null) { return; }
+        _asigError = null;
+        if (!long.TryParse(_asigFuncId, out var fu)) { _asigError = "Seleccione el funcionario."; return; }
+        _busy = true;
+        try { var r = await TramitesSvc.AsignarAsync(_asigTarea.Tarea, fu); if (!r.Ok) { _asigError = r.Error; return; } _asigTarea = null; Flash("Funcionario asignado.", true); await LoadAsync(); }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenRedirigirAsync(TareaItemDto t) { _redTarea = t; _redDepId = ""; _redFuncId = ""; _redInstr = ""; _redJust = ""; _redError = null; _redFuncs = Array.Empty<OpcionDto>(); }
+    private async Task OnRedDepChangedAsync() => _redFuncs = await BandejaSvc.FuncionariosAsync(long.TryParse(_redDepId, out var d) ? d : null);
+    private async Task ConfirmRedirigirAsync()
+    {
+        if (_redTarea is null) { return; }
+        _redError = null;
+        if (!long.TryParse(_redDepId, out var dep)) { _redError = "La dependencia destino es obligatoria."; return; }
+        if (string.IsNullOrWhiteSpace(_redJust)) { _redError = "La justificacion es obligatoria (RF07-2)."; return; }
+        _busy = true;
         try
         {
-            var res = await Svc.ResponderAsync(_tarea!.Id, nuevoEstado, _tramComentario, Actor);
-            if (!res.IsOk) { _tramError = res.Error; return; }
-            _showTramitar = false;
-            _pageOk = $"Tarea {nuevoEstado.ToString().ToLower()}.";
-            await ReloadPendientes();
+            var req = new DistribuirRequest(_redTarea.Reg, dep, long.TryParse(_redFuncId, out var fu) ? fu : null, _redInstr, RadicadoPrioridad.Normal, _redJust);
+            var r = await DistSvc.DistribuirAsync(req);
+            if (!r.Ok) { _redError = r.Error; return; }
+            _redTarea = null; Flash($"Radicado redirigido ({r.Estado}).", true); await LoadAsync();
         }
-        finally { _tramBusy = false; }
+        finally { _busy = false; }
     }
 
-    private static string PrioridadCss(PrioridadTarea p) => p switch
+    private async Task ExportCsvAsync()
     {
-        PrioridadTarea.Urgente => "danger",
-        PrioridadTarea.Alta => "primary",
-        _ => "off"
-    };
-
-    private static string EstadoCss(EstadoValidacion e) => e switch
-    {
-        EstadoValidacion.Aprobado => "ok",
-        EstadoValidacion.Rechazado => "danger",
-        _ => "off"
-    };
-
-    private static string VencimientoTexto(TareaItemDto t)
-    {
-        if (t.FechaLimite is null) { return "--"; }
-        var d = t.DiasRestantes ?? 0;
-        return d < 0 ? $"Vencida ({-d}d)" : d == 0 ? "Hoy" : $"En {d}d";
+        var f = BuildFiltro();
+        var res = await TramitesSvc.ListarAsync(f);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Radicado;Tipo;Remitente;Asunto;Prioridad;SLA;Recibida;Estado");
+        foreach (var t in res.Lista)
+        {
+            string q(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
+            sb.AppendLine(string.Join(";", q(t.Numero), q(t.TipoNombre), q(t.Remitente), q(t.Asunto), q(t.Prioridad), q(t.Dias?.ToString()), q(t.Recibida), q(t.Estado)));
+        }
+        await JS.InvokeVoidAsync("tronoxMenuConfig.downloadText", "tramites.csv", sb.ToString(), "text/csv");
     }
+
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+
+    private RenderFragment Kpi(string label, int val, string color) => __builder =>
+    {
+        <div class="tr-kpi" style="border-left:3px solid @color"><b>@val</b><span>@label</span></div>
+    };
+
+    private RenderFragment PrioPill(string prio) => __builder =>
+    {
+        var (bg, fg) = prio switch { "Urgente" => ("#FEE2E2", "#991B1B"), "Alta" => ("#FEF3C7", "#92400E"), _ => ("#D1FAE5", "#0a7d6f") };
+        <span class="tr-pill" style="background:@bg;color:@fg">@prio</span>
+    };
+
+    private RenderFragment SlaPill(int? dias, string radEstado) => __builder =>
+    {
+        if (radEstado is "Respondido" or "Archivado") { <span class="tr-sla" style="background:#D1FAE5;color:#0a7d6f">&#10003; @radEstado</span> return; }
+        if (dias is null) { <span style="color:#adb1bd;font-size:11px">Sin termino</span> return; }
+        var d = dias.Value;
+        var (bg, fg, txt) = d < 0 ? ("#FEE2E2", "#991B1B", $"● {Math.Abs(d)}d vencido")
+            : d <= 3 ? ("#FEF3C7", "#92400E", $"● {d}d restantes") : ("#D1FAE5", "#0a7d6f", $"● {d}d restantes");
+        <span class="tr-sla" style="background:@bg;color:@fg">@txt</span>
+    };
 }

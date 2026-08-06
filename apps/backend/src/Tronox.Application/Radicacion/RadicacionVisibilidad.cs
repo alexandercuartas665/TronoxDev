@@ -70,7 +70,7 @@ public sealed class RadicacionVisibilidadService
 
     // Dependencias (OrgUnit classifier Dependencia) del usuario: sube el arbol desde su cargo hasta la
     // dependencia mas cercana. Traduce la CTE recursiva del legacy sobre DOC_ENTREVISTAS_ORG a OrgUnit.
-    private async Task<IReadOnlyCollection<long>> DependenciasDelUsuarioAsync(long? userId, CancellationToken ct)
+    public async Task<IReadOnlyCollection<long>> DependenciasDelUsuarioAsync(long? userId, CancellationToken ct = default)
     {
         if (userId is null) { return Array.Empty<long>(); }
         var cargoId = await _db.TenantUsers.AsNoTracking()
