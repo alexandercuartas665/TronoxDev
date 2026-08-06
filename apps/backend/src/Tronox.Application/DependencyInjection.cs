@@ -127,6 +127,11 @@ public static class DependencyInjection
         services.AddScoped<Radicacion.IRadicacionBandejaService, Radicacion.RadicacionBandejaService>();
         services.AddScoped<Radicacion.IRadicacionDistribucionService, Radicacion.RadicacionDistribucionService>();
         services.AddScoped<Radicacion.IRadicadoDetalleService, Radicacion.RadicadoDetalleService>();
+        // Fundaciones compartidas: calendario habil (festivos) + orquestador de radicacion (consecutivo+SLA).
+        services.AddScoped<Radicacion.ICalendarioHabilService, Radicacion.CalendarioHabilService>();
+        services.AddScoped<Radicacion.IRadicadorService, Radicacion.RadicadorService>();
+        // Correos por Revisar (RQ09 RF04), port de rad_correos.
+        services.AddScoped<Radicacion.IRadicacionCorreosService, Radicacion.RadicacionCorreosService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

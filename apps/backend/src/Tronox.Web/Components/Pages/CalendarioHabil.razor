@@ -1,0 +1,133 @@
+@page "/modulo/calendario-habil"
+@attribute [Authorize(Policy = "Perm:modulo/calendario-habil:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@inject ICalendarioHabilService CalSvc
+
+@* RQ01 - Calendario habil. Dias no habiles (festivos) del tenant para el calculo de terminos SLA de
+   radicacion. Siembra los festivos de Colombia (Ley Emiliani + Pascua) por anio y admite dias propios. *@
+
+<PageTitle>Calendario Habil - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Workspace</a><span class="sep">/</span>
+    <span>Configuracion General y Organizacional</span><span class="sep">/</span>
+    <span class="cur">Calendario Habil</span>
+</nav>
+
+<div class="module-head">
+    <div>
+        <h1 class="page-title" style="margin:0;">Calendario Habil</h1>
+        <p class="page-sub" style="margin:4px 0 0;">Dias no habiles (festivos) para el calculo de terminos de radicacion.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <select class="form-control" style="max-width:120px;" @bind="_anio" @bind:after="LoadAsync">
+            @foreach (var y in Anios) { <option value="@y">@y</option> }
+        </select>
+        <button class="btn btn-primary" @onclick="SembrarAsync" disabled="@_busy">Sembrar festivos @_anio</button>
+    </div>
+</div>
+
+@if (_flash is not null) { <div class="mc-flash @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+<div class="ch-grid">
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-h">Festivos de @_anio (@_festivos.Count)</div>
+        @if (_festivos.Count == 0)
+        {
+            <div class="ch-empty">No hay festivos cargados para @_anio. Usa "Sembrar festivos" para cargar los de Colombia.</div>
+        }
+        else
+        {
+            <table class="tx-ent-table">
+                <thead><tr><th>Fecha</th><th>Dia</th><th>Nombre</th><th>Origen</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var f in _festivos)
+                    {
+                        <tr>
+                            <td>@f.Fecha.ToString("dd/MM/yyyy")</td>
+                            <td>@DiaSemana(f.Fecha)</td>
+                            <td>@f.Nombre</td>
+                            <td>@(f.EsNacional ? "Nacional" : "Propio")</td>
+                            <td>
+                                @if (!f.EsNacional)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="@(() => EliminarAsync(f.Id))" disabled="@_busy">Quitar</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-h">Agregar dia no habil propio</div>
+        <div class="field">
+            <label class="form-label">Fecha</label>
+            <input type="date" class="form-control" @bind="_nuevaFecha" />
+        </div>
+        <div class="field">
+            <label class="form-label">Motivo</label>
+            <input class="form-control" @bind="_nuevoNombre" maxlength="120" placeholder="Ej. Dia de la entidad" />
+        </div>
+        <button class="btn btn-primary" style="width:100%;" @onclick="AgregarAsync" disabled="@_busy">Agregar</button>
+        <p class="page-sub" style="margin-top:10px;font-size:.76rem;">Los festivos nacionales se calculan con la Ley Emiliani + Pascua; aqui solo se agregan dias propios de la entidad.</p>
+    </div>
+</div>
+
+<style>
+    .ch-grid { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+    .ch-empty { padding:24px; text-align:center; color:var(--ink-3,#94a3b8); font-size:.85rem; }
+    @@media (max-width:900px){ .ch-grid { grid-template-columns:1fr; } }
+</style>
+
+@code {
+    private int _anio = DateTime.UtcNow.Year;
+    private IReadOnlyList<DiaFestivoDto> _festivos = Array.Empty<DiaFestivoDto>();
+    private bool _busy;
+    private string? _flash; private bool _flashOk;
+    private DateOnly? _nuevaFecha; private string _nuevoNombre = "";
+
+    private int[] Anios => new[] { DateTime.UtcNow.Year - 1, DateTime.UtcNow.Year, DateTime.UtcNow.Year + 1, DateTime.UtcNow.Year + 2 };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => _festivos = await CalSvc.ListarAsync(_anio);
+
+    private async Task SembrarAsync()
+    {
+        _busy = true;
+        try { var n = await CalSvc.SembrarAnioAsync(_anio); Flash($"{n} festivos sembrados.", true); await LoadAsync(); }
+        finally { _busy = false; }
+    }
+
+    private async Task AgregarAsync()
+    {
+        if (_nuevaFecha is null || string.IsNullOrWhiteSpace(_nuevoNombre)) { Flash("Fecha y motivo son obligatorios.", false); return; }
+        _busy = true;
+        try
+        {
+            var r = await CalSvc.AgregarAsync(_nuevaFecha.Value, _nuevoNombre);
+            if (r is null) { Flash("Ya existe un dia no habil en esa fecha.", false); return; }
+            _nuevaFecha = null; _nuevoNombre = "";
+            Flash("Dia agregado.", true); await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task EliminarAsync(long id)
+    {
+        _busy = true;
+        try { await CalSvc.EliminarAsync(id); await LoadAsync(); }
+        finally { _busy = false; }
+    }
+
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+    private static string DiaSemana(DateOnly f) => f.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Lun", DayOfWeek.Tuesday => "Mar", DayOfWeek.Wednesday => "Mie",
+        DayOfWeek.Thursday => "Jue", DayOfWeek.Friday => "Vie", DayOfWeek.Saturday => "Sab", _ => "Dom"
+    };
+}

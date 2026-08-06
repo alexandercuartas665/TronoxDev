@@ -284,6 +284,36 @@ funcionario por nombre, BLOB en BD, callbacks window.parent.
 
 ---
 
+## 2.i Port Radicacion - Modulo 3: Correos por Revisar + fundaciones (2026-08-06)
+
+Tercer lote del port de Radicacion (rad_correos). Decisiones del usuario: portar el calendario habil
+ahora (festivos reales) y el boton "Simular correo" para datos de prueba. El flujo "radicar desde
+correo" es el PRIMER camino que CREA radicados, asi que arrastra fundaciones compartidas con
+rad_radicar. Spec en scratchpad/spec_rad_correos.md.
+
+**Fundaciones (Fase 1):**
+- **Calendario habil (RQ01):** `FestivosColombia` (calculo puro Ley Emiliani + Pascua/Computus),
+  entidad `DiaFestivo`, `CalendarioHabilService` (EsHabil/ProximoHabil/SumarDiasHabiles + siembra por
+  anio), pagina `/modulo/calendario-habil`.
+- **Consecutivo:** se REUTILIZA `ISequenceService` (SELECT FOR UPDATE, scope tenant/tipo/anio -> reinicio
+  anual por codigo). No se duplico logica.
+- **`RadicadorService`:** orquestador que crea el Radicado (consecutivo + vencimiento SLA via calendario +
+  numero Sigla+Cod+Anio+consec). Reutilizable por correos y rad_radicar.
+
+**Correos por Revisar (Fase 2):**
+- **Dominio:** `CorreoRecibido` extendida (message_id, cuerpo tratado, tipo_detectado, confianza,
+  duplicado/ref, modo, radica_en, num_adjuntos, remitente_email...), `CorreoRecibidoAdjunto`
+  (object storage), `CorreoDescartado` (log append-only). Migracion `CalendarioHabilYCorreos` (3 tablas).
+- **Application:** `RadicacionCorreosService` (listar 2 tabs + contadores, detalle, radicar/vincular
+  [usa RadicadorService, RF04-5 cierra termino], editar, descartar con causal, recuperar, simular).
+- **Web:** `/modulo/radicacion-correos` (bandeja dos paneles + lectura + modales editar/descartar).
+
+Diferido honesto: captura IMAP/Graph (worker), descarga/visor de adjuntos (necesita upload), tercero
+RQ07 (remitente inline). Quirks legacy NO replicados: BLOB, SQL concatenado, fail-open, sin transaccion,
+MAX(REG), consecutivo sin bloqueo. Build verde.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

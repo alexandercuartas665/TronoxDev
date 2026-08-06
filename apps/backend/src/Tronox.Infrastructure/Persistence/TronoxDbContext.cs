@@ -125,6 +125,9 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<RadicadoArchivo> RadicadosArchivos => Set<RadicadoArchivo>();
     public DbSet<RadicadoComunicacion> RadicadosComunicaciones => Set<RadicadoComunicacion>();
     public DbSet<RadicadoVisibilidadPermiso> RadicadosVisibilidad => Set<RadicadoVisibilidadPermiso>();
+    public DbSet<DiaFestivo> DiasFestivos => Set<DiaFestivo>();
+    public DbSet<CorreoRecibidoAdjunto> CorreosRecibidosAdjuntos => Set<CorreoRecibidoAdjunto>();
+    public DbSet<CorreoDescartado> CorreosDescartados => Set<CorreoDescartado>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -1350,10 +1353,40 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         {
             b.Property(x => x.BuzonEmail).HasMaxLength(200);
             b.Property(x => x.Remitente).HasMaxLength(300);
+            b.Property(x => x.RemitenteEmail).HasMaxLength(200);
             b.Property(x => x.Asunto).HasMaxLength(500);
+            b.Property(x => x.MessageId).HasMaxLength(400);
+            b.Property(x => x.InReplyTo).HasMaxLength(400);
+            b.Property(x => x.DuplicadoNumero).HasMaxLength(60);
+            b.Property(x => x.RadicadoRef).HasMaxLength(60);
+            b.Property(x => x.RadicadoNumero).HasMaxLength(60);
             b.HasOne(x => x.BuzonCorreo).WithMany()
                 .HasForeignKey(x => x.BuzonCorreoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Tronox.Domain.Entities.TipoComunicacion>().WithMany()
+                .HasForeignKey(x => x.TipoDetectadoId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.MessageId });
+        });
+
+        modelBuilder.Entity<CorreoRecibidoAdjunto>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Extension).HasMaxLength(20);
+            b.Property(x => x.MimeType).HasMaxLength(120);
+            b.Property(x => x.StorageBucket).HasMaxLength(100);
+            b.Property(x => x.StorageKey).HasMaxLength(400);
+            b.Property(x => x.Sha256).HasMaxLength(64);
+            b.HasOne(x => x.CorreoRecibido).WithMany(c => c.Adjuntos)
+                .HasForeignKey(x => x.CorreoRecibidoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.CorreoRecibidoId });
+        });
+
+        modelBuilder.Entity<CorreoDescartado>(b =>
+        {
+            b.Property(x => x.Causal).HasMaxLength(1000).IsRequired();
+            b.HasOne(x => x.CorreoRecibido).WithMany()
+                .HasForeignKey(x => x.CorreoRecibidoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.CorreoRecibidoId });
         });
 
         // Radicacion operativa - bandeja/distribucion/detalle (RQ09 RF07/RF11/RF12).
@@ -1398,6 +1431,12 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         modelBuilder.Entity<RadicadoVisibilidadPermiso>(b =>
         {
             b.HasIndex(x => new { x.TenantId, x.TenantUserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<DiaFestivo>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.Fecha }).IsUnique();
         });
 
         // Motor de flujos BPMN (RQ11, port del motor de ECOREX). El XML BPMN se guarda tal cual
