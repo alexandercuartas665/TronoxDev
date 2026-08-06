@@ -204,6 +204,26 @@ placeholder; ahora desarrollado). Estilo tx-*, NO el legacy.
 
 ---
 
+## 2.f Administrador de Menu - mas interaccion en el editor (2026-08-06)
+
+Peticion del usuario: mas control en la herramienta de configuracion del menu. El backend
+(`MenuConfigService`) ya tenia `CreateNodeAsync`/`MoveNodeAsync`/`ToggleNodeVisibilityAsync`;
+el trabajo fue exponerlo mejor en `ConfiguracionMenu.razor` (editor de la vista):
+
+- **Crear subniveles:** el boton "+" de un contenedor antes SOLO creaba Items. Ahora una Section o
+  Subgroup ofrece **dos** acciones: "Agregar subnivel" (crea Subgroup anidado) y "Agregar elemento"
+  (Item). Las reglas de `MenuNodeKindRules` ya permitian Subgroup dentro de Section/Subgroup.
+- **Mover a otro grupo (explicito):** boton "Mover a otro grupo" en Items y Subgroups que abre un
+  modal con selector de contenedores validos (ruta "Seccion / Subgrupo" para desambiguar), excluyendo
+  el propio nodo, su padre actual y sus descendientes. Complementa el drag-drop (fragil en Blazor).
+- **Sin eliminacion, solo ocultar (peticion "de momento"):** se quito el boton papelera de las filas
+  del arbol. Queda el toggle de visibilidad (ocultar/mostrar), que aplica a cualquier nodo: grupo,
+  subnivel o elemento. `DeleteNodeAsync` queda en el codigo, inactivo, para reactivar luego.
+
+Build verde. Pendiente: e2e visual (requiere login, que no automatizo por no teclear claves).
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

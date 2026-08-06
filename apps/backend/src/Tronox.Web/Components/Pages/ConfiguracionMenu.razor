@@ -363,6 +363,46 @@ else
     </div>
 }
 
+@* ================= Modal: mover nodo a otro grupo / subnivel ================= *@
+@if (_showMove && _moveNode is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showMove = false)">
+        <div class="modal-dialog" style="max-width:520px;" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Mover "@_moveNode.Name"</h3>
+                <button class="modal-close" @onclick="@(() => _showMove = false)">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="page-sub" style="margin-top:0;">Elige el grupo o subnivel de destino. El elemento se agrega al final de ese contenedor.</p>
+                @{
+                    var targets = ValidMoveTargets(_moveNode);
+                }
+                @if (targets.Count == 0)
+                {
+                    <div class="tk-field-error">No hay otro grupo o subnivel valido al que mover este elemento.</div>
+                }
+                else
+                {
+                    <div class="field">
+                        <label class="form-label">Destino *</label>
+                        <select class="form-control" @bind="_moveTargetId">
+                            <option value="">Selecciona un grupo o subnivel...</option>
+                            @foreach (var t in targets)
+                            {
+                                <option value="@t.Id">@NodePath(t)</option>
+                            }
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="@(() => _showMove = false)">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmMoveAsync" disabled="@(_busy || _moveTargetId is null)">Mover aqui</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private enum EditorTab { Structure, Preview }
 
@@ -596,15 +636,16 @@ else
         finally { _busy = false; }
     }
 
-    private async Task AddChildAsync(MenuEditorNodeDto parent)
+    // Crea un hijo del contenedor: un SUBNIVEL (Subgroup) o un ELEMENTO (Item). Antes solo creaba
+    // Items; ahora la UI permite armar subniveles anidados (una Section o un Subgroup admite ambos).
+    private async Task AddChildAsync(MenuEditorNodeDto parent, MenuNodeKind kind)
     {
         _busy = true;
         try
         {
-            // Un Section recibe Item por defecto; un Subgroup recibe Item; se puede reclasificar luego.
-            var kind = MenuNodeKind.Item;
-            var name = parent.Kind == MenuNodeKind.Section ? "Nuevo elemento" : "Nuevo elemento";
-            var res = await MenuSvc.CreateNodeAsync(_editingViewId, parent.Id, kind, name);
+            var name = kind == MenuNodeKind.Subgroup ? "Nuevo subnivel" : "Nuevo elemento";
+            var iconKey = kind == MenuNodeKind.Subgroup ? "folder" : (string?)null;
+            var res = await MenuSvc.CreateNodeAsync(_editingViewId, parent.Id, kind, name, iconKey: iconKey);
             if (res.IsOk && res.Value is not null)
             {
                 _collapsed.Remove(parent.Id);
@@ -667,6 +708,71 @@ else
         if (node.ParentId is null) { return _tree.Roots.ToList(); }
         var parent = FlattenAll(_tree.Roots).FirstOrDefault(n => n.Id == node.ParentId);
         return parent?.Children.ToList() ?? new();
+    }
+
+    // ---- Mover a otro grupo (accion EXPLICITA, complementa el drag-drop) ----
+    // El drag-drop es fragil/poco visible en Blazor Server; este modal ofrece un selector claro de
+    // los contenedores validos (Section/Subgroup) y delega en MoveNodeAsync, que valida ciclo y Kind.
+    private bool _showMove;
+    private MenuEditorNodeDto? _moveNode;
+    private long? _moveTargetId;
+
+    private void OpenMove(MenuEditorNodeDto node)
+    {
+        _moveNode = node;
+        _moveTargetId = null;
+        _showMove = true;
+    }
+
+    // Contenedores a los que este nodo puede mudarse: Section/Subgroup validos por Kind, que no sean
+    // el propio nodo, ni su padre actual (seria no-op), ni un descendiente (crearia ciclo).
+    private List<MenuEditorNodeDto> ValidMoveTargets(MenuEditorNodeDto node)
+    {
+        if (_tree is null) { return new(); }
+        return FlattenAll(_tree.Roots)
+            .Where(n => n.Kind is MenuNodeKind.Section or MenuNodeKind.Subgroup)
+            .Where(n => n.Id != node.Id && n.Id != node.ParentId)
+            .Where(n => !IsDescendant(node, n.Id))
+            .Where(n => MenuNodeKindRules.Validate(node.Kind, n.Kind) is null)
+            .ToList();
+    }
+
+    // Ruta legible "Seccion / Subgrupo / Nodo" para desambiguar contenedores con el mismo nombre.
+    private string NodePath(MenuEditorNodeDto node)
+    {
+        var all = _tree is null ? new List<MenuEditorNodeDto>() : FlattenAll(_tree.Roots).ToList();
+        var parts = new List<string> { node.Name };
+        var cur = node.ParentId;
+        while (cur is long pid)
+        {
+            var p = all.FirstOrDefault(n => n.Id == pid);
+            if (p is null) { break; }
+            parts.Insert(0, p.Name);
+            cur = p.ParentId;
+        }
+        return string.Join(" / ", parts);
+    }
+
+    private async Task ConfirmMoveAsync()
+    {
+        if (_moveNode is null || _moveTargetId is not long targetId) { return; }
+        var target = NodeById(targetId);
+        if (target is null) { return; }
+        _busy = true;
+        try
+        {
+            var res = await MenuSvc.MoveNodeAsync(_moveNode.Id, targetId, target.Children.Count);
+            if (res.IsOk)
+            {
+                _showMove = false;
+                _collapsed.Remove(targetId);
+                var movedName = _moveNode.Name;
+                await ReloadTreeAsync();
+                Flash($"'{movedName}' movido a '{target.Name}'.", true);
+            }
+            else { Flash(res.Error ?? "No se pudo mover.", false); }
+        }
+        finally { _busy = false; }
     }
 
     // ---- Arrastrar y soltar (reparent + reordenar) ----
@@ -916,7 +1022,7 @@ else
             }
             <span class="mc-row-dot @StateDot(node.State)" title="@node.State"></span>
             <span class="mc-row-actions" @onclick:stopPropagation>
-                <button type="button" title="Visibilidad" class="mc-act" @onclick="@(() => ToggleVisibilityAsync(node))" disabled="@_busy">
+                <button type="button" title="@(node.IsVisible ? "Ocultar" : "Mostrar")" class="mc-act" @onclick="@(() => ToggleVisibilityAsync(node))" disabled="@_busy">
                     @if (node.IsVisible)
                     {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -932,15 +1038,21 @@ else
                 <button type="button" title="Bajar" class="mc-act" @onclick="@(() => MoveAsync(node, 1))" disabled="@_busy">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
+                @if (node.Kind is MenuNodeKind.Item or MenuNodeKind.Subgroup)
+                {
+                    <button type="button" title="Mover a otro grupo" class="mc-act" @onclick="@(() => OpenMove(node))" disabled="@_busy">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>
+                    </button>
+                }
                 @if (node.Kind is MenuNodeKind.Section or MenuNodeKind.Subgroup)
                 {
-                    <button type="button" title="Agregar hijo" class="mc-act" @onclick="@(() => AddChildAsync(node))" disabled="@_busy">
+                    <button type="button" title="Agregar subnivel" class="mc-act" @onclick="@(() => AddChildAsync(node, MenuNodeKind.Subgroup))" disabled="@_busy">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6M9 13h6"/></svg>
+                    </button>
+                    <button type="button" title="Agregar elemento" class="mc-act" @onclick="@(() => AddChildAsync(node, MenuNodeKind.Item))" disabled="@_busy">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
                 }
-                <button type="button" title="Eliminar" class="mc-act mc-act-danger" @onclick="@(() => DeleteNodeAsync(node))" disabled="@_busy">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-                </button>
             </span>
         </div>
         @if (hasChildren && !isCollapsed)
