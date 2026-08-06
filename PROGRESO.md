@@ -332,6 +332,26 @@ Build verde.
 
 ---
 
+## 2.k Port Radicacion - Portal Ciudadano (2026-08-06)
+
+Port de rad_portal (superficie PUBLICA: radicar PQRSD + consultar estado, sin login). Alcance elegido:
+"funcional + refuerzos base". Spec en scratchpad/spec_portal_ciudadano.md. ADR-014 (tenant por slug).
+
+- **Dominio:** `Radicado` += PortalToken, RespuestaPublica, EsRespuestaPublica. Migracion
+  `PortalCiudadanoRadicadoTokens`.
+- **Application:** `PortalCiudadanoService` - ResolverTenant por SLUG (IgnoreQueryFilters), GetPortal
+  (branding + tipos publicados via HabilitadoWeb), Radicar (reutiliza RadicadorService, canal Web, token),
+  Consultar (numero+documento, solo datos publicos: estado, dependencia, semaforo, timeline publico,
+  respuesta publica). Anonimos sin seguimiento.
+- **Web:** `/portal/{slug}` (PortalCiudadano.razor, AllowAnonymous + EmptyLayout): radicar + consultar.
+  Cada llamada corre bajo `AmbientTenantContext.Begin(tenant)` (aislamiento sin usuario, ADR-014).
+
+Refuerzos DIFERIDOS: reCAPTCHA v3 real (toggle listo, llaves despues), rate-limit Redis, upload de
+adjuntos a object storage. Quirks legacy NO replicados: tenant por query manipulable, captcha casero
+System.Drawing, SQL concatenado, BLOB, rate-limit en memoria. Build verde.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

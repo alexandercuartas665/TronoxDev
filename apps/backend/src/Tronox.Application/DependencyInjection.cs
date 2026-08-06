@@ -134,6 +134,8 @@ public static class DependencyInjection
         services.AddScoped<Radicacion.IRadicacionCorreosService, Radicacion.RadicacionCorreosService>();
         // Configuracion PQR (RQ09 RF01): Prioridades + Portal Web (port de rad_config).
         services.AddScoped<Radicacion.IConfiguracionPqrService, Radicacion.ConfiguracionPqrService>();
+        // Portal ciudadano publico (RQ09 RF03), port de rad_portal.
+        services.AddScoped<Radicacion.IPortalCiudadanoService, Radicacion.PortalCiudadanoService>();
 
         // --- Registro de modulos por tenant ---
         services.AddScoped<Modules.IModuleRegistryService, Modules.ModuleRegistryService>();

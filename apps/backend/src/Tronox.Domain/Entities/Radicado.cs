@@ -82,6 +82,13 @@ public class Radicado : TenantEntity
     public string? EstadoEnvio { get; set; }
     public string? CanalEnvio { get; set; }
 
+    // ---- Portal ciudadano: token de seguimiento + respuesta publica (RF03). ----
+    /// <summary>Token de seguimiento entregado al ciudadano al radicar por el portal.</summary>
+    public string? PortalToken { get; set; }
+    /// <summary>Respuesta visible al ciudadano en la consulta publica (si EsRespuestaPublica).</summary>
+    public string? RespuestaPublica { get; set; }
+    public bool EsRespuestaPublica { get; set; }
+
     /// <summary>Pistas de trazabilidad del radicado (append-only, RNF-04).</summary>
     public ICollection<RadicadoTrazabilidad> Trazas { get; set; } = new List<RadicadoTrazabilidad>();
 

@@ -1,0 +1,219 @@
+@page "/portal/{Slug}"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@using Tronox.Web.Auth
+@inject IPortalCiudadanoService PortalSvc
+
+@* RQ09 - RF03 (Portal ciudadano de radicacion, port de rad_portal). Superficie PUBLICA (sin login):
+   radicar PQRSD + consultar estado. El tenant se resuelve por SLUG server-side (no por query
+   manipulable). Cada llamada al servicio corre bajo AmbientTenantContext.Begin(tenant). *@
+
+<PageTitle>@(_portal?.NombreEntidad ?? "Portal de Radicacion")</PageTitle>
+
+@if (_notFound)
+{
+    <div class="pc-wrap"><div class="pc-card"><h2>Portal no encontrado</h2><p>El enlace del portal no es valido.</p></div></div>
+}
+else if (_portal is null)
+{
+    <div class="pc-wrap"><p style="padding:40px;text-align:center;">Cargando portal...</p></div>
+}
+else
+{
+    <div class="pc-wrap" style="--pc-color:@(_portal.Color ?? "#405189")">
+        <div class="pc-header">
+            <h1>@(_portal.NombreEntidad ?? "Portal de Radicacion")</h1>
+            @if (!string.IsNullOrEmpty(_portal.Subtitulo)) { <p>@_portal.Subtitulo</p> }
+        </div>
+        @if (!string.IsNullOrEmpty(_portal.Banner)) { <div class="pc-banner">@_portal.Banner</div> }
+
+        <div class="pc-tabs">
+            <button class="pc-tab @(_view == "radicar" ? "on" : "")" @onclick='() => _view = "radicar"'>Radicar PQRSD</button>
+            <button class="pc-tab @(_view == "consultar" ? "on" : "")" @onclick='() => _view = "consultar"'>Consultar estado</button>
+        </div>
+
+        @if (_view == "radicar")
+        {
+            @if (_comprobante is not null)
+            {
+                <div class="pc-card pc-ok">
+                    <h2>Radicacion exitosa</h2>
+                    <p>Su solicitud fue radicada con el numero:</p>
+                    <div class="pc-numero">@_comprobante.Numero</div>
+                    <p>Guarde este numero y su token de seguimiento para consultar el estado:</p>
+                    <div class="pc-token">@_comprobante.Token</div>
+                    <button class="pc-btn" @onclick="ResetRadicar">Radicar otra</button>
+                </div>
+            }
+            else
+            {
+                <div class="pc-card">
+                    <div class="pc-field">
+                        <label>Tipo de solicitud *</label>
+                        <select @bind="_req.TipoComunicacionId">
+                            <option value="0">Selecciona...</option>
+                            @foreach (var t in _portal.Tipos) { <option value="@t.Id">@t.Nombre</option> }
+                        </select>
+                    </div>
+                    <div class="pc-field"><label>Asunto *</label><input @bind="_req.Asunto" maxlength="200" /></div>
+                    <div class="pc-field"><label>Descripcion *</label><textarea rows="4" @bind="_req.Descripcion"></textarea></div>
+
+                    @if (_portal.PermitirAnonimo)
+                    {
+                        <label class="pc-check"><input type="checkbox" @bind="_req.Anonimo" /> Radicar de forma anonima (sin seguimiento por documento)</label>
+                    }
+                    @if (!_req.Anonimo)
+                    {
+                        <div class="pc-row">
+                            <div class="pc-field"><label>Nombre completo *</label><input @bind="_req.RemitenteNombre" maxlength="300" /></div>
+                            <div class="pc-field" style="max-width:110px;"><label>Tipo doc</label>
+                                <select @bind="_req.RemitenteTipoDoc"><option>CC</option><option>CE</option><option>NIT</option><option>PA</option></select>
+                            </div>
+                            <div class="pc-field"><label>Documento *</label><input @bind="_req.RemitenteDocumento" maxlength="40" /></div>
+                        </div>
+                        <div class="pc-row">
+                            <div class="pc-field"><label>Correo</label><input @bind="_req.RemitenteEmail" maxlength="200" /></div>
+                            <div class="pc-field"><label>Telefono</label><input @bind="_req.RemitenteTelefono" maxlength="40" /></div>
+                        </div>
+                    }
+
+                    @if (_portal.ExigirCaptcha)
+                    {
+                        <label class="pc-check"><input type="checkbox" @bind="_req.CaptchaOk" /> No soy un robot (se reforzara con reCAPTCHA v3)</label>
+                    }
+                    @if (!string.IsNullOrEmpty(_portal.AvisoPrivacidad))
+                    {
+                        <label class="pc-check"><input type="checkbox" @bind="_avisoOk" /> He leido y acepto el aviso de privacidad (Ley 1581/2012)</label>
+                        <div class="pc-aviso">@_portal.AvisoPrivacidad</div>
+                    }
+                    @if (_error is not null) { <div class="pc-err">@_error</div> }
+                    <button class="pc-btn" @onclick="RadicarAsync" disabled="@_busy">Radicar</button>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="pc-card">
+                @if (_consulta is null || !_consulta.Ok)
+                {
+                    <div class="pc-field"><label>Numero de radicado *</label><input @bind="_cNumero" /></div>
+                    <div class="pc-field"><label>Documento del solicitante *</label><input @bind="_cDocumento" /></div>
+                    @if (_consulta is not null && !_consulta.Ok) { <div class="pc-err">@_consulta.Error</div> }
+                    <button class="pc-btn" @onclick="ConsultarAsync" disabled="@_busy">Consultar</button>
+                }
+                else
+                {
+                    <h2>@_consulta.Numero</h2>
+                    <div class="pc-estado">@_consulta.Estado</div>
+                    <p><b>Tipo:</b> @_consulta.TipoNombre &middot; <b>Radicado el:</b> @_consulta.Fecha</p>
+                    @if (!string.IsNullOrEmpty(_consulta.Dependencia)) { <p><b>Dependencia:</b> @_consulta.Dependencia</p> }
+                    @if (_consulta.DiasRestantes is int d) { <p><b>Termino:</b> @(d < 0 ? $"{Math.Abs(d)} dias vencido" : $"{d} dias restantes")</p> }
+                    <div class="pc-timeline">
+                        @foreach (var ev in _consulta.Timeline)
+                        {
+                            <div class="pc-ev"><span class="pc-ev-dot"></span><div><b>@ev.Evento</b> <span class="pc-ev-fecha">@ev.Fecha</span></div></div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(_consulta.RespuestaPublica))
+                    {
+                        <div class="pc-resp"><b>Respuesta:</b><p>@_consulta.RespuestaPublica</p></div>
+                    }
+                    <button class="pc-btn pc-btn-sec" @onclick="@(() => _consulta = null)">Nueva consulta</button>
+                }
+            </div>
+        }
+
+        <div class="pc-footer">Radicacion oficial conforme a la Ley 1755/2015. @(_portal.NombreEntidad)</div>
+    </div>
+}
+
+<style>
+    .pc-wrap { max-width:720px; margin:0 auto; padding:24px 16px 60px; font-family:system-ui,sans-serif; }
+    .pc-header h1 { color:var(--pc-color,#405189); margin:0 0 4px; font-size:1.6rem; }
+    .pc-header p { color:#64748b; margin:0; }
+    .pc-banner { background:#eff6ff; border-left:4px solid var(--pc-color,#405189); padding:12px 16px; border-radius:8px; margin:16px 0; font-size:.9rem; }
+    .pc-tabs { display:flex; gap:8px; margin:20px 0 16px; }
+    .pc-tab { flex:1; border:1px solid #e2e8f0; background:#fff; padding:12px; border-radius:10px; cursor:pointer; font-size:.95rem; }
+    .pc-tab.on { background:var(--pc-color,#405189); color:#fff; border-color:var(--pc-color,#405189); }
+    .pc-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:22px; }
+    .pc-field { margin-bottom:14px; display:flex; flex-direction:column; gap:4px; }
+    .pc-field label { font-size:.82rem; color:#334155; font-weight:600; }
+    .pc-field input, .pc-field select, .pc-field textarea { border:1px solid #cbd5e1; border-radius:8px; padding:9px 11px; font-size:.9rem; font-family:inherit; }
+    .pc-row { display:flex; gap:10px; flex-wrap:wrap; } .pc-row .pc-field { flex:1; min-width:120px; }
+    .pc-check { display:flex; gap:8px; align-items:flex-start; font-size:.84rem; color:#334155; margin:8px 0; cursor:pointer; }
+    .pc-aviso { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:.74rem; color:#64748b; max-height:120px; overflow:auto; margin-bottom:10px; white-space:pre-wrap; }
+    .pc-btn { background:var(--pc-color,#405189); color:#fff; border:none; border-radius:10px; padding:12px 20px; font-size:.95rem; cursor:pointer; width:100%; margin-top:8px; }
+    .pc-btn-sec { background:#fff; color:var(--pc-color,#405189); border:1px solid var(--pc-color,#405189); }
+    .pc-err { background:#fee2e2; color:#991b1b; padding:10px; border-radius:8px; font-size:.85rem; margin:10px 0; }
+    .pc-ok h2 { color:#065f46; }
+    .pc-numero, .pc-token { background:#f1f5f9; border-radius:8px; padding:12px; text-align:center; font-size:1.2rem; font-weight:700; letter-spacing:1px; margin:8px 0 16px; }
+    .pc-token { font-size:.95rem; color:#334155; }
+    .pc-estado { display:inline-block; background:var(--pc-color,#405189); color:#fff; padding:4px 14px; border-radius:20px; font-weight:600; margin:6px 0 12px; }
+    .pc-timeline { margin:16px 0; display:flex; flex-direction:column; gap:12px; }
+    .pc-ev { display:flex; gap:10px; } .pc-ev-dot { width:10px; height:10px; border-radius:50%; background:var(--pc-color,#405189); margin-top:5px; }
+    .pc-ev-fecha { color:#94a3b8; font-size:.8rem; }
+    .pc-resp { background:#ecfdf5; border-radius:8px; padding:14px; margin-top:14px; }
+    .pc-footer { text-align:center; color:#94a3b8; font-size:.76rem; margin-top:24px; }
+</style>
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private long? _tid;
+    private bool _notFound;
+    private PortalPublicoDto? _portal;
+    private string _view = "radicar";
+    private bool _busy;
+    private string? _error;
+
+    private PortalRadicarRequest _req = new();
+    private bool _avisoOk;
+    private PortalRadicarResult? _comprobante;
+
+    private string _cNumero = "", _cDocumento = "";
+    private PortalConsultaResult? _consulta;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tid = await PortalSvc.ResolverTenantAsync(Slug);
+        if (_tid is null) { _notFound = true; return; }
+        using (AmbientTenantContext.Begin(_tid.Value)) { _portal = await PortalSvc.GetPortalAsync(); }
+        if (_portal is null) { _notFound = true; }
+    }
+
+    private async Task RadicarAsync()
+    {
+        _error = null;
+        if (_req.TipoComunicacionId <= 0) { _error = "Selecciona el tipo de solicitud."; return; }
+        if (string.IsNullOrWhiteSpace(_req.Asunto) || string.IsNullOrWhiteSpace(_req.Descripcion)) { _error = "Asunto y descripcion son obligatorios."; return; }
+        if (!string.IsNullOrEmpty(_portal?.AvisoPrivacidad) && !_avisoOk) { _error = "Debe aceptar el aviso de privacidad."; return; }
+        _busy = true;
+        try
+        {
+            using (AmbientTenantContext.Begin(_tid!.Value))
+            {
+                var res = await PortalSvc.RadicarAsync(_req);
+                if (!res.Ok) { _error = res.Error; return; }
+                _comprobante = res;
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private void ResetRadicar() { _comprobante = null; _req = new(); _avisoOk = false; _error = null; }
+
+    private async Task ConsultarAsync()
+    {
+        _busy = true;
+        try
+        {
+            using (AmbientTenantContext.Begin(_tid!.Value))
+            {
+                _consulta = await PortalSvc.ConsultarAsync(_cNumero, _cDocumento);
+            }
+        }
+        finally { _busy = false; }
+    }
+}

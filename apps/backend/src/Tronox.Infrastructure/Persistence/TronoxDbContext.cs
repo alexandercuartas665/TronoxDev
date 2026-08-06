@@ -1331,6 +1331,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.RemitenteTelefono).HasMaxLength(40);
             b.Property(x => x.EstadoEnvio).HasMaxLength(20);
             b.Property(x => x.CanalEnvio).HasMaxLength(20);
+            b.Property(x => x.PortalToken).HasMaxLength(64);
+            b.Property(x => x.RespuestaPublica).HasMaxLength(4000);
             b.HasOne(x => x.NivelReserva).WithMany()
                 .HasForeignKey(x => x.NivelReservaId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne(x => x.RadicadoRelacionado).WithMany()
