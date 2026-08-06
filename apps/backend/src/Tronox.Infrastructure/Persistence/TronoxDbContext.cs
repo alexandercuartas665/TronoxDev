@@ -128,6 +128,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<DiaFestivo> DiasFestivos => Set<DiaFestivo>();
     public DbSet<CorreoRecibidoAdjunto> CorreosRecibidosAdjuntos => Set<CorreoRecibidoAdjunto>();
     public DbSet<CorreoDescartado> CorreosDescartados => Set<CorreoDescartado>();
+    public DbSet<RadPrioridad> RadPrioridades => Set<RadPrioridad>();
+    public DbSet<RadPortalConfig> RadPortalConfigs => Set<RadPortalConfig>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -1437,6 +1439,30 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         {
             b.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
             b.HasIndex(x => new { x.TenantId, x.Fecha }).IsUnique();
+        });
+
+        modelBuilder.Entity<RadPrioridad>(b =>
+        {
+            b.Property(x => x.Codigo).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(50).IsRequired();
+            b.Property(x => x.Icono).HasMaxLength(10);
+            b.Property(x => x.Color).HasMaxLength(9);
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+        });
+
+        modelBuilder.Entity<RadPortalConfig>(b =>
+        {
+            b.Property(x => x.NombreEntidad).HasMaxLength(100);
+            b.Property(x => x.Subtitulo).HasMaxLength(200);
+            b.Property(x => x.Nit).HasMaxLength(30);
+            b.Property(x => x.Color).HasMaxLength(9);
+            b.Property(x => x.Banner).HasMaxLength(1000);
+            b.Property(x => x.CanalesAtencion).HasMaxLength(1000);
+            b.Property(x => x.AvisoPrivacidad).HasMaxLength(4000);
+            b.Property(x => x.Faq).HasMaxLength(4000);
+            b.Property(x => x.Slug).HasMaxLength(60);
+            b.HasIndex(x => x.TenantId).IsUnique();
+            b.HasIndex(x => x.Slug).IsUnique();
         });
 
         // Motor de flujos BPMN (RQ11, port del motor de ECOREX). El XML BPMN se guarda tal cual

@@ -314,6 +314,24 @@ MAX(REG), consecutivo sin bloqueo. Build verde.
 
 ---
 
+## 2.j Port Radicacion - Configuracion PQR (2026-08-06)
+
+Port de las dos secciones que faltaban de rad_config (Prioridades + Portal Web). Decision del usuario:
+PANTALLA APARTE (no extender "Configuracion Radicacion"). El resto de rad_config ya estaba cubierto por
+la Config Radicacion RF01 (buzones ya tenian puerto+clave AES; el numero se compone con Entidad.Sigla en
+RadicadorService, no requiere campos extra). Spec en scratchpad/spec_rad_config.md.
+
+- **Dominio:** `RadPrioridad` (RAD_PRIORIDADES, base no eliminable) + `RadPortalConfig` (RAD_PORTAL_CONFIG,
+  singleton, con Slug para resolver el tenant server-side en el portal publico). Migracion
+  `ConfigPqrPrioridadesPortal` (2 tablas).
+- **Application:** `ConfiguracionPqrService` (prioridades CRUD + siembra base Normal/Alta/Urgente; portal
+  config get/save; toggles de tipos publicados via TipoComunicacion.HabilitadoWeb).
+- **Web:** `/modulo/config-pqr` (ConfiguracionPqr.razor): pestanas Prioridades y Portal Web + tipos publicados.
+
+Build verde.
+
+---
+
 ## 3. Interfaz
 
 - Login reconstruido sobre `auth-signin-cover` de Velzon con la marca de RQ01 (PLAN 3.1).

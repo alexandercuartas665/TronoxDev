@@ -1,0 +1,176 @@
+@page "/modulo/config-pqr"
+@attribute [Authorize(Policy = "Perm:modulo/config-pqr:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@inject IConfiguracionPqrService PqrSvc
+@inject NavigationManager Nav
+
+@* RQ09 - RF01 (Configuracion PQR). Pantalla aparte de "Configuracion Radicacion": porta las dos
+   secciones que faltaban de rad_config: Prioridades (RF01-1) y Portal Web ciudadano (RF03-1), mas los
+   toggles de que tipos se publican al ciudadano (TipoComunicacion.HabilitadoWeb). *@
+
+<PageTitle>Configuracion PQR - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Workspace</a><span class="sep">/</span>
+    <span>Configuracion General y Organizacional</span><span class="sep">/</span>
+    <span>General</span><span class="sep">/</span>
+    <span class="cur">Configuracion PQR</span>
+</nav>
+
+<div class="module-head">
+    <div>
+        <div class="module-eyebrow"><span>RQ09 &#183; PQR &#183; Portal ciudadano y prioridades</span></div>
+        <h1 class="page-title" style="margin-top:8px;">Configuracion PQR</h1>
+        <p class="page-sub" style="margin-bottom:0;">Prioridades de radicacion y configuracion del portal ciudadano.</p>
+    </div>
+</div>
+
+@if (_flash is not null) { <div class="mc-flash @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+<div class="tx-tabs">
+    <button class="tx-tab @(_tab == "prio" ? "active" : "")" @onclick='() => _tab = "prio"'>Prioridades</button>
+    <button class="tx-tab @(_tab == "portal" ? "active" : "")" @onclick='() => _tab = "portal"'>Portal Web</button>
+</div>
+
+@if (_tab == "prio")
+{
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-h">
+            <span>Prioridades</span>
+            <span style="margin-left:auto;display:flex;gap:8px;">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="NuevaPrioridadAsync" disabled="@_busy">+ Nueva</button>
+                <button class="btn btn-sm btn-primary" @onclick="GuardarPrioridadesAsync" disabled="@_busy">Guardar</button>
+            </span>
+        </div>
+        <table class="tx-ent-table">
+            <thead><tr><th>Nombre</th><th>Icono</th><th>Color</th><th>SLA (dias)</th><th>Activo</th><th>Base</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in _prioridades)
+                {
+                    <tr>
+                        <td><input class="tx-ent-input" @bind="p.Nombre" maxlength="50" /></td>
+                        <td><input class="tx-ent-input" style="width:60px;" @bind="p.Icono" maxlength="10" /></td>
+                        <td><input type="color" value="@(p.Color ?? "#64748b")" @onchange="@(e => p.Color = e.Value?.ToString())" /></td>
+                        <td><input class="tx-ent-input" style="width:80px;" type="number" @bind="p.SlaSugerido" /></td>
+                        <td><input type="checkbox" @bind="p.Activo" /></td>
+                        <td>@(p.EsBase ? "Si" : "-")</td>
+                        <td>@if (!p.EsBase) { <button class="btn btn-sm btn-outline-danger" @onclick="@(() => InactivarAsync(p.Id))" disabled="@_busy">Inactivar</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="cfg2">
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-h">Portal ciudadano</div>
+            <div class="field"><label class="form-label">Nombre de la entidad *</label><input class="form-control" @bind="_pc.NombreEntidad" maxlength="100" /></div>
+            <div class="field"><label class="form-label">Subtitulo</label><input class="form-control" @bind="_pc.Subtitulo" maxlength="200" /></div>
+            <div class="cfg-row">
+                <div class="field"><label class="form-label">NIT</label><input class="form-control" @bind="_pc.Nit" maxlength="30" /></div>
+                <div class="field"><label class="form-label">Color</label><input type="color" class="form-control" @bind="_pc.Color" /></div>
+                <div class="field"><label class="form-label">Max adjunto (MB)</label><input class="form-control" type="number" @bind="_pc.MaxAdjuntoMb" /></div>
+            </div>
+            <div class="field"><label class="form-label">Slug del portal (URL publica)</label><input class="form-control" @bind="_pc.Slug" maxlength="60" placeholder="ej. alcaldia-demo" /></div>
+            <div class="field"><label class="form-label">Banner / bienvenida</label><textarea class="form-control" rows="2" @bind="_pc.Banner"></textarea></div>
+            <div class="field"><label class="form-label">Canales de atencion</label><textarea class="form-control" rows="2" @bind="_pc.CanalesAtencion"></textarea></div>
+            <div class="field"><label class="form-label">Aviso de privacidad (Ley 1581/2012)</label><textarea class="form-control" rows="3" @bind="_pc.AvisoPrivacidad"></textarea></div>
+            <div class="field"><label class="form-label">Preguntas frecuentes (Pregunta|Respuesta por linea)</label><textarea class="form-control" rows="3" @bind="_pc.Faq"></textarea></div>
+            <div class="cfg-row">
+                <label class="dc-req"><input type="checkbox" @bind="_pc.PermitirAnonimo" /> Permitir radicacion anonima</label>
+                <label class="dc-req"><input type="checkbox" @bind="_pc.ExigirCaptcha" /> Exigir captcha (reCAPTCHA)</label>
+            </div>
+            <button class="btn btn-primary" @onclick="GuardarPortalAsync" disabled="@_busy">Guardar portal</button>
+            @if (!string.IsNullOrEmpty(_pc.Slug))
+            {
+                <div class="cfg-embed">
+                    <div class="page-sub" style="font-size:.76rem;margin:12px 0 4px;">Enlace del portal:</div>
+                    <code>@PortalUrl</code>
+                </div>
+            }
+        </div>
+
+        <div class="tx-ent-card">
+            <div class="tx-ent-card-h">Tipos publicados al ciudadano</div>
+            <p class="page-sub" style="font-size:.78rem;">Marca que tipos de comunicacion puede radicar el ciudadano en el portal.</p>
+            <table class="tx-ent-table">
+                <thead><tr><th>Publicar</th><th>Tipo</th></tr></thead>
+                <tbody>
+                    @foreach (var t in _tiposWeb)
+                    {
+                        <tr>
+                            <td><input type="checkbox" checked="@t.HabilitadoWeb" @onchange="@(e => ToggleTipoAsync(t.Id, (bool)e.Value!))" /></td>
+                            <td><span class="pn-dot" style="background:@(t.Color ?? "#405189")"></span>@t.Nombre</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<style>
+    .cfg2 { display:grid; grid-template-columns:1.4fr 1fr; gap:16px; align-items:start; }
+    .cfg-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .cfg-row .field { flex:1; min-width:120px; }
+    .cfg-embed code { display:block; background:var(--tx-muted,#f1f5f9); padding:8px; border-radius:6px; font-size:.76rem; word-break:break-all; }
+    .pn-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+    @@media (max-width:900px){ .cfg2 { grid-template-columns:1fr; } }
+</style>
+
+@code {
+    private string _tab = "prio";
+    private bool _busy;
+    private string? _flash; private bool _flashOk;
+    private List<PrioridadDto> _prioridades = new();
+    private PortalConfigDto _pc = new();
+    private IReadOnlyList<TipoWebDto> _tiposWeb = Array.Empty<TipoWebDto>();
+
+    private string PortalUrl => $"{Nav.BaseUri.TrimEnd('/')}/portal/{_pc.Slug}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _prioridades = (await PqrSvc.ListarPrioridadesAsync()).ToList();
+        _pc = await PqrSvc.GetPortalConfigAsync();
+        _tiposWeb = await PqrSvc.ListarTiposWebAsync();
+    }
+
+    private async Task NuevaPrioridadAsync()
+    {
+        _busy = true;
+        try { await PqrSvc.CrearPrioridadAsync(); _prioridades = (await PqrSvc.ListarPrioridadesAsync()).ToList(); }
+        finally { _busy = false; }
+    }
+
+    private async Task GuardarPrioridadesAsync()
+    {
+        _busy = true;
+        try { await PqrSvc.GuardarPrioridadesAsync(_prioridades); Flash("Prioridades guardadas.", true); }
+        finally { _busy = false; }
+    }
+
+    private async Task InactivarAsync(long id)
+    {
+        _busy = true;
+        try { await PqrSvc.InactivarPrioridadAsync(id); _prioridades = (await PqrSvc.ListarPrioridadesAsync()).ToList(); }
+        finally { _busy = false; }
+    }
+
+    private async Task GuardarPortalAsync()
+    {
+        _busy = true;
+        try { await PqrSvc.GuardarPortalConfigAsync(_pc); _pc = await PqrSvc.GetPortalConfigAsync(); Flash("Portal guardado.", true); }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleTipoAsync(long id, bool val)
+    {
+        await PqrSvc.ToggleTipoWebAsync(id, val);
+        _tiposWeb = await PqrSvc.ListarTiposWebAsync();
+    }
+
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+}
