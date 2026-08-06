@@ -54,11 +54,12 @@ public sealed class RadicadorService : IRadicadorService
         }
 
         // ---- Consecutivo (SELECT FOR UPDATE, reinicio anual por codigo con el anio) ----
+        // El codigo de secuencia debe caber en varchar(10): "RADE2026" (tipo+anio), no "RAD-Entrada-2026".
         var anio = DateTime.UtcNow.Year;
-        var code = $"RAD-{req.Tipo}-{anio}";
+        var cod = req.Tipo switch { RadicadoTipo.Entrada => "E", RadicadoTipo.Salida => "S", _ => "I" };
+        var code = $"RAD{cod}{anio}";
         await _sequences.EnsureSequenceAsync(code, ct);
         var consec = await _sequences.NextAsync(code, "", digitos, ct);
-        var cod = req.Tipo switch { RadicadoTipo.Entrada => "E", RadicadoTipo.Salida => "S", _ => "I" };
         var numero = string.Join(separador, sigla, cod, anio.ToString(), consec);
 
         var radicado = new Radicado
