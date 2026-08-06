@@ -2,11 +2,12 @@ namespace Tronox.Application.Radicacion;
 
 /// <summary>Datos publicos del portal (branding + tipos publicados) para pintar la pagina publica.</summary>
 public sealed record PortalPublicoDto(
-    string? NombreEntidad, string? Subtitulo, string? Color, string? Banner, bool PermitirAnonimo,
-    bool ExigirCaptcha, string? AvisoPrivacidad, int MaxAdjuntoMb, string? Faq,
+    string? NombreEntidad, string? Subtitulo, string? Nit, string? Color, string? Banner, bool PermitirAnonimo,
+    bool ExigirCaptcha, string? CanalesAtencion, string? AvisoPrivacidad, int MaxAdjuntoMb, string? Faq,
     IReadOnlyList<TipoPublicoDto> Tipos);
 
-public sealed record TipoPublicoDto(long Id, string Nombre, string? DescripcionCiudadano);
+public sealed record TipoPublicoDto(long Id, string Codigo, string Nombre, string? Icono, string? Color,
+    bool EsPqrsd, string Termino, string? DescripcionCiudadano);
 
 /// <summary>Solicitud de radicacion desde el portal (props mutables para @bind).</summary>
 public sealed class PortalRadicarRequest

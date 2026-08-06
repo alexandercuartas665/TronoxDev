@@ -5,157 +5,374 @@
 @using Tronox.Application.Radicacion
 @using Tronox.Web.Auth
 @inject IPortalCiudadanoService PortalSvc
+@inject IJSRuntime JS
 
-@* RQ09 - RF03 (Portal ciudadano de radicacion, port de rad_portal). Superficie PUBLICA (sin login):
-   radicar PQRSD + consultar estado. El tenant se resuelve por SLUG server-side (no por query
-   manipulable). Cada llamada al servicio corre bajo AmbientTenantContext.Begin(tenant). *@
+@* RQ09 - RF03 (Portal ciudadano, port de rad_portal). Diseno CALCADO del legacy VB.NET (hero + tarjetas
+   de tipos + wizard de 3 pasos + exito + consulta con semaforo/timeline), con su CSS tal cual. Superficie
+   publica; tenant por slug (ADR-014); radicar reutiliza RadicadorService. Captcha como refuerzo (toggle);
+   adjuntos diferidos (upload). *@
 
-<PageTitle>@(_portal?.NombreEntidad ?? "Portal de Radicacion")</PageTitle>
+<PageTitle>Portal de Radicacion</PageTitle>
 
 @if (_notFound)
 {
-    <div class="pc-wrap"><div class="pc-card"><h2>Portal no encontrado</h2><p>El enlace del portal no es valido.</p></div></div>
+    <div class="pt-load"><div style="color:#B91C1C;font-size:14px">No fue posible cargar el portal.</div></div>
 }
 else if (_portal is null)
 {
-    <div class="pc-wrap"><p style="padding:40px;text-align:center;">Cargando portal...</p></div>
+    <div class="pt-load"><div class="pt-spin"></div><div>Cargando portal...</div></div>
 }
 else
 {
-    <div class="pc-wrap" style="--pc-color:@(_portal.Color ?? "#405189")">
-        <div class="pc-header">
-            <h1>@(_portal.NombreEntidad ?? "Portal de Radicacion")</h1>
-            @if (!string.IsNullOrEmpty(_portal.Subtitulo)) { <p>@_portal.Subtitulo</p> }
-        </div>
-        @if (!string.IsNullOrEmpty(_portal.Banner)) { <div class="pc-banner">@_portal.Banner</div> }
+    var navy = _portal.Color ?? "#405189";
+    <div style="--navy:@navy">
 
-        <div class="pc-tabs">
-            <button class="pc-tab @(_view == "radicar" ? "on" : "")" @onclick='() => _view = "radicar"'>Radicar PQRSD</button>
-            <button class="pc-tab @(_view == "consultar" ? "on" : "")" @onclick='() => _view = "consultar"'>Consultar estado</button>
-        </div>
-
-        @if (_view == "radicar")
-        {
-            @if (_comprobante is not null)
-            {
-                <div class="pc-card pc-ok">
-                    <h2>Radicacion exitosa</h2>
-                    <p>Su solicitud fue radicada con el numero:</p>
-                    <div class="pc-numero">@_comprobante.Numero</div>
-                    <p>Guarde este numero y su token de seguimiento para consultar el estado:</p>
-                    <div class="pc-token">@_comprobante.Token</div>
-                    <button class="pc-btn" @onclick="ResetRadicar">Radicar otra</button>
+    @if (_view == "home" || _view == "wizard" || _view == "consulta")
+    {
+        @* ══ RF03-1 — Inicio del portal ══ *@
+        <div>
+            <div class="pt-hero">
+                <div class="pt-hero-top">
+                    <h1>@(_portal.NombreEntidad) &mdash; Sede Electronica</h1>
+                    <div class="s">Portal ciudadano</div>
                 </div>
-            }
-            else
-            {
-                <div class="pc-card">
-                    <div class="pc-field">
-                        <label>Tipo de solicitud *</label>
-                        <select @bind="_req.TipoComunicacionId">
-                            <option value="0">Selecciona...</option>
-                            @foreach (var t in _portal.Tipos) { <option value="@t.Id">@t.Nombre</option> }
-                        </select>
+                <div class="pt-hero-main">
+                    <h2>Radique su solicitud en linea</h2>
+                    <p>@(_portal.Banner ?? "Presente peticiones, quejas, recursos, denuncias y demas comunicaciones directamente desde este portal. Recibira su numero de radicado de forma inmediata.")</p>
+                    <button type="button" class="pt-btn blanco" @onclick="IrWizardNuevo">&rarr; Radicar nueva solicitud</button>
+                    <button type="button" class="pt-btn borde" @onclick='() => _view = "consulta"'>&#128269; Consultar estado</button>
+                </div>
+            </div>
+            <div class="pt-sec">
+                <h3>Tipos de solicitud que puede radicar</h3>
+                <div class="sub">Estos son los tramites disponibles. Elegira el tipo al iniciar la radicacion.</div>
+                <div class="pt-cards">
+                    @if (_portal.Tipos.Count == 0)
+                    {
+                        <div style="color:#94A3B8;font-size:13px">No hay tipos habilitados en el portal.</div>
+                    }
+                    @foreach (var t in _portal.Tipos)
+                    {
+                        <div class="pt-card" style="border-top-color:@(t.Color ?? "#405189")" @onclick="@(() => ElegirTipo(t))">
+                            <div class="ic">@(string.IsNullOrEmpty(t.Icono) ? "\U0001F4CB" : t.Icono)</div>
+                            <div class="n">@t.Nombre</div>
+                            <div class="t">@t.Termino</div>
+                            @if (t.EsPqrsd) { <div class="pq">&#9733; PQRSD</div> }
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="pt-sec" style="padding-top:6px">
+                <div class="pt-info">
+                    <div class="pt-box"><b class="t">&#128222; Canales de atencion</b>@(_portal.CanalesAtencion ?? "-")</div>
+                    <div class="pt-box"><b class="t">&#10067; Preguntas frecuentes</b>@RenderFaq()</div>
+                    <div class="pt-box"><b class="t">&#128274; Aviso de privacidad - Ley 1581/2012</b>@(_portal.AvisoPrivacidad ?? "")</div>
+                </div>
+            </div>
+            <div class="pt-footer">&copy; @DateTime.Now.Year @(_portal.NombreEntidad) &middot; Sistema de Gestion Documental &middot; Datos protegidos (Ley 1581/2012)</div>
+        </div>
+    }
+
+    @* ══ RF03-2 — Wizard de radicacion (pop-up) ══ *@
+    @if (_view == "wizard")
+    {
+        <div class="pt-modal">
+            <div class="wc-wrap">
+                <div class="wc">
+                    <div class="wc-head">
+                        <div class="av">@((_portal.NombreEntidad ?? "T").Substring(0, 1))</div>
+                        <div><div class="e">@_portal.NombreEntidad</div><div class="s">@(_portal.Subtitulo)</div></div>
+                        <button type="button" class="wc-x" @onclick='() => _view = "home"' title="Cerrar">&#10005;</button>
                     </div>
-                    <div class="pc-field"><label>Asunto *</label><input @bind="_req.Asunto" maxlength="200" /></div>
-                    <div class="pc-field"><label>Descripcion *</label><textarea rows="4" @bind="_req.Descripcion"></textarea></div>
-
-                    @if (_portal.PermitirAnonimo)
-                    {
-                        <label class="pc-check"><input type="checkbox" @bind="_req.Anonimo" /> Radicar de forma anonima (sin seguimiento por documento)</label>
-                    }
-                    @if (!_req.Anonimo)
-                    {
-                        <div class="pc-row">
-                            <div class="pc-field"><label>Nombre completo *</label><input @bind="_req.RemitenteNombre" maxlength="300" /></div>
-                            <div class="pc-field" style="max-width:110px;"><label>Tipo doc</label>
-                                <select @bind="_req.RemitenteTipoDoc"><option>CC</option><option>CE</option><option>NIT</option><option>PA</option></select>
-                            </div>
-                            <div class="pc-field"><label>Documento *</label><input @bind="_req.RemitenteDocumento" maxlength="40" /></div>
-                        </div>
-                        <div class="pc-row">
-                            <div class="pc-field"><label>Correo</label><input @bind="_req.RemitenteEmail" maxlength="200" /></div>
-                            <div class="pc-field"><label>Telefono</label><input @bind="_req.RemitenteTelefono" maxlength="40" /></div>
-                        </div>
-                    }
-
-                    @if (_portal.ExigirCaptcha)
-                    {
-                        <label class="pc-check"><input type="checkbox" @bind="_req.CaptchaOk" /> No soy un robot (se reforzara con reCAPTCHA v3)</label>
-                    }
-                    @if (!string.IsNullOrEmpty(_portal.AvisoPrivacidad))
-                    {
-                        <label class="pc-check"><input type="checkbox" @bind="_avisoOk" /> He leido y acepto el aviso de privacidad (Ley 1581/2012)</label>
-                        <div class="pc-aviso">@_portal.AvisoPrivacidad</div>
-                    }
-                    @if (_error is not null) { <div class="pc-err">@_error</div> }
-                    <button class="pc-btn" @onclick="RadicarAsync" disabled="@_busy">Radicar</button>
-                </div>
-            }
-        }
-        else
-        {
-            <div class="pc-card">
-                @if (_consulta is null || !_consulta.Ok)
-                {
-                    <div class="pc-field"><label>Numero de radicado *</label><input @bind="_cNumero" /></div>
-                    <div class="pc-field"><label>Documento del solicitante *</label><input @bind="_cDocumento" /></div>
-                    @if (_consulta is not null && !_consulta.Ok) { <div class="pc-err">@_consulta.Error</div> }
-                    <button class="pc-btn" @onclick="ConsultarAsync" disabled="@_busy">Consultar</button>
-                }
-                else
-                {
-                    <h2>@_consulta.Numero</h2>
-                    <div class="pc-estado">@_consulta.Estado</div>
-                    <p><b>Tipo:</b> @_consulta.TipoNombre &middot; <b>Radicado el:</b> @_consulta.Fecha</p>
-                    @if (!string.IsNullOrEmpty(_consulta.Dependencia)) { <p><b>Dependencia:</b> @_consulta.Dependencia</p> }
-                    @if (_consulta.DiasRestantes is int d) { <p><b>Termino:</b> @(d < 0 ? $"{Math.Abs(d)} dias vencido" : $"{d} dias restantes")</p> }
-                    <div class="pc-timeline">
-                        @foreach (var ev in _consulta.Timeline)
+                    <div class="wc-steps">
+                        @for (int i = 1; i <= 3; i++)
                         {
-                            <div class="pc-ev"><span class="pc-ev-dot"></span><div><b>@ev.Evento</b> <span class="pc-ev-fecha">@ev.Fecha</span></div></div>
+                            var cls = _paso > i ? "done" : _paso == i ? "cur" : "";
+                            <div class="wc-step @cls"><div class="b">@(_paso > i ? "✓" : i.ToString())</div><span class="l">@(_stepLabels[i - 1])</span></div>
+                            if (i < 3) { <div class="wc-line @(_paso > i ? "done" : "")"></div> }
                         }
                     </div>
-                    @if (!string.IsNullOrEmpty(_consulta.RespuestaPublica))
-                    {
-                        <div class="pc-resp"><b>Respuesta:</b><p>@_consulta.RespuestaPublica</p></div>
-                    }
-                    <button class="pc-btn pc-btn-sec" @onclick="@(() => _consulta = null)">Nueva consulta</button>
-                }
+                    <div class="wc-body">
+                        @if (_paso == 1)
+                        {
+                            <h3>Sus datos</h3>
+                            <div class="sub">Complete la verificacion de seguridad e identifiquese para recibir su comprobante y respuesta.</div>
+                            @if (_portal.ExigirCaptcha)
+                            {
+                                <div class="fld"><label>Verificacion de seguridad <span class="req">*</span></label>
+                                    <div class="cap2">
+                                        <input class="in" @bind="_captchaTxt" maxlength="5" autocomplete="off" placeholder="CODIGO" />
+                                    </div>
+                                    <div class="hint">Escriba el codigo (reCAPTCHA v3 reforzara esta validacion)</div>
+                                </div>
+                            }
+                            <div style="margin-bottom:14px">
+                                @foreach (var (val, lbl) in _remitenteOpts)
+                                {
+                                    if (val == "anonimo" && !_portal.PermitirAnonimo) { continue; }
+                                    <button type="button" class="chip @(_tipoRemitente == val ? "on" : "")" @onclick="@(() => _tipoRemitente = val)">@lbl</button>
+                                }
+                            </div>
+                            @if (_tipoRemitente != "anonimo")
+                            {
+                                <div class="grid2">
+                                    <div class="fld"><label>Tipo de documento <span class="req">*</span></label>
+                                        <select class="in" @bind="_req.RemitenteTipoDoc">
+                                            @foreach (var d in new[] { "CC", "NIT", "CE", "Pasaporte", "TI", "PPT" }) { <option>@d</option> }
+                                        </select>
+                                    </div>
+                                    <div class="fld"><label>Numero de documento <span class="req">*</span></label>
+                                        <input class="in" @bind="_req.RemitenteDocumento" placeholder="Ej: 1.020.456.789" /></div>
+                                </div>
+                                <div class="fld"><label>Nombre completo <span class="req">*</span></label>
+                                    <input class="in" @bind="_req.RemitenteNombre" placeholder="Nombre o razon social" /></div>
+                                <div class="grid2b">
+                                    <div class="fld"><label>Correo electronico <span class="req">*</span></label>
+                                        <input class="in" type="email" @bind="_req.RemitenteEmail" placeholder="correo@@ejemplo.com" />
+                                        <div class="hint">Aqui recibira su comprobante</div></div>
+                                    <div class="fld"><label>Telefono</label><input class="in" @bind="_req.RemitenteTelefono" placeholder="Numero de contacto" /></div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="fld" style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:12px 14px;font-size:13px;color:#92400E">Radicacion anonima: no recibira comprobante por correo. Guarde su numero de radicado al finalizar.</div>
+                            }
+                            <label class="chk"><input type="checkbox" @bind="_autoriza" /> <span>Autorizo el tratamiento de mis datos personales conforme a la Ley 1581 de 2012 y la politica de privacidad de la entidad. <span class="req">*</span></span></label>
+                            @if (_error is not null) { <div class="pt-inerr">@_error</div> }
+                            <div class="wc-foot"><span></span><button type="button" class="pt-btn navy" @onclick="Paso1Next">Continuar &rarr;</button></div>
+                        }
+                        else if (_paso == 2)
+                        {
+                            <h3>Su solicitud</h3>
+                            <div class="sub">Elija el tipo de solicitud, describala y adjunte documentos de soporte.</div>
+                            <div class="fld"><label>Tipo de solicitud <span class="req">*</span></label>
+                                <div class="tcards">
+                                    @foreach (var t in _portal.Tipos)
+                                    {
+                                        <button type="button" class="tcard @(_req.TipoComunicacionId == t.Id ? "on" : "")" @onclick="@(() => ElegirTipoWizard(t))">
+                                            <div class="n">@(string.IsNullOrEmpty(t.Icono) ? "\U0001F4CB" : t.Icono) @t.Nombre</div>
+                                            <div class="t">@t.Termino.Replace("Respuesta: ", "")</div>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="fld"><label>Asunto <span class="req">*</span></label>
+                                <input class="in" maxlength="500" @bind="_req.Asunto" @bind:event="oninput" placeholder="Resuma su solicitud en una frase" />
+                                <div class="hint">@((_req.Asunto ?? "").Length)/500 caracteres</div></div>
+                            <div class="fld"><label>Descripcion detallada</label>
+                                <textarea class="in" rows="4" @bind="_req.Descripcion" placeholder="Explique con detalle su solicitud..."></textarea></div>
+                            <div class="fld"><label>Documentos adjuntos</label>
+                                <div class="drop"><div style="font-size:26px">&#128206;</div>
+                                    <div style="font-weight:700;font-size:14px;margin-top:6px">Adjuntar archivos</div>
+                                    <div style="font-size:12px;color:#94A3B8;margin-top:3px">La carga de adjuntos se habilita en una segunda pasada</div></div>
+                                <div class="hint">Formatos: PDF, JPG, PNG &middot; Max. @_portal.MaxAdjuntoMb MB por archivo</div></div>
+                            @if (_error is not null) { <div class="pt-inerr">@_error</div> }
+                            <div class="wc-foot"><button type="button" class="pt-btn soft" @onclick="@(() => _paso = 1)">&larr; Atras</button><button type="button" class="pt-btn navy" @onclick="Paso2Next">Revisar &rarr;</button></div>
+                        }
+                        else
+                        {
+                            var t = _portal.Tipos.FirstOrDefault(x => x.Id == _req.TipoComunicacionId);
+                            <h3>Confirme su radicacion</h3>
+                            <div class="sub">Revise la informacion antes de enviar. Una vez radicada no podra modificarla.</div>
+                            <div class="resumen">
+                                @ResRow("Tipo de solicitud", t?.Nombre ?? "-")
+                                @ResRow("Solicitante", _tipoRemitente == "anonimo" ? "Anonimo" : _req.RemitenteNombre)
+                                @ResRow("Documento", _tipoRemitente == "anonimo" ? "-" : $"{_req.RemitenteTipoDoc} {_req.RemitenteDocumento}")
+                                @ResRow("Correo", _tipoRemitente == "anonimo" ? "-" : _req.RemitenteEmail)
+                                @ResRow("Asunto", _req.Asunto)
+                                @ResRow("Termino de respuesta", t?.Termino.Replace("Respuesta: ", "") ?? "-")
+                            </div>
+                            <label class="chk"><input type="checkbox" @bind="_veraz" /> <span>Certifico que la informacion suministrada es veraz y asumo la responsabilidad correspondiente. <span class="req">*</span></span></label>
+                            @if (_error is not null) { <div class="pt-inerr">@_error</div> }
+                            <div class="wc-foot"><button type="button" class="pt-btn soft" @onclick="@(() => _paso = 2)">&larr; Atras</button>
+                                <button type="button" class="pt-btn verde" @onclick="RadicarAsync" disabled="@_busy">&#10003; Radicar solicitud</button></div>
+                        }
+                    </div>
+                </div>
             </div>
-        }
+        </div>
+    }
 
-        <div class="pc-footer">Radicacion oficial conforme a la Ley 1755/2015. @(_portal.NombreEntidad)</div>
+    @* ══ RF03-3 — Radicacion exitosa ══ *@
+    @if (_view == "exito" && _comprobante is not null)
+    {
+        <div class="exito-wrap">
+            <div class="exito">
+                <div class="ic">&#9989;</div>
+                <h2>&iexcl;Solicitud radicada!</h2>
+                <div class="sub">Su solicitud fue recibida correctamente. Guarde su numero de radicado para hacer seguimiento.</div>
+                <div class="numbox">
+                    <div class="l">NUMERO DE RADICADO</div>
+                    <div class="num">@_comprobante.Numero</div>
+                    <div style="margin-top:12px"><button type="button" class="pt-btn soft" @onclick="Copiar">&#128203; Copiar numero</button></div>
+                </div>
+                <div class="meta">Token de seguimiento: <b>@_comprobante.Token</b> &middot; guardelo para consultar el estado.</div>
+                <div class="acc">
+                    <button type="button" class="pt-btn soft" @onclick='() => _view = "consulta"'>&#128269; Consultar estado</button>
+                    <button type="button" class="pt-btn soft" @onclick="OtraSolicitud">Radicar otra solicitud</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ══ RF03-4 — Consulta ciudadana (pop-up) ══ *@
+    @if (_view == "consulta")
+    {
+        <div class="pt-modal">
+            <div class="wc-wrap" style="max-width:640px">
+                <div class="wc">
+                    <div class="wc-head">
+                        <div class="av">@((_portal.NombreEntidad ?? "T").Substring(0, 1))</div>
+                        <div><div class="e">Consultar estado de mi radicado</div><div class="s">@_portal.NombreEntidad</div></div>
+                        <button type="button" class="wc-x" @onclick='() => { _view = "home"; _consulta = null; }' title="Cerrar">&#10005;</button>
+                    </div>
+                    <div class="wc-body">
+                        <div class="sub">Ingrese el numero de radicado y el documento del solicitante.</div>
+                        <div class="fld"><label>Numero de radicado <span class="req">*</span></label>
+                            <input class="in" @bind="_cNumero" placeholder="Ej: TRNX-E-2026-000147" style="font-family:Consolas,monospace" /></div>
+                        <div class="fld"><label>Numero de documento del solicitante <span class="req">*</span></label>
+                            <input class="in" @bind="_cDocumento" placeholder="Documento con el que radico" /></div>
+                        <div class="wc-foot"><span></span><button type="button" class="pt-btn navy" @onclick="ConsultarAsync" disabled="@_busy">&#128269; Consultar</button></div>
+                        <div style="margin-top:18px">
+                            @if (_consulta is not null && !_consulta.Ok)
+                            {
+                                <div class="fld" style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:12px 14px;font-size:13px;color:#B91C1C">@_consulta.Error</div>
+                            }
+                            else if (_consulta is not null && _consulta.Ok)
+                            {
+                                <div class="resumen">
+                                    @ResRow("Radicado", _consulta.Numero)
+                                    @ResRow("Tipo", _consulta.TipoNombre)
+                                    @ResRow("Fecha de radicacion", _consulta.Fecha)
+                                    @ResRow("Estado actual", _consulta.Estado)
+                                    @ResRow("Dependencia responsable", _consulta.Dependencia ?? "-")
+                                    <div class="res-row"><span class="k">Termino</span><span class="v">@Semaforo(_consulta.DiasRestantes)</span></div>
+                                </div>
+                                @if (_consulta.Timeline.Count > 0)
+                                {
+                                    <b style="font-size:14px">Linea de tiempo</b>
+                                    <div class="tl">
+                                        @foreach (var ev in _consulta.Timeline)
+                                        {
+                                            <div class="tl-item">@ev.Evento<div class="f">@ev.Fecha</div></div>
+                                        }
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(_consulta.RespuestaPublica))
+                                {
+                                    <div class="fld" style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:14px 16px;font-size:13.5px;color:#166534;margin-top:14px"><b>Respuesta de la entidad:</b><br />@_consulta.RespuestaPublica</div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
     </div>
 }
 
 <style>
-    .pc-wrap { max-width:720px; margin:0 auto; padding:24px 16px 60px; font-family:system-ui,sans-serif; }
-    .pc-header h1 { color:var(--pc-color,#405189); margin:0 0 4px; font-size:1.6rem; }
-    .pc-header p { color:#64748b; margin:0; }
-    .pc-banner { background:#eff6ff; border-left:4px solid var(--pc-color,#405189); padding:12px 16px; border-radius:8px; margin:16px 0; font-size:.9rem; }
-    .pc-tabs { display:flex; gap:8px; margin:20px 0 16px; }
-    .pc-tab { flex:1; border:1px solid #e2e8f0; background:#fff; padding:12px; border-radius:10px; cursor:pointer; font-size:.95rem; }
-    .pc-tab.on { background:var(--pc-color,#405189); color:#fff; border-color:var(--pc-color,#405189); }
-    .pc-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:22px; }
-    .pc-field { margin-bottom:14px; display:flex; flex-direction:column; gap:4px; }
-    .pc-field label { font-size:.82rem; color:#334155; font-weight:600; }
-    .pc-field input, .pc-field select, .pc-field textarea { border:1px solid #cbd5e1; border-radius:8px; padding:9px 11px; font-size:.9rem; font-family:inherit; }
-    .pc-row { display:flex; gap:10px; flex-wrap:wrap; } .pc-row .pc-field { flex:1; min-width:120px; }
-    .pc-check { display:flex; gap:8px; align-items:flex-start; font-size:.84rem; color:#334155; margin:8px 0; cursor:pointer; }
-    .pc-aviso { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:.74rem; color:#64748b; max-height:120px; overflow:auto; margin-bottom:10px; white-space:pre-wrap; }
-    .pc-btn { background:var(--pc-color,#405189); color:#fff; border:none; border-radius:10px; padding:12px 20px; font-size:.95rem; cursor:pointer; width:100%; margin-top:8px; }
-    .pc-btn-sec { background:#fff; color:var(--pc-color,#405189); border:1px solid var(--pc-color,#405189); }
-    .pc-err { background:#fee2e2; color:#991b1b; padding:10px; border-radius:8px; font-size:.85rem; margin:10px 0; }
-    .pc-ok h2 { color:#065f46; }
-    .pc-numero, .pc-token { background:#f1f5f9; border-radius:8px; padding:12px; text-align:center; font-size:1.2rem; font-weight:700; letter-spacing:1px; margin:8px 0 16px; }
-    .pc-token { font-size:.95rem; color:#334155; }
-    .pc-estado { display:inline-block; background:var(--pc-color,#405189); color:#fff; padding:4px 14px; border-radius:20px; font-weight:600; margin:6px 0 12px; }
-    .pc-timeline { margin:16px 0; display:flex; flex-direction:column; gap:12px; }
-    .pc-ev { display:flex; gap:10px; } .pc-ev-dot { width:10px; height:10px; border-radius:50%; background:var(--pc-color,#405189); margin-top:5px; }
-    .pc-ev-fecha { color:#94a3b8; font-size:.8rem; }
-    .pc-resp { background:#ecfdf5; border-radius:8px; padding:14px; margin-top:14px; }
-    .pc-footer { text-align:center; color:#94a3b8; font-size:.76rem; margin-top:24px; }
+    /* RQ09 RF03 - Portal ciudadano (CALCADO del legacy rad_portal.aspx) */
+    .pt-load { min-height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; color: #566980; font-size: 13px; background:#F1F5F9; }
+    .pt-spin { width: 42px; height: 42px; border-radius: 50%; border: 4px solid #E2E8F0; border-top-color: #405189; animation: ptspin .8s linear infinite; }
+    @@keyframes ptspin { to { transform: rotate(360deg); } }
+    body, .pt-hero { font-family: Poppins, 'Segoe UI', Arial, sans-serif; }
+    .pt-hero { background: var(--navy, #405189); color: #fff; }
+    .pt-hero h1, .pt-hero h2, .pt-hero p, .pt-hero .s { color: #fff !important; }
+    .pt-hero-top { padding: 22px 5%; }
+    .pt-hero-top h1 { margin: 0; font-size: 24px; font-weight: 800; }
+    .pt-hero-top .s { font-size: 13px; opacity: .85; margin-top: 3px; }
+    .pt-hero-main { padding: 34px 5% 44px; }
+    .pt-hero-main h2 { margin: 0 0 12px; font-size: 32px; font-weight: 800; }
+    .pt-hero-main p { margin: 0 0 22px; font-size: 15px; opacity: .9; max-width: 640px; line-height: 1.6; }
+    .pt-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; border: none; }
+    .pt-btn.blanco { background: #fff; color: var(--navy, #405189); }
+    .pt-btn.borde { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.6); margin-left: 10px; }
+    .pt-btn.navy { background: var(--navy, #405189); color: #fff; }
+    .pt-btn.verde { background: #0ab39c; color: #fff; }
+    .pt-btn.soft { background: #fff; color: #566980; border: 1px solid #D5DDE9; }
+    .pt-sec { padding: 30px 5%; background:#F1F5F9; }
+    .pt-sec h3 { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
+    .pt-sec .sub { font-size: 13px; color: #64748B; margin-bottom: 18px; }
+    .pt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+    .pt-card { background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.07); border-top: 3px solid #405189; cursor: pointer; transition: transform .15s, box-shadow .15s; }
+    .pt-card:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+    .pt-card .ic { font-size: 24px; margin-bottom: 8px; }
+    .pt-card .n { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .pt-card .t { font-size: 12.5px; color: #64748B; }
+    .pt-card .pq { font-size: 11px; color: #7C3AED; font-weight: 700; margin-top: 6px; }
+    .pt-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .pt-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.07); font-size: 13px; line-height: 1.7; color: #475569; white-space:pre-wrap; }
+    .pt-box b.t { display: block; font-size: 14px; color: #212529; margin-bottom: 8px; }
+    .pt-footer { text-align: center; font-size: 12px; color: #94A3B8; padding: 24px 5% 36px; background:#F1F5F9; }
+    .wc-wrap { max-width: 860px; margin: 26px auto 40px; padding: 0 16px; }
+    .wc { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+    .wc-head { background: var(--navy, #405189); color: #fff; padding: 18px 26px; display: flex; align-items: center; gap: 14px; }
+    .wc-head .av { width: 42px; height: 42px; border-radius: 10px; background: #0ab39c; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; flex-shrink: 0; }
+    .wc-head .e { font-size: 17px; font-weight: 800; }
+    .wc-head .s { font-size: 12px; opacity: .85; }
+    .wc-steps { display: flex; align-items: center; justify-content: center; padding: 16px 26px; border-bottom: 1px solid #E2E8F0; gap: 0; }
+    .wc-step { display: flex; align-items: center; gap: 8px; }
+    .wc-step .b { width: 28px; height: 28px; border-radius: 50%; background: #E2E8F0; color: #94A3B8; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .wc-step.cur .b { background: var(--navy, #405189); color: #fff; }
+    .wc-step.done .b { background: #0ab39c; color: #fff; }
+    .wc-step .l { font-size: 12.5px; color: #94A3B8; }
+    .wc-step.cur .l { color: var(--navy, #405189); font-weight: 700; }
+    .wc-step.done .l { color: #0ab39c; }
+    .wc-line { width: 90px; max-width: 14vw; height: 2px; background: #E2E8F0; margin: 0 12px; }
+    .wc-line.done { background: #0ab39c; }
+    .wc-body { padding: 26px 8%; }
+    .wc-body h3 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
+    .wc-body .sub { font-size: 13px; color: #64748B; margin-bottom: 18px; }
+    .wc-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; }
+    .fld { margin-bottom: 16px; }
+    .fld label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+    .fld label .req { color: #EF4444; }
+    .fld .hint { font-size: 11.5px; color: #94A3B8; margin-top: 3px; }
+    .in { width: 100%; padding: 11px 13px; border-radius: 9px; border: 1px solid #D5DDE9; font-size: 14px; font-family: inherit; outline: none; }
+    .in:focus { border-color: var(--navy, #405189); }
+    .grid2 { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
+    .grid2b { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @@media (max-width: 560px) { .grid2, .grid2b { grid-template-columns: 1fr; } }
+    .chip { padding: 10px 18px; border-radius: 22px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid #D5DDE9; background: #fff; color: #566980; font-family: inherit; margin: 0 8px 8px 0; }
+    .chip.on { border-color: var(--navy, #405189); color: var(--navy, #405189); box-shadow: inset 0 0 0 1px var(--navy, #405189); }
+    .cap2 { display: flex; align-items: center; gap: 10px; }
+    .cap2 input { flex: 1; text-transform: uppercase; letter-spacing: 3px; font-weight: 700; font-family: Consolas, monospace; }
+    .pt-modal { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 100; overflow-y: auto; padding: 3vh 14px; }
+    .pt-modal .wc-wrap { margin: 0 auto; }
+    .wc-x { margin-left: auto; background: rgba(255,255,255,.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 8px; font-size: 15px; cursor: pointer; flex-shrink: 0; }
+    .chk { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: #F8FAFC; border-radius: 10px; font-size: 13px; color: #475569; cursor: pointer; line-height: 1.5; margin-bottom:8px; }
+    .chk input { margin-top: 3px; }
+    .tcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 6px; }
+    .tcard { border: 1.5px solid #E2E8F0; border-radius: 10px; padding: 14px; cursor: pointer; background: #fff; text-align: left; font-family: inherit; }
+    .tcard.on { border-color: var(--navy, #405189); background: #eef0f7; box-shadow: inset 0 0 0 1px var(--navy, #405189); }
+    .tcard .n { font-size: 13.5px; font-weight: 700; }
+    .tcard .t { font-size: 12px; color: #0ab39c; margin-top: 4px; font-weight: 600; }
+    .drop { border: 2px dashed #D5DDE9; border-radius: 12px; padding: 30px; text-align: center; background: #FAFBFC; }
+    .resumen { border: 1px solid #E2E8F0; border-radius: 12px; padding: 6px 18px; margin-bottom: 16px; }
+    .res-row { display: flex; justify-content: space-between; gap: 20px; padding: 11px 0; border-bottom: 1px solid #F1F5F9; font-size: 14px; }
+    .res-row:last-child { border-bottom: none; }
+    .res-row .k { color: #64748B; }
+    .res-row .v { font-weight: 600; text-align: right; }
+    .exito-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 30px 16px; background:#F1F5F9; }
+    .exito { background: #fff; border-radius: 16px; box-shadow: 0 2px 14px rgba(0,0,0,.08); padding: 46px 8%; max-width: 720px; width: 100%; text-align: center; }
+    .exito .ic { width: 76px; height: 76px; border-radius: 50%; background: #d1fae5; display: flex; align-items: center; justify-content: center; font-size: 38px; margin: 0 auto 16px; }
+    .exito h2 { font-size: 28px; font-weight: 800; margin: 0 0 8px; }
+    .exito .sub { font-size: 14px; color: #64748B; margin-bottom: 24px; line-height: 1.6; }
+    .exito .numbox { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 22px; margin-bottom: 18px; }
+    .exito .numbox .l { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: #94A3B8; margin-bottom: 8px; }
+    .exito .num { font-size: clamp(22px, 4.5vw, 34px); font-weight: 800; letter-spacing: 2px; color: var(--navy, #405189); font-family: Consolas, monospace; }
+    .exito .meta { font-size: 13.5px; color: #475569; margin-bottom: 22px; }
+    .exito .acc { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .sem { display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; border-radius: 20px; font-size: 13px; font-weight: 700; }
+    .sem .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .tl { border-left: 2px solid #E2E8F0; margin: 12px 0 0 8px; padding-left: 20px; }
+    .tl-item { position: relative; padding-bottom: 16px; font-size: 13.5px; }
+    .tl-item::before { content: ''; position: absolute; left: -26px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--navy, #405189); }
+    .tl-item .f { font-size: 11.5px; color: #94A3B8; }
+    .pt-inerr { background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:10px 12px;font-size:13px;color:#B91C1C;margin:8px 0; }
 </style>
 
 @code {
@@ -164,12 +381,21 @@ else
     private long? _tid;
     private bool _notFound;
     private PortalPublicoDto? _portal;
-    private string _view = "radicar";
+    private string _view = "home";
+    private int _paso = 1;
     private bool _busy;
     private string? _error;
 
-    private PortalRadicarRequest _req = new();
-    private bool _avisoOk;
+    private readonly string[] _stepLabels = { "Identificacion", "Solicitud", "Confirmar" };
+    private readonly (string val, string lbl)[] _remitenteOpts =
+    {
+        ("natural", "Persona Natural"), ("juridica", "Empresa"), ("publica", "Entidad Publica"), ("anonimo", "Anonimo")
+    };
+
+    private PortalRadicarRequest _req = new() { RemitenteTipoDoc = "CC" };
+    private string _tipoRemitente = "natural";
+    private string _captchaTxt = "";
+    private bool _autoriza, _veraz;
     private PortalRadicarResult? _comprobante;
 
     private string _cNumero = "", _cDocumento = "";
@@ -183,37 +409,96 @@ else
         if (_portal is null) { _notFound = true; }
     }
 
+    private void IrWizardNuevo() { _paso = 1; _error = null; _view = "wizard"; }
+
+    private void ElegirTipo(TipoPublicoDto t) { _req.TipoComunicacionId = t.Id; _paso = 1; _error = null; _view = "wizard"; }
+    private void ElegirTipoWizard(TipoPublicoDto t) { _req.TipoComunicacionId = t.Id; }
+
+    private void Paso1Next()
+    {
+        _error = null;
+        if (_portal!.ExigirCaptcha && string.IsNullOrWhiteSpace(_captchaTxt)) { _error = "Escriba el codigo de verificacion."; return; }
+        if (_tipoRemitente != "anonimo")
+        {
+            if (string.IsNullOrWhiteSpace(_req.RemitenteDocumento) || string.IsNullOrWhiteSpace(_req.RemitenteNombre)) { _error = "Documento y nombre son obligatorios."; return; }
+        }
+        if (!_autoriza) { _error = "Debe autorizar el tratamiento de datos personales (Ley 1581/2012)."; return; }
+        _paso = 2;
+    }
+
+    private void Paso2Next()
+    {
+        _error = null;
+        if (_req.TipoComunicacionId <= 0) { _error = "Seleccione el tipo de solicitud."; return; }
+        if (string.IsNullOrWhiteSpace(_req.Asunto)) { _error = "El asunto es obligatorio."; return; }
+        _paso = 3;
+    }
+
     private async Task RadicarAsync()
     {
         _error = null;
-        if (_req.TipoComunicacionId <= 0) { _error = "Selecciona el tipo de solicitud."; return; }
-        if (string.IsNullOrWhiteSpace(_req.Asunto) || string.IsNullOrWhiteSpace(_req.Descripcion)) { _error = "Asunto y descripcion son obligatorios."; return; }
-        if (!string.IsNullOrEmpty(_portal?.AvisoPrivacidad) && !_avisoOk) { _error = "Debe aceptar el aviso de privacidad."; return; }
+        if (!_veraz) { _error = "Debe certificar que la informacion es veraz."; return; }
         _busy = true;
         try
         {
+            _req.Anonimo = _tipoRemitente == "anonimo";
+            _req.CaptchaOk = !_portal!.ExigirCaptcha || !string.IsNullOrWhiteSpace(_captchaTxt);
             using (AmbientTenantContext.Begin(_tid!.Value))
             {
                 var res = await PortalSvc.RadicarAsync(_req);
                 if (!res.Ok) { _error = res.Error; return; }
                 _comprobante = res;
+                _view = "exito";
             }
         }
         finally { _busy = false; }
     }
 
-    private void ResetRadicar() { _comprobante = null; _req = new(); _avisoOk = false; _error = null; }
+    private void OtraSolicitud()
+    {
+        _req = new() { RemitenteTipoDoc = "CC" };
+        _tipoRemitente = "natural"; _captchaTxt = ""; _autoriza = false; _veraz = false; _comprobante = null; _error = null;
+        _paso = 1; _view = "wizard";
+    }
 
     private async Task ConsultarAsync()
     {
         _busy = true;
         try
         {
-            using (AmbientTenantContext.Begin(_tid!.Value))
-            {
-                _consulta = await PortalSvc.ConsultarAsync(_cNumero, _cDocumento);
-            }
+            using (AmbientTenantContext.Begin(_tid!.Value)) { _consulta = await PortalSvc.ConsultarAsync(_cNumero, _cDocumento); }
         }
         finally { _busy = false; }
     }
+
+    private async Task Copiar()
+    {
+        if (_comprobante is not null) { await JS.InvokeVoidAsync("navigator.clipboard.writeText", _comprobante.Numero); }
+    }
+
+    private RenderFragment RenderFaq() => __builder =>
+    {
+        var faq = _portal?.Faq;
+        if (string.IsNullOrWhiteSpace(faq)) { <span>-</span> return; }
+        foreach (var linea in faq.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = linea.Split('|', 2);
+            <div style="font-weight:700;color:#212529;margin-top:10px">@parts[0]</div>
+            if (parts.Length > 1) { <div>@parts[1]</div> }
+        }
+    };
+
+    private RenderFragment ResRow(string k, string? v) => __builder =>
+    {
+        <div class="res-row"><span class="k">@k</span><span class="v">@(string.IsNullOrWhiteSpace(v) ? "-" : v)</span></div>
+    };
+
+    private RenderFragment Semaforo(int? dias) => __builder =>
+    {
+        var (bg, fg, txt) = dias is null ? ("#F1F5F9", "#64748B", "Sin termino")
+            : dias < 0 ? ("#FEE2E2", "#991B1B", $"{Math.Abs(dias.Value)} dia(s) de retraso")
+            : dias <= 3 ? ("#FEF3C7", "#92400E", $"{dias} dia(s) restantes")
+            : ("#D1FAE5", "#0a7d6f", $"{dias} dia(s) restantes");
+        <span class="sem" style="background:@bg;color:@fg"><span class="dot" style="background:@fg"></span>@txt</span>
+    };
 }

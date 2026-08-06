@@ -34,12 +34,19 @@ public sealed class PortalCiudadanoService : IPortalCiudadanoService
     {
         var c = await _db.RadPortalConfigs.AsNoTracking().FirstOrDefaultAsync(ct);
         if (c is null) { return null; }
-        var tipos = await _db.TiposComunicacion.AsNoTracking()
+        var tiposRaw = await _db.TiposComunicacion.AsNoTracking()
             .Where(t => t.Activo && t.Direccion == RadicacionDireccion.Entrada && t.HabilitadoWeb)
             .OrderBy(t => t.OrdenPortal ?? 999).ThenBy(t => t.Nombre)
-            .Select(t => new TipoPublicoDto(t.Id, t.Nombre, t.DescripcionCiudadano)).ToListAsync(ct);
-        return new PortalPublicoDto(c.NombreEntidad, c.Subtitulo, c.Color, c.Banner, c.PermitirAnonimo,
-            c.ExigirCaptcha, c.AvisoPrivacidad, c.MaxAdjuntoMb, c.Faq, tipos);
+            .Select(t => new { t.Id, t.Codigo, t.Nombre, t.Icono, t.Color, t.EsPqrsd, t.RequiereRespuesta, t.DiasRespuesta, t.TipoDia, t.DescripcionCiudadano })
+            .ToListAsync(ct);
+        var tipos = tiposRaw.Select(t => new TipoPublicoDto(
+            t.Id, t.Codigo, t.Nombre, t.Icono, t.Color, t.EsPqrsd,
+            t.RequiereRespuesta && t.DiasRespuesta is int d
+                ? $"Respuesta: {d} dias {(t.TipoDia?.ToString() ?? "habiles").ToLowerInvariant()}"
+                : "Sin termino de respuesta",
+            t.DescripcionCiudadano)).ToList();
+        return new PortalPublicoDto(c.NombreEntidad, c.Subtitulo, c.Nit, c.Color, c.Banner, c.PermitirAnonimo,
+            c.ExigirCaptcha, c.CanalesAtencion, c.AvisoPrivacidad, c.MaxAdjuntoMb, c.Faq, tipos);
     }
 
     public async Task<PortalRadicarResult> RadicarAsync(PortalRadicarRequest req, CancellationToken ct = default)
