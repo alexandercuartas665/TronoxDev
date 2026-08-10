@@ -130,6 +130,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<CorreoDescartado> CorreosDescartados => Set<CorreoDescartado>();
     public DbSet<RadPrioridad> RadPrioridades => Set<RadPrioridad>();
     public DbSet<RadPortalConfig> RadPortalConfigs => Set<RadPortalConfig>();
+    public DbSet<ParametrosSeguridad> ParametrosSeguridad => Set<ParametrosSeguridad>();
+    public DbSet<FirmaConfig> FirmaConfigs => Set<FirmaConfig>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -1450,6 +1452,18 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.Icono).HasMaxLength(10);
             b.Property(x => x.Color).HasMaxLength(9);
             b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+        });
+
+        modelBuilder.Entity<ParametrosSeguridad>(b => b.HasIndex(x => x.TenantId).IsUnique());
+        modelBuilder.Entity<FirmaConfig>(b =>
+        {
+            b.Property(x => x.NtpServidor).HasMaxLength(200);
+            b.Property(x => x.FirmaPosicionDefault).HasMaxLength(20).IsRequired();
+            b.Property(x => x.FirmaQrTamano).HasMaxLength(20).IsRequired();
+            b.Property(x => x.FirmaTextoDefault).HasMaxLength(100);
+            b.Property(x => x.OtpModo).HasMaxLength(20).IsRequired();
+            b.Property(x => x.OtpCanal).HasMaxLength(20).IsRequired();
+            b.HasIndex(x => x.TenantId).IsUnique();
         });
 
         modelBuilder.Entity<RadPortalConfig>(b =>

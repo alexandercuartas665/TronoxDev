@@ -58,6 +58,7 @@ public static class DependencyInjection
         // si la entidad es Publica) vive en Archivistica.EntidadRules: estatica, sin EF y
         // testeable sin base de datos, por eso no se registra.
         services.AddScoped<Archivistica.IEntidadService, Archivistica.EntidadService>();
+        services.AddScoped<Archivistica.IEntidadConfigExtraService, Archivistica.EntidadConfigExtraService>();
         // Catalogos territoriales DIVIPOLA (pendiente P-02 de RQ01): solo lectura y GLOBALES.
         services.AddScoped<Archivistica.IDivipolaService, Archivistica.DivipolaService>();
         services.AddScoped<Archivistica.ISedeService, Archivistica.SedeService>();

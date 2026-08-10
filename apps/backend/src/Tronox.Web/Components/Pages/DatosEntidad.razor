@@ -9,6 +9,7 @@
 @inject ISedeService SedeSvc
 @inject Tronox.Application.Common.ITenantContext Tenant
 @inject IWebHostEnvironment Env
+@inject IEntidadConfigExtraService ConfigExtra
 
 @* RQ01 - RF01 "Datos de la Entidad" (seccion 4.1). Una sola entidad por tenant: la pantalla
    es EDITAR, no listar/crear. La estructura de tarjetas (Informacion legal / Ubicacion y
@@ -464,6 +465,88 @@
             </div>
         </div>
     }
+
+    @* ===== Parametros de Seguridad (legacy ctrlEntidadParametrosSeguridad) ===== *@
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-head">
+            <div class="tx-ent-card-icon tone-danger"><i class="bi bi-shield-lock-fill"></i></div>
+            <div>
+                <div class="tx-ent-card-title">Parámetros de Seguridad</div>
+                <div class="tx-ent-card-sub">Control de acceso y política de contraseñas. Contraseñas con bcrypt/argon2 (nunca MD5/SHA-1).</div>
+            </div>
+            <button class="tx-ent-btn primary" style="margin-left:auto;" @onclick="GuardarSeguridadAsync" disabled="@_busy">Guardar seguridad</button>
+        </div>
+        <div class="tx-ent-card-body">
+            <div class="tx-ent-subtitle">Control de acceso</div>
+            <div class="tx-ent-grid c2">
+                <div class="tx-ent-field"><label>Intentos fallidos máximos <span class="req">*</span></label><input class="tx-ent-input" type="number" min="1" @bind="_seg.IntentosFallidosMax" /></div>
+                <div class="tx-ent-field"><label>Inactividad de sesión (min) <span class="req">*</span></label><input class="tx-ent-input" type="number" min="1" @bind="_seg.TiempoInactividadSesionMin" /></div>
+            </div>
+            <div class="tx-ent-subtitle" style="margin-top:14px;">Política de contraseñas</div>
+            <div class="tx-ent-grid c3">
+                <div class="tx-ent-field"><label>Vigencia (días) <span class="req">*</span></label><input class="tx-ent-input" type="number" min="0" @bind="_seg.VigenciaContrasenaDias" /></div>
+                <div class="tx-ent-field"><label>Historial (previas) <span class="req">*</span></label><input class="tx-ent-input" type="number" min="0" @bind="_seg.HistorialContrasenas" /></div>
+                <div class="tx-ent-field"><label>Longitud mínima <span class="req">*</span></label><input class="tx-ent-input" type="number" min="4" @bind="_seg.LongitudMinimaContrasena" /></div>
+                <div class="tx-ent-field"><label>Aviso de vencimiento (días antes)</label><input class="tx-ent-input" type="number" min="0" @bind="_seg.TiempoAvisoVencimientoDias" /></div>
+            </div>
+            <label class="dc-req" style="margin-top:10px;display:inline-flex;gap:8px;"><input type="checkbox" @bind="_seg.ComplejidadContrasena" /> Exigir complejidad (mayúscula + número + carácter especial)</label>
+        </div>
+    </div>
+
+    @* ===== Firma Electronica (legacy ctrlFirmaConfig, RQ05 RF01) ===== *@
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-head">
+            <div class="tx-ent-card-icon tone-primary"><i class="bi bi-pen-fill"></i></div>
+            <div>
+                <div class="tx-ent-card-title">Firma Electrónica</div>
+                <div class="tx-ent-card-sub">Activación, apariencia del sello/QR, OTP y alertas (RQ05).</div>
+            </div>
+            <button class="tx-ent-btn primary" style="margin-left:auto;" @onclick="GuardarFirmaAsync" disabled="@_busy">Guardar firma</button>
+        </div>
+        <div class="tx-ent-card-body">
+            <div class="tx-ent-subtitle">Activación y hora oficial</div>
+            <div class="tx-ent-grid c2">
+                <label class="dc-req"><input type="checkbox" @bind="_fir.ModuloFirmaActivo" /> Módulo de firma activo</label>
+                <label class="dc-req"><input type="checkbox" @bind="_fir.NtpActivo" /> Sincronizar hora oficial (NTP)</label>
+                <div class="tx-ent-field"><label>Servidor NTP</label><input class="tx-ent-input" @bind="_fir.NtpServidor" /></div>
+            </div>
+            <div class="tx-ent-subtitle" style="margin-top:14px;">Apariencia</div>
+            <div class="tx-ent-grid c3">
+                <div class="tx-ent-field"><label>Posición por defecto</label>
+                    <select class="tx-ent-input" @bind="_fir.FirmaPosicionDefault"><option value="pie_derecho">Pie derecho</option><option value="pie_izquierdo">Pie izquierdo</option><option value="centrado">Centrado</option></select>
+                </div>
+                <div class="tx-ent-field"><label>Tamaño del QR</label>
+                    <select class="tx-ent-input" @bind="_fir.FirmaQrTamano"><option value="pequeno">Pequeño</option><option value="mediano">Mediano</option></select>
+                </div>
+                <div class="tx-ent-field"><label>Texto bajo la firma</label><input class="tx-ent-input" maxlength="100" @bind="_fir.FirmaTextoDefault" /></div>
+            </div>
+            <div class="tx-ent-grid c3" style="margin-top:8px;">
+                <label class="dc-req"><input type="checkbox" @bind="_fir.FirmaMostrarQr" /> Mostrar QR</label>
+                <label class="dc-req"><input type="checkbox" @bind="_fir.FirmaMostrarIdentificacion" /> Mostrar identificación</label>
+                <label class="dc-req"><input type="checkbox" @bind="_fir.FirmaMostrarNombre" /> Mostrar nombre</label>
+            </div>
+            <div class="tx-ent-subtitle" style="margin-top:14px;">OTP</div>
+            <div class="tx-ent-grid c3">
+                <div class="tx-ent-field"><label>Modo de validación OTP</label>
+                    <select class="tx-ent-input" @bind="_fir.OtpModo"><option value="siempre">Siempre</option><option value="opcional">Opcional</option><option value="nunca">Nunca</option></select>
+                </div>
+                <div class="tx-ent-field"><label>Expiración del código (min)</label><input class="tx-ent-input" type="number" min="1" @bind="_fir.OtpExpiracionMinutos" /></div>
+                <div class="tx-ent-field"><label>Canal</label>
+                    <select class="tx-ent-input" @bind="_fir.OtpCanal"><option value="correo">Correo</option><option value="sms">SMS</option></select>
+                </div>
+            </div>
+            <div class="tx-ent-subtitle" style="margin-top:14px;">Alertas y firma masiva</div>
+            <div class="tx-ent-grid c3">
+                <div class="tx-ent-field"><label>Primera alerta (días)</label><input class="tx-ent-input" type="number" min="0" @bind="_fir.FirmaDias" /></div>
+                <div class="tx-ent-field"><label>Frecuencia de alertas (días)</label><input class="tx-ent-input" type="number" min="1" @bind="_fir.FirmaFrecuenciaDias" /></div>
+                <label class="dc-req"><input type="checkbox" @bind="_fir.FirmaMasivaActiva" /> Habilitar firma masiva</label>
+            </div>
+            <div class="tx-ent-grid c2" style="margin-top:8px;">
+                <label class="dc-req"><input type="checkbox" @bind="_fir.FirmaForzarLectura" /> Forzar apertura en visor (RF08)</label>
+                <label class="dc-req"><input type="checkbox" @bind="_fir.FirmaConsentimiento" /> Exigir consentimiento del firmante</label>
+            </div>
+        </div>
+    </div>
 </div>
 
 @code {
@@ -519,6 +602,8 @@
     private string _representante = "";
     private string? _nombreReal;
     private string? _observaciones;
+    private SeguridadDto _seg = new();
+    private FirmaConfigDto _fir = new();
     private string? _logoUrl;
     private string? _logoError;
     private string _zonaHoraria = "America/Bogota";
@@ -549,7 +634,23 @@
     {
         _paises = await Divipola.ListPaisesAsync();
         await RecargarAsync();
+        _seg = await ConfigExtra.GetSeguridadAsync();
+        _fir = await ConfigExtra.GetFirmaAsync();
         _loading = false;
+    }
+
+    private async Task GuardarSeguridadAsync()
+    {
+        _busy = true;
+        try { await ConfigExtra.GuardarSeguridadAsync(_seg); _mensaje = "Parámetros de seguridad guardados."; _esError = false; }
+        finally { _busy = false; }
+    }
+
+    private async Task GuardarFirmaAsync()
+    {
+        _busy = true;
+        try { await ConfigExtra.GuardarFirmaAsync(_fir); _mensaje = "Configuración de firma guardada."; _esError = false; }
+        finally { _busy = false; }
     }
 
     private async Task RecargarAsync()
