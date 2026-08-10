@@ -1,7 +1,5 @@
 @page "/topografia-fisica"
 @attribute [Authorize(Policy = "Perm:modulo/topografia-fisica:View")]
-@* Llave de permisos = ruta de menu "modulo/topografia-fisica" (RF09 5.9.3). Ubicado en GENERAL,
-   debajo de Datos de la Entidad. La pagina real vive en /topografia-fisica (promovida en Modulo.razor). *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Tronox.Application.Topografia
 @using Tronox.Domain.Enums
@@ -10,188 +8,147 @@
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
 
-@* RQ02 - RF06 (Topografia Fisica). Jerarquia configurable de niveles (Bodega > Estante > ... > Caja)
-   y arbol de ubicaciones fisicas reales, con codigo topografico automatico (siglas raiz->hoja).
-   Base para ubicar expedientes fisicos (RQ03, Hito 2). Migrado del legacy NEWFRONT_doc_bodegas.aspx. *@
+@* RQ02 - RF06 (Topografia Fisica). Port CALCADO del legacy NEWFRONT_doc_bodegas.aspx: sistema visual
+   tf- 1:1 (paleta, cards, chips de sigla, barra de ocupacion tricolor, codigo topografico). Reusa el
+   dominio TopografiaNivel/TopografiaElemento y ITopografiaService (no se toca la logica). *@
 
 <PageTitle>Topografía Física - TRONOX SGDEA</PageTitle>
 
-<div class="tx-mod tx-dep tx-topo">
-
-    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
-        <a href="/inicio">Inicio</a>
-        <span class="sep">/</span>
-        <span>Configuración General</span>
-        <span class="sep">/</span>
-        <span class="cur">Topografía Física</span>
-    </nav>
-
-    <div class="tx-ent-head">
+<div class="tf-wrapper">
+    <div class="tf-ph">
         <div>
-            <div class="tx-ent-eyebrow"><i class="bi bi-diagram-2"></i><span>RQ02 &middot; RF06</span></div>
-            <h1 class="tx-ent-title">Topografía Física del Archivo</h1>
-            <p class="tx-ent-sub">
-                Define la jerarquía de niveles (Bodega &rarr; Estante &rarr; ... &rarr; Caja) y crea las ubicaciones
-                reales. El sistema genera el <strong>código topográfico</strong> automáticamente para localizar
-                cualquier expediente físico.
-            </p>
+            <h1>Topografía Física</h1>
+            <p>Depósitos y unidades de conservación · Archivo de Gestión · RF06</p>
         </div>
     </div>
 
-    @if (_pageError is not null)
-    {
-        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
-    }
-    @if (_pageOk is not null)
-    {
-        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
-    }
-
-    @* ===== KPIs ===== *@
-    <div class="tx-dep-kpis">
-        <div class="tx-dep-kpi">
-            <div class="tx-dep-kpi-icon"><i class="bi bi-layers"></i></div>
-            <div><div class="tx-dep-kpi-val">@(_kpis?.Niveles ?? 0)</div><div class="tx-dep-kpi-lbl">Niveles</div></div>
+    <div class="tf-reqbox">
+        <div class="tf-reqbox-h">
+            <span class="tf-rf-chip">RF06</span>
+            <span class="tf-prio media">Media</span>
+            <span class="tf-reqbox-actor">Actor: Administrador / Auxiliar de Archivo</span>
         </div>
-        <div class="tx-dep-kpi">
-            <div class="tx-dep-kpi-icon tone-green"><i class="bi bi-box-seam"></i></div>
-            <div><div class="tx-dep-kpi-val">@(_kpis?.Elementos ?? 0)</div><div class="tx-dep-kpi-lbl">Ubicaciones</div></div>
-        </div>
-        <div class="tx-dep-kpi">
-            <div class="tx-dep-kpi-icon tone-violet"><i class="bi bi-database-fill-check"></i></div>
-            <div><div class="tx-dep-kpi-val">@(_kpis?.Llenos ?? 0)</div><div class="tx-dep-kpi-lbl">Llenas</div></div>
-        </div>
-        <div class="tx-dep-kpi">
-            <div class="tx-dep-kpi-icon tone-slate"><i class="bi bi-archive"></i></div>
-            <div><div class="tx-dep-kpi-val">@(_kpis?.Inactivos ?? 0)</div><div class="tx-dep-kpi-lbl">Inactivas</div></div>
+        <div class="tf-reqbox-title">Topografía Física — Depósitos y Unidades de Conservación</div>
+        <div class="tf-reqbox-desc">
+            Configura la estructura física del archivo mediante una jerarquía de niveles personalizable. Primero
+            defina los <em>tipos de nivel</em> (Bodega, Estante, Entrepaño, Caja…), luego cree las ubicaciones físicas
+            reales. El sistema genera el código topográfico concatenando las siglas de todos los niveles superiores
+            hasta la raíz: <code>NOR-EST05-ENT03-CAJ010</code>. Solo el nivel de mayor jerarquía puede controlar
+            capacidad. <strong>Alcance:</strong> Archivo de Gestión.
         </div>
     </div>
+
+    @if (_pageError is not null) { <div class="tf-msg-error">@_pageError</div> }
+    @if (_pageOk is not null) { <div class="tf-msg-success">@_pageOk</div> }
 
     @if (_loading)
     {
-        <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando topografía...</em></div></div>
+        <div class="tf-card"><div class="tf-card-body"><em>Cargando topografía…</em></div></div>
     }
     else
     {
-        @* ===== Configuracion de niveles ===== *@
-        <div class="tx-ent-card">
-            <div class="tx-ent-card-body">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-                    <h3 style="margin:0">Niveles topográficos</h3>
-                    @if (_canEdit && !_hayElementos)
-                    {
-                        <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenNivel(null))"><i class="bi bi-plus-lg"></i> Agregar nivel</button>
-                    }
+        <div class="tf-g2">
+            @* ===== Niveles ===== *@
+            <div class="tf-card">
+                <div class="tf-card-head">
+                    <div>
+                        <div class="tf-card-title">Niveles Topográficos Configurados</div>
+                        <div class="tf-card-sub">RF06 §3.6.1 — Configuración única, previa a creación de elementos</div>
+                    </div>
+                    <div class="tf-card-acts">
+                        @if (_canCreate && !_hayElementos)
+                        {
+                            <button class="tf-btn tf-b-primary tf-b-sm" @onclick="@(() => OpenNivel(null))"><i class="bi bi-plus-lg"></i> Nuevo nivel</button>
+                        }
+                    </div>
                 </div>
-
                 @if (_hayElementos)
                 {
-                    <div class="tx-ent-alert" style="margin-top:10px"><i class="bi bi-lock"></i><span>La configuración de niveles está <strong>bloqueada</strong> porque ya existen ubicaciones creadas (RF06 3.6.6-1).</span></div>
+                    <div style="padding:12px 16px 0">
+                        <div class="tf-alert tf-al-warn"><i class="bi bi-lock"></i><span>La configuración de niveles está <strong>bloqueada</strong> porque ya existen elementos físicos. Para modificarla, primero elimine todos los elementos.</span></div>
+                    </div>
                 }
-
-                @if (_niveles.Count == 0)
-                {
-                    <div class="tx-ent-empty" style="margin-top:14px"><i class="bi bi-layers"></i><div>Define primero los niveles (Bodega, Estante, ..., Caja). Solo el de mayor orden puede controlar capacidad.</div></div>
-                }
-                else
-                {
-                    <div class="tx-ent-table-wrap" style="margin-top:12px">
-                        <table class="tx-ent-table">
-                            <thead><tr><th style="width:80px">Orden</th><th>Nivel</th><th>Sigla</th><th>Capacidad</th><th class="right">Acciones</th></tr></thead>
+                <div class="tf-card-body @(_niveles.Count == 0 ? "" : "tf-card-body-0")">
+                    @if (_niveles.Count == 0)
+                    {
+                        <div class="tf-tree-empty"><i class="bi bi-diagram-3"></i><p>Aún no hay niveles configurados. Use <strong>Nuevo nivel</strong> para empezar.</p></div>
+                    }
+                    else
+                    {
+                        <table class="tf-tbl">
+                            <thead><tr><th style="width:60px;text-align:center">Orden</th><th>Nivel</th><th style="width:100px">Sigla Base</th><th style="width:120px;text-align:center">Controla Cap.</th><th style="width:120px;text-align:right"></th></tr></thead>
                             <tbody>
                                 @foreach (var n in _niveles)
                                 {
                                     <tr>
-                                        <td>@n.Orden</td>
-                                        <td><strong>@n.NombreNivel</strong></td>
-                                        <td class="mono">@n.SiglaBase</td>
-                                        <td>@(n.ControlaCapacidad ? "Controla capacidad" : "--")</td>
-                                        <td class="right">
+                                        <td style="text-align:center;font-weight:700">@n.Orden</td>
+                                        <td style="font-weight:600">@n.NombreNivel</td>
+                                        <td><span class="tf-code-inline">@n.SiglaBase</span></td>
+                                        <td style="text-align:center">
+                                            @if (n.ControlaCapacidad) { <span class="tf-badge tf-bg">Sí</span> } else { <span class="tf-badge tf-bx">No</span> }
+                                        </td>
+                                        <td class="tf-tbl-acts">
                                             @if (_canEdit && !_hayElementos)
                                             {
-                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenNivel(n))" disabled="@_busy">Editar</button>
+                                                <a class="tf-btn tf-b-light tf-b-xs tf-b-ico" title="Editar" @onclick="@(() => OpenNivel(n))"><i class="bi bi-pencil"></i></a>
                                             }
                                             @if (_canDelete && !_hayElementos)
                                             {
-                                                <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => DeleteNivel(n))" disabled="@_busy">Eliminar</button>
+                                                <a class="tf-btn tf-b-light tf-b-xs tf-b-ico" style="color:var(--tf-red-dk)" title="Eliminar" @onclick="@(() => DeleteNivel(n))"><i class="bi bi-trash"></i></a>
                                             }
                                         </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
+                    }
+                </div>
+            </div>
+
+            @* ===== Arbol ===== *@
+            <div class="tf-card">
+                <div class="tf-card-head">
+                    <div>
+                        <div class="tf-card-title">Árbol Topográfico</div>
+                        <div class="tf-card-sub">RF06 §3.6.4 — Con indicadores de ocupación</div>
                     </div>
-                }
+                    <div class="tf-card-acts">
+                        <label class="tf-fchk" style="margin-right:4px"><input type="checkbox" checked="@_verInactivos" @onchange="@(async e => { _verInactivos = (bool)e.Value!; await LoadAsync(); })" /> Ver inactivas</label>
+                        @if (_canCreate && _niveles.Count > 0)
+                        {
+                            <button class="tf-btn tf-b-primary tf-b-sm" @onclick="@(() => OpenElemento(null, null))"><i class="bi bi-plus-lg"></i> Nuevo elemento</button>
+                        }
+                    </div>
+                </div>
+                <div class="tf-card-body">
+                    <div class="tf-tree">
+                        @if (_niveles.Count == 0)
+                        {
+                            <div class="tf-tree-empty"><i class="bi bi-diagram-3"></i><p>Cree primero los niveles y luego agregue elementos físicos.</p></div>
+                        }
+                        else if (_arbol.Count == 0)
+                        {
+                            <div class="tf-tree-empty"><i class="bi bi-diagram-3"></i><p>El árbol está vacío. Agregue el primer elemento (nivel más alto).</p></div>
+                        }
+                        else
+                        {
+                            @foreach (var n in _arbol) { @RenderNodo(n) }
+                        }
+                    </div>
+                </div>
             </div>
         </div>
 
-        @* ===== Arbol de ubicaciones ===== *@
-        <div class="tx-ent-card">
-            <div class="tx-dep-toolbar">
-                <h3 style="margin:0;flex:1">Ubicaciones físicas</h3>
-                <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
-                    <input type="checkbox" checked="@_verInactivos" @onchange="@(async e => { _verInactivos = (bool)e.Value!; await LoadAsync(); })" /> Ver inactivas
-                </label>
-                @if (_canCreate && _niveles.Count > 0)
-                {
-                    <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenElemento(null, null))"><i class="bi bi-plus-lg"></i> Ubicación raíz</button>
-                }
-            </div>
-            <div class="tx-dep-tree">
-                @if (_niveles.Count == 0)
-                {
-                    <div class="tx-ent-hint" style="padding:14px">Configura al menos un nivel antes de crear ubicaciones.</div>
-                }
-                else if (_flat.Count == 0)
-                {
-                    <div class="tx-ent-hint" style="padding:14px">Aún no hay ubicaciones. Crea la primera (nivel más alto).</div>
-                }
-                else
-                {
-                    @foreach (var row in FlattenTree())
-                    {
-                        var n = row.Node;
-                        <div class="tx-dep-node @(n.EsInactivo ? "archivada" : "")" style="margin-left:@(row.Depth * 22)px">
-                            @if (n.Children.Count > 0)
-                            {
-                                <button type="button" class="tx-dep-chev @(_collapsed.Contains(n.Id) ? "" : "open")" @onclick="@(() => Toggle(n.Id))"><i class="bi bi-chevron-right"></i></button>
-                            }
-                            else
-                            {
-                                <span class="tx-dep-chev ph"></span>
-                            }
-                            <span class="tx-dep-node-code">@n.Sigla</span>
-                            <span class="tx-dep-node-name">@n.Nombre <span class="tx-ent-hint" style="margin:0">· @n.NivelNombre</span></span>
-                            <span class="tx-dep-node-right">
-                                <span class="mono" style="font-size:11px;color:var(--tx-text-500)">@n.CodigoTopografico</span>
-                                @if (n.Capacidad is int cap)
-                                {
-                                    <span class="tx-ent-badge sm @(n.Estado == TopografiaEstado.Lleno ? "off" : "ok")">@n.Ocupacion/@cap@(n.PorcentajeOcupacion is int p ? $" ({p}%)" : "")</span>
-                                }
-                                <span class="tx-ent-badge sm @EstadoClase(n.Estado)">@EstadoLabel(n.Estado)</span>
-                                @if (_canCreate && !n.EsInactivo && PuedeTenerHijo(n))
-                                {
-                                    <button type="button" class="tx-dep-add" title="Agregar sub-ubicación" @onclick="@(() => OpenElemento(null, n))">+</button>
-                                }
-                                @if (_canEdit)
-                                {
-                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenElemento(n, null))" disabled="@_busy">Editar</button>
-                                }
-                                @if (_canDelete)
-                                {
-                                    @if (n.EsInactivo)
-                                    {
-                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetEstado(n, true))" disabled="@_busy">Reactivar</button>
-                                    }
-                                    else
-                                    {
-                                        <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetEstado(n, false))" disabled="@_busy">Inactivar</button>
-                                    }
-                                }
-                            </span>
-                        </div>
-                    }
-                }
+        @* ===== Card educativa: codigo topografico ===== *@
+        <div class="tf-card">
+            <div class="tf-card-head"><div><div class="tf-card-title">Generación de Código Topográfico</div><div class="tf-card-sub">RF06 §3.6.3 — Automático, no se almacena</div></div></div>
+            <div class="tf-card-body">
+                <div class="tf-codeblock"><span class="tf-cm">// Concatenación de siglas raíz → hoja, unidas por "-"</span>
+<span class="tf-ck">Bodega Norte</span>          <span class="tf-cv">NOR</span>
+<span class="tf-ck">└ Estante 05</span>         <span class="tf-cv">NOR-EST05</span>
+<span class="tf-ck">  └ Entrepaño 03</span>     <span class="tf-cv">NOR-EST05-ENT03</span>
+<span class="tf-ck">    └ Caja 010</span>       <span class="tf-cs">NOR-EST05-ENT03-CAJ010</span></div>
+                <div class="tf-alert tf-al-info" style="margin-top:12px;margin-bottom:0"><i class="bi bi-info-circle"></i><span>Un expediente no puede asignarse a una ubicación <strong>Llena</strong> ni a una que ella o un ancestro esté <strong>Inactiva</strong>.</span></div>
             </div>
         </div>
     }
@@ -199,21 +156,23 @@
     @* ===== Modal nivel ===== *@
     @if (_showNivel)
     {
-        <div class="modal-overlay" @onclick="@(() => _showNivel = false)">
-            <div class="modal-dialog" style="max-width:560px" @onclick:stopPropagation="true">
-                <div class="modal-head"><h3>@(_editNivel is null ? "Nuevo nivel" : $"Editar {_editNivel.NombreNivel}")</h3><button class="modal-close" @onclick="@(() => _showNivel = false)">&times;</button></div>
-                <div class="modal-body tx-mod tx-topo">
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_fnNombre" maxlength="100" placeholder="Ej. Caja" /></div>
-                        <div class="tx-ent-field"><label>Sigla base <span class="req">*</span></label><input class="tx-ent-input mono" @bind="_fnSigla" maxlength="10" placeholder="CAJ" /></div>
-                    </div>
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field"><label>Orden <span class="req">*</span></label><input type="number" min="1" class="tx-ent-input" @bind="_fnOrden" /><div class="tx-ent-hint">1 = nivel más alto (contenedor mayor).</div></div>
-                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_fnControla" /> Controla capacidad (solo el de mayor orden)</label>
-                    </div>
-                    @if (_nivelError is not null) { <div class="tx-ent-fielderr">@_nivelError</div> }
+        <div class="tf-overlay" @onclick="@(() => _showNivel = false)">
+            <div class="tf-modal" @onclick:stopPropagation="true">
+                <div class="tf-mhead">
+                    <div class="tf-mhead-ico" style="background:var(--tf-blue-lt);color:var(--tf-blue)"><i class="bi bi-layers"></i></div>
+                    <div><div class="tf-mhead-title">@(_editNivel is null ? "Nuevo Nivel Topográfico" : "Editar Nivel Topográfico")</div><div class="tf-mhead-sub">RF06 §3.6.1 — Solo se puede modificar si no existen elementos</div></div>
+                    <button class="tf-mclose" @onclick="@(() => _showNivel = false)"><i class="bi bi-x-lg"></i></button>
                 </div>
-                <div class="modal-foot"><button class="tx-ent-btn" @onclick="@(() => _showNivel = false)" disabled="@_busy">Cancelar</button><button class="tx-ent-btn primary" @onclick="SaveNivel" disabled="@_busy">@(_editNivel is null ? "Crear" : "Guardar")</button></div>
+                <div class="tf-mbody">
+                    <div class="tf-fg"><label class="tf-flbl">Nombre del nivel <span class="tf-req">*</span></label><input class="tf-fc" @bind="_fnNombre" maxlength="100" placeholder="Ej: Bodega, Estante, Entrepaño, Caja" /><div class="tf-fhint">Máximo 100 caracteres · Debe ser único para el tenant.</div></div>
+                    <div class="tf-fg-grid">
+                        <div class="tf-fg"><label class="tf-flbl">Sigla base <span class="tf-req">*</span></label><input class="tf-fc" style="font-family:'Consolas',monospace;text-transform:uppercase" @bind="_fnSigla" maxlength="10" placeholder="BOD" /><div class="tf-fhint">Máx. 10 car. · Ej: BOD, EST, CAJ</div></div>
+                        <div class="tf-fg"><label class="tf-flbl">Orden <span class="tf-req">*</span></label><input class="tf-fc" type="number" min="1" @bind="_fnOrden" /><div class="tf-fhint">1 = más alto</div></div>
+                    </div>
+                    <label class="tf-fchk"><input type="checkbox" @bind="_fnControla" /> Controla capacidad (solo un nivel, el de mayor orden)</label>
+                    @if (_nivelError is not null) { <div class="tf-alert tf-al-red" style="margin-top:12px;margin-bottom:0"><i class="bi bi-exclamation-circle"></i><span>@_nivelError</span></div> }
+                </div>
+                <div class="tf-mfoot"><button class="tf-btn tf-b-ghost" @onclick="@(() => _showNivel = false)" disabled="@_busy">Cancelar</button><button class="tf-btn tf-b-primary" @onclick="SaveNivel" disabled="@_busy"><i class="bi bi-check-lg"></i> @(_editNivel is null ? "Crear nivel" : "Guardar cambios")</button></div>
             </div>
         </div>
     }
@@ -221,35 +180,134 @@
     @* ===== Modal elemento ===== *@
     @if (_showElem)
     {
-        <div class="modal-overlay" @onclick="@(() => _showElem = false)">
-            <div class="modal-dialog" style="max-width:600px" @onclick:stopPropagation="true">
-                <div class="modal-head"><h3>@(_editElem is null ? (_parentElem is null ? "Nueva ubicación raíz" : $"Sub-ubicación de {_parentElem.Nombre}") : $"Editar {_editElem.Nombre}")</h3><button class="modal-close" @onclick="@(() => _showElem = false)">&times;</button></div>
-                <div class="modal-body tx-mod tx-topo">
-                    <div class="tx-ent-field">
-                        <label>Tipo de nivel <span class="req">*</span></label>
-                        <select class="tx-ent-input" @bind="_feNivelId" disabled="@(_editElem is not null)">
+        <div class="tf-overlay" @onclick="@(() => _showElem = false)">
+            <div class="tf-modal" @onclick:stopPropagation="true">
+                <div class="tf-mhead">
+                    <div class="tf-mhead-ico" style="background:var(--tf-green-lt);color:var(--tf-green)"><i class="bi bi-box"></i></div>
+                    <div><div class="tf-mhead-title">@(_editElem is null ? "Nuevo Elemento" : "Editar Elemento")</div><div class="tf-mhead-sub">@(_parentElem is null ? "Elemento raíz (sin padre)" : $"Hijo de: {_parentElem.Nombre}")</div></div>
+                    <button class="tf-mclose" @onclick="@(() => _showElem = false)"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div class="tf-mbody">
+                    @if (_parentElem is not null)
+                    {
+                        <div class="tf-alert tf-al-info"><i class="bi bi-diagram-3"></i><span>Ubicación padre: <strong>@_parentElem.Nombre</strong> (@_parentElem.Sigla) · @_parentElem.NivelNombre</span></div>
+                    }
+                    <div class="tf-fg"><label class="tf-flbl">Tipo de nivel <span class="tf-req">*</span></label>
+                        <select class="tf-fc" @bind="_feNivelId" disabled="@(_editElem is not null)">
                             <option value="0">— Selecciona —</option>
-                            @foreach (var n in NivelesDisponibles())
-                            {
-                                <option value="@n.Id">@n.Orden. @n.NombreNivel (@n.SiglaBase)</option>
-                            }
+                            @foreach (var n in NivelesDisponibles()) { <option value="@n.Id">(@n.Orden) @n.NombreNivel - @n.SiglaBase</option> }
                         </select>
                     </div>
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_feNombre" maxlength="100" placeholder="Ej. Bodega Norte" /></div>
-                        <div class="tx-ent-field"><label>Sigla <span class="req">*</span></label><input class="tx-ent-input mono" @bind="_feSigla" maxlength="20" placeholder="NOR" /></div>
+                    <div class="tf-fg-grid" style="grid-template-columns:1fr 1fr">
+                        <div class="tf-fg"><label class="tf-flbl">Nombre <span class="tf-req">*</span></label><input class="tf-fc" @bind="_feNombre" maxlength="100" placeholder="Ej: Bodega Norte" /></div>
+                        <div class="tf-fg"><label class="tf-flbl">Sigla <span class="tf-req">*</span></label><input class="tf-fc" style="font-family:'Consolas',monospace;text-transform:uppercase" @bind="_feSigla" maxlength="20" placeholder="NOR" /><div class="tf-fhint">Se usa para generar el código topográfico.</div></div>
                     </div>
                     @if (NivelControlaCapacidad(_feNivelId))
                     {
-                        <div class="tx-ent-field"><label>Capacidad máxima <span class="req">*</span></label><input type="number" min="1" class="tx-ent-input" @bind="_feCapacidad" /><div class="tx-ent-hint">Número máximo de unidades que puede contener.</div></div>
+                        <div class="tf-fg"><label class="tf-flbl">Capacidad máxima <span class="tf-req">*</span></label><input class="tf-fc" type="number" min="1" @bind="_feCapacidad" placeholder="Ej: 20" /></div>
                     }
-                    @if (_elemError is not null) { <div class="tx-ent-fielderr">@_elemError</div> }
+                    @if (!string.IsNullOrEmpty(_feSigla))
+                    {
+                        <div class="tf-alert tf-al-green"><i class="bi bi-code"></i><span>Código topográfico previsto: <span class="tf-code-inline">@PreviewCodigo()</span></span></div>
+                    }
+                    @if (_elemError is not null) { <div class="tf-alert tf-al-red" style="margin-bottom:0"><i class="bi bi-exclamation-circle"></i><span>@_elemError</span></div> }
                 </div>
-                <div class="modal-foot"><button class="tx-ent-btn" @onclick="@(() => _showElem = false)" disabled="@_busy">Cancelar</button><button class="tx-ent-btn primary" @onclick="SaveElemento" disabled="@_busy">@(_editElem is null ? "Crear" : "Guardar")</button></div>
+                <div class="tf-mfoot"><button class="tf-btn tf-b-ghost" @onclick="@(() => _showElem = false)" disabled="@_busy">Cancelar</button><button class="tf-btn tf-b-green" @onclick="SaveElemento" disabled="@_busy"><i class="bi bi-check-lg"></i> @(_editElem is null ? "Crear" : "Guardar cambios")</button></div>
             </div>
         </div>
     }
 </div>
+
+<style>
+    .tf-wrapper { padding:22px; --tf-bg:#F0F2F8; --tf-surface:#fff; --tf-s2:#F4F5F9; --tf-s3:#ECEEF5; --tf-border:#E2E5F0; --tf-border2:#CDD1E3; --tf-tx:#17213A; --tf-tx2:#566080; --tf-tx3:#9AA3BE; --tf-blue:#2670F5; --tf-blue-lt:#EAF0FE; --tf-blue-dk:#1550CC; --tf-green:#13B357; --tf-green-lt:#E2F9EC; --tf-green-dk:#0B7A3A; --tf-red:#EE2D58; --tf-red-lt:#FDEEF3; --tf-red-dk:#AA1A3C; --tf-amber:#D98A00; --tf-amber-lt:#FFF4D6; --tf-amber-dk:#8A5500; --tf-purple:#7C5BD9; --tf-purple-lt:#EDE7FB; --tf-r:8px; --tf-rl:12px; color:var(--tf-tx); }
+    .tf-ph { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; gap:12px; flex-wrap:wrap; }
+    .tf-ph h1 { font-size:18px; font-weight:700; letter-spacing:-.3px; color:var(--tf-tx); margin:0; }
+    .tf-ph p { font-size:12px; color:var(--tf-tx3); margin:2px 0 0; }
+    .tf-reqbox { background:linear-gradient(180deg,#F7F9FF 0%,#fff 100%); border:1px solid var(--tf-border); border-radius:var(--tf-rl); padding:14px 16px; margin-bottom:18px; }
+    .tf-reqbox-h { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; align-items:center; }
+    .tf-rf-chip { background:var(--tf-blue); color:#fff; font-size:11px; font-weight:700; padding:4px 10px; border-radius:7px; letter-spacing:.35px; }
+    .tf-prio { font-size:11px; font-weight:700; padding:4px 10px; border-radius:7px; }
+    .tf-prio.media { background:#E9EEF9; color:var(--tf-blue-dk); border:1px solid #BFCFFB; }
+    .tf-reqbox-actor { font-size:11px; color:var(--tf-tx3); margin-left:auto; }
+    .tf-reqbox-title { font-size:14.5px; font-weight:700; color:var(--tf-tx); margin-bottom:4px; }
+    .tf-reqbox-desc { font-size:12.5px; color:var(--tf-tx2); line-height:1.6; }
+    .tf-reqbox-desc code { font-family:'Consolas','Courier New',monospace; font-size:11.5px; background:var(--tf-s3); padding:1px 5px; border-radius:4px; color:var(--tf-tx); }
+    .tf-card { background:var(--tf-surface); border:1px solid var(--tf-border); border-radius:var(--tf-rl); margin-bottom:18px; overflow:hidden; }
+    .tf-card-head { padding:13px 16px; border-bottom:1px solid var(--tf-border); display:flex; align-items:center; gap:10px; }
+    .tf-card-title { font-size:13.5px; font-weight:700; color:var(--tf-tx); }
+    .tf-card-sub { font-size:11.5px; color:var(--tf-tx3); margin-top:1px; }
+    .tf-card-acts { margin-left:auto; display:flex; gap:6px; align-items:center; }
+    .tf-card-body { padding:14px 16px; }
+    .tf-card-body-0 { padding:0; }
+    .tf-g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; margin-bottom:18px; }
+    .tf-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .tf-tbl thead th { background:var(--tf-s2); color:var(--tf-tx2); font-weight:700; text-align:left; padding:9px 12px; border-bottom:1px solid var(--tf-border); font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+    .tf-tbl tbody td { padding:9px 12px; border-bottom:1px solid var(--tf-border); color:var(--tf-tx); vertical-align:middle; }
+    .tf-tbl tbody tr:last-child td { border-bottom:none; }
+    .tf-tbl tbody tr:hover { background:var(--tf-s2); }
+    .tf-tbl-acts { white-space:nowrap; text-align:right; }
+    .tf-code-inline { font-family:'Consolas','Courier New',monospace; font-size:11.5px; background:var(--tf-s2); border:1px solid var(--tf-border); padding:2px 6px; border-radius:4px; color:var(--tf-tx); }
+    .tf-badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:600; white-space:nowrap; }
+    .tf-bg { background:var(--tf-green-lt); color:var(--tf-green-dk); } .tf-br { background:var(--tf-red-lt); color:var(--tf-red-dk); }
+    .tf-bb { background:var(--tf-blue-lt); color:var(--tf-blue-dk); } .tf-ba { background:var(--tf-amber-lt); color:var(--tf-amber-dk); }
+    .tf-bx { background:var(--tf-s3); color:var(--tf-tx2); } .tf-bp { background:var(--tf-purple-lt); color:#5D43A8; }
+    .tf-btn { display:inline-flex; align-items:center; gap:5px; padding:7px 13px; border-radius:var(--tf-r); font-size:12.5px; font-weight:600; cursor:pointer; border:none; font-family:inherit; transition:all .13s; white-space:nowrap; line-height:1; text-decoration:none; }
+    .tf-b-primary { background:var(--tf-blue); color:#fff; } .tf-b-primary:hover { background:var(--tf-blue-dk); }
+    .tf-b-light { background:var(--tf-s2); color:var(--tf-tx2); border:1px solid var(--tf-border); } .tf-b-light:hover { background:var(--tf-s3); color:var(--tf-tx); }
+    .tf-b-ghost { background:transparent; color:var(--tf-tx2); border:1px solid var(--tf-border); } .tf-b-ghost:hover { background:var(--tf-s2); }
+    .tf-b-green { background:var(--tf-green); color:#fff; } .tf-b-green:hover { background:var(--tf-green-dk); }
+    .tf-b-red { background:var(--tf-red); color:#fff; }
+    .tf-b-sm { padding:5px 10px; font-size:11.5px; } .tf-b-xs { padding:3px 8px; font-size:11px; border-radius:5px; line-height:1.35; } .tf-b-ico { padding:5px 7px; border-radius:6px; }
+    .tf-tree { font-size:12.5px; }
+    .tf-tree-empty { padding:36px 16px; text-align:center; color:var(--tf-tx3); }
+    .tf-tree-empty i { font-size:32px; opacity:.35; margin-bottom:10px; display:block; }
+    .tf-tree-empty p { font-size:12px; margin:0; line-height:1.6; }
+    .tf-node { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border:1px solid var(--tf-border); border-radius:var(--tf-r); background:var(--tf-surface); margin-bottom:6px; transition:border-color .12s,background .12s; }
+    .tf-node:hover { border-color:var(--tf-border2); background:var(--tf-s2); }
+    .tf-node-row { display:flex; align-items:center; gap:10px; min-width:0; }
+    .tf-node-chip { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; min-width:42px; height:22px; padding:0 8px; background:#17213A; color:#fff; font-family:'Consolas','Courier New',monospace; font-weight:700; font-size:10.5px; letter-spacing:.5px; border-radius:5px; }
+    .tf-node-chip.tf-cap { background:#5D43A8; }
+    .tf-node-name { font-weight:600; color:var(--tf-tx); flex:1; min-width:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; }
+    .tf-node-codigo { font-family:'Consolas','Courier New',monospace; font-size:10.5px; background:var(--tf-s2); border:1px solid var(--tf-border); padding:1px 6px; border-radius:4px; color:var(--tf-tx2); font-weight:500; }
+    .tf-node-acts { display:flex; gap:4px; flex-shrink:0; align-items:center; }
+    .tf-node-cap2 { display:flex; align-items:center; gap:10px; padding-left:52px; padding-right:4px; }
+    .tf-cap-bar { flex:1; height:8px; background:var(--tf-s3); border-radius:4px; overflow:hidden; }
+    .tf-cap-bar > span { display:block; height:100%; background:var(--tf-green); transition:width .25s; }
+    .tf-cap-bar.tf-warn > span { background:var(--tf-amber); } .tf-cap-bar.tf-full > span { background:var(--tf-red); }
+    .tf-cap-frac { font-family:'Consolas','Courier New',monospace; font-size:11px; color:var(--tf-tx2); white-space:nowrap; }
+    .tf-cap-pct { font-size:11.5px; font-weight:700; color:var(--tf-tx); white-space:nowrap; }
+    .tf-cap-pct.tf-warn { color:var(--tf-amber-dk); } .tf-cap-pct.tf-full { color:var(--tf-red-dk); }
+    .tf-node-children-info { font-size:10.5px; color:var(--tf-tx3); padding-left:52px; }
+    .tf-tree-children { padding-left:24px; border-left:2px solid var(--tf-border); margin-left:13px; }
+    .tf-codeblock { background:#0E1733; color:#CDE2FF; font-family:'Consolas','Courier New',monospace; font-size:12px; padding:14px 16px; border-radius:var(--tf-r); line-height:1.7; white-space:pre-wrap; }
+    .tf-cm { color:#7C8FB8; } .tf-ck { color:#FBB04C; } .tf-cv { color:#9AB3FF; } .tf-cs { color:#7CDCB6; font-weight:700; }
+    .tf-alert { display:flex; align-items:flex-start; gap:8px; padding:10px 13px; border-radius:var(--tf-r); font-size:12px; line-height:1.55; margin-bottom:12px; }
+    .tf-alert i { flex-shrink:0; margin-top:2px; }
+    .tf-al-info { background:var(--tf-blue-lt); color:var(--tf-blue-dk); border:1px solid #BFCFFB; }
+    .tf-al-warn { background:var(--tf-amber-lt); color:var(--tf-amber-dk); border:1px solid #F5D97A; }
+    .tf-al-red { background:var(--tf-red-lt); color:var(--tf-red-dk); border:1px solid #F5B3C5; }
+    .tf-al-green { background:var(--tf-green-lt); color:var(--tf-green-dk); border:1px solid #9AE3BC; }
+    .tf-msg-success { border-radius:var(--tf-r); padding:9px 13px; margin-bottom:10px; font-size:13px; background:var(--tf-green-lt); border:1px solid #9AE3BC; color:var(--tf-green-dk); }
+    .tf-msg-error { border-radius:var(--tf-r); padding:9px 13px; margin-bottom:10px; font-size:13px; background:var(--tf-red-lt); border:1px solid #F5B3C5; color:var(--tf-red-dk); }
+    .tf-overlay { position:fixed; inset:0; background:rgba(5,12,35,.48); z-index:1000; display:flex; align-items:center; justify-content:center; padding:18px; }
+    .tf-modal { background:var(--tf-surface); border-radius:var(--tf-rl); width:100%; max-width:520px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 20px 56px rgba(0,0,0,.18); --tf-blue:#2670F5; --tf-blue-lt:#EAF0FE; --tf-green:#13B357; --tf-green-lt:#E2F9EC; --tf-red:#EE2D58; --tf-red-lt:#FDEEF3; --tf-red-dk:#AA1A3C; --tf-blue-dk:#1550CC; --tf-green-dk:#0B7A3A; --tf-border:#E2E5F0; --tf-border2:#CDD1E3; --tf-tx:#17213A; --tf-tx2:#566080; --tf-tx3:#9AA3BE; --tf-s2:#F4F5F9; --tf-s3:#ECEEF5; --tf-r:8px; --tf-rl:12px; }
+    .tf-mhead { padding:15px 18px 13px; border-bottom:1px solid var(--tf-border); display:flex; align-items:center; gap:10px; }
+    .tf-mhead-ico { width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:15px; }
+    .tf-mhead-title { font-size:14px; font-weight:700; color:var(--tf-tx); }
+    .tf-mhead-sub { font-size:11.5px; color:var(--tf-tx3); margin-top:1px; }
+    .tf-mclose { margin-left:auto; width:26px; height:26px; border:none; background:var(--tf-s2); border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--tf-tx3); flex-shrink:0; }
+    .tf-mbody { padding:16px 18px; overflow-y:auto; flex:1; }
+    .tf-mfoot { padding:11px 18px; border-top:1px solid var(--tf-border); display:flex; justify-content:flex-end; gap:6px; }
+    .tf-fg { margin-bottom:13px; } .tf-fg:last-child { margin-bottom:0; }
+    .tf-flbl { display:block; font-size:11.5px; font-weight:600; color:var(--tf-tx2); margin-bottom:4px; }
+    .tf-req { color:var(--tf-red); }
+    .tf-fhint { font-size:10.5px; color:var(--tf-tx3); margin-top:3px; line-height:1.5; }
+    .tf-fc { width:100%; padding:8px 11px; border:1px solid var(--tf-border2); border-radius:var(--tf-r); font-size:13px; color:var(--tf-tx); font-family:inherit; outline:none; box-sizing:border-box; }
+    .tf-fc:focus { border-color:var(--tf-blue); }
+    .tf-fg-grid { display:grid; grid-template-columns:1fr 110px; gap:10px; }
+    .tf-fchk { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--tf-tx); cursor:pointer; }
+    @@media (max-width:980px) { .tf-g2 { grid-template-columns:1fr; } }
+</style>
 
 @code {
     private const string ModuleKey = "modulo/topografia-fisica";
@@ -260,11 +318,9 @@
 
     private IReadOnlyList<TopografiaNivelDto> _niveles = [];
     private IReadOnlyList<TopografiaElementoNodeDto> _arbol = [];
-    private List<TopografiaElementoNodeDto> _flat = [];
+    private readonly List<TopografiaElementoNodeDto> _flat = [];
     private TopografiaKpisDto? _kpis;
-    private readonly HashSet<long> _collapsed = [];
 
-    // Editor nivel
     private bool _showNivel;
     private TopografiaNivelDto? _editNivel;
     private string _fnNombre = "", _fnSigla = "";
@@ -272,12 +328,12 @@
     private bool _fnControla;
     private string? _nivelError;
 
-    // Editor elemento
     private bool _showElem;
     private TopografiaElementoNodeDto? _editElem, _parentElem;
     private long _feNivelId;
     private string _feNombre = "", _feSigla = "";
     private int? _feCapacidad;
+    private string _feEstado = "Disponible";
     private string? _elemError;
 
     protected override async Task OnInitializedAsync()
@@ -295,7 +351,7 @@
         _niveles = await Svc.ListNivelesAsync();
         _hayElementos = await Svc.HayElementosAsync();
         _arbol = await Svc.GetArbolAsync(includeInactivos: _verInactivos);
-        _flat = [];
+        _flat.Clear();
         Collect(_arbol);
         _kpis = await Svc.GetKpisAsync();
     }
@@ -305,31 +361,61 @@
         foreach (var n in nodes) { _flat.Add(n); Collect(n.Children); }
     }
 
-    private sealed record Row(TopografiaElementoNodeDto Node, int Depth);
-    private List<Row> FlattenTree()
+    @* ===== Render recursivo de un nodo del arbol (calcado de RenderNodoArbol) ===== *@
+    private RenderFragment RenderNodo(TopografiaElementoNodeDto n) => __builder =>
     {
-        var rows = new List<Row>();
-        void Walk(IReadOnlyList<TopografiaElementoNodeDto> nodes, int depth)
+        var full = n.Estado == TopografiaEstado.Lleno;
+        <div class="tf-node">
+            <div class="tf-node-row">
+                <span class="tf-node-chip @(n.ControlaCapacidad ? "tf-cap" : "")" title="@n.Sigla">@n.Sigla</span>
+                <div class="tf-node-name">@n.Nombre @if (n.CodigoTopografico != n.Sigla) { <span class="tf-node-codigo">@n.CodigoTopografico</span> }</div>
+                <span class="tf-badge @EstadoBadge(n.Estado)">@EstadoLabel(n.Estado)</span>
+                <div class="tf-node-acts">
+                    @if (_canCreate && !n.EsInactivo && PuedeTenerHijo(n))
+                    {
+                        <a class="tf-btn tf-b-light tf-b-xs" title="Añadir hijo" @onclick="@(() => OpenElemento(null, n))"><i class="bi bi-plus-lg"></i></a>
+                    }
+                    @if (_canEdit)
+                    {
+                        <a class="tf-btn tf-b-light tf-b-xs tf-b-ico" title="Editar" @onclick="@(() => OpenElemento(n, null))"><i class="bi bi-pencil"></i></a>
+                    }
+                    @if (_canDelete)
+                    {
+                        <a class="tf-btn tf-b-light tf-b-xs" title="@(n.EsInactivo ? "Reactivar" : "Inactivar")" @onclick="@(() => SetEstado(n, n.EsInactivo))"><i class="bi bi-power"></i></a>
+                    }
+                </div>
+            </div>
+            @if (n.Capacidad is int cap && cap > 0)
+            {
+                var pct = n.PorcentajeOcupacion ?? 0;
+                var mod = n.EsInactivo ? "" : (pct >= 100 ? "tf-full" : pct >= 75 ? "tf-warn" : "");
+                <div class="tf-node-cap2">
+                    <span class="tf-cap-bar @mod"><span style="width:@(Math.Min(pct,100))%"></span></span>
+                    <span class="tf-cap-frac">@n.Ocupacion/@cap</span>
+                    <span class="tf-cap-pct @mod">@(pct >= 100 && !n.EsInactivo ? "100% LLENO" : $"{pct}%")</span>
+                </div>
+            }
+            else if (n.Children.Count > 0)
+            {
+                <div class="tf-node-children-info">@n.Children.Count elemento(s)</div>
+            }
+        </div>
+        @if (n.Children.Count > 0)
         {
-            foreach (var n in nodes) { rows.Add(new Row(n, depth)); if (!_collapsed.Contains(n.Id)) { Walk(n.Children, depth + 1); } }
+            <div class="tf-tree-children">@foreach (var c in n.Children) { @RenderNodo(c) }</div>
         }
-        Walk(_arbol, 0);
-        return rows;
-    }
-
-    private void Toggle(long id) { if (!_collapsed.Remove(id)) { _collapsed.Add(id); } }
+    };
 
     private TopografiaNivelDto? NivelDe(long nivelId) => _niveles.FirstOrDefault(n => n.Id == nivelId);
     private bool NivelControlaCapacidad(long nivelId) => NivelDe(nivelId)?.ControlaCapacidad ?? false;
 
-    /// <summary>Un elemento puede tener hijos si existe un nivel de orden mayor al suyo.</summary>
     private bool PuedeTenerHijo(TopografiaElementoNodeDto n)
     {
+        if (n.ControlaCapacidad) { return false; } // un nivel de capacidad no tiene hijos-arbol
         var ordenActual = NivelDe(n.NivelId)?.Orden ?? int.MaxValue;
         return _niveles.Any(x => x.Orden > ordenActual);
     }
 
-    /// <summary>Niveles ofrecibles al crear: si hay padre, solo los de orden mayor; si raiz, todos.</summary>
     private IReadOnlyList<TopografiaNivelDto> NivelesDisponibles()
     {
         if (_parentElem is null) { return _niveles; }
@@ -337,7 +423,15 @@
         return _niveles.Where(n => n.Orden > ordenPadre).ToList();
     }
 
-    // ---- Nivel ----
+    private string PreviewCodigo()
+    {
+        var siglas = new List<string>();
+        var p = _parentElem;
+        while (p is not null) { siglas.Insert(0, p.Sigla); p = _flat.FirstOrDefault(x => x.Id == p.ParentId); }
+        siglas.Add(_feSigla.ToUpperInvariant());
+        return string.Join("-", siglas.Where(s => !string.IsNullOrEmpty(s)));
+    }
+
     private void OpenNivel(TopografiaNivelDto? n)
     {
         _editNivel = n;
@@ -377,7 +471,6 @@
         finally { _busy = false; }
     }
 
-    // ---- Elemento ----
     private void OpenElemento(TopografiaElementoNodeDto? elem, TopografiaElementoNodeDto? parent)
     {
         _editElem = elem;
@@ -386,6 +479,7 @@
         _feNombre = elem?.Nombre ?? "";
         _feSigla = elem?.Sigla ?? "";
         _feCapacidad = elem?.Capacidad;
+        _feEstado = (elem?.Estado ?? TopografiaEstado.Disponible).ToString();
         _elemError = null; _pageOk = null; _pageError = null;
         _showElem = true;
     }
@@ -401,7 +495,7 @@
             var actor = Tenant.UserId ?? 0;
             var result = _editElem is null ? await Svc.CreateElementoAsync(req, actor) : await Svc.UpdateElementoAsync(_editElem.Id, req, actor);
             if (!result.IsOk) { _elemError = result.Error; return; }
-            _showElem = false; _pageOk = _editElem is null ? "Ubicación creada." : "Ubicación actualizada.";
+            _showElem = false; _pageOk = _editElem is null ? "Elemento creado." : "Elemento actualizado.";
             await LoadAsync();
         }
         finally { _busy = false; }
@@ -415,7 +509,7 @@
             var result = await Svc.SetEstadoAsync(n.Id, activar, Tenant.UserId ?? 0,
                 motivo: activar ? "Reactivacion de ubicacion (RF06)" : "Inactivacion de ubicacion (RF06)");
             if (!result.IsOk) { _pageError = result.Error; return; }
-            _pageOk = activar ? "Ubicación reactivada." : "Ubicación inactivada.";
+            _pageOk = activar ? "Elemento reactivado." : "Elemento inactivado.";
             await LoadAsync();
         }
         finally { _busy = false; }
@@ -423,16 +517,10 @@
 
     private static string EstadoLabel(TopografiaEstado e) => e switch
     {
-        TopografiaEstado.Disponible => "Disponible",
-        TopografiaEstado.Lleno => "Llena",
-        TopografiaEstado.Inactivo => "Inactiva",
-        _ => e.ToString()
+        TopografiaEstado.Disponible => "Disponible", TopografiaEstado.Lleno => "Lleno", TopografiaEstado.Inactivo => "Inactivo", _ => e.ToString()
     };
-    private static string EstadoClase(TopografiaEstado e) => e switch
+    private static string EstadoBadge(TopografiaEstado e) => e switch
     {
-        TopografiaEstado.Disponible => "ok",
-        TopografiaEstado.Lleno => "off",
-        TopografiaEstado.Inactivo => "off",
-        _ => ""
+        TopografiaEstado.Disponible => "tf-bg", TopografiaEstado.Lleno => "tf-br", TopografiaEstado.Inactivo => "tf-bx", _ => "tf-bx"
     };
 }
