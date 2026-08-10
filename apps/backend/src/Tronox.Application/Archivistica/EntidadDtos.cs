@@ -28,7 +28,9 @@ public sealed record EntidadDto(
     string? CodigoFondoAgn,
     string ZonaHoraria,
     string IdiomaDefecto,
-    EntidadEstado Estado)
+    EntidadEstado Estado,
+    string? NombreReal = null,
+    string? Observaciones = null)
 {
     /// <summary>NIT con su digito de verificacion, como se imprime en documentos oficiales.</summary>
     public string NitCompleto => $"{Nit}-{DigitoVerificacion}";
@@ -65,7 +67,9 @@ public sealed record SaveEntidadRequest(
     string ZonaHoraria,
     string IdiomaDefecto,
     EntidadEstado Estado,
-    string? CodigoFondoAgnManual = null);
+    string? CodigoFondoAgnManual = null,
+    string? NombreReal = null,
+    string? Observaciones = null);
 
 // ---- Catalogos territoriales DIVIPOLA (pendiente P-02 de RQ01) ----
 

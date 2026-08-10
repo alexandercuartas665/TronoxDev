@@ -30,6 +30,12 @@ public class Entidad : TenantEntity
 
     public string RazonSocial { get; set; } = null!;
 
+    /// <summary>Nombre comercial/real de la entidad (legacy SUCURSAL.NOMBRE_REAL). Opcional.</summary>
+    public string? NombreReal { get; set; }
+
+    /// <summary>Observaciones internas de la ficha (legacy SUCURSAL.OBSERVACIONES). Opcional.</summary>
+    public string? Observaciones { get; set; }
+
     /// <summary>
     /// Sigla de la entidad. MAXIMO 10 caracteres por la resolucion M01 (la spec decia 20):
     /// entra literal en el codigo de fondo AGN, y una sigla larga produce codigos malformados

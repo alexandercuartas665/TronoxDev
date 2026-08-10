@@ -103,9 +103,20 @@
                     </div>
                 </div>
 
+                <div class="tx-ent-grid c2">
+                    <div class="tx-ent-field">
+                        <label>Representante Legal <span class="req">*</span></label>
+                        <input class="tx-ent-input" maxlength="150" @bind="_representante" placeholder="Nombre del representante legal" />
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Nombre comercial / real <span class="opt">(opcional)</span></label>
+                        <input class="tx-ent-input" maxlength="60" @bind="_nombreReal" placeholder="Nombre comercial de la entidad" />
+                    </div>
+                </div>
+
                 <div class="tx-ent-field">
-                    <label>Representante Legal <span class="req">*</span></label>
-                    <input class="tx-ent-input" style="max-width:520px" maxlength="150" @bind="_representante" placeholder="Nombre del representante legal" />
+                    <label>Observaciones <span class="opt">(opcional)</span></label>
+                    <textarea class="tx-ent-input" rows="2" maxlength="300" @bind="_observaciones" placeholder="Notas internas de la ficha de la entidad"></textarea>
                 </div>
 
                 @* Bloque condicional: obligatorio solo si la entidad es Publica (criterio 4 de RF01). *@
@@ -506,6 +517,8 @@
     private string _correo = "";
     private string? _web;
     private string _representante = "";
+    private string? _nombreReal;
+    private string? _observaciones;
     private string? _logoUrl;
     private string? _logoError;
     private string _zonaHoraria = "America/Bogota";
@@ -570,6 +583,8 @@
         _correo = entidad.CorreoInstitucional;
         _web = entidad.PaginaWeb;
         _representante = entidad.RepresentanteLegal;
+        _nombreReal = entidad.NombreReal;
+        _observaciones = entidad.Observaciones;
         _logoUrl = entidad.LogoUrl;
         _zonaHoraria = entidad.ZonaHoraria;
         _idioma = entidad.IdiomaDefecto;
@@ -696,6 +711,8 @@
             CorreoInstitucional: _correo ?? "",
             PaginaWeb: _web,
             RepresentanteLegal: _representante ?? "",
+            NombreReal: _nombreReal,
+            Observaciones: _observaciones,
             LogoUrl: _logoUrl,
             ZonaHoraria: _zonaHoraria,
             IdiomaDefecto: _idioma,
