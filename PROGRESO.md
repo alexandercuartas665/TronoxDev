@@ -471,3 +471,31 @@ Pendiente para URL publica: **dominio + bloque en el Caddy externo** (decision d
 
 El codigo se aparta de la especificacion en 8 puntos, todos con decision explicita del usuario y
 ADR. Estan consolidados en el vault para que el equipo que lea Obsidian no lea ficcion.
+
+---
+
+## 9. Lote milimetrico RQ02/RQ09 + 3 modulos nuevos (2026-08-11, commit e3380a6, DESPLEGADO)
+
+Ajustes fieles al legacy VB.NET y modulos que faltaban, desplegados a produccion (`10.0.0.3:5680`,
+2 migraciones auto-aplicadas + SQL de aprovisionamiento de menu/permisos en los 2 tenants).
+
+- **Configuracion Radicacion** (`rad_config.aspx`): recalcada 1:1 (nav lateral + 7 secciones:
+  Consecutivos, Prioridades, Tipos, Buzones, Portal Web, Notificaciones, Migracion). Sigla e
+  "incluir anio" editables (columnas `sigla_radicacion`, `incluir_anio`). Config PQR redirige aqui.
+- **Niveles de Clasificacion Documental** (`ClasificacionDocumental.aspx`): pagina nueva
+  (`/modulo/niveles-clasificacion`, lista de tarjetas) sobre `NivelClasificacionService` (ya existia).
+- **Fondos Documentales** (`FondosDocumentales.aspx`): pagina nueva (`/modulo/fondos-documentales`)
+  sobre `FondoService`. Resuelve el pendiente "Fondos (RF02) sin pantalla" (seccion 7, item 12).
+- **Configuracion de Correo (SMTP)** (`gen_config_smtp.aspx`): pagina de tenant
+  (`/modulo/configuracion-smtp`) sobre `EmailConfigService` (nota: `EmailConfig` es singleton GLOBAL).
+- **Versiones TRD** (`doc_versionesTRD.aspx`): buscador/filtro/paginacion, columna "Creado por",
+  y **MODO_CODIGO_SERIE reintroducido** (revierte ADR-006, ahora `superseded`): enum
+  `ModoCodigoSerie` en `TrdVersion` (migracion `modo_codigo_serie`), selector en el modal
+  (CalcularCodigo autogenera `TRD-<anio>-v<N>` / EditarCodigo manual) y columna badge en la grilla.
+- **Series/Subseries** (`doc_catalogoTRD.aspx`): panel de detalle del nodo seleccionado con boton
+  explicito "Agregar subserie", boton "+ Subserie" por fila, textos de modal "Nueva/Crear Subserie"
+  + info-box del padre, y auto-expandir/seleccionar el padre al crear (paridad UX del legacy).
+- **Menu**: 3 items nuevos en `MenuCatalogo` (tenants nuevos) + SQL idempotente para los tenants
+  existentes (nodos + 6 acciones a SUPER_ADMIN/ADMIN). En prod cada tenant tiene 2 vistas: el item
+  entra una vez por vista, sin duplicados intra-vista (verificado).
+- **Inventario de port** actualizado en el vault (`02. Inventario de modulos/INVENTARIO_PORT_...`).
