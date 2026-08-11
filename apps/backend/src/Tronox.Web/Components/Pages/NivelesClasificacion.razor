@@ -1,0 +1,279 @@
+@page "/modulo/niveles-clasificacion"
+@attribute [Authorize(Policy = "Perm:modulo/niveles-clasificacion:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Archivistica
+@using Tronox.Web.Auth
+@inject INivelClasificacionService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ01 - RF01-P.3. Niveles de clasificacion/reserva documental (Publico, Reservado, Clasificado...).
+   Port de ClasificacionDocumental.aspx (lista de tarjetas calcada). Se asignan a series (RQ02),
+   expedientes y documentos, y acotan el nivel de acceso maximo de los roles (RQ01 RF05). Los 4
+   niveles canonicos se siembran al crear el tenant; aqui se administran. Sin borrado fisico
+   (invariante 8): se activa/desactiva. *@
+
+<PageTitle>Niveles de Clasificacion Documental - TRONOX SGDEA</PageTitle>
+
+<div class="cd-wrap">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+        <a href="/inicio">Inicio</a><span class="sep">/</span>
+        <span>Configuracion Documental</span><span class="sep">/</span>
+        <span class="cur">Niveles de Clasificacion Documental</span>
+    </nav>
+
+    <div class="cd-head">
+        <div>
+            <h1 class="cd-title">Niveles de Clasificacion Documental</h1>
+            <div class="cd-sub">RQ01 &middot; Reserva y clasificacion de la informacion (Ley 1712/2014)</div>
+        </div>
+        @if (_canEdit)
+        {
+            <button class="cd-btn" @onclick="@(() => OpenModal(null))"><i class="bi bi-plus-lg"></i> Nuevo nivel</button>
+        }
+    </div>
+
+    <div class="cd-info">
+        <i class="bi bi-info-circle"></i>
+        Los niveles ordenan la reserva de la informacion. Se aplican a series, expedientes y documentos, y
+        limitan el nivel de acceso maximo de los roles. No se eliminan: se activan o desactivan.
+    </div>
+
+    @if (_error is not null) { <div class="cd-alert err">@_error</div> }
+    @if (_ok is not null) { <div class="cd-alert ok">@_ok</div> }
+
+    @if (_loading)
+    {
+        <div class="cd-card"><em>Cargando...</em></div>
+    }
+    else if (_niveles.Count == 0)
+    {
+        <div class="cd-empty"><i class="bi bi-shield-lock"></i><div>No hay niveles de clasificacion configurados.</div></div>
+    }
+    else
+    {
+        <div class="cd-list">
+            @foreach (var n in _niveles)
+            {
+                <div class="cd-item @(n.Activo ? "" : "off")">
+                    <span class="cd-dot" style="background:@(n.ColorEtiqueta ?? "#64748b")"></span>
+                    <div class="cd-body">
+                        <div class="cd-line1">
+                            <span class="cd-cod">@n.Codigo</span>
+                            <span class="cd-nom">@n.Nombre</span>
+                            <span class="cd-badge" style="@BadgeStyle(n.ColorEtiqueta)">Nivel @n.NivelOrden</span>
+                            @if (!n.Activo) { <span class="cd-badge off">Inactivo</span> }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(n.Descripcion))
+                        {
+                            <div class="cd-desc">@n.Descripcion</div>
+                        }
+                    </div>
+                    @if (_canEdit)
+                    {
+                        <div class="cd-actions">
+                            <button class="cd-ico" title="Editar" @onclick="@(() => OpenModal(n))"><i class="bi bi-pencil"></i></button>
+                            <button class="cd-ico" title="@(n.Activo ? "Desactivar" : "Activar")" @onclick="@(() => ToggleAsync(n))" disabled="@_busy"><i class="bi bi-arrow-repeat"></i></button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* ===== Modal alta/edicion ===== *@
+    @if (_showModal)
+    {
+        <div class="cd-modal-back" @onclick="@(() => _showModal = false)">
+            <div class="cd-modal" @onclick:stopPropagation="true">
+                <div class="cd-modal-head">
+                    <h3>@(_editId is null ? "Nuevo nivel de clasificacion" : "Editar nivel")</h3>
+                    <button class="cd-x" @onclick="@(() => _showModal = false)">&times;</button>
+                </div>
+                <div class="cd-modal-body">
+                    <div class="cd-grid2">
+                        <div class="cd-field">
+                            <label>Nombre <span class="req">*</span></label>
+                            <input class="cd-input" maxlength="80" @bind="_fNombre" placeholder="Reservado" />
+                        </div>
+                        <div class="cd-field">
+                            <label>Codigo <span class="req">*</span></label>
+                            <input class="cd-input cd-mono" maxlength="10" style="text-transform:uppercase" @bind="_fCodigo" placeholder="RES" />
+                        </div>
+                        <div class="cd-field">
+                            <label>Nivel de orden <span class="req">*</span></label>
+                            <input class="cd-input" type="number" min="1" max="99" @bind="_fOrden" />
+                            <span class="cd-hint">1 (menos reservado) a 99. Unico.</span>
+                        </div>
+                        <div class="cd-field">
+                            <label>Color de etiqueta</label>
+                            <div style="display:flex;align-items:center;gap:10px">
+                                <input type="color" value="@(_fColor ?? "#64748b")" @onchange="@(e => _fColor = e.Value?.ToString())" style="width:44px;height:38px;padding:2px;border:1px solid #d9e2ec;border-radius:6px" />
+                                <input class="cd-input cd-mono" maxlength="7" style="width:120px" @bind="_fColor" placeholder="#RRGGBB" />
+                                <span class="cd-badge" style="@BadgeStyle(_fColor)">Vista previa</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cd-field">
+                        <label>Descripcion</label>
+                        <textarea class="cd-input" rows="2" maxlength="500" @bind="_fDescripcion" placeholder="Uso de este nivel de reserva..."></textarea>
+                    </div>
+                    <label class="cd-check"><input type="checkbox" @bind="_fActivo" /> Activo</label>
+
+                    @if (_modalError is not null) { <div class="cd-alert err" style="margin-top:10px">@_modalError</div> }
+                </div>
+                <div class="cd-modal-foot">
+                    <button class="cd-btn soft" @onclick="@(() => _showModal = false)" disabled="@_busy">Cancelar</button>
+                    <button class="cd-btn" @onclick="SaveAsync" disabled="@_busy">@(_editId is null ? "Crear" : "Guardar")</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .cd-wrap { padding: 8px 0 40px; font-family: Poppins, sans-serif; color: #0f172a; }
+    .cd-head { display: flex; justify-content: space-between; align-items: flex-end; margin: 6px 0 14px; gap: 12px; flex-wrap: wrap; }
+    .cd-title { font-size: 20px; font-weight: 800; margin: 0; }
+    .cd-sub { font-size: 12.5px; color: #94a3b8; margin-top: 3px; }
+    .cd-info { background: #eff6ff; border: 1px solid #dbeafe; border-radius: 10px; padding: 12px 16px; font-size: 12.5px; color: #1e40af; margin-bottom: 16px; }
+    .cd-info i { margin-right: 6px; }
+    .cd-alert { border-radius: 8px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
+    .cd-alert.ok { background: #f1fbf3; color: #1f6b35; border: 1px solid #bbf7d0; }
+    .cd-alert.err { background: #fff5f5; color: #9f1d1d; border: 1px solid #fecaca; }
+    .cd-card, .cd-empty { background: #fff; border: 1px solid #d9e2ec; border-radius: 12px; padding: 20px; }
+    .cd-empty { text-align: center; color: #94a3b8; }
+    .cd-empty i { font-size: 30px; display: block; margin-bottom: 8px; }
+
+    .cd-list { display: flex; flex-direction: column; gap: 10px; }
+    .cd-item { display: flex; align-items: center; gap: 14px; background: #fff; border: 1px solid #d9e2ec; border-radius: 12px; padding: 14px 18px; }
+    .cd-item.off { opacity: .62; }
+    .cd-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(0,0,0,.04); }
+    .cd-body { flex: 1; min-width: 0; }
+    .cd-line1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .cd-cod { font-family: Consolas, monospace; font-size: 12px; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 2px 8px; border-radius: 6px; }
+    .cd-nom { font-size: 14px; font-weight: 600; color: #0f172a; }
+    .cd-badge { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px; background: #e2e8f0; color: #475569; }
+    .cd-badge.off { background: #f1f5f9; color: #94a3b8; }
+    .cd-desc { font-size: 12.5px; color: #64748b; margin-top: 4px; }
+    .cd-actions { display: flex; gap: 6px; }
+    .cd-ico { width: 34px; height: 34px; border-radius: 8px; border: 1px solid #d9e2ec; background: #f8fafc; color: #475569; cursor: pointer; }
+    .cd-ico:hover { background: #eef2f7; color: #2563eb; }
+
+    .cd-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; background: #2563eb; color: #fff; border: none; cursor: pointer; font-size: 13px; font-weight: 600; font-family: Poppins, sans-serif; }
+    .cd-btn:hover { background: #1d4ed8; }
+    .cd-btn:disabled { opacity: .6; cursor: default; }
+    .cd-btn.soft { background: #eef2f7; color: #475569; }
+
+    .cd-modal-back { position: fixed; inset: 0; background: rgba(15,23,42,.4); z-index: 1050; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; overflow-y: auto; }
+    .cd-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .cd-modal-head { padding: 16px 22px; border-bottom: 1px solid #eef2f7; display: flex; justify-content: space-between; align-items: center; }
+    .cd-modal-head h3 { font-size: 15px; font-weight: 700; margin: 0; }
+    .cd-x { background: none; border: none; font-size: 20px; color: #94a3b8; cursor: pointer; line-height: 1; }
+    .cd-modal-body { padding: 22px; }
+    .cd-modal-foot { padding: 14px 22px; border-top: 1px solid #eef2f7; display: flex; justify-content: flex-end; gap: 10px; }
+    .cd-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; margin-bottom: 14px; }
+    .cd-field { display: flex; flex-direction: column; gap: 5px; }
+    .cd-field label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .03em; }
+    .cd-field label .req { color: #dc2626; }
+    .cd-hint { font-size: 11px; color: #94a3b8; }
+    .cd-input { padding: 9px 12px; border-radius: 8px; border: 1px solid #d9e2ec; font-size: 13px; color: #0f172a; background: #fff; font-family: Poppins, sans-serif; outline: none; width: 100%; box-sizing: border-box; }
+    .cd-input:focus { border-color: #2563eb; }
+    .cd-mono { font-family: Consolas, monospace; }
+    .cd-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #0f172a; cursor: pointer; margin-top: 4px; }
+
+    @@media (max-width: 720px) { .cd-grid2 { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    private const string ModuleKey = "modulo/niveles-clasificacion";
+
+    private bool _loading = true, _busy, _canEdit, _showModal;
+    private string? _ok, _error, _modalError;
+    private IReadOnlyList<NivelClasificacionDto> _niveles = [];
+
+    private long? _editId;
+    private string _fNombre = "", _fCodigo = "";
+    private string? _fDescripcion, _fColor = "#64748b";
+    private int _fOrden = 1;
+    private bool _fActivo = true;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync() => _niveles = await Svc.ListAsync(soloActivos: false);
+
+    private void OpenModal(NivelClasificacionDto? n)
+    {
+        _modalError = null; _ok = null; _error = null;
+        _editId = n?.Id;
+        _fNombre = n?.Nombre ?? "";
+        _fCodigo = n?.Codigo ?? "";
+        _fDescripcion = n?.Descripcion;
+        _fColor = n?.ColorEtiqueta ?? "#64748b";
+        _fOrden = n?.NivelOrden ?? (_niveles.Count > 0 ? _niveles.Max(x => x.NivelOrden) + 1 : 1);
+        _fActivo = n?.Activo ?? true;
+        _showModal = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!_canEdit) { return; }
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_fNombre)) { _modalError = "El nombre es obligatorio."; return; }
+        if (string.IsNullOrWhiteSpace(_fCodigo)) { _modalError = "El codigo es obligatorio."; return; }
+        _busy = true;
+        try
+        {
+            var req = new SaveNivelClasificacionRequest(
+                _editId, _fNombre.Trim(), _fCodigo.Trim().ToUpperInvariant(),
+                string.IsNullOrWhiteSpace(_fDescripcion) ? null : _fDescripcion.Trim(),
+                string.IsNullOrWhiteSpace(_fColor) ? null : _fColor.Trim(), _fOrden, _fActivo);
+            var res = await Svc.SaveAsync(req, Actor);
+            if (!res.IsOk) { _modalError = res.Error; return; }
+            _showModal = false;
+            _ok = _editId is null ? "Nivel creado." : "Nivel actualizado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleAsync(NivelClasificacionDto n)
+    {
+        if (!_canEdit) { return; }
+        _busy = true; _ok = null; _error = null;
+        try
+        {
+            var res = await Svc.SetActivoAsync(n.Id, !n.Activo, null, Actor);
+            if (!res.IsOk) { _error = res.Error; return; }
+            _ok = n.Activo ? "Nivel desactivado." : "Nivel activado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    // Badge pastel: color de texto = color; fondo = color mezclado con blanco al 82% (formula del legacy).
+    private static string BadgeStyle(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex) || !hex.StartsWith('#') || hex.Length != 7)
+        {
+            return "";
+        }
+        try
+        {
+            int r = Convert.ToInt32(hex.Substring(1, 2), 16);
+            int g = Convert.ToInt32(hex.Substring(3, 2), 16);
+            int b = Convert.ToInt32(hex.Substring(5, 2), 16);
+            int Pastel(int c) => (int)(c + (255 - c) * 0.82);
+            return $"background:rgb({Pastel(r)},{Pastel(g)},{Pastel(b)});color:{hex}";
+        }
+        catch { return ""; }
+    }
+}

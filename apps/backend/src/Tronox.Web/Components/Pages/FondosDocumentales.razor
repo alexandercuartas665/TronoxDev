@@ -1,0 +1,367 @@
+@page "/modulo/fondos-documentales"
+@attribute [Authorize(Policy = "Perm:modulo/fondos-documentales:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Archivistica
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IFondoService Svc
+@inject ISedeService SedeSvc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ01 - RF02. Fondos documentales: conjunto de documentos producidos por una entidad en desarrollo
+   de sus funciones (principio de procedencia, Acuerdo AGN 002/2014). Port de FondosDocumentales.aspx.
+   Un fondo puede ser transversal (toda la entidad) o de una sede. Un fondo Cerrado es solo lectura.
+   Sin borrado fisico si tiene asociaciones (invariante 8): se inactiva o cierra. *@
+
+<PageTitle>Fondos Documentales - TRONOX SGDEA</PageTitle>
+
+<div class="fd-wrap">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+        <a href="/inicio">Inicio</a><span class="sep">/</span>
+        <span>Configuracion Documental</span><span class="sep">/</span>
+        <span class="cur">Fondos Documentales</span>
+    </nav>
+
+    <div class="fd-head">
+        <div>
+            <h1 class="fd-title">Fondos Documentales</h1>
+            <div class="fd-sub">RQ01 &middot; Principio de procedencia archivistica (Acuerdo AGN 002/2014)</div>
+        </div>
+        @if (_canEdit)
+        {
+            <button class="fd-btn" @onclick="@(() => OpenModal(null))"><i class="bi bi-plus-lg"></i> Nuevo fondo</button>
+        }
+    </div>
+
+    <div class="fd-info">
+        <i class="bi bi-info-circle"></i>
+        Un fondo agrupa los documentos de una entidad productora. Es la raiz del cuadro de clasificacion:
+        las dependencias y expedientes se organizan bajo el. Un fondo <strong>transversal</strong> aplica a
+        toda la entidad; uno <strong>cerrado</strong> queda en solo lectura.
+    </div>
+
+    @if (_error is not null) { <div class="fd-alert err">@_error</div> }
+    @if (_ok is not null) { <div class="fd-alert ok">@_ok</div> }
+
+    @if (_loading)
+    {
+        <div class="fd-card"><em>Cargando...</em></div>
+    }
+    else if (_fondos.Count == 0)
+    {
+        <div class="fd-empty"><i class="bi bi-archive"></i><div>No hay fondos documentales configurados.</div></div>
+    }
+    else
+    {
+        <div class="fd-card" style="padding:0;overflow-x:auto">
+            <table class="fd-table">
+                <thead>
+                    <tr>
+                        <th>Codigo AGN</th><th>Nombre</th><th>Tipo</th><th>Sede</th>
+                        <th>Estado</th><th>Apertura</th><th class="right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _fondos)
+                    {
+                        <tr class="@(f.Estado == FondoEstado.Inactivo ? "off" : "")">
+                            <td class="mono strong">@f.CodigoFondo</td>
+                            <td>@f.NombreFondo</td>
+                            <td><span class="fd-badge @TipoClass(f.TipoFondo)">@TipoLabel(f.TipoFondo)</span></td>
+                            <td>@(f.EsTransversal ? Transversal() : f.NombreSede)</td>
+                            <td><span class="fd-badge @EstadoClass(f.Estado)">@EstadoLabel(f.Estado)</span></td>
+                            <td class="mono">@f.FechaApertura.ToString("yyyy-MM-dd")</td>
+                            <td class="right">
+                                @if (_canEdit)
+                                {
+                                    <button class="fd-ico" title="Editar" @onclick="@(() => OpenModal(f))"><i class="bi bi-pencil"></i></button>
+                                    <button class="fd-ico danger" title="Eliminar" @onclick="@(() => DeleteAsync(f))" disabled="@_busy"><i class="bi bi-trash"></i></button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @* ===== Modal alta/edicion ===== *@
+    @if (_showModal)
+    {
+        <div class="fd-modal-back" @onclick="@(() => _showModal = false)">
+            <div class="fd-modal" @onclick:stopPropagation="true">
+                <div class="fd-modal-head">
+                    <h3>@(_editId is null ? "Nuevo fondo documental" : $"Editar fondo: {_fCodigo}")</h3>
+                    <button class="fd-x" @onclick="@(() => _showModal = false)">&times;</button>
+                </div>
+                <div class="fd-modal-body">
+                    @if (_soloLectura)
+                    {
+                        <div class="fd-alert" style="background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;margin-bottom:14px">
+                            Fondo <strong>Cerrado</strong>: solo lectura. Cambia el estado a Activo para reabrirlo y editar.
+                        </div>
+                    }
+                    <div class="fd-grid2">
+                        <div class="fd-field">
+                            <label>Codigo AGN <span class="req">*</span></label>
+                            <input class="fd-input mono" maxlength="20" @bind="_fCodigo" placeholder="FD-001" disabled="@_soloLectura" />
+                        </div>
+                        <div class="fd-field">
+                            <label>Nombre del fondo <span class="req">*</span></label>
+                            <input class="fd-input" maxlength="200" @bind="_fNombre" disabled="@_soloLectura" />
+                        </div>
+                        <div class="fd-field">
+                            <label>Sede</label>
+                            <select class="fd-input" @bind="_fSedeId" disabled="@_soloLectura">
+                                <option value="">Transversal (toda la entidad)</option>
+                                @foreach (var s in _sedes)
+                                {
+                                    <option value="@s.Id">@s.NombreSede</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="fd-field">
+                            <label>Tipo de fondo <span class="req">*</span></label>
+                            <select class="fd-input" @bind="_fTipo" disabled="@_soloLectura">
+                                @foreach (var t in Enum.GetValues<FondoTipo>())
+                                {
+                                    <option value="@t">@TipoLabel(t)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="fd-field">
+                            <label>Estado <span class="req">*</span></label>
+                            <select class="fd-input" @bind="_fEstado">
+                                @foreach (var e in Enum.GetValues<FondoEstado>())
+                                {
+                                    <option value="@e">@EstadoLabel(e)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="fd-field">
+                            <label>Fecha de apertura <span class="req">*</span></label>
+                            <input class="fd-input" type="date" @bind="_fApertura" disabled="@_soloLectura" />
+                        </div>
+                        @if (_fEstado == FondoEstado.Cerrado)
+                        {
+                            <div class="fd-field">
+                                <label>Fecha de cierre <span class="req">*</span></label>
+                                <input class="fd-input" type="date" @bind="_fCierre" />
+                                <span class="fd-hint">Debe ser posterior a la apertura.</span>
+                            </div>
+                        }
+                        @if (_fTipo == FondoTipo.Acumulado)
+                        {
+                            <div class="fd-field">
+                                <label>Entidad de origen <span class="req">*</span></label>
+                                <input class="fd-input" maxlength="200" @bind="_fEntidadOrigen" placeholder="Entidad liquidada o fusionada" disabled="@_soloLectura" />
+                                <span class="fd-hint">Obligatoria para fondos acumulados.</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="fd-field">
+                        <label>Descripcion</label>
+                        <textarea class="fd-input" rows="2" maxlength="500" @bind="_fDescripcion" disabled="@_soloLectura"></textarea>
+                    </div>
+
+                    @if (_modalError is not null) { <div class="fd-alert err" style="margin-top:10px">@_modalError</div> }
+                </div>
+                <div class="fd-modal-foot">
+                    <button class="fd-btn soft" @onclick="@(() => _showModal = false)" disabled="@_busy">Cancelar</button>
+                    <button class="fd-btn" @onclick="SaveAsync" disabled="@_busy">@(_editId is null ? "Crear" : "Guardar")</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .fd-wrap { padding: 8px 0 40px; font-family: Poppins, sans-serif; color: #0f172a; }
+    .fd-head { display: flex; justify-content: space-between; align-items: flex-end; margin: 6px 0 14px; gap: 12px; flex-wrap: wrap; }
+    .fd-title { font-size: 20px; font-weight: 800; margin: 0; }
+    .fd-sub { font-size: 12.5px; color: #94a3b8; margin-top: 3px; }
+    .fd-info { background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f4c400; border-radius: 10px; padding: 12px 16px; font-size: 12.5px; color: #854d0e; margin-bottom: 16px; }
+    .fd-info i { margin-right: 6px; }
+    .fd-alert { border-radius: 8px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
+    .fd-alert.ok { background: #f1fbf3; color: #1f6b35; border: 1px solid #bbf7d0; }
+    .fd-alert.err { background: #fff5f5; color: #9f1d1d; border: 1px solid #fecaca; }
+    .fd-card, .fd-empty { background: #fff; border: 1px solid #d9e2ec; border-radius: 12px; padding: 20px; }
+    .fd-empty { text-align: center; color: #94a3b8; }
+    .fd-empty i { font-size: 30px; display: block; margin-bottom: 8px; }
+
+    .fd-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 820px; }
+    .fd-table th { padding: 11px 16px; text-align: left; font-size: 10.5px; font-weight: 700; color: #64748b; text-transform: uppercase; background: #f8fafc; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    .fd-table td { padding: 11px 16px; color: #475569; border-top: 1px solid #eef2f7; vertical-align: middle; }
+    .fd-table td.strong { color: #0f172a; font-weight: 600; }
+    .fd-table td.mono { font-family: Consolas, monospace; }
+    .fd-table th.right, .fd-table td.right { text-align: right; }
+    .fd-table tr.off { opacity: .6; }
+
+    .fd-badge { font-size: 10.5px; font-weight: 700; padding: 2px 10px; border-radius: 20px; white-space: nowrap; }
+    .fd-badge.t-activo { background: #dbeafe; color: #1d4ed8; }
+    .fd-badge.t-acumulado { background: #fef3c7; color: #b45309; }
+    .fd-badge.t-transferido { background: #ede9fe; color: #6d28d9; }
+    .fd-badge.e-activo { background: #dcfce7; color: #15803d; }
+    .fd-badge.e-inactivo { background: #f1f5f9; color: #64748b; }
+    .fd-badge.e-cerrado { background: #fee2e2; color: #dc2626; }
+
+    .fd-ico { width: 34px; height: 34px; border-radius: 8px; border: 1px solid #d9e2ec; background: #f8fafc; color: #475569; cursor: pointer; margin-left: 4px; }
+    .fd-ico:hover { background: #eef2f7; color: #2563eb; }
+    .fd-ico.danger:hover { color: #dc2626; }
+
+    .fd-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; background: #2563eb; color: #fff; border: none; cursor: pointer; font-size: 13px; font-weight: 600; font-family: Poppins, sans-serif; }
+    .fd-btn:hover { background: #1d4ed8; }
+    .fd-btn:disabled { opacity: .6; cursor: default; }
+    .fd-btn.soft { background: #eef2f7; color: #475569; }
+
+    .fd-modal-back { position: fixed; inset: 0; background: rgba(15,23,42,.4); z-index: 1050; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; overflow-y: auto; }
+    .fd-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 820px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .fd-modal-head { padding: 16px 22px; border-bottom: 1px solid #eef2f7; display: flex; justify-content: space-between; align-items: center; }
+    .fd-modal-head h3 { font-size: 15px; font-weight: 700; margin: 0; }
+    .fd-x { background: none; border: none; font-size: 20px; color: #94a3b8; cursor: pointer; line-height: 1; }
+    .fd-modal-body { padding: 22px; }
+    .fd-modal-foot { padding: 14px 22px; border-top: 1px solid #eef2f7; display: flex; justify-content: flex-end; gap: 10px; }
+    .fd-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; margin-bottom: 14px; }
+    .fd-field { display: flex; flex-direction: column; gap: 5px; }
+    .fd-field label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .03em; }
+    .fd-field label .req { color: #dc2626; }
+    .fd-hint { font-size: 11px; color: #94a3b8; }
+    .fd-input { padding: 9px 12px; border-radius: 8px; border: 1px solid #d9e2ec; font-size: 13px; color: #0f172a; background: #fff; font-family: Poppins, sans-serif; outline: none; width: 100%; box-sizing: border-box; }
+    .fd-input:focus { border-color: #2563eb; }
+    .fd-input.mono { font-family: Consolas, monospace; }
+    .fd-input[disabled] { background: #f3f4f6; }
+
+    @@media (max-width: 720px) { .fd-grid2 { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    private const string ModuleKey = "modulo/fondos-documentales";
+
+    private bool _loading = true, _busy, _canEdit, _showModal;
+    private string? _ok, _error, _modalError;
+    private IReadOnlyList<FondoDto> _fondos = [];
+    private IReadOnlyList<SedeDto> _sedes = [];
+
+    private long? _editId;
+    private FondoEstado _estadoPersistido = FondoEstado.Activo;
+    private string _fCodigo = "", _fNombre = "";
+    private string? _fDescripcion, _fEntidadOrigen;
+    private string _fSedeId = "";
+    private FondoTipo _fTipo = FondoTipo.Activo;
+    private FondoEstado _fEstado = FondoEstado.Activo;
+    private DateOnly _fApertura = DateOnly.FromDateTime(DateTime.UtcNow);
+    private DateOnly? _fCierre;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    // Solo lectura: fondo persistido Cerrado y aun seleccionado Cerrado (unica via de reapertura es el estado).
+    private bool _soloLectura => _editId is not null && _estadoPersistido == FondoEstado.Cerrado && _fEstado == FondoEstado.Cerrado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _fondos = await Svc.ListAsync();
+        _sedes = await SedeSvc.ListSeleccionablesParaFondoAsync();
+    }
+
+    private void OpenModal(FondoDto? f)
+    {
+        _modalError = null; _ok = null; _error = null;
+        _editId = f?.Id;
+        _estadoPersistido = f?.Estado ?? FondoEstado.Activo;
+        _fCodigo = f?.CodigoFondo ?? "";
+        _fNombre = f?.NombreFondo ?? "";
+        _fDescripcion = f?.Descripcion;
+        _fSedeId = f?.SedeId?.ToString() ?? "";
+        _fTipo = f?.TipoFondo ?? FondoTipo.Activo;
+        _fEstado = f?.Estado ?? FondoEstado.Activo;
+        _fApertura = f?.FechaApertura ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        _fCierre = f?.FechaCierre;
+        _fEntidadOrigen = f?.EntidadOrigen;
+        _showModal = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!_canEdit) { return; }
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_fCodigo)) { _modalError = "El codigo es obligatorio."; return; }
+        if (string.IsNullOrWhiteSpace(_fNombre)) { _modalError = "El nombre es obligatorio."; return; }
+        if (_fTipo == FondoTipo.Acumulado && string.IsNullOrWhiteSpace(_fEntidadOrigen)) { _modalError = "La entidad de origen es obligatoria para fondos acumulados."; return; }
+        if (_fEstado == FondoEstado.Cerrado && _fCierre is null) { _modalError = "La fecha de cierre es obligatoria para un fondo cerrado."; return; }
+
+        _busy = true;
+        try
+        {
+            long? sedeId = string.IsNullOrEmpty(_fSedeId) ? null : long.Parse(_fSedeId);
+            var req = new SaveFondoRequest(
+                _editId, _fCodigo.Trim(), _fNombre.Trim(),
+                string.IsNullOrWhiteSpace(_fDescripcion) ? null : _fDescripcion.Trim(),
+                sedeId, _fTipo, _fEstado, _fApertura,
+                _fEstado == FondoEstado.Cerrado ? _fCierre : null,
+                string.IsNullOrWhiteSpace(_fEntidadOrigen) ? null : _fEntidadOrigen.Trim());
+            var res = await Svc.SaveAsync(req, Actor);
+            if (!res.IsOk) { _modalError = res.Error; return; }
+            _showModal = false;
+            _ok = _editId is null ? "Fondo creado." : "Fondo actualizado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync(FondoDto f)
+    {
+        if (!_canEdit) { return; }
+        _busy = true; _ok = null; _error = null;
+        try
+        {
+            var res = await Svc.DeleteAsync(f.Id, Actor);
+            if (!res.IsOk) { _error = res.Error; return; }
+            _ok = "Fondo eliminado.";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private string Transversal() => "Transversal";
+
+    private static string TipoLabel(FondoTipo t) => t switch
+    {
+        FondoTipo.Activo => "Activo",
+        FondoTipo.Acumulado => "Acumulado",
+        FondoTipo.Transferido => "Transferido",
+        _ => t.ToString()
+    };
+
+    private static string TipoClass(FondoTipo t) => t switch
+    {
+        FondoTipo.Activo => "t-activo",
+        FondoTipo.Acumulado => "t-acumulado",
+        FondoTipo.Transferido => "t-transferido",
+        _ => "t-activo"
+    };
+
+    private static string EstadoLabel(FondoEstado e) => e switch
+    {
+        FondoEstado.Activo => "Activo",
+        FondoEstado.Inactivo => "Inactivo",
+        FondoEstado.Cerrado => "Cerrado",
+        _ => e.ToString()
+    };
+
+    private static string EstadoClass(FondoEstado e) => e switch
+    {
+        FondoEstado.Activo => "e-activo",
+        FondoEstado.Inactivo => "e-inactivo",
+        FondoEstado.Cerrado => "e-cerrado",
+        _ => "e-activo"
+    };
+}

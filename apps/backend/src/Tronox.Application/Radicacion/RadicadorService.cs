@@ -37,7 +37,12 @@ public sealed class RadicadorService : IRadicadorService
         var cfg = await _db.RadicacionConfigs.AsNoTracking().FirstOrDefaultAsync(ct);
         var digitos = cfg?.DigitosConsecutivo ?? 6;
         var separador = cfg?.Separador ?? "-";
-        var sigla = (await _db.Entidades.AsNoTracking().Select(e => e.Sigla).FirstOrDefaultAsync(ct)) ?? "RAD";
+        var incluirAnio = cfg?.IncluirAnio ?? true;
+        // Sigla del esquema: la del modulo (rad_config) si esta definida, si no la de la Entidad (RQ01).
+        var sigla = (string.IsNullOrWhiteSpace(cfg?.SiglaRadicacion)
+                        ? (await _db.Entidades.AsNoTracking().Select(e => e.Sigla).FirstOrDefaultAsync(ct))
+                        : cfg!.SiglaRadicacion)
+                    ?? "RAD";
 
         // ---- Vencimiento SLA (calendario habil) ----
         DateTime? vencimiento = null;
@@ -60,7 +65,11 @@ public sealed class RadicadorService : IRadicadorService
         var code = $"RAD{cod}{anio}";
         await _sequences.EnsureSequenceAsync(code, ct);
         var consec = await _sequences.NextAsync(code, "", digitos, ct);
-        var numero = string.Join(separador, sigla, cod, anio.ToString(), consec);
+        // Numero de radicado: Sigla + Cod [+ Anio] + consecutivo, unidos por el separador de la config.
+        var partes = incluirAnio
+            ? new[] { sigla, cod, anio.ToString(), consec }
+            : new[] { sigla, cod, consec };
+        var numero = string.Join(separador, partes);
 
         var radicado = new Radicado
         {

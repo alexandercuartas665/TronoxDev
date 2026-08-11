@@ -43,7 +43,19 @@ public sealed class TrdVersionService : ITrdVersionService
             .ThenByDescending(v => v.FechaVigenciaDesde)
             .ThenByDescending(v => v.Id)
             .ToListAsync(cancellationToken);
-        return versiones.Select(ToDto).ToList();
+
+        // Resuelve el nombre del creador para la columna "Creado por" (paridad con el legacy).
+        var creadorIds = versiones.Where(v => v.CreatedBy != null).Select(v => v.CreatedBy!.Value).Distinct().ToList();
+        var nombres = creadorIds.Count == 0
+            ? new Dictionary<long, string>()
+            : (await _db.TenantUsers.AsNoTracking()
+                    .Where(u => creadorIds.Contains(u.Id))
+                    .ToListAsync(cancellationToken))
+                .ToDictionary(u => u.Id, u => string.IsNullOrWhiteSpace(u.NombreCompleto) ? u.Email : u.NombreCompleto);
+
+        return versiones
+            .Select(v => ToDto(v, v.CreatedBy is long cb && nombres.TryGetValue(cb, out var n) ? n : null))
+            .ToList();
     }
 
     public async Task<TrdVersionDto?> GetAsync(long versionId, CancellationToken cancellationToken = default)
@@ -72,6 +84,13 @@ public sealed class TrdVersionService : ITrdVersionService
         {
             return TrdVersionResult<TrdVersionDto>.Invalid("No hay tenant activo.");
         }
+
+        // Modo CALCULAR: el codigo lo pone el sistema (autogenerado); modo EDITAR: el del request.
+        var codigo = request.ModoCodigoSerie == ModoCodigoSerie.CalcularCodigo
+            ? await GenerarCodigoVersionAsync(request.FechaVigenciaDesde.Year, cancellationToken)
+            : request.CodigoVersion;
+        request = request with { CodigoVersion = codigo };
+
         var validation = await ValidateAsync(request, versionId: null, cancellationToken);
         if (validation is not null)
         {
@@ -102,6 +121,15 @@ public sealed class TrdVersionService : ITrdVersionService
         {
             return TrdVersionResult<TrdVersionDto>.Invalid(estadoError);
         }
+
+        // Modo CALCULAR: conserva el codigo ya asignado (no se re-teclea); modo EDITAR: usa el manual.
+        var codigo = request.ModoCodigoSerie == ModoCodigoSerie.CalcularCodigo
+            ? (string.IsNullOrWhiteSpace(version.CodigoVersion)
+                ? await GenerarCodigoVersionAsync(request.FechaVigenciaDesde.Year, cancellationToken)
+                : version.CodigoVersion)
+            : request.CodigoVersion;
+        request = request with { CodigoVersion = codigo };
+
         var validation = await ValidateAsync(request, versionId, cancellationToken);
         if (validation is not null)
         {
@@ -209,6 +237,7 @@ public sealed class TrdVersionService : ITrdVersionService
     private static void Apply(TrdVersion version, SaveTrdVersionRequest request)
     {
         version.CodigoVersion = request.CodigoVersion.Trim();
+        version.ModoCodigoSerie = request.ModoCodigoSerie;
         version.Descripcion = Normalize(request.Descripcion);
         version.ActoAdministrativo = Normalize(request.ActoAdministrativo);
         version.FechaVigenciaDesde = request.FechaVigenciaDesde;
@@ -219,13 +248,34 @@ public sealed class TrdVersionService : ITrdVersionService
     private static string? Normalize(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static TrdVersionDto ToDto(TrdVersion v) => new(
+    private static TrdVersionDto ToDto(TrdVersion v, string? creadoPorNombre = null) => new(
         v.Id, v.CodigoVersion, v.Descripcion, v.ActoAdministrativo,
-        v.FechaVigenciaDesde, v.FechaAprobacion, v.FechaConvalidacion, v.Estado);
+        v.FechaVigenciaDesde, v.FechaAprobacion, v.FechaConvalidacion, v.Estado,
+        v.ModoCodigoSerie, creadoPorNombre, v.CreatedAt);
 
     private static object Snapshot(TrdVersion v) => new
     {
-        v.CodigoVersion, v.Descripcion, v.ActoAdministrativo,
+        v.CodigoVersion, v.ModoCodigoSerie, v.Descripcion, v.ActoAdministrativo,
         v.FechaVigenciaDesde, v.FechaAprobacion, v.FechaConvalidacion, v.Estado
     };
+
+    /// <summary>
+    /// Autogenera el codigo de version del modo CALCULAR: "TRD-&lt;anio&gt;-v&lt;consecutivo&gt;", donde el
+    /// consecutivo es el mayor existente para ese anio + 1 (paridad con el legacy MODO_CODIGO_SERIE).
+    /// </summary>
+    private async Task<string> GenerarCodigoVersionAsync(int anio, CancellationToken cancellationToken)
+    {
+        if (anio < 2000) { anio = DateTime.UtcNow.Year; }
+        var prefijo = $"TRD-{anio}-v";
+        var existentes = await _db.TrdVersiones.AsNoTracking()
+            .Where(v => v.CodigoVersion.StartsWith(prefijo))
+            .Select(v => v.CodigoVersion)
+            .ToListAsync(cancellationToken);
+        var maxN = 0;
+        foreach (var c in existentes)
+        {
+            if (int.TryParse(c.AsSpan(prefijo.Length), out var n) && n > maxN) { maxN = n; }
+        }
+        return $"{prefijo}{maxN + 1}";
+    }
 }

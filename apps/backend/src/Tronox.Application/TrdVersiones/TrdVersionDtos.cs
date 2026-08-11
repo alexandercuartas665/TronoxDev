@@ -11,7 +11,12 @@ public sealed record TrdVersionDto(
     DateOnly FechaVigenciaDesde,
     DateOnly? FechaAprobacion,
     DateOnly? FechaConvalidacion,
-    TrdVersionEstado Estado)
+    TrdVersionEstado Estado,
+    // Paridad legacy: columna MODO_CODIGO_SERIE (CalcularCodigo/EditarCodigo).
+    ModoCodigoSerie ModoCodigoSerie = ModoCodigoSerie.CalcularCodigo,
+    // Auditoria de origen para la grilla (paridad con doc_versionesTRD: columna "Creado por").
+    string? CreadoPorNombre = null,
+    DateTimeOffset? FechaCreacion = null)
 {
     public bool EsVigente => Estado == TrdVersionEstado.Vigente;
     public bool EnConstruccion => Estado == TrdVersionEstado.EnConstruccion;
@@ -30,4 +35,6 @@ public sealed record SaveTrdVersionRequest(
     string? Descripcion = null,
     string? ActoAdministrativo = null,
     DateOnly? FechaAprobacion = null,
-    DateOnly? FechaConvalidacion = null);
+    DateOnly? FechaConvalidacion = null,
+    // CalcularCodigo ignora CodigoVersion y autogenera "TRD-<anio>-v<N>"; EditarCodigo lo usa tal cual.
+    ModoCodigoSerie ModoCodigoSerie = ModoCodigoSerie.CalcularCodigo);

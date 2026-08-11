@@ -105,7 +105,8 @@ public static class MenuCatalogo
                         new("Topografía Física", "modulo/topografia-fisica", "bi-diagram-2", "RF06"),
                         // Rotulos con tilde EXACTOS del prototipo (contenido de UI, no identificador).
                         new("Configuración Radicación", "modulo/config-radicacion", "bi-hash", "RF01"),
-                        new("Configuración PQR", "modulo/config-pqr", "bi-megaphone", "RF01")
+                        new("Configuración PQR", "modulo/config-pqr", "bi-megaphone", "RF01"),
+                        new("Configuración de Correo (SMTP)", "modulo/configuracion-smtp", "bi-envelope-at", "RF01")
                     ]),
                     new("Organizacional", "req001-organizacional", "bi-diagram-3", null,
                     [
@@ -124,6 +125,8 @@ public static class MenuCatalogo
                 new("Versiones de TRD", "modulo/trd-versiones", "bi-clock-history", "RF01"),
                 new("Catalogo de Series y Subseries", "modulo/series-subseries", "bi-collection", "RF02"),
                 new("Listas Maestras", "modulo/listas-maestras", "bi-list-ul", "RF03"),
+                new("Niveles de Clasificacion Documental", "modulo/niveles-clasificacion", "bi-shield-lock", "RF01"),
+                new("Fondos Documentales", "modulo/fondos-documentales", "bi-archive", "RF02"),
                 new("Tabla de Retencion Documental", "modulo/trd", "bi-table", "RF04"),
                 new("Importar / Exportar", "modulo/trd-importar-exportar", "bi-cloud-arrow-up", "RF07"),
                 new("Plantilla Documentos", "modulo/plantilla-documentos", "bi-file-earmark-richtext", "RF10")

@@ -21,6 +21,12 @@ public class TrdVersion : TenantEntity
     /// <summary>Codigo de la version. Ej: "TRD-2026-v1". UNICO POR TENANT (RF01 3.1.4-1).</summary>
     public string CodigoVersion { get; set; } = null!;
 
+    /// <summary>
+    /// Modo de fijacion del codigo (paridad legacy MODO_CODIGO_SERIE): CalcularCodigo autogenera
+    /// "TRD-&lt;anio&gt;-v&lt;consecutivo&gt;"; EditarCodigo lo captura manualmente. Ver ModoCodigoSerie.
+    /// </summary>
+    public ModoCodigoSerie ModoCodigoSerie { get; set; } = ModoCodigoSerie.CalcularCodigo;
+
     /// <summary>Descripcion o justificacion de la version (opcional).</summary>
     public string? Descripcion { get; set; }
 

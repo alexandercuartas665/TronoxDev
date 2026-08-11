@@ -14,13 +14,16 @@ public sealed record RadicacionConfigDto(
     // Solo lectura: ultimo consecutivo asignado por tipo (del emisor de secuencias). 0 si aun ninguno.
     int ConsecutivoEntradaActual, int ConsecutivoSalidaActual, int ConsecutivoInternoActual,
     // Contexto: sigla del esquema (de la Entidad, RQ01) para la vista previa del numero de radicado.
-    string? SiglaEntidad);
+    string? SiglaEntidad,
+    // Esquema editable (paridad rad_config): prefijo propio del modulo y si el numero incluye el anio.
+    string? SiglaRadicacion = null, bool IncluirAnio = true);
 
 public sealed record SaveRadicacionConfigRequest(
     int ConsecutivoEntradaInicio, int ConsecutivoSalidaInicio, int ConsecutivoInternoInicio,
     bool ReinicioAnual, int DigitosConsecutivo, string Separador,
     int Alerta1Porcentaje, int Alerta2Porcentaje, int AlertaTutelaHoras,
-    bool NotificarJefeAlVencer, bool NotificarDireccionAlVencer);
+    bool NotificarJefeAlVencer, bool NotificarDireccionAlVencer,
+    string? SiglaRadicacion = null, bool IncluirAnio = true);
 
 // ---- RF01-2 Tipos de comunicacion ----
 

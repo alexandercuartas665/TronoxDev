@@ -122,27 +122,57 @@
         }
         else
         {
+            @* ===== Toolbar de busqueda / filtro (paridad doc_versionesTRD) ===== *@
+            <div class="tv-toolbar">
+                <div class="tv-search">
+                    <i class="bi bi-search"></i>
+                    <input class="tx-ent-input" placeholder="Buscar código, descripción, acto o creador..."
+                           value="@_search" @oninput="OnSearchChanged" />
+                </div>
+                <select class="tx-ent-input tv-sel" @onchange="OnEstadoChanged">
+                    <option value="" selected="@(_estadoFiltro is null)">Todos los estados</option>
+                    @foreach (var e in Enum.GetValues<TrdVersionEstado>())
+                    {
+                        <option value="@e" selected="@(_estadoFiltro == e)">@EstadoLabel(e)</option>
+                    }
+                </select>
+                <select class="tx-ent-input tv-sel sm" @onchange="OnPageSizeChanged">
+                    @foreach (var n in PageSizes)
+                    {
+                        <option value="@n" selected="@(_pageSize == n)">@n filas</option>
+                    }
+                </select>
+                @if (_search.Length > 0 || _estadoFiltro is not null)
+                {
+                    <button type="button" class="tx-ent-btn sm" @onclick="Limpiar"><i class="bi bi-x-lg"></i> Limpiar</button>
+                }
+            </div>
+
             <div class="tx-ent-table-wrap">
                 <table class="tx-ent-table">
                     <thead>
                         <tr>
                             <th>Código</th>
                             <th>Descripción</th>
-                            <th>Vigencia desde</th>
                             <th>Acto administrativo</th>
+                            <th>Vigencia desde</th>
+                            <th>Código serie/subserie</th>
                             <th>Estado</th>
+                            <th>Creado por</th>
                             <th class="right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var v in _versiones)
+                        @foreach (var v in Pagina())
                         {
                             <tr>
                                 <td><strong class="mono">@v.CodigoVersion</strong></td>
                                 <td>@(string.IsNullOrWhiteSpace(v.Descripcion) ? "--" : v.Descripcion)</td>
-                                <td>@v.FechaVigenciaDesde.ToString("yyyy-MM-dd")</td>
                                 <td>@(string.IsNullOrWhiteSpace(v.ActoAdministrativo) ? "--" : v.ActoAdministrativo)</td>
+                                <td class="mono">@v.FechaVigenciaDesde.ToString("dd/MM/yyyy")</td>
+                                <td><span class="tx-ent-badge sm @(v.ModoCodigoSerie == ModoCodigoSerie.CalcularCodigo ? "ok" : "info")">@ModoLabel(v.ModoCodigoSerie)</span></td>
                                 <td><span class="tx-ent-badge sm @EstadoClase(v.Estado)">@EstadoLabel(v.Estado)</span></td>
+                                <td>@(string.IsNullOrWhiteSpace(v.CreadoPorNombre) ? "--" : v.CreadoPorNombre)</td>
                                 <td class="right">
                                     @* Puente al submodulo de construccion de la TRD (RF04): toda version entra;
                                        En construccion = construir, el resto = ver en solo lectura. *@
@@ -164,11 +194,41 @@
                                 </td>
                             </tr>
                         }
+                        @if (TotalFiltradas == 0)
+                        {
+                            <tr><td colspan="8"><div class="tx-ent-hint" style="padding:14px">No hay versiones que coincidan con el filtro.</div></td></tr>
+                        }
                     </tbody>
                 </table>
             </div>
+
+            @* ===== Pie de paginacion ===== *@
+            @if (TotalFiltradas > 0)
+            {
+                <div class="tv-pager">
+                    <span class="tv-count">Mostrando @DesdeFila–@HastaFila de @TotalFiltradas</span>
+                    <div class="tv-pgbtns">
+                        <button type="button" class="tx-ent-btn sm" @onclick="PaginaAnterior" disabled="@(PaginaEfectiva <= 1)">Anterior</button>
+                        <span class="tv-pgnum">Página @PaginaEfectiva de @TotalPaginas</span>
+                        <button type="button" class="tx-ent-btn sm" @onclick="PaginaSiguiente" disabled="@(PaginaEfectiva >= TotalPaginas)">Siguiente</button>
+                    </div>
+                </div>
+            }
         }
     </div>
+
+    <style>
+        .tx-mod.tx-trd .tv-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px 16px 4px; }
+        .tx-mod.tx-trd .tv-search { position: relative; flex: 1 1 260px; min-width: 200px; }
+        .tx-mod.tx-trd .tv-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--kt-text-gray-500); font-size: 13px; }
+        .tx-mod.tx-trd .tv-search .tx-ent-input { padding-left: 32px; }
+        .tx-mod.tx-trd .tv-sel { width: auto; min-width: 150px; }
+        .tx-mod.tx-trd .tv-sel.sm { min-width: 110px; }
+        .tx-mod.tx-trd .tv-pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--kt-border-color); flex-wrap: wrap; }
+        .tx-mod.tx-trd .tv-count { font-size: 12.5px; color: var(--kt-text-gray-600); }
+        .tx-mod.tx-trd .tv-pgbtns { display: flex; align-items: center; gap: 10px; }
+        .tx-mod.tx-trd .tv-pgnum { font-size: 12.5px; color: var(--kt-text-gray-700); }
+    </style>
 
     <div class="tx-ent-hint">
         <i class="bi bi-shield-lock"></i>
@@ -189,13 +249,23 @@
                 <div class="modal-body tx-mod tx-trd">
                     <div class="tx-ent-grid c2">
                         <div class="tx-ent-field">
-                            <label>Código de la versión <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" @bind="_fCodigo" maxlength="50" placeholder="TRD-2026-v1" />
+                            <label>Modo de código <span class="req">*</span></label>
+                            <select class="tx-ent-input" @bind="_fModo">
+                                <option value="@ModoCodigoSerie.CalcularCodigo">Calcular código (automático)</option>
+                                <option value="@ModoCodigoSerie.EditarCodigo">Editar código (manual)</option>
+                            </select>
+                            <span class="tx-ent-hint">Calcular: TRD-@(_fVigenciaDesde?.Year.ToString() ?? "año")-vN. Editar: lo escribes.</span>
                         </div>
                         <div class="tx-ent-field">
-                            <label>Vigencia desde <span class="req">*</span></label>
-                            <input type="date" class="tx-ent-input" @bind="_fVigenciaDesde" />
+                            <label>Código de la versión @if (_fModo == ModoCodigoSerie.EditarCodigo) { <span class="req">*</span> }</label>
+                            <input class="tx-ent-input mono" @bind="_fCodigo" maxlength="50"
+                                   readonly="@(_fModo == ModoCodigoSerie.CalcularCodigo)"
+                                   placeholder="@(_fModo == ModoCodigoSerie.CalcularCodigo ? "(se autogenera al crear)" : "TRD-2026-v1")" />
                         </div>
+                    </div>
+                    <div class="tx-ent-field">
+                        <label>Vigencia desde <span class="req">*</span></label>
+                        <input type="date" class="tx-ent-input" @bind="_fVigenciaDesde" />
                     </div>
                     <div class="tx-ent-field">
                         <label>Descripción <span class="opt">(opcional)</span></label>
@@ -286,10 +356,56 @@
     private IReadOnlyList<TrdVersionDto> _versiones = [];
     private TrdVersionKpisDto? _kpis;
 
+    // ---- Busqueda / filtro / paginacion (paridad doc_versionesTRD) ----
+    private static readonly int[] PageSizes = { 10, 25, 50 };
+    private string _search = "";
+    private TrdVersionEstado? _estadoFiltro;
+    private int _pageSize = 10;
+    private int _page = 1;
+
+    private IReadOnlyList<TrdVersionDto> Filtradas()
+    {
+        IEnumerable<TrdVersionDto> q = _versiones;
+        if (_estadoFiltro is TrdVersionEstado e) { q = q.Where(v => v.Estado == e); }
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(v =>
+                (v.CodigoVersion?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (v.Descripcion?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (v.ActoAdministrativo?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (v.CreadoPorNombre?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        return q.ToList();
+    }
+
+    private int TotalFiltradas => Filtradas().Count;
+    private int TotalPaginas => Math.Max(1, (int)Math.Ceiling(TotalFiltradas / (double)_pageSize));
+    private int PaginaEfectiva => Math.Min(Math.Max(1, _page), TotalPaginas);
+    private IReadOnlyList<TrdVersionDto> Pagina() => Filtradas().Skip((PaginaEfectiva - 1) * _pageSize).Take(_pageSize).ToList();
+    private int DesdeFila => TotalFiltradas == 0 ? 0 : (PaginaEfectiva - 1) * _pageSize + 1;
+    private int HastaFila => Math.Min(PaginaEfectiva * _pageSize, TotalFiltradas);
+
+    private void OnSearchChanged(ChangeEventArgs e) { _search = e.Value?.ToString() ?? ""; _page = 1; }
+    private void OnEstadoChanged(ChangeEventArgs e)
+    {
+        _estadoFiltro = Enum.TryParse<TrdVersionEstado>(e.Value?.ToString(), out var es) ? es : null;
+        _page = 1;
+    }
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n)) { _pageSize = n; }
+        _page = 1;
+    }
+    private void Limpiar() { _search = ""; _estadoFiltro = null; _page = 1; }
+    private void PaginaAnterior() { if (_page > 1) { _page--; } }
+    private void PaginaSiguiente() { if (_page < TotalPaginas) { _page++; } }
+
     // ---- Editor ----
     private bool _showEditor;
     private TrdVersionDto? _editing;
     private string _fCodigo = "";
+    private ModoCodigoSerie _fModo = ModoCodigoSerie.CalcularCodigo;
     private DateOnly? _fVigenciaDesde;
     private string? _fDescripcion;
     private string? _fActo;
@@ -331,6 +447,7 @@
     {
         _editing = version;
         _fCodigo = version?.CodigoVersion ?? "";
+        _fModo = version?.ModoCodigoSerie ?? ModoCodigoSerie.CalcularCodigo;
         _fVigenciaDesde = version?.FechaVigenciaDesde;
         _fDescripcion = version?.Descripcion;
         _fActo = version?.ActoAdministrativo;
@@ -355,7 +472,7 @@
             }
             var request = new SaveTrdVersionRequest(
                 _fCodigo, vigencia, _fDescripcion, _fActo, _fAprobacion,
-                _esEntidadPublica ? _fConvalidacion : null);
+                _esEntidadPublica ? _fConvalidacion : null, _fModo);
             var actor = Tenant.UserId ?? 0;
             var result = _editing is null
                 ? await Svc.CreateAsync(request, actor)
@@ -408,6 +525,13 @@
         }
         finally { _busy = false; }
     }
+
+    private static string ModoLabel(ModoCodigoSerie modo) => modo switch
+    {
+        ModoCodigoSerie.CalcularCodigo => "Calcular código",
+        ModoCodigoSerie.EditarCodigo => "Editar código",
+        _ => modo.ToString()
+    };
 
     private static string EstadoLabel(TrdVersionEstado estado) => estado switch
     {

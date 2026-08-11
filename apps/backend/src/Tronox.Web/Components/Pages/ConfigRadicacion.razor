@@ -7,763 +7,835 @@
 @inject IRadicacionConfigService ConfigSvc
 @inject ITipoComunicacionService TipoSvc
 @inject IBuzonCorreoService BuzonSvc
+@inject IConfiguracionPqrService PqrSvc
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
-@* RQ09 - RF01 (Configuracion del modulo de Radicacion).
-
-   Pantalla unica con 6 pestanas: Consecutivos (RF01-1), Tipos de Comunicacion (RF01-2),
-   Alertas SLA (RF01-3), Buzones de Correo (RF01-4), Notificaciones (RF01-5) y Migracion
-   de radicados historicos (RF01-6). La config de consecutivos + SLA es un singleton por
-   tenant; la primera lectura la crea y siembra los tipos base y los eventos de notificacion.
+@* RQ09 - RF01 (Configuracion del modulo de Radicacion). Pantalla CALCADA 1:1 del legacy
+   rad_config.aspx: nav lateral vertical + 7 secciones (Consecutivos, Prioridades, Tipos de
+   Comunicacion, Buzones, Portal Web, Notificaciones, Migracion). Reusa los servicios ya existentes
+   (RadicacionConfig/Tipo/Buzon) mas IConfiguracionPqrService para Prioridades y Portal Web.
    Escrituras gateadas por permiso Editar (fail-closed, invariante 10). *@
 
-<PageTitle>Configuración de Radicación - TRONOX SGDEA</PageTitle>
+<PageTitle>Configuracion Radicacion - TRONOX SGDEA</PageTitle>
 
-<div class="tx-mod tx-dep tx-trdc">
-
-    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
-        <a href="/inicio">Inicio</a>
-        <span class="sep">/</span>
-        <span>Configuración General</span>
-        <span class="sep">/</span>
-        <span class="cur">Configuración de Radicación</span>
-    </nav>
-
-    <div class="tx-ent-head">
-        <div>
-            <div class="tx-ent-eyebrow"><i class="bi bi-inboxes"></i><span>RQ09 &middot; RF01</span></div>
-            <h1 class="tx-ent-title">Configuración de Radicación</h1>
-            <p class="tx-ent-sub">
-                Parámetros de la ventanilla única: consecutivos, catálogo de tipos de comunicación,
-                alertas de vencimiento (SLA), buzones de correo de recepción, notificaciones por evento
-                y migración de radicados históricos.
-            </p>
-        </div>
-        @if (!_canEdit)
-        {
-            <div>
-                <span class="tx-ent-badge off"><i class="bi bi-eye"></i> Solo lectura</span>
-            </div>
-        }
+<div class="radc">
+    <div class="rad-header">
+        <h1 class="rad-title">Configuracion Radicacion</h1>
+        <div class="rad-subtitle">RQ09 &mdash; Recepcion, Radicacion y Distribucion &middot; Parametros del modulo</div>
     </div>
 
     @if (_pageError is not null)
     {
-        <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+        <div class="cfg-warn" style="background:#FEE2E2;border-color:#f06548;color:#991B1B;margin-bottom:14px">@_pageError</div>
     }
     @if (_pageOk is not null)
     {
-        <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+        <div class="cfg-info" style="background:#D1FAE5;color:#0a7d6f">@_pageOk</div>
+    }
+    @if (!_canEdit)
+    {
+        <div class="cfg-info">Modo solo lectura: no tiene permiso para editar la configuracion de radicacion.</div>
     }
 
-    @* ===== Barra de pestanas ===== *@
-    <div class="cr-tabbar">
-        <div class="tx-ent-tabs">
-            @foreach (var (key, label, icon) in Tabs)
+    <div class="cfg-layout">
+        @* ===== Nav lateral de secciones ===== *@
+        <div class="cfg-nav">
+            <div class="cfg-nav-head">Configuracion</div>
+            @foreach (var (key, label, ico) in Secciones)
             {
-                <button type="button" class="tx-ent-tab @(_tab == key ? "on" : "")"
-                        @onclick="@(() => _tab = key)">
-                    <i class="bi @icon"></i> @label
+                <button type="button" class="cfg-nav-item @(_sec == key ? "active" : "")" @onclick="@(() => _sec = key)">
+                    <span class="ico">@ico</span><span>@label</span>
                 </button>
+            }
+        </div>
+
+        @* ===== Cuerpo ===== *@
+        <div class="cfg-body">
+            @if (_loading)
+            {
+                <div class="cfg-card"><div class="cfg-card-body"><em>Cargando configuracion...</em></div></div>
+            }
+            else
+            {
+                @* ============ 1. CONSECUTIVOS ============ *@
+                @if (_sec == "consecutivos")
+                {
+                    <div class="cfg-card">
+                        <div class="cfg-card-head"><h3>Esquema de radicacion</h3></div>
+                        <div class="cfg-card-body">
+                            <div class="pv-box">
+                                <div class="pv-t">Vista previa en vivo</div>
+                                <div class="pv-items">
+                                    <div><div class="pv-l">Entrada</div><div class="pv-n">@PreviewFor("E", _config?.ConsecutivoEntradaActual ?? 0, _cEntradaInicio)</div></div>
+                                    <div><div class="pv-l">Salida</div><div class="pv-n">@PreviewFor("S", _config?.ConsecutivoSalidaActual ?? 0, _cSalidaInicio)</div></div>
+                                    <div><div class="pv-l">Interno</div><div class="pv-n">@PreviewFor("I", _config?.ConsecutivoInternoActual ?? 0, _cInternoInicio)</div></div>
+                                </div>
+                            </div>
+
+                            <div class="cfg-grid4">
+                                <div class="cfg-field">
+                                    <label>Prefijo / Sigla entidad <span class="req">*</span></label>
+                                    <input class="cfg-input cfg-mono" style="text-transform:uppercase;font-weight:600" maxlength="8"
+                                           @bind="_cSigla" @bind:event="oninput" placeholder="TRNX" disabled="@(!_canEdit)" />
+                                    <span class="hint">Ej: TRNX</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Separador</label>
+                                    <select class="cfg-select form-select form-select-sm" @bind="_cSeparador" disabled="@(!_canEdit)">
+                                        <option value="-">Guion ( - )</option>
+                                        <option value="/">Barra ( / )</option>
+                                        <option value=".">Punto ( . )</option>
+                                        <option value="">Sin separador</option>
+                                    </select>
+                                    <span class="hint">Ej: - o /</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Digitos del consecutivo <span class="req">*</span></label>
+                                    <input class="cfg-input cfg-mono" type="number" min="1" max="12" @bind="_cDigitos" @bind:event="oninput" disabled="@(!_canEdit)" />
+                                    <span class="hint">Ej: 6 &rarr; 000142</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Ano</label>
+                                    <input class="cfg-input cfg-mono" maxlength="4" @bind="_cAnio" @bind:event="oninput" disabled="@(!_canEdit)" />
+                                    <span class="hint">Componente de ano (actual)</span>
+                                </div>
+                            </div>
+
+                            <div class="cfg-toggle-row" style="margin-top:12px">
+                                <div><div class="tg-lbl">Incluir ano en el numero de radicado</div></div>
+                                <label class="rad-sw"><input type="checkbox" @bind="_cIncluirAnio" disabled="@(!_canEdit)" /></label>
+                            </div>
+
+                            <div class="cfg-subhead">Consecutivos</div>
+                            <div class="cfg-grid3">
+                                <div class="cfg-field">
+                                    <label>Consecutivo entrada actual</label>
+                                    <input class="cfg-input cfg-mono" readonly value="@(_config?.ConsecutivoEntradaActual ?? 0)" />
+                                    <span class="hint">Solo lectura &mdash; ultimo asignado</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Consecutivo salida actual</label>
+                                    <input class="cfg-input cfg-mono" readonly value="@(_config?.ConsecutivoSalidaActual ?? 0)" />
+                                    <span class="hint">Solo lectura</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Consecutivo interno actual</label>
+                                    <input class="cfg-input cfg-mono" readonly value="@(_config?.ConsecutivoInternoActual ?? 0)" />
+                                    <span class="hint">Solo lectura</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Inicio entrada</label>
+                                    <input class="cfg-input cfg-mono" type="number" min="1" @bind="_cEntradaInicio" @bind:event="oninput" disabled="@(!_canEdit)" />
+                                    <span class="hint">Aplica cuando el consecutivo esta en 0 (sin estrenar o tras el reinicio anual). Default: 1</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Inicio salida</label>
+                                    <input class="cfg-input cfg-mono" type="number" min="1" @bind="_cSalidaInicio" @bind:event="oninput" disabled="@(!_canEdit)" />
+                                    <span class="hint">Idem</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Inicio interno</label>
+                                    <input class="cfg-input cfg-mono" type="number" min="1" @bind="_cInternoInicio" @bind:event="oninput" disabled="@(!_canEdit)" />
+                                    <span class="hint">Idem</span>
+                                </div>
+                            </div>
+
+                            <div class="cfg-toggle-row" style="margin-top:16px">
+                                <div><div class="tg-lbl">Reinicio anual</div><div class="tg-hint">El 1 de enero reinicia los tres consecutivos. Default: activo</div></div>
+                                <label class="rad-sw"><input type="checkbox" @bind="_cReinicioAnual" disabled="@(!_canEdit)" /></label>
+                            </div>
+
+                            <div class="cfg-warn">
+                                &#9888; El consecutivo se genera con SELECT FOR UPDATE para evitar duplicados en concurrencia.
+                                Los tres consecutivos son independientes. Un numero inhabilitado por anulacion nunca se reutiliza.
+                            </div>
+
+                            @if (_canEdit)
+                            {
+                                <div style="margin-top:18px;text-align:right">
+                                    <button class="cfg-btn cfg-btn-lg" @onclick="SaveConsecutivosAsync" disabled="@_busy">
+                                        <i class="bi bi-save"></i> Guardar consecutivos
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @* ============ 2. PRIORIDADES ============ *@
+                else if (_sec == "prioridades")
+                {
+                    <div class="cfg-card">
+                        <div class="cfg-card-head">
+                            <h3>Prioridades</h3>
+                            @if (_canEdit)
+                            {
+                                <button class="cfg-btn" @onclick="NuevaPrioridadAsync" disabled="@_busy">+ Agregar prioridad</button>
+                            }
+                        </div>
+                        <div class="cfg-card-body">
+                            <p style="font-size:12.5px;color:#878a99;margin:0 0 14px">
+                                Defina los niveles de prioridad con los que se marcan radicados y tramites. Cada uno se
+                                identifica con un icono y un color que se muestran en bandejas y tableros.
+                            </p>
+                            <div style="overflow-x:auto">
+                                <table class="cfg-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Vista previa</th><th>Nombre</th><th>Icono</th><th>Color</th>
+                                            <th>SLA sugerido (dias)</th><th>Activo</th><th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var p in _prioridades)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;background:@((p.Color ?? "#405189") + "1a");color:@(p.Color ?? "#405189")">
+                                                        @p.Icono @p.Nombre
+                                                    </span>
+                                                </td>
+                                                <td><input class="cfg-input" style="min-width:150px" maxlength="50" @bind="p.Nombre" disabled="@(!_canEdit)" /></td>
+                                                <td><input class="cfg-input" style="width:58px;text-align:center" maxlength="4" @bind="p.Icono" disabled="@(!_canEdit)" /></td>
+                                                <td>
+                                                    <span style="display:inline-block;width:18px;height:18px;border-radius:4px;border:1px solid #e2e8f0;vertical-align:middle;margin-right:6px;background:@(p.Color ?? "#405189")"></span>
+                                                    <input class="cfg-input cfg-mono" style="width:96px" maxlength="9" @bind="p.Color" disabled="@(!_canEdit)" />
+                                                </td>
+                                                <td><input class="cfg-input" style="width:90px" type="number" placeholder="&mdash;" @bind="p.SlaSugerido" disabled="@(!_canEdit)" /></td>
+                                                <td><label class="rad-sw"><input type="checkbox" @bind="p.Activo" disabled="@(!_canEdit)" /></label></td>
+                                                <td>
+                                                    @if (p.EsBase)
+                                                    {
+                                                        <span style="color:#adb1bd;font-size:11px" title="Prioridad base - no eliminable">&#128274;</span>
+                                                    }
+                                                    else if (_canEdit)
+                                                    {
+                                                        <button class="lnk-del" @onclick="@(() => InactivarPrioridadAsync(p.Id))" disabled="@_busy">&#128465;</button>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="cfg-warn" style="margin-top:12px">
+                                Las prioridades base (Normal / Alta / Urgente) no se eliminan &mdash; solo se editan o inactivan.
+                                Los cambios se reflejan de inmediato en el asistente de radicacion, la distribucion (RF07-2) y la Bandeja de Tramites.
+                            </div>
+                            @if (_canEdit)
+                            {
+                                <div style="margin-top:16px;text-align:right">
+                                    <button class="cfg-btn cfg-btn-lg" @onclick="GuardarPrioridadesAsync" disabled="@_busy">
+                                        <i class="bi bi-save"></i> Guardar prioridades
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @* ============ 3. TIPOS DE COMUNICACION ============ *@
+                else if (_sec == "tipos")
+                {
+                    <div class="cfg-card">
+                        <div class="cfg-card-head">
+                            <h3>Catalogo de tipos de comunicacion</h3>
+                            @if (_canEdit)
+                            {
+                                <button class="cfg-btn" @onclick="@(() => OpenTipo(null))">+ Nuevo tipo</button>
+                            }
+                        </div>
+                        <div class="cfg-card-body">
+                            <div style="overflow-x:auto">
+                                <table class="cfg-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Nombre</th><th>Direccion</th><th>PQRSD</th><th>Dias</th><th>Tipo dia</th>
+                                            <th>Prorrog.</th><th>Estado</th><th>Web</th><th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var t in _tipos)
+                                        {
+                                            <tr>
+                                                <td class="strong">@t.Nombre</td>
+                                                <td>@DireccionLabel(t.Direccion)</td>
+                                                <td>@if (t.EsPqrsd) { <span class="bdg bdg-pqrsd">PQRSD</span> } else { <span style="color:#adb1bd">&mdash;</span> }</td>
+                                                <td>@DiasLabel(t)</td>
+                                                <td>@TipoDiaCol(t)</td>
+                                                <td>@if (t.Prorrogable) { <text>Si</text> } else { <span style="color:#f06548">No</span> }</td>
+                                                <td>@if (t.Activo) { <span class="bdg bdg-activo">Activo</span> } else { <span class="bdg bdg-inactivo">Inactivo</span> }</td>
+                                                <td>@if (t.HabilitadoWeb) { <text>&#10003;</text> } else { <span style="color:#adb1bd">&mdash;</span> }</td>
+                                                <td>
+                                                    @if (_canEdit)
+                                                    {
+                                                        <button class="lnk-edit" @onclick="@(() => OpenTipo(t))" title="Editar">&#9998;</button>
+                                                        @if (!t.EsBase)
+                                                        {
+                                                            <button class="lnk-del" style="margin-left:8px" @onclick="@(() => DeleteTipoAsync(t))" disabled="@_busy" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                                        }
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                        @if (_tipos.Count == 0)
+                                        {
+                                            <tr><td colspan="9"><div class="cfg-note">No hay tipos de comunicacion.</div></td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="cfg-note">
+                                Tipos base no eliminables &mdash; solo editables o inactivables. Todos los tiempos son
+                                configurables; los valores precargados son defaults normativos.
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @* ============ 4. BUZONES ============ *@
+                else if (_sec == "buzones")
+                {
+                    <div class="cfg-card">
+                        <div class="cfg-card-head">
+                            <h3>Buzones de correo</h3>
+                            @if (_canEdit)
+                            {
+                                <button class="cfg-btn" @onclick="@(() => OpenBuzon(null))">+ Nuevo buzon</button>
+                            }
+                        </div>
+                        <div class="cfg-card-body">
+                            @if (_buzones.Count == 0)
+                            {
+                                <div class="mig-drop" style="margin-bottom:0">
+                                    <div class="mg-i">@("@")</div>
+                                    <div class="mg-t">Sin buzones configurados</div>
+                                    <div class="mg-s">Agregue un buzon para radicar comunicaciones recibidas por correo electronico.</div>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var b in _buzones)
+                                {
+                                    <div class="bz-row">
+                                        <div class="bz-ico">@("@")</div>
+                                        <div style="flex:1;min-width:0">
+                                            <div class="bz-nom">@b.NombreBuzon</div>
+                                            <div class="bz-mail">@b.DireccionEmail</div>
+                                        </div>
+                                        <div class="bz-meta" style="width:90px">@ProtocoloLabel(b.Protocolo)</div>
+                                        <span class="bdg bdg-canal">@ModoLabel(b.ModoRadicacion)</span>
+                                        <div class="bz-meta" style="width:70px">@FrecuenciaMin(b.FrecuenciaRevision) min</div>
+                                        @if (b.Activo) { <span class="bdg bdg-activo">Activo</span> } else { <span class="bdg bdg-inactivo">Inactivo</span> }
+                                        @if (_canEdit)
+                                        {
+                                            <button class="lnk-edit" style="margin-left:8px" @onclick="@(() => OpenBuzon(b))" title="Editar">&#9998;</button>
+                                            <button class="lnk-del" @onclick="@(() => DeleteBuzonAsync(b))" disabled="@_busy" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                @* ============ 5. PORTAL WEB ============ *@
+                else if (_sec == "portalweb")
+                {
+                    <div class="cfg-card">
+                        <div class="cfg-card-head"><h3>Portal Web embebible (iframe)</h3></div>
+                        <div class="cfg-card-body">
+                            <div class="cfg-info">
+                                &#128279; Wizard para ciudadanos externos (captcha &rarr; identificacion &rarr; solicitud &rarr; adjuntos).
+                                Las radicaciones llegan a la bandeja con canal <strong>Web</strong>.
+                            </div>
+                            <div class="cfg-grid2">
+                                <div class="cfg-field"><label>Nombre de la entidad</label><input class="cfg-input" maxlength="100" @bind="_pc.NombreEntidad" disabled="@(!_canEdit)" /></div>
+                                <div class="cfg-field"><label>Subtitulo</label><input class="cfg-input" maxlength="200" @bind="_pc.Subtitulo" disabled="@(!_canEdit)" /></div>
+                                <div class="cfg-field"><label>NIT</label><input class="cfg-input" maxlength="30" @bind="_pc.Nit" disabled="@(!_canEdit)" /></div>
+                                <div class="cfg-field"><label>Color institucional</label><input class="cfg-input" type="color" style="height:38px;padding:4px" @bind="_pc.Color" disabled="@(!_canEdit)" /></div>
+                                <div class="cfg-field"><label>Tamano max. de adjunto (MB)</label><input class="cfg-input cfg-mono" type="number" @bind="_pc.MaxAdjuntoMb" disabled="@(!_canEdit)" /></div>
+                                <div class="cfg-field"><label>Slug del portal (URL publica)</label><input class="cfg-input cfg-mono" maxlength="60" placeholder="ej. alcaldia-demo" @bind="_pc.Slug" disabled="@(!_canEdit)" /></div>
+                            </div>
+                            <div class="cfg-field" style="margin-top:16px">
+                                <label>Banner / mensaje de bienvenida</label>
+                                <textarea class="cfg-textarea" rows="2" @bind="_pc.Banner" disabled="@(!_canEdit)"></textarea>
+                            </div>
+
+                            <div class="cfg-subhead">Tipos habilitados en el portal</div>
+                            <div class="cfg-grid2" style="gap:0 24px">
+                                @foreach (var t in _tiposWeb)
+                                {
+                                    <div class="cfg-toggle-row">
+                                        <div class="tg-lbl">@t.Nombre</div>
+                                        <label class="rad-sw"><input type="checkbox" checked="@t.HabilitadoWeb" @onchange="@(e => ToggleTipoWebAsync(t.Id, (bool)e.Value!))" disabled="@(!_canEdit)" /></label>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="cfg-subhead">Opciones</div>
+                            <div class="cfg-toggle-row">
+                                <div><div class="tg-lbl">Permitir radicacion anonima</div><div class="tg-hint">Solo para tipos que permiten anonimo</div></div>
+                                <label class="rad-sw"><input type="checkbox" @bind="_pc.PermitirAnonimo" disabled="@(!_canEdit)" /></label>
+                            </div>
+                            <div class="cfg-toggle-row">
+                                <div><div class="tg-lbl">Exigir CAPTCHA (reCAPTCHA)</div><div class="tg-hint">Proteccion contra radicaciones automatizadas</div></div>
+                                <label class="rad-sw"><input type="checkbox" @bind="_pc.ExigirCaptcha" disabled="@(!_canEdit)" /></label>
+                            </div>
+
+                            <div class="cfg-grid2" style="margin-top:16px">
+                                <div class="cfg-field"><label>Canales de atencion</label><textarea class="cfg-textarea" rows="3" @bind="_pc.CanalesAtencion" disabled="@(!_canEdit)"></textarea><span class="hint">Se muestran en la pagina de inicio del portal</span></div>
+                                <div class="cfg-field"><label>Aviso de privacidad (Ley 1581/2012)</label><textarea class="cfg-textarea" rows="3" @bind="_pc.AvisoPrivacidad" disabled="@(!_canEdit)"></textarea></div>
+                            </div>
+                            <div class="cfg-field" style="margin-top:16px">
+                                <label>Preguntas frecuentes</label>
+                                <textarea class="cfg-textarea cfg-mono" rows="4" style="font-size:12px" @bind="_pc.Faq" disabled="@(!_canEdit)"></textarea>
+                                <span class="hint">Una por linea, con el formato: Pregunta|Respuesta</span>
+                            </div>
+
+                            @if (_canEdit)
+                            {
+                                <div style="margin-top:18px;text-align:right">
+                                    <button class="cfg-btn cfg-btn-lg" @onclick="GuardarPortalAsync" disabled="@_busy"><i class="bi bi-save"></i> Guardar portal</button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="cfg-card">
+                        <div class="cfg-card-head">
+                            <h3>Codigo de insercion</h3>
+                            <button class="cfg-btn" @onclick="CopiarEmbedAsync">&#128203; Copiar codigo</button>
+                        </div>
+                        <div class="cfg-card-body">
+                            <p style="font-size:12.5px;color:#566980;margin:0 0 12px">
+                                Copie este codigo y peguelo en el sitio web de la entidad para exponer el portal de radicacion:
+                            </p>
+                            <pre class="cfg-code">@EmbedSnippet</pre>
+                            @if (!string.IsNullOrWhiteSpace(_pc.Slug))
+                            {
+                                <div class="cfg-note">Tambien puede abrir el portal directamente: <a href="@PortalUrl" target="_blank">abrir portal ciudadano</a></div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @* ============ 6. NOTIFICACIONES ============ *@
+                else if (_sec == "notificaciones")
+                {
+                    <div class="cfg-card">
+                        <div class="cfg-card-head"><h3>Parametros de alertas SLA</h3></div>
+                        <div class="cfg-card-body">
+                            <div class="cfg-grid2" style="gap:20px">
+                                <div class="cfg-field">
+                                    <label>Primera alerta (% del termino consumido)</label>
+                                    <div style="display:flex;align-items:center;gap:12px">
+                                        <input type="range" class="sla-range" min="10" max="90" style="accent-color:#405189" @bind="_a1" @bind:event="oninput" disabled="@(!_canEdit)" />
+                                        <span class="sla-val" style="color:#405189">@_a1%</span>
+                                    </div>
+                                    <span class="hint">Primera alerta al consumir el X% del termino. Default: 50</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Segunda alerta (zona critica)</label>
+                                    <div style="display:flex;align-items:center;gap:12px">
+                                        <input type="range" class="sla-range" min="10" max="99" style="accent-color:#f59e0b" @bind="_a2" @bind:event="oninput" disabled="@(!_canEdit)" />
+                                        <span class="sla-val" style="color:#d97706">@_a2%</span>
+                                    </div>
+                                    <span class="hint">Segunda alerta &mdash; zona critica. Default: 80</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Alerta especial tutela (horas)</label>
+                                    <input class="cfg-input cfg-mono" type="number" min="0" @bind="_aTutela" disabled="@(!_canEdit)" />
+                                    <span class="hint">Alerta especial para tutelas en horas. Default: 24</span>
+                                </div>
+                            </div>
+
+                            <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f0f0f3">
+                                <div class="cfg-toggle-row">
+                                    <div class="tg-lbl">Notificar al responsable al vencer</div>
+                                    <label class="rad-sw"><input type="checkbox" @bind="_notifJefe" disabled="@(!_canEdit)" /></label>
+                                </div>
+                                <div class="cfg-toggle-row">
+                                    <div class="tg-lbl">Notificar a la direccion al vencer</div>
+                                    <label class="rad-sw"><input type="checkbox" @bind="_notifDir" disabled="@(!_canEdit)" /></label>
+                                </div>
+                            </div>
+
+                            <div style="margin-top:18px">
+                                <label class="cfg-field" style="font-size:11px;font-weight:600;color:#878a99;text-transform:uppercase">Vista previa del termino</label>
+                                <div class="sla-bar" style="margin-top:6px">
+                                    <div class="sla-mark" style="left:@(_a1)%;background:#405189"></div>
+                                    <div class="sla-mark" style="left:@(_a2)%;background:#f59e0b"></div>
+                                    <div class="sla-mark" style="right:0;background:#f06548"></div>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;font-size:10px;color:#adb1bd;margin-top:4px">
+                                    <span>Radicacion</span><span>Vencimiento</span>
+                                </div>
+                            </div>
+
+                            @if (_canEdit)
+                            {
+                                <div style="margin-top:18px;text-align:right">
+                                    <button class="cfg-btn cfg-btn-lg" @onclick="SaveSlaAsync" disabled="@_busy"><i class="bi bi-save"></i> Guardar alertas SLA</button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="cfg-card">
+                        <div class="cfg-card-head"><h3>Configuracion de notificaciones</h3></div>
+                        <div class="cfg-card-body">
+                            <div style="overflow-x:auto">
+                                <table class="cfg-table">
+                                    <thead>
+                                        <tr><th>Evento</th><th>Canal</th><th>Destinatarios</th><th>Activa</th><th>Obligatoria</th><th></th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var n in _notifs)
+                                        {
+                                            <tr>
+                                                <td class="strong">@n.EventoNombre</td>
+                                                <td><span class="bdg bdg-canal">Email + Interno</span></td>
+                                                <td style="font-size:12px">Configurable</td>
+                                                <td>
+                                                    <label class="rad-sw"><input type="checkbox" checked="@n.Activo"
+                                                        disabled="@(!_canEdit || n.ObligatorioPorLey)"
+                                                        @onchange="@(e => ToggleNotifActivo(n, (bool)e.Value!))" /></label>
+                                                </td>
+                                                <td>
+                                                    @if (n.ObligatorioPorLey) { <span class="bdg bdg-oblig">Obligatoria</span> } else { <span style="color:#adb1bd">&mdash;</span> }
+                                                </td>
+                                                <td>@if (_canEdit) { <button class="lnk-edit" @onclick="@(() => OpenNotif(n))">&#9998; Editar plantilla</button> }</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="plt-preview" style="margin-top:14px">
+                                <div class="pp-t">Variables disponibles en plantillas</div>
+                                <div>
+                                    @foreach (var v in Variables)
+                                    {
+                                        <span class="var-chip">@v</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="cfg-note">
+                                Todos los destinatarios son configurables &mdash; usuarios especificos o roles definidos en RQ01.
+                                No hay cargos fijos. Las notificaciones obligatorias por ley no pueden desactivarse.
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @* ============ 7. MIGRACION ============ *@
+                else if (_sec == "migracion")
+                {
+                    <div class="cfg-card">
+                        <div class="cfg-card-head">
+                            <h3>Migracion de radicados historicos</h3>
+                            <button class="cfg-btn cfg-btn-soft" @onclick="@(() => _pageOk = "Descarga de plantilla: disponible proximamente.")">
+                                <i class="bi bi-download"></i> Descargar plantilla Excel
+                            </button>
+                        </div>
+                        <div class="cfg-card-body">
+                            <div class="mig-drop">
+                                <div class="mg-i">&#128193;</div>
+                                <div class="mg-t">Cargar archivo Excel de radicados historicos</div>
+                                <div class="mg-s">Proceso asincrono &middot; notificacion al terminar con reporte de exitosos y errores</div>
+                                <button class="cfg-btn cfg-btn-lg" disabled>Seleccionar archivo</button>
+                            </div>
+                            <div class="cfg-grid2">
+                                <div class="cfg-field">
+                                    <label>Estado al importar</label>
+                                    <select class="cfg-select form-select form-select-sm" @bind="_migEstado">
+                                        <option value="Respondido">Respondido</option>
+                                        <option value="Archivado">Archivado</option>
+                                    </select>
+                                    <span class="hint">Nunca estados activos</span>
+                                </div>
+                                <div class="cfg-field">
+                                    <label>Crear terceros inexistentes</label>
+                                    <select class="cfg-select form-select form-select-sm" @bind="_migCrearTerceros">
+                                        <option value="true">Si, crear automaticamente</option>
+                                        <option value="false">No, reportar como error</option>
+                                    </select>
+                                    <span class="hint">Si el remitente no existe en RQ07</span>
+                                </div>
+                            </div>
+                            <div style="margin-top:14px;text-align:right">
+                                <button class="cfg-btn cfg-btn-lg" disabled><i class="bi bi-upload"></i> Iniciar migracion</button>
+                            </div>
+                            <div class="cfg-note">
+                                Validaciones: numeros no duplicados, fechas validas, tipos existentes en el catalogo.
+                                El consecutivo se ajusta al valor mas alto migrado + 1. Adjuntos: opcional en primera fase.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cfg-card">
+                        <div class="cfg-card-head">
+                            <h3>Registro de migraciones</h3>
+                            <button class="cfg-btn cfg-btn-soft" @onclick="RecargarMigracionesAsync" disabled="@_busy"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
+                        </div>
+                        <div class="cfg-card-body">
+                            @if (_migraciones.Count == 0)
+                            {
+                                <div class="cfg-note" style="text-align:center">Aun no se han ejecutado migraciones.</div>
+                            }
+                            else
+                            {
+                                <div style="overflow-x:auto">
+                                    <table class="cfg-table">
+                                        <thead>
+                                            <tr><th>Fecha</th><th>Archivo fuente</th><th>Cantidad</th><th>Exitosos</th><th>Errores</th><th>Estado</th><th></th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var m in _migraciones)
+                                            {
+                                                <tr>
+                                                    <td>@m.FechaMigracion.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                                    <td class="strong">@(m.ArchivoNombre ?? "-")</td>
+                                                    <td>@m.CantidadTotal</td>
+                                                    <td style="color:#0a7d6f;font-weight:600">@m.CantidadExitosos</td>
+                                                    <td style="color:#B91C1C;font-weight:600">@m.CantidadErrores</td>
+                                                    <td>@EstadoMigBadge(m.Estado)</td>
+                                                    <td><button class="lnk-edit" @onclick="@(() => OpenReporte(m))">Ver reporte</button></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
             }
         </div>
     </div>
 
-    @if (_loading)
-    {
-        <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando configuración...</em></div></div>
-    }
-    else
-    {
-        @* ================= TAB 1: CONSECUTIVOS (RF01-1) ================= *@
-        @if (_tab == "consecutivos")
-        {
-            <div class="tx-ent-card">
-                <div class="tx-ent-card-head">
-                    <div class="tx-ent-card-icon"><i class="bi bi-123"></i></div>
-                    <div>
-                        <div class="tx-ent-card-title">Consecutivos de radicación</div>
-                        <div class="tx-ent-card-sub">Número inicial por dirección, dígitos, separador y reinicio anual.</div>
-                    </div>
-                </div>
-                <div class="tx-ent-card-body">
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
-                            <label>Consecutivo inicio Entrada <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" type="number" min="1" @bind="_cEntradaInicio" />
-                            <span class="tx-ent-hint">Actual asignado: <strong class="mono">@(_config?.ConsecutivoEntradaActual ?? 0)</strong></span>
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Consecutivo inicio Salida <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" type="number" min="1" @bind="_cSalidaInicio" />
-                            <span class="tx-ent-hint">Actual asignado: <strong class="mono">@(_config?.ConsecutivoSalidaActual ?? 0)</strong></span>
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Consecutivo inicio Interno <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" type="number" min="1" @bind="_cInternoInicio" />
-                            <span class="tx-ent-hint">Actual asignado: <strong class="mono">@(_config?.ConsecutivoInternoActual ?? 0)</strong></span>
-                        </div>
-                    </div>
-
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
-                            <label>Dígitos del consecutivo <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" type="number" min="1" max="12" @bind="_cDigitos" />
-                            <span class="tx-ent-hint">Relleno con ceros a la izquierda (1 a 12).</span>
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Separador <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" maxlength="3" @bind="_cSeparador" placeholder="-" />
-                            <span class="tx-ent-hint">Ej. guion, punto o barra.</span>
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Reinicio anual</label>
-                            <label class="cr-switch">
-                                <input type="checkbox" @bind="_cReinicioAnual" />
-                                <span>Reiniciar la numeración cada año</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="cr-preview">
-                        <div class="tx-ent-hint" style="margin-bottom:6px"><i class="bi bi-eye"></i> Vista previa del número de radicado (Entrada)</div>
-                        <div class="cr-preview-val mono">@PreviewRadicado()</div>
-                    </div>
-
-                    @if (_canEdit)
-                    {
-                        <div class="tx-ent-actions">
-                            <button type="button" class="tx-ent-btn primary" @onclick="SaveConsecutivosAsync" disabled="@_busy">
-                                <i class="bi bi-save"></i> Guardar
-                            </button>
-                        </div>
-                    }
-                </div>
-            </div>
-        }
-
-        @* ================= TAB 2: TIPOS DE COMUNICACION (RF01-2) ================= *@
-        else if (_tab == "tipos")
-        {
-            <div class="tx-ent-card">
-                <div class="tx-ent-card-head">
-                    <div class="tx-ent-card-icon"><i class="bi bi-tags"></i></div>
-                    <div>
-                        <div class="tx-ent-card-title">Tipos de comunicación</div>
-                        <div class="tx-ent-card-sub">Catálogo radicable. Los tipos base normativos no se eliminan, solo se editan o inactivan.</div>
-                    </div>
-                    @if (_canEdit)
-                    {
-                        <div class="tx-ent-card-head-right">
-                            <button type="button" class="tx-ent-btn primary sm" @onclick="@(() => OpenTipo(null))">
-                                <i class="bi bi-plus-lg"></i> Nuevo tipo
-                            </button>
-                        </div>
-                    }
-                </div>
-                <div class="tx-ent-card-body">
-                    <div class="tx-ent-table-wrap">
-                        <table class="tx-ent-table">
-                            <thead>
-                                <tr>
-                                    <th>Código</th>
-                                    <th>Nombre</th>
-                                    <th>Dirección</th>
-                                    <th>PQRSD</th>
-                                    <th>Días resp.</th>
-                                    <th>Estado</th>
-                                    <th>Base</th>
-                                    <th class="right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var t in _tipos)
-                                {
-                                    <tr class="@(t.Activo ? "" : "inactiva")">
-                                        <td class="mono">@t.Codigo</td>
-                                        <td>@t.Nombre</td>
-                                        <td>@DireccionLabel(t.Direccion)</td>
-                                        <td>
-                                            @if (t.EsPqrsd)
-                                            {
-                                                <span class="tx-ent-badge sm info">PQRSD</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="muted">-</span>
-                                            }
-                                        </td>
-                                        <td class="mono">@(t.DiasRespuesta?.ToString() ?? "-")</td>
-                                        <td><span class="tx-ent-badge sm @(t.Activo ? "ok" : "off")">@(t.Activo ? "Activo" : "Inactivo")</span></td>
-                                        <td>
-                                            @if (t.EsBase)
-                                            {
-                                                <span class="tx-ent-badge sm violet">Base</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="muted">-</span>
-                                            }
-                                        </td>
-                                        <td class="right">
-                                            @if (_canEdit)
-                                            {
-                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenTipo(t))">Editar</button>
-                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => ToggleTipoActivo(t))" disabled="@_busy">
-                                                    @(t.Activo ? "Inactivar" : "Activar")
-                                                </button>
-                                                @if (!t.EsBase)
-                                                {
-                                                    <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => DeleteTipoAsync(t))" disabled="@_busy">Eliminar</button>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="muted">-</span>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                                @if (_tipos.Count == 0)
-                                {
-                                    <tr><td colspan="8"><div class="tx-ent-hint">No hay tipos de comunicación.</div></td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="tx-ent-hint">
-                        <i class="bi bi-shield-lock"></i> Los tipos <strong>base</strong> son normativos: no se eliminan, únicamente se inactivan.
-                    </div>
-                </div>
-            </div>
-        }
-
-        @* ================= TAB 3: ALERTAS SLA (RF01-3) ================= *@
-        else if (_tab == "sla")
-        {
-            <div class="tx-ent-card">
-                <div class="tx-ent-card-head">
-                    <div class="tx-ent-card-icon"><i class="bi bi-alarm"></i></div>
-                    <div>
-                        <div class="tx-ent-card-title">Alertas de vencimiento (SLA)</div>
-                        <div class="tx-ent-card-sub">Umbrales de aviso sobre el término legal y escalamiento al vencer.</div>
-                    </div>
-                </div>
-                <div class="tx-ent-card-body">
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
-                            <label>Primera alerta (% del término) <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" type="number" min="1" max="100" @bind="_a1" />
-                            <span class="tx-ent-hint">Ej. 50 = a la mitad del plazo.</span>
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Segunda alerta (% del término) <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" type="number" min="1" max="100" @bind="_a2" />
-                            <span class="tx-ent-hint">Ej. 80 = cerca del vencimiento.</span>
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Alerta tutela (horas) <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" type="number" min="1" @bind="_aTutela" />
-                            <span class="tx-ent-hint">Aviso especial por término corto de tutela.</span>
-                        </div>
-                    </div>
-
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field">
-                            <label>Escalamiento al vencer</label>
-                            <label class="cr-switch">
-                                <input type="checkbox" @bind="_notifJefe" />
-                                <span>Notificar al jefe de la dependencia</span>
-                            </label>
-                            <label class="cr-switch">
-                                <input type="checkbox" @bind="_notifDir" />
-                                <span>Notificar a la Dirección</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    @if (_canEdit)
-                    {
-                        <div class="tx-ent-actions">
-                            <button type="button" class="tx-ent-btn primary" @onclick="SaveSlaAsync" disabled="@_busy">
-                                <i class="bi bi-save"></i> Guardar
-                            </button>
-                        </div>
-                    }
-                </div>
-            </div>
-        }
-
-        @* ================= TAB 4: BUZONES DE CORREO (RF01-4) ================= *@
-        else if (_tab == "buzones")
-        {
-            <div class="tx-ent-card">
-                <div class="tx-ent-card-head">
-                    <div class="tx-ent-card-icon"><i class="bi bi-envelope-at"></i></div>
-                    <div>
-                        <div class="tx-ent-card-title">Buzones de correo de recepción</div>
-                        <div class="tx-ent-card-sub">Cuentas monitoreadas para radicar correos entrantes. La clave se guarda cifrada.</div>
-                    </div>
-                    @if (_canEdit)
-                    {
-                        <div class="tx-ent-card-head-right">
-                            <button type="button" class="tx-ent-btn primary sm" @onclick="@(() => OpenBuzon(null))">
-                                <i class="bi bi-plus-lg"></i> Nuevo buzón
-                            </button>
-                        </div>
-                    }
-                </div>
-                <div class="tx-ent-card-body">
-                    <div class="tx-ent-table-wrap">
-                        <table class="tx-ent-table">
-                            <thead>
-                                <tr>
-                                    <th>Nombre</th>
-                                    <th>Dirección</th>
-                                    <th>Protocolo</th>
-                                    <th>Modo</th>
-                                    <th>Estado</th>
-                                    <th class="right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var b in _buzones)
-                                {
-                                    <tr class="@(b.Activo ? "" : "inactiva")">
-                                        <td>@b.NombreBuzon</td>
-                                        <td class="mono">@b.DireccionEmail</td>
-                                        <td>@ProtocoloLabel(b.Protocolo)</td>
-                                        <td>@ModoLabel(b.ModoRadicacion)</td>
-                                        <td><span class="tx-ent-badge sm @(b.Activo ? "ok" : "off")">@(b.Activo ? "Activo" : "Inactivo")</span></td>
-                                        <td class="right">
-                                            @if (_canEdit)
-                                            {
-                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenBuzon(b))">Editar</button>
-                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => ToggleBuzonActivo(b))" disabled="@_busy">
-                                                    @(b.Activo ? "Inactivar" : "Activar")
-                                                </button>
-                                                <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => DeleteBuzonAsync(b))" disabled="@_busy">Eliminar</button>
-                                            }
-                                            else
-                                            {
-                                                <span class="muted">-</span>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                                @if (_buzones.Count == 0)
-                                {
-                                    <tr><td colspan="6"><div class="tx-ent-hint">No hay buzones configurados.</div></td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="tx-ent-hint">
-                        <i class="bi bi-info-circle"></i> El worker de captura de correos es una integración posterior; aquí sólo se configuran las cuentas.
-                    </div>
-                </div>
-            </div>
-        }
-
-        @* ================= TAB 5: NOTIFICACIONES (RF01-5) ================= *@
-        else if (_tab == "notificaciones")
-        {
-            <div class="tx-ent-card">
-                <div class="tx-ent-card-head">
-                    <div class="tx-ent-card-icon"><i class="bi bi-bell"></i></div>
-                    <div>
-                        <div class="tx-ent-card-title">Notificaciones por evento</div>
-                        <div class="tx-ent-card-sub">Activa o desactiva cada aviso y personaliza sus plantillas. Algunos son obligatorios por ley.</div>
-                    </div>
-                </div>
-                <div class="tx-ent-card-body">
-                    @foreach (var n in _notifs)
-                    {
-                        <div class="cr-notif">
-                            <div class="cr-notif-main">
-                                <div class="cr-notif-name">@n.EventoNombre</div>
-                                @if (n.ObligatorioPorLey)
-                                {
-                                    <span class="tx-ent-badge sm warn"><i class="bi bi-shield-check"></i> Obligatorio por ley</span>
-                                }
-                            </div>
-                            <div class="cr-notif-actions">
-                                <label class="cr-switch">
-                                    <input type="checkbox" checked="@n.Activo" disabled="@(!_canEdit || n.ObligatorioPorLey)"
-                                           @onchange="@(e => ToggleNotifActivo(n, (bool)e.Value!))" />
-                                    <span>Activa</span>
-                                </label>
-                                @if (_canEdit)
-                                {
-                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenNotif(n))">Editar plantilla</button>
-                                }
-                            </div>
-                        </div>
-                    }
-                    @if (_notifs.Count == 0)
-                    {
-                        <div class="tx-ent-hint">No hay eventos de notificación.</div>
-                    }
-
-                    <div class="tx-ent-hint" style="margin-top:14px">
-                        <i class="bi bi-braces"></i> Variables disponibles en las plantillas:
-                        <code>@_variables</code>
-                    </div>
-                </div>
-            </div>
-        }
-
-        @* ================= TAB 6: MIGRACION (RF01-6) ================= *@
-        else if (_tab == "migracion")
-        {
-            <div class="tx-ent-card">
-                <div class="tx-ent-card-head">
-                    <div class="tx-ent-card-icon"><i class="bi bi-cloud-arrow-up"></i></div>
-                    <div>
-                        <div class="tx-ent-card-title">Migración de radicados históricos</div>
-                        <div class="tx-ent-card-sub">Carga masiva de radicados previos vía plantilla Excel.</div>
-                    </div>
-                </div>
-                <div class="tx-ent-card-body">
-                    <div class="tx-ent-alert info">
-                        <i class="bi bi-info-circle-fill"></i>
-                        <span>
-                            Descarga la plantilla, complétala con tus radicados históricos y súbela. El proceso de
-                            importación es asíncrono y valida cada fila antes de crear el radicado.
-                        </span>
-                    </div>
-
-                    <div class="tx-ent-actions" style="justify-content:flex-start">
-                        <button type="button" class="tx-ent-btn" @onclick="@(() => _pageOk = "Descarga de plantilla: disponible próximamente.")">
-                            <i class="bi bi-file-earmark-excel"></i> Descargar plantilla Excel
-                        </button>
-                        @if (_canEdit)
-                        {
-                            <button type="button" class="tx-ent-btn primary" disabled>
-                                <i class="bi bi-upload"></i> Subir archivo
-                            </button>
-                        }
-                    </div>
-                    <div class="tx-ent-hint">
-                        <i class="bi bi-hourglass-split"></i> El ejecutor de la importación es una integración posterior (worker asíncrono);
-                        por ahora esta sección lista las corridas ya registradas.
-                    </div>
-
-                    <div class="tx-ent-table-wrap" style="margin-top:14px">
-                        <table class="tx-ent-table">
-                            <thead>
-                                <tr>
-                                    <th>Fecha</th>
-                                    <th>Archivo</th>
-                                    <th>Total</th>
-                                    <th>Exitosos</th>
-                                    <th>Errores</th>
-                                    <th>Destino</th>
-                                    <th>Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var m in _migraciones)
-                                {
-                                    <tr>
-                                        <td class="mono">@m.FechaMigracion.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
-                                        <td>@(m.ArchivoNombre ?? "-")</td>
-                                        <td class="mono">@m.CantidadTotal</td>
-                                        <td class="mono">@m.CantidadExitosos</td>
-                                        <td class="mono">@m.CantidadErrores</td>
-                                        <td>@m.EstadoDestino</td>
-                                        <td><span class="tx-ent-badge sm info">@m.Estado</span></td>
-                                    </tr>
-                                }
-                                @if (_migraciones.Count == 0)
-                                {
-                                    <tr><td colspan="7"><div class="tx-ent-hint">No hay corridas de migración registradas.</div></td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        }
-    }
-
     @* ===================== MODAL: TIPO DE COMUNICACION ===================== *@
     @if (_showTipo)
     {
-        <div class="modal-overlay" @onclick="@(() => _showTipo = false)">
-            <div class="modal-dialog" style="max-width:820px" @onclick:stopPropagation="true">
-                <div class="modal-head">
-                    <h3>@(_tipoEditId is null ? "Nuevo tipo de comunicación" : "Editar tipo de comunicación")</h3>
-                    <button class="modal-close" @onclick="@(() => _showTipo = false)">&times;</button>
+        <div class="cfg-modal-back" @onclick="@(() => _showTipo = false)">
+            <div class="cfg-modal w720" @onclick:stopPropagation="true">
+                <div class="cfg-modal-head">
+                    <h3>@(_tipoEditId is null ? "Nuevo tipo de comunicacion" : $"Editar tipo: {_tCodigo}")</h3>
+                    <button class="cfg-modal-x" @onclick="@(() => _showTipo = false)">&times;</button>
                 </div>
-                <div class="modal-body tx-mod tx-trdc">
-                    <div class="cr-section">Clasificación</div>
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field">
-                            <label>Código <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" @bind="_tCodigo" maxlength="20" placeholder="PET" />
+                <div class="cfg-modal-body">
+                    <div class="cfg-grid3">
+                        <div class="cfg-field">
+                            <label>Codigo <span class="req">*</span></label>
+                            <input class="cfg-input cfg-mono" style="text-transform:uppercase" maxlength="50" @bind="_tCodigo" placeholder="SIN_ESPACIOS" readonly="@(_tipoEditId is not null)" />
+                            <span class="hint">Identificador unico, texto sin espacios</span>
                         </div>
-                        <div class="tx-ent-field">
+                        <div class="cfg-field" style="grid-column:span 2">
                             <label>Nombre <span class="req">*</span></label>
-                            <input class="tx-ent-input" @bind="_tNombre" maxlength="150" placeholder="Petición" />
+                            <input class="cfg-input" maxlength="100" @bind="_tNombre" placeholder="Nombre visible al usuario y al ciudadano" />
                         </div>
-                    </div>
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field">
-                            <label>Dirección <span class="req">*</span></label>
-                            <select class="tx-ent-input" @bind="_tDireccion">
-                                @foreach (var v in Enum.GetValues<RadicacionDireccion>())
-                                {
-                                    <option value="@v">@DireccionLabel(v)</option>
-                                }
+                        <div class="cfg-field">
+                            <label>Direccion <span class="req">*</span></label>
+                            <select class="cfg-select form-select form-select-sm" @bind="_tDireccion">
+                                @foreach (var v in Enum.GetValues<RadicacionDireccion>()) { <option value="@v">@DireccionLabel(v)</option> }
                             </select>
                         </div>
-                        <div class="tx-ent-field">
-                            <label>Nivel de reserva por defecto <span class="opt">(opcional)</span></label>
-                            <input class="tx-ent-input mono" type="number" @bind="_tNivelReservaId" placeholder="Id del nivel" />
+                        <div class="cfg-field">
+                            <label>Dias respuesta</label>
+                            <input class="cfg-input cfg-mono" type="number" min="0" @bind="_tDiasRespuesta" disabled="@(!_tRequiereRespuesta)" />
+                            <span class="hint">Si requiere respuesta</span>
                         </div>
-                    </div>
-                    <div class="cr-checks">
-                        <label class="cr-switch"><input type="checkbox" @bind="_tEsPqrsd" /><span>Es PQRSD</span></label>
-                        <label class="cr-switch"><input type="checkbox" @bind="_tEsTutela" /><span>Es tutela</span></label>
-                        <label class="cr-switch"><input type="checkbox" @bind="_tEsRecurso" /><span>Es recurso</span></label>
-                        <label class="cr-switch"><input type="checkbox" @bind="_tPermiteAnonimo" /><span>Permite anónimo</span></label>
-                    </div>
-
-                    <div class="cr-section">Términos de respuesta</div>
-                    <div class="cr-checks">
-                        <label class="cr-switch"><input type="checkbox" @bind="_tRequiereRespuesta" /><span>Requiere respuesta</span></label>
-                        <label class="cr-switch"><input type="checkbox" @bind="_tProrrogable" /><span>Prorrogable</span></label>
-                    </div>
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
-                            <label>Días de respuesta <span class="opt">(opcional)</span></label>
-                            <input class="tx-ent-input mono" type="number" min="0" @bind="_tDiasRespuesta" />
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Tipo de día</label>
-                            <select class="tx-ent-input" @bind="_tTipoDia">
-                                @foreach (var v in Enum.GetValues<RadicacionTipoDia>())
-                                {
-                                    <option value="@v">@TipoDiaLabel(v)</option>
-                                }
+                        <div class="cfg-field">
+                            <label>Tipo de dia</label>
+                            <select class="cfg-select form-select form-select-sm" @bind="_tTipoDia">
+                                @foreach (var v in Enum.GetValues<RadicacionTipoDia>()) { <option value="@v">@TipoDiaLabel(v)</option> }
                             </select>
                         </div>
-                        <div class="tx-ent-field">
-                            <label>Inicio del término</label>
-                            <select class="tx-ent-input" @bind="_tInicioTermino">
-                                @foreach (var v in Enum.GetValues<RadicacionInicioTermino>())
-                                {
-                                    <option value="@v">@InicioTerminoLabel(v)</option>
-                                }
+                        <div class="cfg-field">
+                            <label>Inicio termino</label>
+                            <select class="cfg-select form-select form-select-sm" @bind="_tInicioTermino">
+                                @foreach (var v in Enum.GetValues<RadicacionInicioTermino>()) { <option value="@v">@InicioTerminoLabel(v)</option> }
                             </select>
                         </div>
-                    </div>
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field">
-                            <label>Días de prórroga <span class="opt">(opcional)</span></label>
-                            <input class="tx-ent-input mono" type="number" min="0" @bind="_tDiasProrroga" />
+                        <div class="cfg-field">
+                            <label>Dias prorroga</label>
+                            <input class="cfg-input cfg-mono" type="number" min="0" @bind="_tDiasProrroga" disabled="@(!_tProrrogable)" />
+                            <span class="hint">Maximo igual al termino inicial</span>
+                        </div>
+                        <div class="cfg-field">
+                            <label>Nivel reserva default (id)</label>
+                            <input class="cfg-input cfg-mono" type="number" @bind="_tNivelReservaId" placeholder="Id del nivel" />
+                        </div>
+                        <div class="cfg-field">
+                            <label>Color etiqueta</label>
+                            <input class="cfg-input" type="color" style="height:38px;padding:4px" value="@(_tColor ?? "#3B82F6")" @onchange="@(e => _tColor = e.Value?.ToString())" />
+                            <span class="hint">Etiqueta en bandejas</span>
+                        </div>
+                        <div class="cfg-field">
+                            <label>Orden portal</label>
+                            <input class="cfg-input cfg-mono" type="number" @bind="_tOrdenPortal" />
+                            <span class="hint">Orden en el portal ciudadano</span>
+                        </div>
+                        <div class="cfg-field" style="grid-column:span 2">
+                            <label>Palabras clave</label>
+                            <input class="cfg-input" maxlength="500" @bind="_tPalabrasClave" placeholder="separadas,por,comas" />
+                            <span class="hint">Para deteccion automatica en correos</span>
                         </div>
                     </div>
 
-                    <div class="cr-section">Portal ciudadano</div>
-                    <div class="cr-checks">
-                        <label class="cr-switch"><input type="checkbox" @bind="_tHabilitadoWeb" /><span>Habilitado en el portal web</span></label>
-                        <label class="cr-switch"><input type="checkbox" @bind="_tActivo" /><span>Activo</span></label>
-                    </div>
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
-                            <label>Ícono <span class="opt">(opcional)</span></label>
-                            <input class="tx-ent-input mono" @bind="_tIcono" maxlength="60" placeholder="bi bi-file-text" />
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Color <span class="opt">(opcional)</span></label>
-                            <input class="tx-ent-input mono" @bind="_tColor" maxlength="20" placeholder="#0d6efd" />
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Orden en el portal <span class="opt">(opcional)</span></label>
-                            <input class="tx-ent-input mono" type="number" @bind="_tOrdenPortal" />
-                        </div>
-                    </div>
-                    <div class="tx-ent-field">
-                        <label>Palabras clave <span class="opt">(opcional)</span></label>
-                        <input class="tx-ent-input" @bind="_tPalabrasClave" maxlength="300" placeholder="peticion, solicitud, consulta" />
-                    </div>
-                    <div class="tx-ent-field">
-                        <label>Descripción para el ciudadano <span class="opt">(opcional)</span></label>
-                        <textarea class="tx-ent-input" @bind="_tDescripcionCiudadano" maxlength="500" rows="2"></textarea>
+                    <div class="cfg-subhead">Propiedades del tipo</div>
+                    <div class="cfg-grid2" style="gap:0 24px">
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Es PQRSD</div><div class="tg-hint">Activa reglas CPACA y reportes</div></div><label class="rad-sw"><input type="checkbox" @bind="_tEsPqrsd" /></label></div>
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Es Tutela</div><div class="tg-hint">Bloquea prorroga y usa termino en calendario</div></div><label class="rad-sw"><input type="checkbox" checked="@_tEsTutela" @onchange="OnTutelaChanged" /></label></div>
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Es Recurso</div><div class="tg-hint">Habilita campo de acto administrativo</div></div><label class="rad-sw"><input type="checkbox" @bind="_tEsRecurso" /></label></div>
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Requiere respuesta</div><div class="tg-hint">Activa el control de terminos SLA</div></div><label class="rad-sw"><input type="checkbox" @bind="_tRequiereRespuesta" /></label></div>
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Prorrogable</div><div class="tg-hint">Bloqueado si es tutela</div></div><label class="rad-sw"><input type="checkbox" @bind="_tProrrogable" disabled="@_tEsTutela" /></label></div>
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Permite anonimo</div><div class="tg-hint">Si no, remitente obligatorio</div></div><label class="rad-sw"><input type="checkbox" @bind="_tPermiteAnonimo" /></label></div>
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Habilitado en portal web</div><div class="tg-hint">Aparece en el portal ciudadano</div></div><label class="rad-sw"><input type="checkbox" @bind="_tHabilitadoWeb" /></label></div>
+                        <div class="cfg-toggle-row"><div><div class="tg-lbl">Activo</div><div class="tg-hint">Inactivo oculta el tipo en todos los formularios</div></div><label class="rad-sw"><input type="checkbox" @bind="_tActivo" /></label></div>
                     </div>
 
-                    @if (_modalError is not null)
-                    {
-                        <div class="tx-ent-fielderr">@_modalError</div>
-                    }
+                    <div class="cfg-field" style="margin-top:16px">
+                        <label>Descripcion para el ciudadano (portal)</label>
+                        <textarea class="cfg-textarea" rows="2" @bind="_tDescripcionCiudadano" placeholder="Texto explicativo en lenguaje ciudadano..."></textarea>
+                    </div>
+
+                    @if (_modalError is not null) { <div class="cfg-warn" style="background:#FEE2E2;border-color:#f06548;color:#991B1B">@_modalError</div> }
                 </div>
-                <div class="modal-foot">
-                    <button class="tx-ent-btn" @onclick="@(() => _showTipo = false)" disabled="@_busy">Cancelar</button>
-                    <button class="tx-ent-btn primary" @onclick="SaveTipoAsync" disabled="@_busy">
-                        @(_tipoEditId is null ? "Crear" : "Guardar")
-                    </button>
+                <div class="cfg-modal-foot">
+                    <button class="cfg-btn cfg-btn-soft" @onclick="@(() => _showTipo = false)" disabled="@_busy">Cancelar</button>
+                    <button class="cfg-btn" @onclick="SaveTipoAsync" disabled="@_busy">Guardar tipo</button>
                 </div>
             </div>
         </div>
     }
 
-    @* ===================== MODAL: BUZON DE CORREO ===================== *@
+    @* ===================== MODAL: BUZON ===================== *@
     @if (_showBuzon)
     {
-        <div class="modal-overlay" @onclick="@(() => _showBuzon = false)">
-            <div class="modal-dialog" style="max-width:760px" @onclick:stopPropagation="true">
-                <div class="modal-head">
-                    <h3>@(_buzonEditId is null ? "Nuevo buzón de correo" : "Editar buzón de correo")</h3>
-                    <button class="modal-close" @onclick="@(() => _showBuzon = false)">&times;</button>
+        <div class="cfg-modal-back" @onclick="@(() => _showBuzon = false)">
+            <div class="cfg-modal w720" @onclick:stopPropagation="true">
+                <div class="cfg-modal-head">
+                    <h3>@(_buzonEditId is null ? "Nuevo buzon de correo" : $"Editar buzon: {_bNombre}")</h3>
+                    <button class="cfg-modal-x" @onclick="@(() => _showBuzon = false)">&times;</button>
                 </div>
-                <div class="modal-body tx-mod tx-trdc">
-                    <div class="tx-ent-grid c2">
-                        <div class="tx-ent-field">
-                            <label>Nombre del buzón <span class="req">*</span></label>
-                            <input class="tx-ent-input" @bind="_bNombre" maxlength="120" placeholder="Ventanilla única" />
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Dirección de correo <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" @bind="_bEmail" maxlength="200" placeholder="radicacion@entidad.gov.co" />
-                        </div>
-                    </div>
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
+                <div class="cfg-modal-body">
+                    <div class="cfg-grid2">
+                        <div class="cfg-field"><label>Nombre del buzon <span class="req">*</span></label><input class="cfg-input" maxlength="100" @bind="_bNombre" /></div>
+                        <div class="cfg-field"><label>Direccion de correo <span class="req">*</span></label><input class="cfg-input cfg-mono" type="email" maxlength="200" @bind="_bEmail" placeholder="buzon@entidad.gov.co" /></div>
+                        <div class="cfg-field">
                             <label>Protocolo <span class="req">*</span></label>
-                            <select class="tx-ent-input" @bind="_bProtocolo">
-                                @foreach (var v in Enum.GetValues<BuzonProtocolo>())
-                                {
-                                    <option value="@v">@ProtocoloLabel(v)</option>
-                                }
+                            <select class="cfg-select form-select form-select-sm" @bind="_bProtocolo">
+                                @foreach (var v in Enum.GetValues<BuzonProtocolo>()) { <option value="@v">@ProtocoloLabel(v)</option> }
                             </select>
                         </div>
-                        <div class="tx-ent-field">
-                            <label>Usuario <span class="req">*</span></label>
-                            <input class="tx-ent-input mono" @bind="_bUsuario" maxlength="200" />
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Contraseña</label>
-                            <input class="tx-ent-input" type="password" @bind="_bContrasena"
-                                   placeholder="@(_buzonTieneClave ? "(sin cambiar)" : "Clave de la cuenta")" />
-                        </div>
-                    </div>
-
-                    @if (_bProtocolo == BuzonProtocolo.Imap)
-                    {
-                        <div class="tx-ent-grid c3">
-                            <div class="tx-ent-field">
-                                <label>Servidor <span class="req">*</span></label>
-                                <input class="tx-ent-input mono" @bind="_bServidor" maxlength="200" placeholder="imap.entidad.gov.co" />
-                            </div>
-                            <div class="tx-ent-field">
-                                <label>Puerto</label>
-                                <input class="tx-ent-input mono" type="number" @bind="_bPuerto" placeholder="993" />
-                            </div>
-                            <div class="tx-ent-field">
-                                <label>Seguridad</label>
-                                <select class="tx-ent-input" @bind="_bSeguridad">
-                                    @foreach (var v in Enum.GetValues<BuzonSeguridad>())
-                                    {
-                                        <option value="@v">@SeguridadLabel(v)</option>
-                                    }
-                                </select>
-                            </div>
-                        </div>
-                    }
-
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
-                            <label>Carpeta</label>
-                            <input class="tx-ent-input mono" @bind="_bCarpeta" maxlength="120" placeholder="INBOX" />
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Frecuencia de revisión</label>
-                            <select class="tx-ent-input" @bind="_bFrecuencia">
-                                @foreach (var v in Enum.GetValues<BuzonFrecuenciaRevision>())
-                                {
-                                    <option value="@v">@FrecuenciaLabel(v)</option>
-                                }
+                        <div class="cfg-field">
+                            <label>Seguridad <span class="req">*</span></label>
+                            <select class="cfg-select form-select form-select-sm" @bind="_bSeguridad">
+                                @foreach (var v in Enum.GetValues<BuzonSeguridad>()) { <option value="@v">@SeguridadLabel(v)</option> }
                             </select>
                         </div>
-                        <div class="tx-ent-field">
-                            <label>Modo de radicación</label>
-                            <select class="tx-ent-input" @bind="_bModo">
-                                @foreach (var v in Enum.GetValues<BuzonModoRadicacion>())
-                                {
-                                    <option value="@v">@ModoLabel(v)</option>
-                                }
+                        @if (_bProtocolo == BuzonProtocolo.Imap)
+                        {
+                            <div class="cfg-field"><label>Servidor</label><input class="cfg-input cfg-mono" maxlength="200" @bind="_bServidor" placeholder="imap.entidad.gov.co" /><span class="hint">Si IMAP</span></div>
+                            <div class="cfg-field"><label>Puerto</label><input class="cfg-input cfg-mono" type="number" @bind="_bPuerto" placeholder="993" /><span class="hint">Ej: 993</span></div>
+                        }
+                        <div class="cfg-field"><label>Usuario <span class="req">*</span></label><input class="cfg-input cfg-mono" maxlength="200" @bind="_bUsuario" /></div>
+                        <div class="cfg-field"><label>Contrasena <span class="req">*</span></label><input class="cfg-input" type="password" @bind="_bContrasena" placeholder="@(_buzonTieneClave ? "(sin cambiar)" : "")" /><span class="hint">Almacenada cifrada AES-256</span></div>
+                        <div class="cfg-field"><label>Carpeta <span class="req">*</span></label><input class="cfg-input cfg-mono" maxlength="120" @bind="_bCarpeta" /><span class="hint">Default: INBOX</span></div>
+                        <div class="cfg-field">
+                            <label>Frecuencia de revision <span class="req">*</span></label>
+                            <select class="cfg-select form-select form-select-sm" @bind="_bFrecuencia">
+                                @foreach (var v in Enum.GetValues<BuzonFrecuenciaRevision>()) { <option value="@v">@FrecuenciaLabel(v)</option> }
                             </select>
                         </div>
-                    </div>
-
-                    <div class="tx-ent-grid c3">
-                        <div class="tx-ent-field">
-                            <label>Tiempo de espera (min) <span class="opt">(semiautomático)</span></label>
-                            <input class="tx-ent-input mono" type="number" min="0" @bind="_bTiempoEspera" />
+                        <div class="cfg-field">
+                            <label>Modo de radicacion <span class="req">*</span></label>
+                            <select class="cfg-select form-select form-select-sm" @bind="_bModo">
+                                @foreach (var v in Enum.GetValues<BuzonModoRadicacion>()) { <option value="@v">@ModoLabel(v)</option> }
+                            </select>
+                            <span class="hint">Semi: pre-radica y espera &middot; Auto: radica al instante &middot; Manual: requiere confirmacion</span>
                         </div>
-                        <div class="tx-ent-field">
-                            <label>Tipo de comunicación por defecto <span class="opt">(id)</span></label>
-                            <input class="tx-ent-input mono" type="number" @bind="_bTipoDefaultId" />
-                        </div>
-                        <div class="tx-ent-field">
-                            <label>Dependencia por defecto <span class="opt">(id)</span></label>
-                            <input class="tx-ent-input mono" type="number" @bind="_bDependenciaDefaultId" />
-                        </div>
+                        @if (_bModo == BuzonModoRadicacion.SemiAutomatico)
+                        {
+                            <div class="cfg-field"><label>Tiempo de espera (minutos)</label><input class="cfg-input cfg-mono" type="number" min="0" @bind="_bTiempoEspera" /><span class="hint">Solo semi-automatico</span></div>
+                        }
+                        <div class="cfg-field"><label>Tipo comunicacion default (id)</label><input class="cfg-input cfg-mono" type="number" @bind="_bTipoDefaultId" /><span class="hint">Si el sistema no detecta el tipo</span></div>
+                        <div class="cfg-field"><label>Dependencia default (id)</label><input class="cfg-input cfg-mono" type="number" @bind="_bDependenciaDefaultId" /><span class="hint">Dependencia destino si no se detecta</span></div>
                     </div>
-
-                    <div class="cr-checks">
-                        <label class="cr-switch"><input type="checkbox" @bind="_bActivo" /><span>Activo</span></label>
-                    </div>
-
-                    @if (_modalError is not null)
-                    {
-                        <div class="tx-ent-fielderr">@_modalError</div>
-                    }
+                    <div class="cfg-toggle-row" style="margin-top:14px"><div class="tg-lbl">Activo</div><label class="rad-sw"><input type="checkbox" @bind="_bActivo" /></label></div>
+                    @if (_modalError is not null) { <div class="cfg-warn" style="background:#FEE2E2;border-color:#f06548;color:#991B1B">@_modalError</div> }
                 </div>
-                <div class="modal-foot">
-                    <button class="tx-ent-btn" @onclick="@(() => _showBuzon = false)" disabled="@_busy">Cancelar</button>
-                    <button class="tx-ent-btn primary" @onclick="SaveBuzonAsync" disabled="@_busy">
-                        @(_buzonEditId is null ? "Crear" : "Guardar")
-                    </button>
+                <div class="cfg-modal-foot">
+                    <button class="cfg-btn cfg-btn-soft" @onclick="@(() => _showBuzon = false)" disabled="@_busy">Cancelar</button>
+                    <button class="cfg-btn" @onclick="SaveBuzonAsync" disabled="@_busy">Guardar buzon</button>
                 </div>
             </div>
         </div>
     }
 
-    @* ===================== MODAL: NOTIFICACION ===================== *@
+    @* ===================== MODAL: PLANTILLA NOTIFICACION ===================== *@
     @if (_showNotif && _notifEdit is not null)
     {
-        <div class="modal-overlay" @onclick="@(() => _showNotif = false)">
-            <div class="modal-dialog" style="max-width:640px" @onclick:stopPropagation="true">
-                <div class="modal-head">
+        <div class="cfg-modal-back" @onclick="@(() => _showNotif = false)">
+            <div class="cfg-modal w760" @onclick:stopPropagation="true">
+                <div class="cfg-modal-head">
                     <h3>Plantilla: @_notifEdit.EventoNombre</h3>
-                    <button class="modal-close" @onclick="@(() => _showNotif = false)">&times;</button>
+                    <button class="cfg-modal-x" @onclick="@(() => _showNotif = false)">&times;</button>
                 </div>
-                <div class="modal-body tx-mod tx-trdc">
-                    <div class="tx-ent-field">
-                        <label>Asunto</label>
-                        <input class="tx-ent-input" @bind="_nAsunto" maxlength="200"
-                               placeholder="Su radicado {{numero_radicado}} fue registrado" />
+                <div class="cfg-modal-body">
+                    <div class="cfg-field"><label>Asunto <span class="req">*</span></label><input class="cfg-input" maxlength="300" @bind="_nAsunto" @bind:event="oninput" placeholder="Su radicado {{numero_radicado}} fue registrado" /></div>
+                    <div class="cfg-field" style="margin-top:16px">
+                        <label>Cuerpo del mensaje <span class="req">*</span></label>
+                        <textarea class="cfg-textarea cfg-mono" rows="9" style="font-size:12.5px;line-height:1.6" @bind="_nCuerpo" @bind:event="oninput" placeholder="Estimado {{nombre_ciudadano}}, ..."></textarea>
+                        <span class="hint">Use las variables para insertar datos del radicado</span>
                     </div>
-                    <div class="tx-ent-field">
-                        <label>Cuerpo</label>
-                        <textarea class="tx-ent-input" @bind="_nCuerpo" rows="6"
-                                  placeholder="Estimado {{nombre_ciudadano}}, ..."></textarea>
+                    <div style="margin-top:16px">
+                        @foreach (var v in Variables)
+                        {
+                            <button class="var-btn" @onclick="@(() => InsertVar(v))">+ @v</button>
+                        }
                     </div>
-                    <div class="tx-ent-hint">
-                        <i class="bi bi-braces"></i> Variables: <code>@_variables</code>
+                    <div class="plt-preview" style="margin-top:16px">
+                        <div class="pp-t">Vista previa</div>
+                        <div class="pp-a">@RenderPreview(_nAsunto)</div>
+                        <div class="pp-b">@RenderPreview(_nCuerpo)</div>
                     </div>
-                    @if (_modalError is not null)
-                    {
-                        <div class="tx-ent-fielderr">@_modalError</div>
-                    }
+                    @if (_modalError is not null) { <div class="cfg-warn" style="background:#FEE2E2;border-color:#f06548;color:#991B1B">@_modalError</div> }
                 </div>
-                <div class="modal-foot">
-                    <button class="tx-ent-btn" @onclick="@(() => _showNotif = false)" disabled="@_busy">Cancelar</button>
-                    <button class="tx-ent-btn primary" @onclick="SaveNotifAsync" disabled="@_busy">Guardar</button>
+                <div class="cfg-modal-foot">
+                    <button class="cfg-btn cfg-btn-soft" @onclick="@(() => _showNotif = false)" disabled="@_busy">Cancelar</button>
+                    <button class="cfg-btn" @onclick="SaveNotifAsync" disabled="@_busy">Guardar plantilla</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===================== MODAL: REPORTE MIGRACION ===================== *@
+    @if (_showReporte && _reporte is not null)
+    {
+        <div class="cfg-modal-back" @onclick="@(() => _showReporte = false)">
+            <div class="cfg-modal w720" @onclick:stopPropagation="true">
+                <div class="cfg-modal-head">
+                    <h3>Reporte de migracion</h3>
+                    <button class="cfg-modal-x" @onclick="@(() => _showReporte = false)">&times;</button>
+                </div>
+                <div class="cfg-modal-body">
+                    <div class="cfg-grid3">
+                        <div class="cfg-field"><label>Archivo</label><div class="strong">@(_reporte.ArchivoNombre ?? "-")</div></div>
+                        <div class="cfg-field"><label>Fecha</label><div>@_reporte.FechaMigracion.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div></div>
+                        <div class="cfg-field"><label>Estado</label><div>@EstadoMigBadge(_reporte.Estado)</div></div>
+                        <div class="cfg-field"><label>Cantidad</label><div class="cfg-mono">@_reporte.CantidadTotal</div></div>
+                        <div class="cfg-field"><label>Exitosos</label><div class="cfg-mono" style="color:#0a7d6f;font-weight:600">@_reporte.CantidadExitosos</div></div>
+                        <div class="cfg-field"><label>Errores</label><div class="cfg-mono" style="color:#B91C1C;font-weight:600">@_reporte.CantidadErrores</div></div>
+                    </div>
+                    <div class="cfg-note" style="margin-top:12px">Sin errores reportados.</div>
+                </div>
+                <div class="cfg-modal-foot">
+                    <button class="cfg-btn cfg-btn-soft" @onclick="@(() => _showReporte = false)">Cerrar</button>
                 </div>
             </div>
         </div>
@@ -771,46 +843,154 @@
 </div>
 
 <style>
-    .tx-mod.tx-trdc .cr-tabbar { overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; }
-    .tx-mod.tx-trdc .cr-tabbar .tx-ent-tabs { flex-wrap: nowrap; }
-    .tx-mod.tx-trdc .cr-tabbar .tx-ent-tab { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-    .tx-mod.tx-trdc .tx-ent-card-head-right { margin-left: auto; }
-    .tx-mod.tx-trdc .cr-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; margin-right: 4px; }
-    .tx-mod.tx-trdc .cr-checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 6px 0 14px; }
-    .tx-mod.tx-trdc .cr-section { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--kt-text-gray-600); border-bottom: 1px solid var(--kt-border-color); padding-bottom: 6px; margin: 18px 0 12px; }
-    .tx-mod.tx-trdc .cr-section:first-child { margin-top: 0; }
-    .tx-mod.tx-trdc .cr-preview { background: var(--kt-input-bg); border: 1px solid var(--kt-border-color); border-radius: var(--kt-border-radius); padding: 14px 16px; margin: 10px 0 4px; }
-    .tx-mod.tx-trdc .cr-preview-val { font-size: 20px; font-weight: 700; letter-spacing: .03em; color: var(--kt-primary); }
-    .tx-mod.tx-trdc .cr-notif { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--kt-border-color); }
-    .tx-mod.tx-trdc .cr-notif:last-child { border-bottom: none; }
-    .tx-mod.tx-trdc .cr-notif-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-    .tx-mod.tx-trdc .cr-notif-name { font-weight: 600; font-size: 14px; }
-    .tx-mod.tx-trdc .cr-notif-actions { display: flex; align-items: center; gap: 12px; }
+    /* ===== Config Radicacion - calcado 1:1 de rad_config.aspx (scoped .radc) ===== */
+    .radc { padding: 8px 0 40px; font-family: Poppins, sans-serif; color: #212529; }
+    .radc .rad-header { margin-bottom: 18px; }
+    .radc .rad-title { font-size: 20px; font-weight: 800; color: #0F172A; margin: 0; }
+    .radc .rad-subtitle { font-size: 12.5px; color: #94A3B8; margin-top: 3px; }
+    .radc .cfg-layout { display: flex; gap: 20px; align-items: flex-start; }
+
+    .radc .cfg-nav { width: 230px; flex-shrink: 0; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.07); overflow: hidden; position: sticky; top: 16px; }
+    .radc .cfg-nav-head { padding: 14px 18px; border-bottom: 1px solid #f0f0f3; font-size: 11px; font-weight: 700; color: #878a99; text-transform: uppercase; letter-spacing: .04em; }
+    .radc .cfg-nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 18px; border: none; cursor: pointer; text-align: left; background: transparent; border-left: 3px solid transparent; color: #566980; font-size: 13px; font-weight: 400; text-decoration: none !important; }
+    .radc .cfg-nav-item:hover { background: #f8f9fb; color: #405189; }
+    .radc .cfg-nav-item.active { background: #eef0f7; border-left-color: #405189; color: #405189; font-weight: 600; }
+    .radc .cfg-nav-item .ico { font-size: 15px; width: 20px; text-align: center; }
+
+    .radc .cfg-body { flex: 1; min-width: 0; }
+
+    .radc .cfg-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.07); overflow: hidden; margin-bottom: 16px; }
+    .radc .cfg-card-head { padding: 14px 20px; border-bottom: 1px solid #f0f0f3; display: flex; justify-content: space-between; align-items: center; }
+    .radc .cfg-card-head h3 { font-size: 14px; font-weight: 600; color: #212529; margin: 0; }
+    .radc .cfg-card-body { padding: 20px; }
+
+    .radc .cfg-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; background: #405189; color: #fff !important; border: none; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none !important; }
+    .radc .cfg-btn:hover { background: #364574; }
+    .radc .cfg-btn:disabled { opacity: .55; cursor: default; }
+    .radc .cfg-btn-soft { background: #eaecf5; color: #405189 !important; }
+    .radc .cfg-btn-soft:hover { background: #dde1f0; }
+    .radc .cfg-btn-lg { padding: 9px 20px; border-radius: 8px; font-size: 13px; }
+
+    .radc .cfg-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; }
+    .radc .cfg-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 18px; }
+    .radc .cfg-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 18px; }
+    .radc .cfg-field { display: flex; flex-direction: column; gap: 5px; }
+    .radc .cfg-field label { font-size: 11px; font-weight: 600; color: #878a99; text-transform: uppercase; letter-spacing: .03em; margin: 0; }
+    .radc .cfg-field label .req { color: #f06548; }
+    .radc .cfg-field .hint, .radc .hint { font-size: 11px; color: #adb1bd; }
+    .radc .cfg-input, .radc .cfg-select, .radc .cfg-textarea { padding: 9px 12px; border-radius: 6px; border: 1px solid #ced4da; font-size: 13px; color: #212529; background: #fff; font-family: Poppins, sans-serif; outline: none; width: 100%; box-sizing: border-box; }
+    .radc .cfg-input:focus, .radc .cfg-select:focus, .radc .cfg-textarea:focus { border-color: #405189; box-shadow: none; }
+    .radc .cfg-input[readonly], .radc .cfg-input[disabled] { background: #f3f3f9; }
+    .radc .cfg-mono { font-family: Consolas, monospace; }
+
+    .radc .rad-sw input[type=checkbox] { -webkit-appearance: none; appearance: none; width: 38px; height: 21px; border-radius: 11px; background: #ced4da; position: relative; cursor: pointer; outline: none; transition: background .2s; vertical-align: middle; margin: 0; }
+    .radc .rad-sw input[type=checkbox]:checked { background: #0ab39c; }
+    .radc .rad-sw input[type=checkbox]::after { content: ''; position: absolute; width: 15px; height: 15px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: left .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .radc .rad-sw input[type=checkbox]:checked::after { left: 20px; }
+    .radc .rad-sw input[type=checkbox][disabled] { opacity: .5; cursor: not-allowed; }
+    .radc .cfg-toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f6f6f9; }
+    .radc .cfg-toggle-row .tg-lbl { font-size: 13px; color: #212529; font-weight: 500; }
+    .radc .cfg-toggle-row .tg-hint { font-size: 11px; color: #adb1bd; margin-top: 1px; }
+
+    .radc .pv-box { padding: 14px 16px; background: #eef0f7; border-radius: 8px; margin-bottom: 18px; }
+    .radc .pv-box .pv-t { font-size: 11px; font-weight: 700; color: #405189; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+    .radc .pv-box .pv-items { display: flex; gap: 18px; flex-wrap: wrap; }
+    .radc .pv-box .pv-l { font-size: 10px; color: #878a99; margin-bottom: 2px; }
+    .radc .pv-box .pv-n { font-size: 15px; font-weight: 700; color: #405189; font-family: Consolas, monospace; }
+    .radc .cfg-subhead { font-size: 11px; font-weight: 700; color: #878a99; text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid #f0f0f3; }
+    .radc .cfg-warn { margin-top: 14px; padding: 10px 14px; background: #fffbeb; border: 1px solid #FCD34D; border-radius: 8px; font-size: 12px; color: #92400E; }
+
+    .radc .cfg-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .radc .cfg-table th { padding: 9px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #878a99; text-transform: uppercase; white-space: nowrap; background: #f8f9fb; }
+    .radc .cfg-table td { padding: 9px 12px; color: #566980; border-top: 1px solid #f0f0f3; vertical-align: middle; }
+    .radc .cfg-table td.strong { color: #212529; font-weight: 500; }
+    .radc .cfg-note { margin-top: 12px; font-size: 11px; color: #adb1bd; }
+
+    .radc .bdg { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+    .radc .bdg-pqrsd { background: #F3E8FF; color: #7C3AED; }
+    .radc .bdg-activo { background: #D1FAE5; color: #0a7d6f; }
+    .radc .bdg-inactivo { background: #f3f3f9; color: #adb1bd; }
+    .radc .bdg-canal { background: #eef0f7; color: #405189; font-size: 11px; font-weight: 600; padding: 2px 8px; }
+    .radc .bdg-oblig { background: #FEE2E2; color: #991B1B; }
+    .radc .bdg-proc { background: #FEF3C7; color: #B45309; }
+    .radc .bdg-ok { background: #D1FAE5; color: #0a7d6f; }
+    .radc .bdg-err { background: #FEE2E2; color: #B91C1C; }
+    .radc .lnk-edit { background: none; border: none; cursor: pointer; color: #405189 !important; font-size: 13px; text-decoration: none !important; font-weight: 600; padding: 0; }
+    .radc .lnk-del { background: none; border: none; cursor: pointer; color: #dc2626 !important; text-decoration: none !important; font-size: 13px; padding: 0; }
+
+    .radc .bz-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; border: 1px solid #f0f0f3; border-radius: 8px; margin-bottom: 10px; }
+    .radc .bz-ico { width: 38px; height: 38px; border-radius: 8px; background: #eef0f7; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; color: #405189; font-weight: 700; }
+    .radc .bz-nom { font-size: 13px; font-weight: 600; color: #212529; }
+    .radc .bz-mail { font-size: 12px; color: #878a99; }
+    .radc .bz-meta { font-size: 12px; color: #566980; }
+
+    .radc .sla-val { font-size: 15px; font-weight: 700; width: 46px; text-align: right; display: inline-block; }
+    .radc .sla-bar { position: relative; height: 14px; background: #eef0f7; border-radius: 7px; }
+    .radc .sla-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; }
+    .radc input[type=range].sla-range { flex: 1; }
+
+    .radc .mig-drop { border: 1.5px dashed #ced4da; border-radius: 10px; padding: 32px; text-align: center; background: #fbfbfd; margin-bottom: 16px; }
+    .radc .mig-drop .mg-i { font-size: 32px; margin-bottom: 8px; }
+    .radc .mig-drop .mg-t { font-size: 14px; font-weight: 600; color: #212529; margin-bottom: 4px; }
+    .radc .mig-drop .mg-s { font-size: 12px; color: #878a99; margin-bottom: 14px; }
+
+    .radc .cfg-modal-back { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 1050; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; }
+    .radc .cfg-modal { background: #fff; border-radius: 12px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .radc .cfg-modal.w720 { max-width: 720px; }
+    .radc .cfg-modal.w760 { max-width: 760px; }
+    .radc .cfg-modal-head { padding: 16px 22px; border-bottom: 1px solid #f0f0f3; display: flex; justify-content: space-between; align-items: center; }
+    .radc .cfg-modal-head h3 { font-size: 15px; font-weight: 700; color: #212529; margin: 0; }
+    .radc .cfg-modal-x { background: none; border: none; font-size: 18px; color: #878a99 !important; cursor: pointer; text-decoration: none !important; line-height: 1; }
+    .radc .cfg-modal-body { padding: 22px; max-height: calc(100vh - 220px); overflow-y: auto; }
+    .radc .cfg-modal-foot { padding: 14px 22px; border-top: 1px solid #f0f0f3; display: flex; justify-content: flex-end; gap: 10px; }
+
+    .radc .var-btn { font-size: 11px; padding: 4px 9px; background: #eef0f7; color: #405189; border-radius: 4px; font-family: Consolas, monospace; border: 1px solid #c5cbe3; cursor: pointer; margin: 0 6px 6px 0; }
+    .radc .var-chip { font-size: 11px; padding: 3px 8px; background: #eef0f7; color: #405189; border-radius: 4px; font-family: Consolas, monospace; display: inline-block; margin: 0 6px 6px 0; }
+    .radc .plt-preview { padding: 12px 14px; background: #f8f9fb; border-radius: 8px; }
+    .radc .plt-preview .pp-t { font-size: 11px; font-weight: 700; color: #878a99; text-transform: uppercase; margin-bottom: 6px; }
+    .radc .plt-preview .pp-a { font-size: 12px; color: #212529; font-weight: 600; margin-bottom: 6px; }
+    .radc .plt-preview .pp-b { font-size: 12px; color: #566980; white-space: pre-wrap; line-height: 1.6; }
+
+    .radc .cfg-info { padding: 12px 16px; background: #eef0f7; border-radius: 8px; font-size: 12.5px; color: #405189; margin-bottom: 18px; }
+    .radc .cfg-code { background: #1e2433; color: #c5cbe3; padding: 16px 18px; border-radius: 8px; font-size: 12.5px; font-family: Consolas, monospace; overflow-x: auto; margin: 0; line-height: 1.6; white-space: pre-wrap; }
+
+    @@media (max-width: 900px) {
+        .radc .cfg-layout { flex-direction: column; }
+        .radc .cfg-nav { width: 100%; position: static; display: flex; flex-wrap: wrap; }
+        .radc .cfg-nav-head { display: none; }
+        .radc .cfg-grid2, .radc .cfg-grid3, .radc .cfg-grid4 { grid-template-columns: 1fr; }
+    }
 </style>
 
 @code {
     private const string ModuleKey = "modulo/config-radicacion";
 
-    private static readonly (string Key, string Label, string Icon)[] Tabs =
+    [SupplyParameterFromQuery(Name = "sec")] public string? SecParam { get; set; }
+
+    private static readonly (string Key, string Label, string Ico)[] Secciones =
     {
-        ("consecutivos",   "Consecutivos",           "bi-123"),
-        ("tipos",          "Tipos de Comunicación",  "bi-tags"),
-        ("sla",            "Alertas SLA",            "bi-alarm"),
-        ("buzones",        "Buzones de Correo",      "bi-envelope-at"),
-        ("notificaciones", "Notificaciones",         "bi-bell"),
-        ("migracion",      "Migración",              "bi-cloud-arrow-up"),
+        ("consecutivos",   "Consecutivos",           "\U0001F4CA"),
+        ("prioridades",    "Prioridades",            "\U0001F6A9"),
+        ("tipos",          "Tipos de Comunicacion",  "\U0001F4CB"),
+        ("buzones",        "Buzones de Correo",      "@"),
+        ("portalweb",      "Portal Web",             "\U0001F310"),
+        ("notificaciones", "Notificaciones",         "\U0001F514"),
+        ("migracion",      "Migracion Historicos",   "\U0001F4C2"),
     };
 
-    private readonly string _variables =
-        "{{numero_radicado}}, {{fecha_radicacion}}, {{tipo_comunicacion}}, {{asunto}}, {{fecha_vencimiento}}, "
-        + "{{dias_restantes}}, {{nombre_ciudadano}}, {{dependencia_responsable}}, {{url_consulta}}";
+    private static readonly string[] Variables =
+    {
+        "{{numero_radicado}}", "{{fecha_radicacion}}", "{{tipo_comunicacion}}", "{{asunto}}",
+        "{{fecha_vencimiento}}", "{{dias_restantes}}", "{{nombre_ciudadano}}",
+        "{{dependencia_responsable}}", "{{url_consulta}}"
+    };
 
     private long Actor => Tenant.UserId ?? 0;
 
     private bool _loading = true;
     private bool _busy;
     private bool _canEdit;
-    private string _tab = "consecutivos";
+    private string _sec = "consecutivos";
     private string? _pageOk;
     private string? _pageError;
     private string? _modalError;
@@ -821,21 +1001,32 @@
     private IReadOnlyList<NotificacionRadicacionDto> _notifs = [];
     private IReadOnlyList<MigracionRadicadosDto> _migraciones = [];
 
-    // ---- Consecutivos (edit) ----
-    private int _cEntradaInicio = 1, _cSalidaInicio = 1, _cInternoInicio = 1, _cDigitos = 6;
-    private bool _cReinicioAnual = true;
-    private string _cSeparador = "-";
+    // ---- PQR (prioridades + portal) ----
+    private List<PrioridadDto> _prioridades = new();
+    private PortalConfigDto _pc = new();
+    private IReadOnlyList<TipoWebDto> _tiposWeb = Array.Empty<TipoWebDto>();
 
-    // ---- SLA (edit) ----
+    // ---- Consecutivos ----
+    private int _cEntradaInicio = 1, _cSalidaInicio = 1, _cInternoInicio = 1, _cDigitos = 6;
+    private bool _cReinicioAnual = true, _cIncluirAnio = true;
+    private string _cSeparador = "-";
+    private string? _cSigla;
+    private int _cAnio = DateTime.UtcNow.Year;
+
+    // ---- SLA ----
     private int _a1 = 50, _a2 = 80, _aTutela = 24;
     private bool _notifJefe, _notifDir;
+
+    // ---- Migracion (stub) ----
+    private string _migEstado = "Respondido";
+    private string _migCrearTerceros = "true";
 
     // ---- Tipo modal ----
     private bool _showTipo;
     private long? _tipoEditId;
     private string _tCodigo = "", _tNombre = "";
     private RadicacionDireccion _tDireccion = RadicacionDireccion.Entrada;
-    private bool _tEsPqrsd, _tEsTutela, _tEsRecurso, _tRequiereRespuesta, _tProrrogable, _tPermiteAnonimo, _tHabilitadoWeb;
+    private bool _tEsPqrsd, _tEsTutela, _tEsRecurso, _tRequiereRespuesta = true, _tProrrogable, _tPermiteAnonimo, _tHabilitadoWeb;
     private bool _tActivo = true;
     private int? _tDiasRespuesta, _tDiasProrroga, _tOrdenPortal;
     private RadicacionTipoDia _tTipoDia = RadicacionTipoDia.Habiles;
@@ -853,7 +1044,7 @@
     private long? _bTipoDefaultId, _bDependenciaDefaultId;
     private BuzonProtocolo _bProtocolo = BuzonProtocolo.Imap;
     private BuzonSeguridad _bSeguridad = BuzonSeguridad.SslTls;
-    private BuzonFrecuenciaRevision _bFrecuencia = BuzonFrecuenciaRevision.Quince;
+    private BuzonFrecuenciaRevision _bFrecuencia = BuzonFrecuenciaRevision.Diez;
     private BuzonModoRadicacion _bModo = BuzonModoRadicacion.SemiAutomatico;
     private bool _bActivo = true;
 
@@ -862,23 +1053,34 @@
     private NotificacionRadicacionDto? _notifEdit;
     private string? _nAsunto, _nCuerpo;
 
+    // ---- Reporte modal ----
+    private bool _showReporte;
+    private MigracionRadicadosDto? _reporte;
+
+    private string PortalUrl => $"{Nav.BaseUri.TrimEnd('/')}/portal/{_pc.Slug}";
+    private string EmbedSnippet =>
+        $"<iframe\n  src=\"{PortalUrl}\"\n  width=\"100%\" height=\"720\"\n  style=\"border:0;border-radius:12px\"\n  title=\"Portal de Radicacion\">\n</iframe>";
+
     protected override async Task OnInitializedAsync()
     {
         var eff = await Perms.GetAsync();
         _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        if (!string.IsNullOrWhiteSpace(SecParam) && Secciones.Any(s => s.Key == SecParam)) { _sec = SecParam!; }
         await LoadAllAsync();
         _loading = false;
     }
 
     private async Task LoadAllAsync()
     {
-        // GetConfigAsync crea la config y siembra tipos + eventos en la primera lectura.
         _config = await ConfigSvc.GetConfigAsync();
         SyncConfigFields();
         _tipos = await TipoSvc.ListAsync(includeInactive: true);
         _buzones = await BuzonSvc.ListAsync();
         _notifs = await ConfigSvc.ListNotificacionesAsync();
         _migraciones = await ConfigSvc.ListMigracionesAsync();
+        _prioridades = (await PqrSvc.ListarPrioridadesAsync()).ToList();
+        _pc = await PqrSvc.GetPortalConfigAsync();
+        _tiposWeb = await PqrSvc.ListarTiposWebAsync();
     }
 
     private void SyncConfigFields()
@@ -888,8 +1090,10 @@
         _cSalidaInicio = _config.ConsecutivoSalidaInicio;
         _cInternoInicio = _config.ConsecutivoInternoInicio;
         _cReinicioAnual = _config.ReinicioAnual;
+        _cIncluirAnio = _config.IncluirAnio;
         _cDigitos = _config.DigitosConsecutivo;
-        _cSeparador = _config.Separador;
+        _cSeparador = _config.Separador ?? "-";
+        _cSigla = _config.SiglaRadicacion ?? _config.SiglaEntidad;
         _a1 = _config.Alerta1Porcentaje;
         _a2 = _config.Alerta2Porcentaje;
         _aTutela = _config.AlertaTutelaHoras;
@@ -897,14 +1101,17 @@
         _notifDir = _config.NotificarDireccionAlVencer;
     }
 
-    private string PreviewRadicado()
+    private string PreviewFor(string cod, int actual, int inicio)
     {
-        var sigla = string.IsNullOrWhiteSpace(_config?.SiglaEntidad) ? "ENT" : _config!.SiglaEntidad!;
+        var sigla = string.IsNullOrWhiteSpace(_cSigla) ? "ENT" : _cSigla!.Trim().ToUpperInvariant();
         var sep = _cSeparador ?? "";
-        var year = DateTime.Now.Year;
         var digits = Math.Clamp(_cDigitos, 1, 12);
-        var num = Math.Max(_cEntradaInicio, 0).ToString().PadLeft(digits, '0');
-        return $"{sigla}{sep}E{sep}{year}{sep}{num}";
+        var next = (actual > 0 ? actual : Math.Max(inicio, 1) - 1) + 1;
+        var num = next.ToString().PadLeft(digits, '0');
+        var partes = new List<string> { sigla, cod };
+        if (_cIncluirAnio) { partes.Add(_cAnio.ToString()); }
+        partes.Add(num);
+        return string.Join(sep, partes.Where(p => !string.IsNullOrEmpty(p)));
     }
 
     // ================= CONSECUTIVOS =================
@@ -914,12 +1121,12 @@
         _busy = true; _pageOk = null; _pageError = null;
         try
         {
-            // Se envia la peticion COMPLETA: consecutivos editados + SLA conservado desde _config.
             var req = new SaveRadicacionConfigRequest(
                 _cEntradaInicio, _cSalidaInicio, _cInternoInicio,
-                _cReinicioAnual, _cDigitos, _cSeparador ?? "-",
+                _cReinicioAnual, _cDigitos, _cSeparador ?? "",
                 _config.Alerta1Porcentaje, _config.Alerta2Porcentaje, _config.AlertaTutelaHoras,
-                _config.NotificarJefeAlVencer, _config.NotificarDireccionAlVencer);
+                _config.NotificarJefeAlVencer, _config.NotificarDireccionAlVencer,
+                _cSigla, _cIncluirAnio);
             var res = await ConfigSvc.SaveConfigAsync(req, Actor);
             if (!res.IsOk) { _pageError = res.Error; return; }
             _config = res.Value;
@@ -936,11 +1143,11 @@
         _busy = true; _pageOk = null; _pageError = null;
         try
         {
-            // Peticion COMPLETA: SLA editado + consecutivos conservados desde _config.
             var req = new SaveRadicacionConfigRequest(
                 _config.ConsecutivoEntradaInicio, _config.ConsecutivoSalidaInicio, _config.ConsecutivoInternoInicio,
                 _config.ReinicioAnual, _config.DigitosConsecutivo, _config.Separador,
-                _a1, _a2, _aTutela, _notifJefe, _notifDir);
+                _a1, _a2, _aTutela, _notifJefe, _notifDir,
+                _config.SiglaRadicacion, _config.IncluirAnio);
             var res = await ConfigSvc.SaveConfigAsync(req, Actor);
             if (!res.IsOk) { _pageError = res.Error; return; }
             _config = res.Value;
@@ -950,11 +1157,52 @@
         finally { _busy = false; }
     }
 
+    // ================= PRIORIDADES =================
+    private async Task NuevaPrioridadAsync()
+    {
+        _busy = true;
+        try { await PqrSvc.CrearPrioridadAsync(); _prioridades = (await PqrSvc.ListarPrioridadesAsync()).ToList(); }
+        finally { _busy = false; }
+    }
+
+    private async Task GuardarPrioridadesAsync()
+    {
+        _busy = true; _pageOk = null; _pageError = null;
+        try { await PqrSvc.GuardarPrioridadesAsync(_prioridades); _pageOk = "Prioridades guardadas."; }
+        finally { _busy = false; }
+    }
+
+    private async Task InactivarPrioridadAsync(long id)
+    {
+        _busy = true;
+        try { await PqrSvc.InactivarPrioridadAsync(id); _prioridades = (await PqrSvc.ListarPrioridadesAsync()).ToList(); }
+        finally { _busy = false; }
+    }
+
+    // ================= PORTAL WEB =================
+    private async Task GuardarPortalAsync()
+    {
+        _busy = true; _pageOk = null; _pageError = null;
+        try { await PqrSvc.GuardarPortalConfigAsync(_pc); _pc = await PqrSvc.GetPortalConfigAsync(); _pageOk = "Portal guardado."; }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleTipoWebAsync(long id, bool val)
+    {
+        await PqrSvc.ToggleTipoWebAsync(id, val);
+        _tiposWeb = await PqrSvc.ListarTiposWebAsync();
+    }
+
+    private async Task CopiarEmbedAsync()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", EmbedSnippet); _pageOk = "Codigo copiado al portapapeles."; }
+        catch { _pageOk = "Copie el codigo manualmente."; }
+    }
+
     // ================= TIPOS =================
     private void OpenTipo(TipoComunicacionDto? t)
     {
-        _modalError = null;
-        _pageOk = null; _pageError = null;
+        _modalError = null; _pageOk = null; _pageError = null;
         _tipoEditId = t?.Id;
         _tCodigo = t?.Codigo ?? "";
         _tNombre = t?.Nombre ?? "";
@@ -962,7 +1210,7 @@
         _tEsPqrsd = t?.EsPqrsd ?? false;
         _tEsTutela = t?.EsTutela ?? false;
         _tEsRecurso = t?.EsRecurso ?? false;
-        _tRequiereRespuesta = t?.RequiereRespuesta ?? false;
+        _tRequiereRespuesta = t?.RequiereRespuesta ?? true;
         _tDiasRespuesta = t?.DiasRespuesta;
         _tTipoDia = t?.TipoDia ?? RadicacionTipoDia.Habiles;
         _tInicioTermino = t?.InicioTermino ?? RadicacionInicioTermino.SiguienteDiaHabil;
@@ -972,7 +1220,7 @@
         _tHabilitadoWeb = t?.HabilitadoWeb ?? false;
         _tNivelReservaId = t?.NivelReservaDefaultId;
         _tIcono = t?.Icono;
-        _tColor = t?.Color;
+        _tColor = t?.Color ?? "#3B82F6";
         _tPalabrasClave = t?.PalabrasClave;
         _tOrdenPortal = t?.OrdenPortal;
         _tDescripcionCiudadano = t?.DescripcionCiudadano;
@@ -980,13 +1228,18 @@
         _showTipo = true;
     }
 
+    private void OnTutelaChanged(ChangeEventArgs e)
+    {
+        _tEsTutela = (bool)e.Value!;
+        if (_tEsTutela) { _tProrrogable = false; _tTipoDia = RadicacionTipoDia.Calendario; }
+    }
+
     private async Task SaveTipoAsync()
     {
         if (!_canEdit) { return; }
         _modalError = null;
-        if (string.IsNullOrWhiteSpace(_tCodigo)) { _modalError = "El código es obligatorio."; return; }
+        if (string.IsNullOrWhiteSpace(_tCodigo)) { _modalError = "El codigo es obligatorio."; return; }
         if (string.IsNullOrWhiteSpace(_tNombre)) { _modalError = "El nombre es obligatorio."; return; }
-
         _busy = true;
         try
         {
@@ -997,28 +1250,12 @@
                 _tProrrogable, _tDiasProrroga, _tPermiteAnonimo, _tHabilitadoWeb,
                 _tNivelReservaId, NullIfEmpty(_tIcono), NullIfEmpty(_tColor), NullIfEmpty(_tPalabrasClave),
                 _tOrdenPortal, NullIfEmpty(_tDescripcionCiudadano), _tActivo);
-
             var res = _tipoEditId is null
                 ? await TipoSvc.CreateAsync(req, Actor)
                 : await TipoSvc.UpdateAsync(_tipoEditId.Value, req, Actor);
-
             if (!res.IsOk) { _modalError = res.Error; return; }
             _showTipo = false;
             _pageOk = _tipoEditId is null ? "Tipo creado." : "Tipo actualizado.";
-            _tipos = await TipoSvc.ListAsync(includeInactive: true);
-        }
-        finally { _busy = false; }
-    }
-
-    private async Task ToggleTipoActivo(TipoComunicacionDto t)
-    {
-        if (!_canEdit) { return; }
-        _busy = true; _pageOk = null; _pageError = null;
-        try
-        {
-            var res = await TipoSvc.SetActivoAsync(t.Id, !t.Activo, Actor);
-            if (!res.IsOk) { _pageError = res.Error; return; }
-            _pageOk = t.Activo ? "Tipo inactivado." : "Tipo activado.";
             _tipos = await TipoSvc.ListAsync(includeInactive: true);
         }
         finally { _busy = false; }
@@ -1041,8 +1278,7 @@
     // ================= BUZONES =================
     private void OpenBuzon(BuzonCorreoDto? b)
     {
-        _modalError = null;
-        _pageOk = null; _pageError = null;
+        _modalError = null; _pageOk = null; _pageError = null;
         _buzonEditId = b?.Id;
         _buzonTieneClave = b?.TieneClave ?? false;
         _bNombre = b?.NombreBuzon ?? "";
@@ -1052,9 +1288,9 @@
         _bPuerto = b?.Puerto;
         _bSeguridad = b?.Seguridad ?? BuzonSeguridad.SslTls;
         _bUsuario = b?.Usuario ?? "";
-        _bContrasena = null; // vacio = no cambiar
+        _bContrasena = null;
         _bCarpeta = string.IsNullOrWhiteSpace(b?.Carpeta) ? "INBOX" : b!.Carpeta;
-        _bFrecuencia = b?.FrecuenciaRevision ?? BuzonFrecuenciaRevision.Quince;
+        _bFrecuencia = b?.FrecuenciaRevision ?? BuzonFrecuenciaRevision.Diez;
         _bModo = b?.ModoRadicacion ?? BuzonModoRadicacion.SemiAutomatico;
         _bTiempoEspera = b?.TiempoEsperaMinutos;
         _bTipoDefaultId = b?.TipoComunicacionDefaultId;
@@ -1068,41 +1304,24 @@
         if (!_canEdit) { return; }
         _modalError = null;
         if (string.IsNullOrWhiteSpace(_bNombre)) { _modalError = "El nombre es obligatorio."; return; }
-        if (string.IsNullOrWhiteSpace(_bEmail)) { _modalError = "La dirección de correo es obligatoria."; return; }
+        if (string.IsNullOrWhiteSpace(_bEmail)) { _modalError = "La direccion de correo es obligatoria."; return; }
         if (string.IsNullOrWhiteSpace(_bUsuario)) { _modalError = "El usuario es obligatorio."; return; }
         if (_bProtocolo == BuzonProtocolo.Imap && string.IsNullOrWhiteSpace(_bServidor)) { _modalError = "El servidor IMAP es obligatorio."; return; }
-
         _busy = true;
         try
         {
             var req = new SaveBuzonCorreoRequest(
                 _bNombre.Trim(), _bEmail.Trim(), _bProtocolo,
                 NullIfEmpty(_bServidor), _bPuerto, _bSeguridad, _bUsuario.Trim(),
-                string.IsNullOrEmpty(_bContrasena) ? null : _bContrasena,   // null = conservar la cifrada
+                string.IsNullOrEmpty(_bContrasena) ? null : _bContrasena,
                 string.IsNullOrWhiteSpace(_bCarpeta) ? "INBOX" : _bCarpeta.Trim(),
                 _bFrecuencia, _bModo, _bTiempoEspera, _bTipoDefaultId, _bDependenciaDefaultId, _bActivo);
-
             var res = _buzonEditId is null
                 ? await BuzonSvc.CreateAsync(req, Actor)
                 : await BuzonSvc.UpdateAsync(_buzonEditId.Value, req, Actor);
-
             if (!res.IsOk) { _modalError = res.Error; return; }
             _showBuzon = false;
-            _pageOk = _buzonEditId is null ? "Buzón creado." : "Buzón actualizado.";
-            _buzones = await BuzonSvc.ListAsync();
-        }
-        finally { _busy = false; }
-    }
-
-    private async Task ToggleBuzonActivo(BuzonCorreoDto b)
-    {
-        if (!_canEdit) { return; }
-        _busy = true; _pageOk = null; _pageError = null;
-        try
-        {
-            var res = await BuzonSvc.SetActivoAsync(b.Id, !b.Activo, Actor);
-            if (!res.IsOk) { _pageError = res.Error; return; }
-            _pageOk = b.Activo ? "Buzón inactivado." : "Buzón activado.";
+            _pageOk = _buzonEditId is null ? "Buzon creado." : "Buzon actualizado.";
             _buzones = await BuzonSvc.ListAsync();
         }
         finally { _busy = false; }
@@ -1116,7 +1335,7 @@
         {
             var res = await BuzonSvc.DeleteAsync(b.Id, Actor);
             if (!res.IsOk) { _pageError = res.Error; return; }
-            _pageOk = "Buzón eliminado.";
+            _pageOk = "Buzon eliminado.";
             _buzones = await BuzonSvc.ListAsync();
         }
         finally { _busy = false; }
@@ -1125,13 +1344,14 @@
     // ================= NOTIFICACIONES =================
     private void OpenNotif(NotificacionRadicacionDto n)
     {
-        _modalError = null;
-        _pageOk = null; _pageError = null;
+        _modalError = null; _pageOk = null; _pageError = null;
         _notifEdit = n;
         _nAsunto = n.PlantillaAsunto;
         _nCuerpo = n.PlantillaCuerpo;
         _showNotif = true;
     }
+
+    private void InsertVar(string token) => _nCuerpo = (_nCuerpo ?? "") + token;
 
     private async Task SaveNotifAsync()
     {
@@ -1139,7 +1359,6 @@
         _busy = true; _modalError = null;
         try
         {
-            // Se conservan Activo, roles y usuarios actuales; solo se cambian las plantillas.
             var req = new SaveNotificacionRadicacionRequest(
                 _notifEdit.Activo, _notifEdit.RolesIds, _notifEdit.UsuariosIds,
                 NullIfEmpty(_nAsunto), NullIfEmpty(_nCuerpo));
@@ -1162,14 +1381,44 @@
                 activo, n.RolesIds, n.UsuariosIds, n.PlantillaAsunto, n.PlantillaCuerpo);
             var res = await ConfigSvc.SaveNotificacionAsync(n.Id, req, Actor);
             if (!res.IsOk) { _pageError = res.Error; return; }
-            _pageOk = activo ? "Notificación activada." : "Notificación desactivada.";
+            _pageOk = activo ? "Notificacion activada." : "Notificacion desactivada.";
             _notifs = await ConfigSvc.ListNotificacionesAsync();
         }
         finally { _busy = false; }
     }
 
+    // ================= MIGRACION =================
+    private async Task RecargarMigracionesAsync()
+    {
+        _busy = true;
+        try { _migraciones = await ConfigSvc.ListMigracionesAsync(); }
+        finally { _busy = false; }
+    }
+
+    private void OpenReporte(MigracionRadicadosDto m) { _reporte = m; _showReporte = true; }
+
     // ================= Helpers =================
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static readonly Dictionary<string, string> PreviewDemo = new()
+    {
+        ["{{numero_radicado}}"] = "TRNX-E-2026-000142",
+        ["{{fecha_radicacion}}"] = "20 abr 2026",
+        ["{{tipo_comunicacion}}"] = "Peticion",
+        ["{{asunto}}"] = "Solicitud de informacion",
+        ["{{fecha_vencimiento}}"] = "09 may 2026",
+        ["{{dias_restantes}}"] = "13",
+        ["{{nombre_ciudadano}}"] = "Carlos A. Mendoza",
+        ["{{dependencia_responsable}}"] = "Atencion al Ciudadano",
+        ["{{url_consulta}}"] = "https://app.tronox.co/portal/...",
+    };
+
+    private static string RenderPreview(string? tpl)
+    {
+        if (string.IsNullOrEmpty(tpl)) { return ""; }
+        foreach (var kv in PreviewDemo) { tpl = tpl.Replace(kv.Key, kv.Value); }
+        return tpl;
+    }
 
     private static string DireccionLabel(RadicacionDireccion d) => d switch
     {
@@ -1179,24 +1428,34 @@
         _ => d.ToString()
     };
 
+    private static string DiasLabel(TipoComunicacionDto t) =>
+        !t.RequiereRespuesta ? "N/A" : (t.DiasRespuesta?.ToString() ?? "Config.");
+
+    private static string TipoDiaCol(TipoComunicacionDto t) => t.TipoDia switch
+    {
+        RadicacionTipoDia.Habiles => "Habiles",
+        RadicacionTipoDia.Calendario => "Calendario",
+        _ => "—"
+    };
+
     private static string TipoDiaLabel(RadicacionTipoDia d) => d switch
     {
-        RadicacionTipoDia.Habiles => "Días hábiles",
-        RadicacionTipoDia.Calendario => "Días calendario",
+        RadicacionTipoDia.Habiles => "Habiles",
+        RadicacionTipoDia.Calendario => "Calendario",
         _ => d.ToString()
     };
 
     private static string InicioTerminoLabel(RadicacionInicioTermino i) => i switch
     {
-        RadicacionInicioTermino.SiguienteDiaHabil => "Siguiente día hábil",
-        RadicacionInicioTermino.MismoDia => "Mismo día",
+        RadicacionInicioTermino.SiguienteDiaHabil => "Siguiente dia habil",
+        RadicacionInicioTermino.MismoDia => "Mismo dia",
         _ => i.ToString()
     };
 
     private static string ProtocoloLabel(BuzonProtocolo p) => p switch
     {
         BuzonProtocolo.Imap => "IMAP",
-        BuzonProtocolo.GraphApi => "Microsoft Graph",
+        BuzonProtocolo.GraphApi => "Graph API",
         BuzonProtocolo.GmailApi => "Gmail API",
         _ => p.ToString()
     };
@@ -1211,18 +1470,42 @@
 
     private static string FrecuenciaLabel(BuzonFrecuenciaRevision f) => f switch
     {
-        BuzonFrecuenciaRevision.Cinco => "Cada 5 min",
-        BuzonFrecuenciaRevision.Diez => "Cada 10 min",
-        BuzonFrecuenciaRevision.Quince => "Cada 15 min",
-        BuzonFrecuenciaRevision.Treinta => "Cada 30 min",
+        BuzonFrecuenciaRevision.Cinco => "5 minutos",
+        BuzonFrecuenciaRevision.Diez => "10 minutos",
+        BuzonFrecuenciaRevision.Quince => "15 minutos",
+        BuzonFrecuenciaRevision.Treinta => "30 minutos",
         _ => f.ToString()
+    };
+
+    private static string FrecuenciaMin(BuzonFrecuenciaRevision f) => f switch
+    {
+        BuzonFrecuenciaRevision.Cinco => "5",
+        BuzonFrecuenciaRevision.Diez => "10",
+        BuzonFrecuenciaRevision.Quince => "15",
+        BuzonFrecuenciaRevision.Treinta => "30",
+        _ => "10"
     };
 
     private static string ModoLabel(BuzonModoRadicacion m) => m switch
     {
-        BuzonModoRadicacion.SemiAutomatico => "Semiautomático",
-        BuzonModoRadicacion.Automatico => "Automático",
+        BuzonModoRadicacion.SemiAutomatico => "Semi-automatico",
+        BuzonModoRadicacion.Automatico => "Automatico",
         BuzonModoRadicacion.Manual => "Manual",
         _ => m.ToString()
+    };
+
+    private RenderFragment EstadoMigBadge(string estado) => builder =>
+    {
+        var (cls, txt) = estado.ToLowerInvariant() switch
+        {
+            "procesando" or "proceso" => ("bdg bdg-proc", "Procesando"),
+            "terminado" or "ok" or "completado" => ("bdg bdg-ok", "Terminado"),
+            "error" => ("bdg bdg-err", "Error"),
+            _ => ("bdg bdg-canal", estado)
+        };
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", cls);
+        builder.AddContent(2, txt);
+        builder.CloseElement();
     };
 }

@@ -12,6 +12,15 @@ public class RadicacionConfig : TenantEntity
 {
     // ---- RF01-1 Consecutivos ----
 
+    /// <summary>
+    /// Sigla/prefijo del esquema de radicacion (ej. "TRNX"). Editable en la config del modulo (paridad
+    /// con rad_config.aspx). Si es null, el numero de radicado cae en la sigla de la Entidad (RQ01).
+    /// </summary>
+    public string? SiglaRadicacion { get; set; }
+
+    /// <summary>Incluir el componente de anio en el numero de radicado (default true).</summary>
+    public bool IncluirAnio { get; set; } = true;
+
     /// <summary>Valor inicial del consecutivo de Entrada (editable solo antes del primer radicado).</summary>
     public int ConsecutivoEntradaInicio { get; set; } = 1;
     public int ConsecutivoSalidaInicio { get; set; } = 1;

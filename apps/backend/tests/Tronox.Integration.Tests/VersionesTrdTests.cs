@@ -31,9 +31,13 @@ public sealed class VersionesTrdTests : IClassFixture<PostgresTenantIsolationFix
         await using var ctx = _fixture.CreateContext(seed.TenantId);
         var svc = NewService(ctx, seed);
 
-        Assert.True((await svc.CreateAsync(new SaveTrdVersionRequest("TRD-2026-v1", Vig), Actor)).IsOk);
+        // Modo EditarCodigo: el codigo se toma del request (en CalcularCodigo se autogeneraria y no
+        // habria colision). La unicidad por tenant se valida sobre el codigo manual, case-insensitive.
+        Assert.True((await svc.CreateAsync(
+            new SaveTrdVersionRequest("TRD-2026-v1", Vig, ModoCodigoSerie: ModoCodigoSerie.EditarCodigo), Actor)).IsOk);
 
-        var dup = await svc.CreateAsync(new SaveTrdVersionRequest("trd-2026-v1", Vig), Actor); // case-insensitive
+        var dup = await svc.CreateAsync(
+            new SaveTrdVersionRequest("trd-2026-v1", Vig, ModoCodigoSerie: ModoCodigoSerie.EditarCodigo), Actor); // case-insensitive
         Assert.Equal(TrdVersionServiceStatus.Conflict, dup.Status);
     }
 

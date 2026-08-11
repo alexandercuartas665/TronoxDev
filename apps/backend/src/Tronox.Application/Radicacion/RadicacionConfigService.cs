@@ -139,7 +139,10 @@ public sealed class RadicacionConfigService : IRadicacionConfigService
         cfg.ConsecutivoInternoInicio = request.ConsecutivoInternoInicio;
         cfg.ReinicioAnual = request.ReinicioAnual;
         cfg.DigitosConsecutivo = request.DigitosConsecutivo;
-        cfg.Separador = string.IsNullOrEmpty(request.Separador) ? "-" : request.Separador;
+        // Separador puede ser vacio ("Sin separador"); solo se normaliza el nulo.
+        cfg.Separador = request.Separador ?? "";
+        cfg.SiglaRadicacion = string.IsNullOrWhiteSpace(request.SiglaRadicacion) ? null : request.SiglaRadicacion.Trim().ToUpperInvariant();
+        cfg.IncluirAnio = request.IncluirAnio;
         cfg.Alerta1Porcentaje = request.Alerta1Porcentaje;
         cfg.Alerta2Porcentaje = request.Alerta2Porcentaje;
         cfg.AlertaTutelaHoras = request.AlertaTutelaHoras;
@@ -208,7 +211,8 @@ public sealed class RadicacionConfigService : IRadicacionConfigService
         // TODO(RQ09): leer ultimo consecutivo asignado del emisor de secuencias. 0 mientras la
         // radicacion aun no opera.
         0, 0, 0,
-        siglaEntidad);
+        siglaEntidad,
+        c.SiglaRadicacion, c.IncluirAnio);
 
     private static NotificacionRadicacionDto MapNotificacion(NotificacionRadicacionConfig n) => new(
         n.Id, n.Evento, EventoNombre(n.Evento), n.Activo, EsObligatorioPorLey(n.Evento),

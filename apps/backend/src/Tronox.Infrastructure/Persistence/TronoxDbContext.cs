@@ -429,6 +429,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<SubfondoEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Configuracion documental (RQ02): estados como texto acotado.
         configurationBuilder.Properties<TrdVersionEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<ModoCodigoSerie>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SerieEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ListaEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Construccion de la TRD (RF04): enums como texto acotado.
@@ -1261,6 +1262,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         modelBuilder.Entity<RadicacionConfig>(b =>
         {
             b.Property(x => x.Separador).HasMaxLength(5).IsRequired();
+            b.Property(x => x.SiglaRadicacion).HasMaxLength(12);
             // Singleton por tenant.
             b.HasIndex(x => x.TenantId).IsUnique();
         });
