@@ -188,7 +188,8 @@ public static class MenuCatalogo
             [
                 new("Panel de Control", "modulo/radicacion-panel", "bi-speedometer2", "RF12"),
                 new("Radicacion", "modulo/radicacion", "bi-inboxes", "RF11"),
-                new("Correos por Revisar", "modulo/radicacion-correos", "bi-envelope", "RF04")
+                new("Correos por Revisar", "modulo/radicacion-correos", "bi-envelope", "RF04"),
+                new("Portal Ciudadano", "modulo/portal-abrir", "bi-globe", "RF03")
             ]),
 
             new("Gestion y Tramite", "req010", "bi-list-task", "RQ10",
