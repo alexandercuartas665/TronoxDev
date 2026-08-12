@@ -299,21 +299,118 @@
                     }
                     @if (_wzError is not null) { <div class="tx-ent-fielderr">@_wzError</div> }
 
+                    <style>
+                        .wz-info { background:#EEF6FF; border:1px solid #BFD6FF; color:#1756C1; border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:14px; }
+                        .wz-cat-badge { display:inline-flex; align-items:center; gap:4px; background:#EAF2FF; color:#2F7CF6; border-radius:999px; padding:2px 9px; font-size:10px; font-weight:800; text-transform:none; margin-left:6px; letter-spacing:0; }
+                        .wz-results { margin-top:8px; border:1px solid #D7DFEC; border-radius:10px; max-height:256px; overflow-y:auto; box-shadow:0 8px 22px rgba(15,23,42,.08); }
+                        .wz-results:empty { display:none; }
+                        .wz-opt { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; width:100%; padding:11px 14px; border:none; border-bottom:1px solid #EEF2F7; background:#fff; cursor:pointer; text-align:left; font-family:inherit; }
+                        .wz-opt:last-child { border-bottom:none; }
+                        .wz-opt:hover { background:#F4F8FF; box-shadow:inset 3px 0 0 #2F7CF6; }
+                        .wz-opt-code { background:#F2F5FB; color:#8C97B2; border-radius:6px; padding:2px 8px; font-family:Consolas,monospace; font-size:11px; font-weight:800; white-space:nowrap; }
+                        .wz-opt-body { min-width:0; display:flex; flex-direction:column; }
+                        .wz-opt-name { color:#101828; font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                        .wz-opt-meta { color:#98A2B3; font-size:11.5px; }
+                        .wz-opt-flow { background:#EEF6FF; color:#1756C1; border-radius:999px; padding:3px 10px; font-size:10.5px; font-weight:800; white-space:nowrap; }
+                        .wz-empty { padding:14px; color:#98A2B3; font-size:12.5px; text-align:center; }
+                        .wz-selected { display:flex; align-items:center; gap:14px; border:1px solid #BFD6FF; background:#F7FBFF; border-radius:10px; padding:14px 16px; margin:14px 0; }
+                        .wz-selected-ico { width:40px; height:40px; border-radius:10px; background:#DBEAFE; color:#2F7CF6; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+                        .wz-selected-title { font-size:14px; font-weight:800; color:#101828; }
+                        .wz-selected-detail { font-size:12px; color:#5A6787; margin-top:1px; }
+                        .wz-selected-flow { display:inline-block; margin-top:5px; background:#EEF6FF; color:#1756C1; border-radius:999px; padding:2px 10px; font-size:10.5px; font-weight:800; }
+                        .wz-subpicker { border:1px solid #D7DFEC; border-radius:12px; margin-bottom:14px; overflow:hidden; }
+                        .wz-subpicker-head { background:#F8FAFE; border-bottom:1px solid #E7ECF5; padding:9px 14px; font-size:12px; font-weight:800; color:#5A6787; }
+                        .wz-sub-row { display:flex; align-items:center; gap:10px; padding:9px 14px; border-bottom:1px solid #F1F4F9; cursor:pointer; font-size:12.5px; color:#17213A; }
+                        .wz-sub-row:last-child { border-bottom:none; }
+                        .wz-sub-row:hover { background:#F7FBFF; }
+                        .wz-sub-row input[type=radio] { width:16px; height:16px; accent-color:#2F7CF6; }
+                        .wz-sub-none { color:#5A6787; }
+                        .wz-sub-name { color:#101828; font-weight:600; }
+                    </style>
+
                     @if (_wzStep == 1)
                     {
                         @if (_wzMode == "SERIE")
                         {
-                            <div class="tx-ent-field">
-                                <label>Serie del catálogo (activas) <span class="req">*</span></label>
-                                <select class="tx-ent-input" @onchange="WizSerieChanged">
-                                    <option value="0">— Selecciona —</option>
-                                    @foreach (var s in WizSeriesCatalogo())
-                                    {
-                                        <option value="@s.Id" selected="@(s.Id == _wzSerieCatId)">@s.Codigo — @s.Nombre</option>
-                                    }
-                                </select>
-                                <div class="tx-ent-hint">El código CCD se generará como código de dependencia + código de serie.</div>
-                            </div>
+                            <div class="wz-info"><strong>Serie:</strong> crea una serie principal para esta TRD. No se requiere serie padre.</div>
+
+                            @if (_wzSerieCatId <= 0)
+                            {
+                                @* Buscador autocompletado contra el catalogo de series (paridad legacy). *@
+                                <div class="tx-ent-grid c2">
+                                    <div class="tx-ent-field">
+                                        <label>Código <span class="req">*</span></label>
+                                        <input class="tx-ent-input mono" value="" readonly placeholder="—" />
+                                        <div class="tx-ent-hint">Se llena al seleccionar la serie del catálogo</div>
+                                    </div>
+                                    <div class="tx-ent-field">
+                                        <label>Estado</label>
+                                        <input class="tx-ent-input" value="Activo" readonly />
+                                    </div>
+                                </div>
+                                <div class="tx-ent-field">
+                                    <label>Nombre <span class="req">*</span> <span class="wz-cat-badge"><i class="bi bi-link-45deg"></i> Catálogo serie/subserie</span></label>
+                                    <input class="tx-ent-input" placeholder="Escribe para buscar en el catálogo..." autocomplete="off"
+                                           value="@_wzSearch" @oninput="@(e => _wzSearch = e.Value?.ToString() ?? "")" />
+                                    <div class="tx-ent-hint">Autocompleta desde el módulo catálogo serie/subserie</div>
+                                    <div class="wz-results">
+                                        @foreach (var s in WizCatalogoFiltrado())
+                                        {
+                                            <button type="button" class="wz-opt" @onclick="@(() => WizSelectSerie(s))">
+                                                <span class="wz-opt-code">@s.Codigo</span>
+                                                <span class="wz-opt-body">
+                                                    <span class="wz-opt-name">@s.Nombre</span>
+                                                    <span class="wz-opt-meta">@s.ChildCount @(s.ChildCount == 1 ? "subserie" : "subseries")</span>
+                                                </span>
+                                                <span class="wz-opt-flow">@(s.ChildCount > 0 ? "Incluye subseries" : "Directa")</span>
+                                            </button>
+                                        }
+                                        @if (WizCatalogoFiltrado().Count == 0)
+                                        {
+                                            <div class="wz-empty">Sin series del catálogo disponibles para agregar.</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                @* Serie seleccionada del catalogo. *@
+                                <div class="tx-ent-grid c2">
+                                    <div class="tx-ent-field"><label>Código <span class="req">*</span></label><input class="tx-ent-input mono" value="@_wzCodigo" readonly /></div>
+                                    <div class="tx-ent-field"><label>Estado</label><input class="tx-ent-input" value="Activo" readonly /></div>
+                                </div>
+                                <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" value="@_wzNombre" readonly /></div>
+
+                                <div class="wz-selected">
+                                    <div class="wz-selected-ico"><i class="bi bi-folder2-open"></i></div>
+                                    <div style="flex:1;min-width:0">
+                                        <div class="wz-selected-title">@_wzNombre</div>
+                                        <div class="wz-selected-detail">Código @_wzCodigo · @_wzSelChildCount @(_wzSelChildCount == 1 ? "subserie" : "subseries")</div>
+                                        <div class="wz-selected-flow">@(_wzSelChildCount > 0 ? "Selecciona una subserie para caracterizarla (opcional)" : "Se asociará como serie directa")</div>
+                                    </div>
+                                    <button type="button" class="tx-ent-btn sm" @onclick="WizClearSerie">Cambiar</button>
+                                </div>
+
+                                @if (_wzSelChildren.Count > 0)
+                                {
+                                    <div class="wz-subpicker">
+                                        <div class="wz-subpicker-head">Subseries disponibles (@_wzSelChildren.Count)</div>
+                                        <label class="wz-sub-row">
+                                            <input type="radio" name="wzsub" checked="@(_wzSubCatId is null)" @onchange="@(() => _wzSubCatId = null)" />
+                                            <span class="wz-sub-none">Ninguna — asociar solo la serie</span>
+                                        </label>
+                                        @foreach (var sub in _wzSelChildren)
+                                        {
+                                            <label class="wz-sub-row">
+                                                <input type="radio" name="wzsub" checked="@(_wzSubCatId == sub.Id)" @onchange="@(() => _wzSubCatId = sub.Id)" />
+                                                <span class="wz-opt-code">@sub.Codigo</span><span class="wz-sub-name">@sub.Nombre</span>
+                                            </label>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="tx-ent-field"><label>Descripción <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_wzDescripcion" rows="2" maxlength="500"></textarea></div>
+                            }
                         }
                         else
                         {
@@ -1234,6 +1331,10 @@
     // Paso 1
     private long _wzSerieCatId;
     private string _wzCodigo = ""; private string _wzNombre = ""; private string? _wzDescripcion;
+    private string _wzSearch = "";                       // buscador autocompletado (modo SERIE)
+    private long? _wzSubCatId;                           // subserie del catalogo elegida (opcional)
+    private int _wzSelChildCount;                        // total de subseries de la serie elegida (display)
+    private List<SerieNodeDto> _wzSelChildren = [];      // subseries disponibles (no asignadas) para el picker
     // Paso 2
     private int _wzTG, _wzTC;
     private DisposicionFinal _wzDisp = DisposicionFinal.ConservacionTotal;
@@ -1258,10 +1359,44 @@
         return _seriesActivas.Where(s => s.ParentId is null && !asignados.Contains(s.Id)).ToList();
     }
 
+    // Series del catalogo filtradas por el buscador (codigo o nombre), max 8 (paridad legacy).
+    private List<SerieNodeDto> WizCatalogoFiltrado()
+    {
+        var q = _wzSearch.Trim();
+        var baseList = WizSeriesCatalogo();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            baseList = baseList.Where(s =>
+                s.Codigo.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || s.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        return baseList.Take(8).ToList();
+    }
+
+    private void WizSelectSerie(SerieNodeDto s)
+    {
+        _wzSerieCatId = s.Id;
+        _wzCodigo = s.Codigo;
+        _wzNombre = s.Nombre;
+        _wzSelChildCount = s.ChildCount;
+        var asignados = _asignaciones.Select(a => a.SerieId).ToHashSet();
+        _wzSelChildren = s.Children.Where(c => !c.EsInactiva && !asignados.Contains(c.Id)).ToList();
+        _wzSubCatId = null;
+        _wzSearch = "";
+        _wzError = null;
+    }
+
+    private void WizClearSerie()
+    {
+        _wzSerieCatId = 0; _wzCodigo = ""; _wzNombre = "";
+        _wzSelChildCount = 0; _wzSelChildren = []; _wzSubCatId = null; _wzSearch = "";
+    }
+
     private void OpenWizard(string mode, TrdAsignacionDto? parent)
     {
         _wzMode = mode; _wzParent = parent; _wzStep = 1; _wzError = null;
         _wzSerieCatId = 0; _wzCodigo = ""; _wzNombre = ""; _wzDescripcion = null;
+        _wzSearch = ""; _wzSubCatId = null; _wzSelChildCount = 0; _wzSelChildren = [];
         _wzTG = 0; _wzTC = 0; _wzDisp = DisposicionFinal.ConservacionTotal;
         _wzNivelId = _niveles.FirstOrDefault(n => n.Codigo == "02")?.Id ?? _niveles.FirstOrDefault()?.Id ?? 0;
         _wzDdhh = false; _wzRepro = false; _wzProc = null;
@@ -1345,7 +1480,16 @@
             var ar = await Svc.AddAsignacionAsync(_version!.Id, new AddAsignacionRequest(
                 _workspaceDep!.DependenciaId, serieId, _wzTG, _wzTC, _wzDisp, _wzNivelId, _wzRepro, _wzDdhh, _wzProc), actor);
             if (!ar.IsOk) { _wzError = ar.Error; return; }
+
+            // Modo SERIE: si se eligio una subserie del catalogo, se asocia tambien (misma
+            // caracterizacion) y los metadatos/tipologias van a la fila de la subserie (paridad legacy).
             var asigId = ar.Value!.Id;
+            if (_wzMode == "SERIE" && _wzSubCatId is long subId)
+            {
+                var sr = await Svc.AddAsignacionAsync(_version!.Id, new AddAsignacionRequest(
+                    _workspaceDep!.DependenciaId, subId, _wzTG, _wzTC, _wzDisp, _wzNivelId, _wzRepro, _wzDdhh, _wzProc), actor);
+                if (sr.IsOk) { asigId = sr.Value!.Id; }
+            }
 
             foreach (var m in _wzMetas) { await Svc.AddMetadatoAsync(asigId, new SaveMetadatoRequest(m.Nombre, m.Tipo, m.Obligatorio, m.ListaId), actor); }
             foreach (var t in _wzTips)
@@ -1354,8 +1498,10 @@
                 if (tr.IsOk) { foreach (var dm in t.Metas) { await Svc.AddMetadatoDocumentoAsync(tr.Value!.Id, new SaveMetadatoRequest(dm.Nombre, dm.Tipo, dm.Obligatorio, dm.ListaId), actor); } }
             }
             _showWizard = false;
-            _pageOk = _wzMode == "SUBSERIE" ? "Subserie agregada a la TRD." : "Serie agregada a la TRD.";
+            _pageOk = _wzMode == "SUBSERIE" ? "Subserie agregada a la TRD."
+                : (_wzSubCatId is not null ? "Serie y subserie agregadas a la TRD." : "Serie agregada a la TRD.");
             if (_wzParent is not null) { _expanded.Add(_wzParent.SerieId); }
+            if (_wzMode == "SERIE" && _wzSubCatId is not null) { _expanded.Add(_wzSerieCatId); }
             await ReloadWorkspaceAsync();
         }
         finally { _wzBusy = false; }
