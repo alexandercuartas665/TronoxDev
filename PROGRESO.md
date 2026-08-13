@@ -499,3 +499,26 @@ Ajustes fieles al legacy VB.NET y modulos que faltaban, desplegados a produccion
   existentes (nodos + 6 acciones a SUPER_ADMIN/ADMIN). En prod cada tenant tiene 2 vistas: el item
   entra una vez por vista, sin duplicados intra-vista (verificado).
 - **Inventario de port** actualizado en el vault (`02. Inventario de modulos/INVENTARIO_PORT_...`).
+
+---
+
+## 10. Calendario Habil embebido en Datos de la Entidad (2026-08-13, fiel al legacy)
+
+Reintroducido el control completo `ctrlCalendarioHabil` (legacy `General/CalendarioHabil/`) calcado 1:1,
+ahora **siempre visible** dentro de Datos de la Entidad (sin el gateo por seleccion de entidad del
+legacy: en TRONOX la entidad es el tenant de la sesion).
+
+- **Dominio**: nueva entidad `CalendarioHabilConfig` (dias habiles Lun-Dom + jornada inicio/fin, 1 por
+  tenant) + campo `Tipo` en `DiaFestivo` (Nacional/Local/Institucional). Migracion `CalendarioHabilConfig`
+  (tabla `calendarios_habiles` + columna `tipo`, con `UPDATE` de festivos propios existentes a `Local`).
+- **Application**: `ICalendarioHabilService` con `ObtenerConfigAsync`/`GuardarConfigAsync` + tipo en
+  `AgregarAsync`. El calculo de habiles (`EsHabil`/`ProximoHabil`/`SumarDiasHabiles`) ahora respeta los
+  dias configurados; el default (Lun-Vie) preserva el comportamiento SLA previo (invariante DAT-06 intacto).
+- **Web**: componente reutilizable `CalendarioHabilPanel.razor` (visual calcado: 2 columnas dias+jornada /
+  calendario mensual con festivos, nav de mes, modal "Agregar Festivo Local" LOCAL/INSTITUCIONAL, leyenda,
+  autosiembra nacional). Embebido en `DatosEntidad.razor` y reusado por la pagina suelta
+  `/modulo/calendario-habil`.
+- **Fix de paso**: el panel embebido se solapaba con la init async de la pagina padre compartiendo el
+  `DbContext` scoped ("A second operation was started on this context"). Se le dio su propio scope de DI
+  (`OwningComponentBase`); el tenant sigue resolviendo por el `IHttpContextAccessor` singleton.
+- Verificado en local: renderiza completo, autosembro 18 festivos 2026, sin errores de circuito.

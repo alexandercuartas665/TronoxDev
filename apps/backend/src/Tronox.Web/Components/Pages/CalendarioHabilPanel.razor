@@ -1,0 +1,394 @@
+@using Tronox.Application.Radicacion
+@using Microsoft.Extensions.DependencyInjection
+@inherits OwningComponentBase
+
+@* Usa su PROPIO scope de DI (ScopedServices) para no compartir el DbContext scoped del circuito con la
+   pagina que lo embebe (Datos de la Entidad): sus inicializaciones async se solapaban y disparaban
+   "A second operation was started on this context instance". El tenant se resuelve igual (viene del
+   IHttpContextAccessor singleton). *@
+
+@* RQ01 - Calendario Habil (calcado del legacy ctrlCalendarioHabil.ascx). Control completo: dias habiles
+   de la semana + jornada (izquierda) y calendario mensual visual con festivos + alta de festivo local
+   (derecha). Siempre visible dentro de "Datos de la Entidad" y reutilizado por la pagina suelta. *@
+
+<div class="chp-card">
+    <div class="chp-head">
+        <div class="chp-head-left">
+            <div class="chp-icon"><i class="bi bi-calendar-week"></i></div>
+            <div>
+                <h3 class="chp-title">Calendario Hábil</h3>
+                <p class="chp-sub">Defina días hábiles, jornada y festivos que servirán como base para el cálculo de términos legales.</p>
+            </div>
+        </div>
+        <button type="button" class="chp-save" @onclick="GuardarConfigAsync" disabled="@_busy">
+            <i class="bi bi-save"></i> Guardar
+        </button>
+    </div>
+
+    @if (_flash is not null)
+    {
+        <div class="chp-alert @(_flashOk ? "ok" : "err")">@_flash</div>
+    }
+
+    <div class="chp-body">
+        <div class="chp-layout">
+
+            <!-- COLUMNA IZQUIERDA: dias habiles + jornada -->
+            <div class="chp-sub-card">
+                <div class="chp-sub-head">
+                    <h4 class="chp-sub-title">Días Hábiles y Jornada</h4>
+                    <p class="chp-sub-desc">Seleccione los días laborables de la entidad.</p>
+                </div>
+                <div class="chp-sub-body">
+                    <span class="chp-section-title">Días hábiles de la semana</span>
+                    <div class="chp-checks">
+                        <label><input type="checkbox" @bind="_lun" /> Lunes</label>
+                        <label><input type="checkbox" @bind="_mar" /> Martes</label>
+                        <label><input type="checkbox" @bind="_mie" /> Miércoles</label>
+                        <label><input type="checkbox" @bind="_jue" /> Jueves</label>
+                        <label><input type="checkbox" @bind="_vie" /> Viernes</label>
+                        <label><input type="checkbox" @bind="_sab" /> Sábado</label>
+                        <label><input type="checkbox" @bind="_dom" /> Domingo</label>
+                    </div>
+
+                    <div class="chp-divider"></div>
+
+                    <div class="chp-time-grid">
+                        <div class="chp-field">
+                            <label class="chp-label">Inicio Jornada</label>
+                            <input type="time" class="chp-time" value="@_horaInicio" @onchange="e => _horaInicio = e.Value?.ToString() ?? _horaInicio" />
+                        </div>
+                        <div class="chp-field">
+                            <label class="chp-label">Fin Jornada</label>
+                            <input type="time" class="chp-time" value="@_horaFin" @onchange="e => _horaFin = e.Value?.ToString() ?? _horaFin" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: calendario mensual -->
+            <div class="chp-sub-card">
+                <div class="chp-sub-head chp-fest-toolbar">
+                    <div class="chp-fest-title-wrap">
+                        <div>
+                            <h4 class="chp-sub-title">Festivos @_anio — @NombreMes(_mes)</h4>
+                            <p class="chp-sub-desc">Calendario base de términos hábiles.</p>
+                        </div>
+                        <div class="chp-nav">
+                            <button type="button" class="chp-nav-btn" @onclick="MesAnterior" title="Mes anterior"><i class="bi bi-chevron-left"></i></button>
+                            <button type="button" class="chp-nav-btn" @onclick="MesSiguiente" title="Mes siguiente"><i class="bi bi-chevron-right"></i></button>
+                        </div>
+                    </div>
+                    <button type="button" class="chp-btn-light" @onclick="AbrirModal">
+                        <i class="bi bi-plus-lg"></i> Agregar Festivo Local
+                    </button>
+                </div>
+
+                <div class="chp-sub-body">
+                    <div class="chp-cal">
+                        <div class="chp-weekdays">
+                            <div class="chp-weekday">DOM</div><div class="chp-weekday">LUN</div><div class="chp-weekday">MAR</div>
+                            <div class="chp-weekday">MIÉ</div><div class="chp-weekday">JUE</div><div class="chp-weekday">VIE</div><div class="chp-weekday">SÁB</div>
+                        </div>
+                        <div class="chp-days">
+                            @foreach (var cell in Celdas())
+                            {
+                                @if (cell is null)
+                                {
+                                    <div class="chp-cell is-empty"></div>
+                                }
+                                else
+                                {
+                                    var f = cell.Value;
+                                    <div class="chp-cell @ClaseCelda(f)" title="@Tooltip(f)">@f.Day</div>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    <div class="chp-legend">
+                        <span class="chp-legend-item"><span class="chp-dot hoy"></span> Hoy</span>
+                        <span class="chp-legend-item"><span class="chp-dot festivo"></span> Festivo</span>
+                        <span class="chp-legend-item"><span class="chp-dot finsemana"></span> Fin de semana</span>
+                    </div>
+
+                    @{ var propios = _festivos.Where(x => !x.EsNacional).ToList(); }
+                    @if (propios.Count > 0)
+                    {
+                        <div class="chp-propios">
+                            <span class="chp-propios-title">Festivos propios de la entidad (@propios.Count)</span>
+                            <div class="chp-chips">
+                                @foreach (var p in propios)
+                                {
+                                    <span class="chp-chip">
+                                        <strong>@p.Fecha.ToString("dd/MM")</strong> @p.Nombre
+                                        <span class="chp-chip-tipo">@p.Tipo</span>
+                                        <button type="button" class="chp-chip-x" title="Quitar" @onclick="() => EliminarAsync(p.Id)" disabled="@_busy">&times;</button>
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <div class="chp-info">
+                        <i class="bi bi-info-circle"></i>
+                        <div>Precarga festivos nacionales de Colombia por año (Ley Emiliani + Pascua). El administrador puede agregar festivos locales. Base para cálculos de términos: Tutela, Derecho de Petición, Queja, etc.</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@if (_showModal)
+{
+    <div class="chp-modal-overlay" @onclick="CerrarModal">
+        <div class="chp-modal" @onclick:stopPropagation="true">
+            <div class="chp-modal-head">
+                <div class="chp-head-left">
+                    <div class="chp-icon"><i class="bi bi-calendar-plus"></i></div>
+                    <div>
+                        <h5 class="chp-modal-title">Agregar Festivo Local</h5>
+                        <p class="chp-sub">Registre un festivo local o institucional adicional.</p>
+                    </div>
+                </div>
+                <button type="button" class="chp-close" @onclick="CerrarModal">&times;</button>
+            </div>
+            <div class="chp-modal-body">
+                @if (_modalMsg is not null) { <div class="chp-alert err">@_modalMsg</div> }
+                <div class="chp-modal-grid">
+                    <div class="chp-field">
+                        <label class="chp-label">Fecha <span class="req">*</span></label>
+                        <input type="date" class="chp-time" @bind="_mFecha" />
+                    </div>
+                    <div class="chp-field">
+                        <label class="chp-label">Nombre del festivo <span class="req">*</span></label>
+                        <input class="chp-time" maxlength="150" @bind="_mNombre" placeholder="Ej. Fiesta de la entidad" />
+                    </div>
+                    <div class="chp-field">
+                        <label class="chp-label">Tipo <span class="req">*</span></label>
+                        <select class="chp-time" @bind="_mTipo">
+                            <option value="Local">LOCAL</option>
+                            <option value="Institucional">INSTITUCIONAL</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="chp-modal-foot">
+                <button type="button" class="chp-btn-cancel" @onclick="CerrarModal" disabled="@_busy">Cancelar</button>
+                <button type="button" class="chp-btn-save" @onclick="GuardarFestivoAsync" disabled="@_busy"><i class="bi bi-check-lg"></i> Guardar Festivo</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .chp-card { background:#f8fafc; border:1px solid #d9e2ec; border-radius:16px; overflow:hidden; box-shadow:0 1px 3px rgba(16,24,40,.04); }
+    .chp-head { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 18px; border-bottom:1px solid #e5edf5; background:#f1f5f9; }
+    .chp-head-left { display:flex; align-items:center; gap:10px; }
+    .chp-icon { width:34px; height:34px; min-width:34px; border-radius:10px; background:#fff7ed; color:#f59e0b; display:flex; align-items:center; justify-content:center; font-size:15px; }
+    .chp-title { margin:0; font-size:18px; font-weight:700; color:#0f172a; line-height:1.15; }
+    .chp-sub { margin:3px 0 0; color:#64748b; font-size:13px; }
+    .chp-save { display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 16px; border-radius:10px; background:#0ea5e9; border:1px solid #0ea5e9; color:#fff; font-size:14px; font-weight:700; cursor:pointer; }
+    .chp-save:hover { background:#0284c7; border-color:#0284c7; }
+    .chp-save:disabled { opacity:.6; cursor:default; }
+    .chp-alert { margin:14px 18px 0; padding:10px 14px; border-radius:10px; font-size:13.5px; }
+    .chp-alert.ok { background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; }
+    .chp-alert.err { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+    .chp-body { padding:18px; background:#fff; }
+    .chp-layout { display:grid; grid-template-columns:420px minmax(0,1fr); gap:22px; align-items:start; }
+    .chp-sub-card { background:#fff; border:1px solid #d9e2ec; border-radius:14px; overflow:hidden; box-shadow:0 1px 2px rgba(15,23,42,.03); }
+    .chp-sub-head { padding:16px 18px; border-bottom:1px solid #e5edf5; background:#f8fafc; }
+    .chp-sub-title { margin:0; font-size:16px; font-weight:700; color:#0f172a; line-height:1.2; }
+    .chp-sub-desc { margin:4px 0 0; color:#64748b; font-size:13px; }
+    .chp-sub-body { padding:18px; background:#fff; }
+    .chp-section-title { display:block; margin-bottom:12px; color:#334155; font-size:14px; font-weight:700; }
+    .chp-checks { display:flex; flex-direction:column; gap:11px; }
+    .chp-checks label { font-size:14px; color:#334155; font-weight:500; display:flex; align-items:center; gap:8px; cursor:pointer; }
+    .chp-divider { height:1px; background:#e5edf5; margin:18px 0; }
+    .chp-time-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .chp-field { display:flex; flex-direction:column; gap:7px; }
+    .chp-label { display:block; font-size:14px; font-weight:700; color:#334155; }
+    .chp-label .req { color:#e11d48; }
+    .chp-time { height:42px; border:1px solid #d9e2ec; border-radius:10px; background:#f8fafc; color:#0f172a; padding:0 12px; font-size:14px; width:100%; }
+    .chp-time:focus { outline:none; border-color:#93c5fd; box-shadow:0 0 0 3px rgba(37,99,235,.10); }
+    .chp-fest-toolbar { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+    .chp-fest-title-wrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .chp-nav { display:inline-flex; align-items:center; gap:8px; }
+    .chp-nav-btn { width:34px; height:34px; border-radius:8px; border:1px solid #d9e2ec; background:#fff; color:#475569; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; }
+    .chp-nav-btn:hover { background:#f8fafc; color:#0f172a; }
+    .chp-btn-light { display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 14px; border-radius:999px; border:1px solid #bfdbfe; background:#eff6ff; color:#2563eb; font-size:14px; font-weight:600; cursor:pointer; }
+    .chp-btn-light:hover { background:#dbeafe; color:#1d4ed8; }
+    .chp-cal { margin-top:4px; }
+    .chp-weekdays, .chp-days { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; }
+    .chp-weekdays { margin-bottom:12px; }
+    .chp-weekday { text-align:center; font-size:12px; font-weight:700; color:#94a3b8; text-transform:uppercase; }
+    .chp-cell { min-height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:14px; color:#475569; background:transparent; }
+    .chp-cell.is-empty { background:transparent; }
+    .chp-cell.is-today { background:#0ea5e9; color:#fff; font-weight:700; }
+    .chp-cell.is-holiday { background:#fdf2f8; color:#e11d48; font-weight:700; }
+    .chp-cell.is-weekend { color:#a1a1aa; }
+    .chp-legend { margin-top:16px; display:flex; flex-wrap:wrap; gap:22px; align-items:center; }
+    .chp-legend-item { display:inline-flex; align-items:center; gap:7px; color:#334155; font-size:14px; font-weight:500; }
+    .chp-dot { width:12px; height:12px; border-radius:3px; display:inline-block; }
+    .chp-dot.hoy { background:#0ea5e9; }
+    .chp-dot.festivo { background:#fdf2f8; border:1px solid #f9a8d4; }
+    .chp-dot.finsemana { background:#e2e8f0; }
+    .chp-propios { margin-top:16px; }
+    .chp-propios-title { display:block; font-size:13px; font-weight:700; color:#334155; margin-bottom:8px; }
+    .chp-chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chp-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 8px 5px 10px; border-radius:999px; background:#f1f5f9; border:1px solid #e2e8f0; font-size:12.5px; color:#334155; }
+    .chp-chip-tipo { font-size:10.5px; font-weight:700; color:#0369a1; background:#e0f2fe; padding:1px 6px; border-radius:999px; text-transform:uppercase; }
+    .chp-chip-x { border:none; background:transparent; color:#94a3b8; font-size:16px; line-height:1; cursor:pointer; padding:0 2px; }
+    .chp-chip-x:hover { color:#e11d48; }
+    .chp-info { margin-top:18px; display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:12px; border-left:3px solid #0ea5e9; background:#eff6ff; color:#2563eb; font-size:14px; line-height:1.45; }
+    .chp-info i { margin-top:2px; color:#0ea5e9; }
+    .chp-modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; z-index:1080; padding:20px; }
+    .chp-modal { background:#fff; border-radius:16px; width:100%; max-width:620px; box-shadow:0 20px 45px rgba(15,23,42,.25); overflow:hidden; }
+    .chp-modal-head { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px 18px; border-bottom:1px solid #e5edf5; background:#f8fafc; }
+    .chp-modal-title { margin:0; font-size:16px; font-weight:700; color:#0f172a; }
+    .chp-close { border:none; background:transparent; font-size:22px; line-height:1; color:#94a3b8; cursor:pointer; }
+    .chp-close:hover { color:#0f172a; }
+    .chp-modal-body { padding:18px; }
+    .chp-modal-grid { display:grid; grid-template-columns:1fr 1.4fr 1fr; gap:14px; }
+    .chp-modal-foot { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:14px 18px; border-top:1px solid #e5edf5; background:#f8fafc; }
+    .chp-btn-cancel { height:38px; padding:0 16px; border-radius:10px; border:1px solid #d9e2ec; background:#fff; color:#475569; font-weight:600; cursor:pointer; }
+    .chp-btn-save { display:inline-flex; align-items:center; gap:8px; height:38px; padding:0 16px; border-radius:10px; background:#0ea5e9; border:1px solid #0ea5e9; color:#fff; font-weight:700; cursor:pointer; }
+    .chp-btn-save:hover { background:#0284c7; }
+    @@media (max-width:1200px) { .chp-layout { grid-template-columns:1fr; } }
+    @@media (max-width:768px) { .chp-time-grid, .chp-modal-grid { grid-template-columns:1fr; } .chp-fest-toolbar { flex-direction:column; align-items:stretch; } }
+</style>
+
+@code {
+    private ICalendarioHabilService CalSvc => ScopedServices.GetRequiredService<ICalendarioHabilService>();
+
+    private bool _lun = true, _mar = true, _mie = true, _jue = true, _vie = true, _sab, _dom;
+    private string _horaInicio = "08:00", _horaFin = "17:00";
+
+    private IReadOnlyList<DiaFestivoDto> _festivos = Array.Empty<DiaFestivoDto>();
+    private Dictionary<DateOnly, DiaFestivoDto> _mapa = new();
+
+    private int _anio = DateTime.Today.Year;
+    private int _mes = DateTime.Today.Month;
+
+    private bool _busy;
+    private string? _flash; private bool _flashOk;
+
+    private bool _showModal;
+    private string? _modalMsg;
+    private DateOnly? _mFecha; private string _mNombre = ""; private string _mTipo = "Local";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cfg = await CalSvc.ObtenerConfigAsync();
+        _lun = cfg.Lunes; _mar = cfg.Martes; _mie = cfg.Miercoles; _jue = cfg.Jueves;
+        _vie = cfg.Viernes; _sab = cfg.Sabado; _dom = cfg.Domingo;
+        _horaInicio = cfg.JornadaInicio; _horaFin = cfg.JornadaFin;
+        await CargarFestivosAsync();
+    }
+
+    private async Task CargarFestivosAsync()
+    {
+        _festivos = await CalSvc.ListarAsync(_anio);
+        if (_festivos.Count == 0)
+        {
+            // Autosiembra los festivos nacionales del anio mostrado (equivalente a AsegurarFestivosNacionales).
+            await CalSvc.SembrarAnioAsync(_anio);
+            _festivos = await CalSvc.ListarAsync(_anio);
+        }
+        _mapa = _festivos.ToDictionary(f => f.Fecha, f => f);
+    }
+
+    private async Task GuardarConfigAsync()
+    {
+        _busy = true;
+        try
+        {
+            var dto = new CalendarioConfigDto(_lun, _mar, _mie, _jue, _vie, _sab, _dom, _horaInicio, _horaFin);
+            var r = await CalSvc.GuardarConfigAsync(dto);
+            if (r == CalendarioGuardarResult.JornadaInvalida) { Flash("La hora de inicio debe ser menor que la hora final.", false); return; }
+            Flash("Calendario hábil guardado correctamente.", true);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task MesAnterior()
+    {
+        var f = new DateOnly(_anio, _mes, 1).AddMonths(-1);
+        _mes = f.Month; if (f.Year != _anio) { _anio = f.Year; await CargarFestivosAsync(); }
+    }
+
+    private async Task MesSiguiente()
+    {
+        var f = new DateOnly(_anio, _mes, 1).AddMonths(1);
+        _mes = f.Month; if (f.Year != _anio) { _anio = f.Year; await CargarFestivosAsync(); }
+    }
+
+    private IEnumerable<DateOnly?> Celdas()
+    {
+        var primero = new DateOnly(_anio, _mes, 1);
+        var dias = DateTime.DaysInMonth(_anio, _mes);
+        var offset = (int)primero.DayOfWeek; // domingo = 0
+        var total = offset + dias;
+        if (total % 7 != 0) { total += 7 - (total % 7); }
+        for (var i = 0; i < total; i++)
+        {
+            var d = i - offset + 1;
+            yield return (i < offset || d > dias) ? (DateOnly?)null : new DateOnly(_anio, _mes, d);
+        }
+    }
+
+    private string ClaseCelda(DateOnly f)
+    {
+        if (f == DateOnly.FromDateTime(DateTime.Today)) { return "is-today"; }
+        if (_mapa.ContainsKey(f)) { return "is-holiday"; }
+        if (f.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) { return "is-weekend"; }
+        return "";
+    }
+
+    private string Tooltip(DateOnly f)
+        => _mapa.TryGetValue(f, out var d) ? d.Nombre : f.ToString("yyyy-MM-dd");
+
+    private void AbrirModal()
+    {
+        _mFecha = null; _mNombre = ""; _mTipo = "Local"; _modalMsg = null; _showModal = true;
+    }
+
+    private void CerrarModal() => _showModal = false;
+
+    private async Task GuardarFestivoAsync()
+    {
+        _modalMsg = null;
+        if (_mFecha is null) { _modalMsg = "Debe indicar una fecha válida."; return; }
+        if (string.IsNullOrWhiteSpace(_mNombre)) { _modalMsg = "Debe indicar el nombre del festivo."; return; }
+        _busy = true;
+        try
+        {
+            var r = await CalSvc.AgregarAsync(_mFecha.Value, _mNombre, _mTipo);
+            if (r is null) { _modalMsg = "Ya existe un día no hábil en esa fecha."; return; }
+            _showModal = false;
+            // Muestra el mes del festivo agregado.
+            _mes = _mFecha.Value.Month;
+            if (_mFecha.Value.Year != _anio) { _anio = _mFecha.Value.Year; }
+            await CargarFestivosAsync();
+            Flash("Festivo guardado correctamente.", true);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task EliminarAsync(long id)
+    {
+        _busy = true;
+        try { await CalSvc.EliminarAsync(id); await CargarFestivosAsync(); }
+        finally { _busy = false; }
+    }
+
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+
+    private static string NombreMes(int mes) => mes switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril", 5 => "Mayo", 6 => "Junio",
+        7 => "Julio", 8 => "Agosto", 9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre", _ => ""
+    };
+}

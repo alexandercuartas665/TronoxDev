@@ -126,6 +126,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<RadicadoComunicacion> RadicadosComunicaciones => Set<RadicadoComunicacion>();
     public DbSet<RadicadoVisibilidadPermiso> RadicadosVisibilidad => Set<RadicadoVisibilidadPermiso>();
     public DbSet<DiaFestivo> DiasFestivos => Set<DiaFestivo>();
+    public DbSet<CalendarioHabilConfig> CalendariosHabiles => Set<CalendarioHabilConfig>();
     public DbSet<CorreoRecibidoAdjunto> CorreosRecibidosAdjuntos => Set<CorreoRecibidoAdjunto>();
     public DbSet<CorreoDescartado> CorreosDescartados => Set<CorreoDescartado>();
     public DbSet<RadPrioridad> RadPrioridades => Set<RadPrioridad>();
@@ -1444,7 +1445,15 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         modelBuilder.Entity<DiaFestivo>(b =>
         {
             b.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
+            b.Property(x => x.Tipo).HasMaxLength(20).IsRequired().HasDefaultValue("Nacional");
             b.HasIndex(x => new { x.TenantId, x.Fecha }).IsUnique();
+        });
+
+        modelBuilder.Entity<CalendarioHabilConfig>(b =>
+        {
+            b.Property(x => x.JornadaInicio).HasMaxLength(5).IsRequired();
+            b.Property(x => x.JornadaFin).HasMaxLength(5).IsRequired();
+            b.HasIndex(x => x.TenantId).IsUnique();
         });
 
         modelBuilder.Entity<RadPrioridad>(b =>

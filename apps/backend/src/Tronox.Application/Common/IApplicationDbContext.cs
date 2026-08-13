@@ -132,6 +132,7 @@ public interface IApplicationDbContext
     DbSet<RadicadoComunicacion> RadicadosComunicaciones { get; }
     DbSet<RadicadoVisibilidadPermiso> RadicadosVisibilidad { get; }
     DbSet<DiaFestivo> DiasFestivos { get; }
+    DbSet<CalendarioHabilConfig> CalendariosHabiles { get; }
     DbSet<CorreoRecibidoAdjunto> CorreosRecibidosAdjuntos { get; }
     DbSet<CorreoDescartado> CorreosDescartados { get; }
     DbSet<RadPrioridad> RadPrioridades { get; }

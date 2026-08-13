@@ -15,4 +15,7 @@ public class DiaFestivo : TenantEntity
 
     /// <summary>true si lo sembro el sistema (festivo nacional); false si lo agrego la entidad.</summary>
     public bool EsNacional { get; set; }
+
+    /// <summary>Origen del dia: "Nacional" (sembrado), "Local" o "Institucional" (agregado por la entidad).</summary>
+    public string Tipo { get; set; } = "Nacional";
 }
