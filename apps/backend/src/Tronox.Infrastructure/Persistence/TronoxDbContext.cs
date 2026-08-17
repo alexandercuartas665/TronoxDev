@@ -93,6 +93,9 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<TopografiaElemento> TopografiaElementos => Set<TopografiaElemento>();
     public DbSet<Expediente> Expedientes => Set<Expediente>();
     public DbSet<ExpedienteMetadato> ExpedienteMetadatos => Set<ExpedienteMetadato>();
+    public DbSet<ExpedienteCierre> ExpedienteCierres => Set<ExpedienteCierre>();
+    public DbSet<ExpedienteUbicacion> ExpedienteUbicaciones => Set<ExpedienteUbicacion>();
+    public DbSet<ExpedienteVinculo> ExpedienteVinculos => Set<ExpedienteVinculo>();
     public DbSet<Documento> Documentos => Set<Documento>();
     public DbSet<DocumentoMetadato> DocumentoMetadatos => Set<DocumentoMetadato>();
     public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
@@ -133,6 +136,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<RadPortalConfig> RadPortalConfigs => Set<RadPortalConfig>();
     public DbSet<ParametrosSeguridad> ParametrosSeguridad => Set<ParametrosSeguridad>();
     public DbSet<FirmaConfig> FirmaConfigs => Set<FirmaConfig>();
+    public DbSet<AlmacenamientoConfig> AlmacenamientosConfig => Set<AlmacenamientoConfig>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -1048,6 +1052,42 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasIndex(x => new { x.ExpedienteId, x.TrdMetadatoId }).IsUnique();
         });
 
+        // Cierre/reapertura (RQ03 RF08): asiento append-only con hash de integridad. FK RESTRICT.
+        modelBuilder.Entity<ExpedienteCierre>(b =>
+        {
+            b.Property(x => x.HashSha256).HasMaxLength(64).IsRequired();
+            b.Property(x => x.FirmaDigitalId).HasMaxLength(100);
+            b.Property(x => x.JustificacionReapertura).HasMaxLength(1000);
+            b.HasOne(x => x.Expediente).WithMany()
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ExpedienteId, x.NumeroCierre });
+        });
+
+        // Ubicacion fisica (RQ03 RF12): historial append-only ligado a la topografia (RQ02). FK RESTRICT.
+        modelBuilder.Entity<ExpedienteUbicacion>(b =>
+        {
+            b.Property(x => x.Observacion).HasMaxLength(1000);
+            b.HasOne(x => x.Expediente).WithMany()
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TopografiaElemento).WithMany()
+                .HasForeignKey(x => x.TopografiaElementoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ExpedienteId, x.CreatedAt });
+        });
+
+        // Vinculos entre expedientes (RQ03 RF14): relacion bidireccional, desvincular logico. FK RESTRICT
+        // (dos FKs al mismo maestro => sin cascada para no crear multiples caminos de borrado).
+        modelBuilder.Entity<ExpedienteVinculo>(b =>
+        {
+            b.Property(x => x.Observacion).HasMaxLength(1000);
+            b.HasOne(x => x.ExpedienteOrigen).WithMany()
+                .HasForeignKey(x => x.ExpedienteOrigenId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.ExpedienteDestino).WithMany()
+                .HasForeignKey(x => x.ExpedienteDestinoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Activo });
+            b.HasIndex(x => x.ExpedienteOrigenId);
+            b.HasIndex(x => x.ExpedienteDestinoId);
+        });
+
         // Gestion integral de documentos (RQ04). El binario vive en object storage (ADR-009): aqui solo
         // la key + hash + tamano + formato. Las FKs a expediente/TRD/tipologia/nivel/version-padre son
         // RESTRICT (nada se borra en cascada; el unico borrado fisico es el borrador nunca archivado,
@@ -1474,6 +1514,15 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.FirmaTextoDefault).HasMaxLength(100);
             b.Property(x => x.OtpModo).HasMaxLength(20).IsRequired();
             b.Property(x => x.OtpCanal).HasMaxLength(20).IsRequired();
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        // Almacenamiento Azure Blob por entidad (ADR-012). La cadena de conexion se guarda CIFRADA.
+        modelBuilder.Entity<AlmacenamientoConfig>(b =>
+        {
+            b.Property(x => x.ConnectionStringCifrada).HasMaxLength(4000);
+            b.Property(x => x.Contenedor).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Prefijo).HasMaxLength(200);
             b.HasIndex(x => x.TenantId).IsUnique();
         });
 

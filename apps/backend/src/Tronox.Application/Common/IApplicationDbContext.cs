@@ -81,6 +81,9 @@ public interface IApplicationDbContext
     // dinamicos (EAV sobre el motor de RQ02, DAT-04). El consecutivo del codigo usa TenantSequences.
     DbSet<Expediente> Expedientes { get; }
     DbSet<ExpedienteMetadato> ExpedienteMetadatos { get; }
+    DbSet<ExpedienteCierre> ExpedienteCierres { get; }
+    DbSet<ExpedienteUbicacion> ExpedienteUbicaciones { get; }
+    DbSet<ExpedienteVinculo> ExpedienteVinculos { get; }
 
     // Gestion integral de documentos (base de RQ04): el contenido. Binario en object storage (ADR-009,
     // nunca BLOB); metadatos EAV sobre el motor de RQ02 (DAT-04, contexto Documento).
@@ -139,6 +142,7 @@ public interface IApplicationDbContext
     DbSet<RadPortalConfig> RadPortalConfigs { get; }
     DbSet<ParametrosSeguridad> ParametrosSeguridad { get; }
     DbSet<FirmaConfig> FirmaConfigs { get; }
+    DbSet<AlmacenamientoConfig> AlmacenamientosConfig { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }

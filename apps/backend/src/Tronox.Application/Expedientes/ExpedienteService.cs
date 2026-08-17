@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Tronox.Application.Common;
 using Tronox.Application.Tenancy;
@@ -456,6 +458,264 @@ public sealed class ExpedienteService : IExpedienteService
             e.FechaCierre,
             e.CreatedAt,
             e.CreatedBy is long cb && nombres.TryGetValue(cb, out var nm) ? nm : null,
-            metas);
+            metas,
+            e.TrdAsignacion?.CodigoCcd ?? "",
+            e.TrdAsignacion?.TiempoGestion ?? 0,
+            e.TrdAsignacion?.TiempoCentral ?? 0,
+            e.TrdAsignacion?.DisposicionFinal ?? DisposicionFinal.ConservacionTotal,
+            e.TrdAsignacion?.SerieDdhhDih ?? false,
+            e.TrdAsignacion?.Procedimiento);
+    }
+
+    // ================= Cierre / reapertura (RF08) =================
+
+    public async Task<ExpedienteResult<bool>> CerrarAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var e = await _db.Expedientes.Include(x => x.Metadatos)
+            .FirstOrDefaultAsync(x => x.Id == id && !x.Eliminado, cancellationToken);
+        if (e is null) { return ExpedienteResult<bool>.NotFound("El expediente no existe."); }
+        if (e.Estado == EstadoExpediente.Cerrado) { return ExpedienteResult<bool>.Invalid("El expediente ya esta cerrado."); }
+
+        var tenantId = _tenantContext.TenantId!.Value;
+        var numero = await _db.ExpedienteCierres.Where(c => c.ExpedienteId == id).CountAsync(cancellationToken) + 1;
+        var hash = CalcularHashIndice(e);
+        _db.ExpedienteCierres.Add(new ExpedienteCierre
+        {
+            TenantId = tenantId, ExpedienteId = id, NumeroCierre = numero, HashSha256 = hash, JustificacionReapertura = null
+        });
+        var prev = new { e.Estado };
+        e.Estado = EstadoExpediente.Cerrado;
+        e.FechaCierre = DateOnly.FromDateTime(DateTime.UtcNow);
+        _audit.Write(actorUserId, "expediente.cerrar", nameof(Expediente), e,
+            previousValue: prev, newValue: new { e.Estado, e.FechaCierre, HashIndice = hash }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ExpedienteResult<bool>.Ok(true);
+    }
+
+    public async Task<ExpedienteResult<bool>> ReabrirAsync(long id, string justificacion, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(justificacion) || justificacion.Trim().Length < 20)
+        {
+            return ExpedienteResult<bool>.Invalid("La justificacion de reapertura debe tener al menos 20 caracteres.");
+        }
+        var e = await _db.Expedientes.Include(x => x.Metadatos)
+            .FirstOrDefaultAsync(x => x.Id == id && !x.Eliminado, cancellationToken);
+        if (e is null) { return ExpedienteResult<bool>.NotFound("El expediente no existe."); }
+        if (e.Estado == EstadoExpediente.Abierto) { return ExpedienteResult<bool>.Invalid("El expediente ya esta abierto."); }
+
+        var tenantId = _tenantContext.TenantId!.Value;
+        var numero = await _db.ExpedienteCierres.Where(c => c.ExpedienteId == id).CountAsync(cancellationToken) + 1;
+        _db.ExpedienteCierres.Add(new ExpedienteCierre
+        {
+            TenantId = tenantId, ExpedienteId = id, NumeroCierre = numero,
+            HashSha256 = CalcularHashIndice(e), JustificacionReapertura = justificacion.Trim()
+        });
+        var prev = new { e.Estado };
+        e.Estado = EstadoExpediente.Abierto;
+        e.FechaCierre = null;
+        _audit.Write(actorUserId, "expediente.reabrir", nameof(Expediente), e,
+            previousValue: prev, newValue: new { e.Estado, Motivo = justificacion.Trim() }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ExpedienteResult<bool>.Ok(true);
+    }
+
+    private static string CalcularHashIndice(Expediente e)
+    {
+        var sb = new StringBuilder();
+        sb.Append(e.Codigo).Append('|').Append(e.Nombre).Append('|').Append(e.FechaApertura).Append('|')
+            .Append(e.TrdAsignacionId).Append('|').Append((int)e.NivelClasificacionId);
+        foreach (var m in e.Metadatos.OrderBy(m => m.TrdMetadatoId))
+        {
+            sb.Append('|').Append(m.TrdMetadatoId).Append('=').Append(m.Valor);
+        }
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
+    }
+
+    // ================= Ubicacion fisica (RF12) =================
+
+    public async Task<ExpedienteResult<ExpedienteUbicacionDto>> GetUbicacionAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var existe = await _db.Expedientes.AsNoTracking().AnyAsync(e => e.Id == id && !e.Eliminado, cancellationToken);
+        if (!existe) { return ExpedienteResult<ExpedienteUbicacionDto>.NotFound("El expediente no existe."); }
+
+        var filas = await _db.ExpedienteUbicaciones.AsNoTracking()
+            .Where(u => u.ExpedienteId == id)
+            .OrderByDescending(u => u.CreatedAt)
+            .Select(u => new { u.Id, u.TopografiaElementoId, u.Fase, u.CreatedAt, u.CreatedBy, u.Observacion })
+            .ToListAsync(cancellationToken);
+
+        var codigos = await TopografiaCodigosAsync(cancellationToken);
+        var nombres = await ResolverNombresAsync(filas.Select(f => f.CreatedBy), cancellationToken);
+        string Ubic(long tid) => codigos.TryGetValue(tid, out var c) ? c : "(ubicacion)";
+        string? Por(long? cb) => cb is long v && nombres.TryGetValue(v, out var n) ? n : null;
+
+        var hist = filas.Select(f => new UbicacionHistorialItemDto(
+            f.Id, Ubic(f.TopografiaElementoId), f.Fase, Por(f.CreatedBy), f.CreatedAt, f.Observacion)).ToList();
+        var act = filas.Count == 0 ? null : new UbicacionActualDto(
+            filas[0].TopografiaElementoId, Ubic(filas[0].TopografiaElementoId), filas[0].Fase, Por(filas[0].CreatedBy), filas[0].CreatedAt);
+
+        return ExpedienteResult<ExpedienteUbicacionDto>.Ok(new ExpedienteUbicacionDto(act, hist));
+    }
+
+    public async Task<IReadOnlyList<TopografiaOpcionDto>> GetTopografiaOpcionesAsync(CancellationToken cancellationToken = default)
+    {
+        var codigos = await TopografiaCodigosAsync(cancellationToken);
+        var nodos = await _db.TopografiaElementos.AsNoTracking()
+            .Where(t => t.Estado != TopografiaEstado.Inactivo)
+            .Select(t => new { t.Id, t.Nombre })
+            .ToListAsync(cancellationToken);
+        return nodos
+            .Select(n => new TopografiaOpcionDto(n.Id, codigos.TryGetValue(n.Id, out var c) ? c : "", n.Nombre))
+            .OrderBy(o => o.Codigo).ToList();
+    }
+
+    public async Task<ExpedienteResult<bool>> AsignarUbicacionAsync(
+        long id, long topografiaElementoId, string? observacion, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var e = await _db.Expedientes.FirstOrDefaultAsync(x => x.Id == id && !x.Eliminado, cancellationToken);
+        if (e is null) { return ExpedienteResult<bool>.NotFound("El expediente no existe."); }
+        var nodo = await _db.TopografiaElementos.AsNoTracking().FirstOrDefaultAsync(t => t.Id == topografiaElementoId, cancellationToken);
+        if (nodo is null) { return ExpedienteResult<bool>.NotFound("La ubicacion topografica no existe."); }
+
+        var tenantId = _tenantContext.TenantId!.Value;
+        var yaTenia = await _db.ExpedienteUbicaciones.AnyAsync(u => u.ExpedienteId == id, cancellationToken);
+        _db.ExpedienteUbicaciones.Add(new ExpedienteUbicacion
+        {
+            TenantId = tenantId, ExpedienteId = id, TopografiaElementoId = topografiaElementoId,
+            Fase = e.Fase, Observacion = string.IsNullOrWhiteSpace(observacion) ? null : observacion.Trim()
+        });
+        e.EstadoUbicacion = yaTenia ? EstadoUbicacionExpediente.Reubicado : EstadoUbicacionExpediente.Ubicado;
+        _audit.Write(actorUserId, "expediente.ubicar", nameof(Expediente), e,
+            previousValue: null, newValue: new { topografiaElementoId, e.EstadoUbicacion }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ExpedienteResult<bool>.Ok(true);
+    }
+
+    /// <summary>Codigo topografico (siglas concatenadas raiz-&gt;nodo) de cada elemento del tenant.</summary>
+    private async Task<Dictionary<long, string>> TopografiaCodigosAsync(CancellationToken cancellationToken)
+    {
+        var todos = await _db.TopografiaElementos.AsNoTracking()
+            .Select(t => new { t.Id, t.ParentId, t.Sigla }).ToListAsync(cancellationToken);
+        var porId = todos.ToDictionary(t => t.Id);
+        var codigos = new Dictionary<long, string>();
+        foreach (var t in todos)
+        {
+            var partes = new List<string>();
+            var cur = (long?)t.Id;
+            var guard = 0;
+            while (cur is long cid && porId.TryGetValue(cid, out var node) && guard++ < 50)
+            {
+                partes.Insert(0, node.Sigla);
+                cur = node.ParentId;
+            }
+            codigos[t.Id] = string.Join("-", partes);
+        }
+        return codigos;
+    }
+
+    // ================= Vinculos (RF14) =================
+
+    public async Task<ExpedienteResult<IReadOnlyList<VinculoDto>>> GetVinculosAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var existe = await _db.Expedientes.AsNoTracking().AnyAsync(e => e.Id == id && !e.Eliminado, cancellationToken);
+        if (!existe) { return ExpedienteResult<IReadOnlyList<VinculoDto>>.NotFound("El expediente no existe."); }
+
+        var vinculos = await _db.ExpedienteVinculos.AsNoTracking()
+            .Where(v => v.Activo && (v.ExpedienteOrigenId == id || v.ExpedienteDestinoId == id))
+            .Select(v => new { v.Id, v.ExpedienteOrigenId, v.ExpedienteDestinoId, v.Observacion, v.CreatedAt, v.CreatedBy })
+            .ToListAsync(cancellationToken);
+
+        var otrosIds = vinculos.Select(v => v.ExpedienteOrigenId == id ? v.ExpedienteDestinoId : v.ExpedienteOrigenId).Distinct().ToList();
+        var otros = await _db.Expedientes.AsNoTracking()
+            .Where(e => otrosIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.Codigo, e.Nombre, e.Estado })
+            .ToListAsync(cancellationToken);
+        var otrosMap = otros.ToDictionary(o => o.Id);
+        var nombres = await ResolverNombresAsync(vinculos.Select(v => v.CreatedBy), cancellationToken);
+
+        var res = vinculos.Select(v =>
+        {
+            var otroId = v.ExpedienteOrigenId == id ? v.ExpedienteDestinoId : v.ExpedienteOrigenId;
+            otrosMap.TryGetValue(otroId, out var o);
+            return new VinculoDto(v.Id, otroId, o?.Codigo ?? "", o?.Nombre ?? "", o?.Estado ?? EstadoExpediente.Abierto,
+                v.CreatedBy is long cb && nombres.TryGetValue(cb, out var n) ? n : null, v.CreatedAt, v.Observacion);
+        }).ToList();
+        return ExpedienteResult<IReadOnlyList<VinculoDto>>.Ok(res);
+    }
+
+    public async Task<IReadOnlyList<VinculoBusquedaDto>> BuscarParaVincularAsync(long id, string texto, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var nivelMax = await ResolveNivelMaxOrdenAsync(actorUserId, cancellationToken);
+        var yaVinculados = await _db.ExpedienteVinculos.AsNoTracking()
+            .Where(v => v.Activo && (v.ExpedienteOrigenId == id || v.ExpedienteDestinoId == id))
+            .Select(v => v.ExpedienteOrigenId == id ? v.ExpedienteDestinoId : v.ExpedienteOrigenId)
+            .ToListAsync(cancellationToken);
+
+        var q = _db.Expedientes.AsNoTracking()
+            .Where(e => !e.Eliminado && e.Id != id && e.NivelClasificacion!.NivelOrden <= nivelMax
+                        && !yaVinculados.Contains(e.Id));
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            var t = texto.Trim().ToLower();
+            q = q.Where(e => e.Codigo.ToLower().Contains(t) || e.Nombre.ToLower().Contains(t));
+        }
+        return await q.OrderByDescending(e => e.CreatedAt).Take(20)
+            .Select(e => new VinculoBusquedaDto(e.Id, e.Codigo, e.Nombre, e.Estado))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<ExpedienteResult<bool>> CrearVinculoAsync(long id, long destinoId, string? observacion, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (id == destinoId) { return ExpedienteResult<bool>.Invalid("Un expediente no se puede vincular consigo mismo."); }
+        var origen = await _db.Expedientes.AsNoTracking().AnyAsync(e => e.Id == id && !e.Eliminado, cancellationToken);
+        var destino = await _db.Expedientes.AsNoTracking().AnyAsync(e => e.Id == destinoId && !e.Eliminado, cancellationToken);
+        if (!origen || !destino) { return ExpedienteResult<bool>.NotFound("El expediente no existe."); }
+
+        var dup = await _db.ExpedienteVinculos.AnyAsync(v => v.Activo &&
+            ((v.ExpedienteOrigenId == id && v.ExpedienteDestinoId == destinoId)
+             || (v.ExpedienteOrigenId == destinoId && v.ExpedienteDestinoId == id)), cancellationToken);
+        if (dup) { return ExpedienteResult<bool>.Conflict("Los expedientes ya estan vinculados."); }
+
+        var tenantId = _tenantContext.TenantId!.Value;
+        var vinculo = new ExpedienteVinculo
+        {
+            TenantId = tenantId, ExpedienteOrigenId = id, ExpedienteDestinoId = destinoId,
+            Observacion = string.IsNullOrWhiteSpace(observacion) ? null : observacion.Trim(), Activo = true
+        };
+        _db.ExpedienteVinculos.Add(vinculo);
+        _audit.Write(actorUserId, "expediente.vincular", nameof(ExpedienteVinculo), vinculo,
+            previousValue: null, newValue: new { id, destinoId }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ExpedienteResult<bool>.Ok(true);
+    }
+
+    public async Task<ExpedienteResult<bool>> DesvincularAsync(long vinculoId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var v = await _db.ExpedienteVinculos.FirstOrDefaultAsync(x => x.Id == vinculoId && x.Activo, cancellationToken);
+        if (v is null) { return ExpedienteResult<bool>.NotFound("El vinculo no existe."); }
+        v.Activo = false;
+        _audit.Write(actorUserId, "expediente.desvincular", nameof(ExpedienteVinculo), v,
+            previousValue: new { Activo = true }, newValue: new { Activo = false }, tenantId: v.TenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ExpedienteResult<bool>.Ok(true);
+    }
+
+    // ================= Trazabilidad (RF09) =================
+
+    public async Task<IReadOnlyList<TrazaItemDto>> GetTrazabilidadAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var tenantId = _tenantContext.TenantId;
+        var logs = await _db.SuperAdminAuditLogs.AsNoTracking()
+            .Where(l => l.EntityName == nameof(Expediente) && l.EntityId == id && l.TenantId == tenantId)
+            .OrderByDescending(l => l.CreatedAt)
+            .Select(l => new { l.ActionName, l.ActorUserId, l.CreatedAt, l.NewValue, l.Reason })
+            .ToListAsync(cancellationToken);
+
+        var nombres = await ResolverNombresAsync(logs.Select(l => (long?)l.ActorUserId), cancellationToken);
+        return logs.Select(l => new TrazaItemDto(
+            l.ActionName,
+            nombres.TryGetValue(l.ActorUserId, out var n) ? n : null,
+            l.CreatedAt,
+            l.Reason ?? l.NewValue)).ToList();
     }
 }

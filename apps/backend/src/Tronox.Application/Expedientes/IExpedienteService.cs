@@ -45,4 +45,36 @@ public interface IExpedienteService
     /// <summary>Eliminacion logica con justificacion y auditoria (invariante 8).</summary>
     Task<ExpedienteResult<bool>> EliminarAsync(
         long id, string justificacion, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Cierre / reapertura (RF08) ----
+
+    /// <summary>Cierra un expediente Abierto: calcula el hash del indice, firma el asiento y audita.</summary>
+    Task<ExpedienteResult<bool>> CerrarAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Reabre un expediente Cerrado con justificacion (&gt;= 20 chars); deja asiento y auditoria.</summary>
+    Task<ExpedienteResult<bool>> ReabrirAsync(long id, string justificacion, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Ubicacion fisica (RF12) ----
+
+    Task<ExpedienteResult<ExpedienteUbicacionDto>> GetUbicacionAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Nodos de topografia asignables (arbol aplanado con su codigo topografico).</summary>
+    Task<IReadOnlyList<TopografiaOpcionDto>> GetTopografiaOpcionesAsync(CancellationToken cancellationToken = default);
+
+    Task<ExpedienteResult<bool>> AsignarUbicacionAsync(
+        long id, long topografiaElementoId, string? observacion, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Vinculos (RF14) ----
+
+    Task<ExpedienteResult<IReadOnlyList<VinculoDto>>> GetVinculosAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VinculoBusquedaDto>> BuscarParaVincularAsync(long id, string texto, long actorUserId, CancellationToken cancellationToken = default);
+
+    Task<ExpedienteResult<bool>> CrearVinculoAsync(long id, long destinoId, string? observacion, long actorUserId, CancellationToken cancellationToken = default);
+
+    Task<ExpedienteResult<bool>> DesvincularAsync(long vinculoId, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Trazabilidad (RF09) ----
+
+    Task<IReadOnlyList<TrazaItemDto>> GetTrazabilidadAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 }

@@ -128,4 +128,11 @@ public sealed record ExpedienteDetalleDto(
     DateOnly? FechaCierre,
     DateTimeOffset FechaCreacion,
     string? CreadoPorNombre,
-    IReadOnlyList<MetadatoValorDto> Metadatos);
+    IReadOnlyList<MetadatoValorDto> Metadatos,
+    // ---- Informacion TRD heredada de la asignacion (RF04, solo lectura) ----
+    string CodigoCcd,
+    int TiempoGestion,
+    int TiempoCentral,
+    DisposicionFinal DisposicionFinal,
+    bool SerieDdhhDih,
+    string? Procedimiento);

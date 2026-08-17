@@ -58,7 +58,9 @@ public static class DependencyInjection
         // por otra implementacion de IObjectStorage sin tocar los casos de uso.
         services.Configure<Storage.ObjectStorageOptions>(
             configuration.GetSection(Storage.ObjectStorageOptions.SectionName));
-        services.AddSingleton<IObjectStorage, Storage.AzureBlobObjectStorage>();
+        // Scoped (ADR-012): resuelve la cuenta Azure Blob por-tenant (config cifrada) con fallback global.
+        services.AddScoped<IObjectStorage, Storage.AzureBlobObjectStorage>();
+        services.AddSingleton<IBlobConnectionTester, Storage.BlobConnectionTester>();
 
         // Gateway de IA multi-proveedor (base de RQ16).
         services.AddHttpClient<Tronox.Application.Tenancy.IAiProviderClient, Ai.AiProviderClient>();

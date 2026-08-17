@@ -548,6 +548,42 @@
         </div>
     </div>
 
+    @* ===== Almacenamiento de Documentos (Azure Blob por entidad, ADR-012) ===== *@
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-head">
+            <div class="tx-ent-card-icon tone-primary"><i class="bi bi-hdd-network-fill"></i></div>
+            <div>
+                <div class="tx-ent-card-title">Almacenamiento de Documentos (Azure Blob)</div>
+                <div class="tx-ent-card-sub">Cuenta de Azure Blob Storage donde se guardan los binarios de esta entidad. La cadena de conexión se cifra (AES-256) y nunca se muestra en claro. Si se desactiva, se usa el almacenamiento global.</div>
+            </div>
+            <button class="tx-ent-btn primary" style="margin-left:auto;" @onclick="GuardarAlmacenamientoAsync" disabled="@_busy">Guardar almacenamiento</button>
+        </div>
+        <div class="tx-ent-card-body">
+            <label class="dc-req" style="margin-bottom:12px;display:inline-flex;gap:8px;"><input type="checkbox" @bind="_alm.Activo" /> Usar esta cuenta para los documentos de la entidad</label>
+            <div class="tx-ent-grid c2">
+                <div class="tx-ent-field">
+                    <label>Cadena de conexión @if (_alm.Configurado) { <span class="tx-ent-badge sm ok">Configurada</span> }</label>
+                    <input class="tx-ent-input" type="password" @bind="_almConn" placeholder="@(_alm.Configurado ? "Guardada — deja vacío para conservarla" : "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...")" />
+                    <div class="tx-ent-hint">Azure Storage connection string. Déjala vacía para conservar la actual.</div>
+                </div>
+                <div class="tx-ent-field">
+                    <label>Contenedor</label>
+                    <input class="tx-ent-input" maxlength="100" @bind="_alm.Contenedor" placeholder="tronox-documentos" />
+                </div>
+            </div>
+            <div class="tx-ent-grid c2" style="margin-top:8px;align-items:end;">
+                <div class="tx-ent-field">
+                    <label>Prefijo (carpeta virtual, opcional)</label>
+                    <input class="tx-ent-input" maxlength="200" @bind="_alm.Prefijo" placeholder="p.ej. entidad-00132" />
+                </div>
+                <div class="tx-ent-field">
+                    <button class="tx-ent-btn" @onclick="ProbarAlmacenamientoAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_almConn))"><i class="bi bi-plug"></i> Probar conexión</button>
+                </div>
+            </div>
+            @if (_almMsg is not null) { <div class="tx-ent-alert @(_almOk ? "ok" : "")" style="margin-top:10px;"><i class="bi @(_almOk ? "bi-check-circle" : "bi-x-circle")"></i><span>@_almMsg</span></div> }
+        </div>
+    </div>
+
     @* ===== Calendario Habil (legacy ctrlCalendarioHabil) - siempre visible, sin gateo por seleccion ===== *@
     <CalendarioHabilPanel />
 </div>
@@ -607,6 +643,9 @@
     private string? _observaciones;
     private SeguridadDto _seg = new();
     private FirmaConfigDto _fir = new();
+    private AlmacenamientoDto _alm = new();
+    private string _almConn = "";
+    private string? _almMsg; private bool _almOk;
     private string? _logoUrl;
     private string? _logoError;
     private string _zonaHoraria = "America/Bogota";
@@ -639,6 +678,7 @@
         await RecargarAsync();
         _seg = await ConfigExtra.GetSeguridadAsync();
         _fir = await ConfigExtra.GetFirmaAsync();
+        _alm = await ConfigExtra.GetAlmacenamientoAsync();
         _loading = false;
     }
 
@@ -653,6 +693,32 @@
     {
         _busy = true;
         try { await ConfigExtra.GuardarFirmaAsync(_fir); _mensaje = "Configuración de firma guardada."; _esError = false; }
+        finally { _busy = false; }
+    }
+
+    private async Task GuardarAlmacenamientoAsync()
+    {
+        _busy = true; _almMsg = null;
+        try
+        {
+            _alm.ConnectionString = string.IsNullOrWhiteSpace(_almConn) ? null : _almConn;
+            await ConfigExtra.GuardarAlmacenamientoAsync(_alm);
+            _almConn = "";
+            _alm = await ConfigExtra.GetAlmacenamientoAsync();
+            _almMsg = "Configuración de almacenamiento guardada."; _almOk = true;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ProbarAlmacenamientoAsync()
+    {
+        _busy = true; _almMsg = null;
+        try
+        {
+            var err = await ConfigExtra.ProbarAlmacenamientoAsync(_almConn, _alm.Contenedor);
+            if (err is null) { _almMsg = "Conexión exitosa al contenedor."; _almOk = true; }
+            else { _almMsg = $"No se pudo conectar: {err}"; _almOk = false; }
+        }
         finally { _busy = false; }
     }
 

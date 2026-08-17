@@ -1,0 +1,597 @@
+@page "/modulo/expedientes-detalle/{Id:long}"
+@attribute [Authorize(Policy = "Perm:modulo/expedientes-mios:View")]
+@* RQ03 - Vista de DETALLE del expediente (calcada del legacy exp_detalle.aspx, al que se llega por
+   redireccion desde la bandeja). Pagina completa con 5 pestanas. Reales: Detalle (ficha), Ubicacion
+   fisica, Trazabilidad, Vinculados, y Cerrar/Reabrir. Diferidas (muestran aviso): Documentos (RQ04),
+   Firma/Indice (RQ05), Cambiar Fase (Transferencias), Rotulo, Compartir. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Expedientes
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IExpedienteService Svc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
+
+<PageTitle>Expediente - TRONOX SGDEA</PageTitle>
+
+<div class="exp-wrap det">
+
+@if (_notFound)
+{
+    <div class="exp-flash err" style="margin-top:12px"><i class="bi bi-exclamation-triangle"></i> El expediente no existe o no tienes permiso para verlo.</div>
+    <button class="exp-btn" @onclick="Volver"><i class="bi bi-arrow-left"></i> Volver a la bandeja</button>
+}
+else if (_d is null)
+{
+    <div class="exp-empty">Cargando...</div>
+}
+else
+{
+    <nav class="tronox-breadcrumb" aria-label="Ruta">
+        <a href="/inicio">Inicio</a><span class="sep">/</span>
+        <a href="/modulo/expedientes-mios">Expedientes</a><span class="sep">/</span>
+        <span class="cur">@_d.Codigo</span>
+    </nav>
+
+    <button class="exp-btn" style="margin:6px 0 12px" @onclick="Volver"><i class="bi bi-chevron-left"></i> Volver a la bandeja</button>
+
+    @if (_flash is not null) { <div class="exp-flash @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+    @* ===================== HEADER ===================== *@
+    <div class="det-head">
+        <div class="det-head-main">
+            <div class="det-ruta">@_d.FondoNombre / @_d.DependenciaNombre / @_d.SerieCodigo @_d.SerieNombre</div>
+            <h1 class="det-codigo mono">@_d.Codigo</h1>
+            <div class="det-nombre">@_d.Nombre</div>
+            <div class="det-badges">
+                <span class="exp-pill @EstadoClass(_d.Estado)"><span class="dot"></span>@_d.Estado</span>
+                <span class="exp-pill @FaseClass(_d.Fase)">@_d.Fase</span>
+                <span class="exp-pill @ClasClass(_d.NivelNombre)">@_d.NivelNombre</span>
+                <span class="exp-pill">Ubicación: @UbicTexto(_d.EstadoUbicacion)</span>
+            </div>
+            <div class="det-metaline">
+                <span><i class="bi bi-diagram-3"></i> Serie / Subserie: <strong>@_d.SerieCodigo — @_d.SerieNombre</strong></span>
+                <span><i class="bi bi-calendar3"></i> Apertura: @_d.FechaApertura.ToString("yyyy-MM-dd")</span>
+                <span><i class="bi bi-person"></i> Creado por: @(_d.CreadoPorNombre ?? "—")</span>
+            </div>
+        </div>
+        <div class="det-head-actions">
+            <button class="exp-btn" @onclick='() => Toast("Cambiar Fase depende del módulo de Transferencias (próximamente).")'><i class="bi bi-arrow-left-right"></i> Cambiar Fase</button>
+            <button class="exp-btn" @onclick='() => Toast("Índice Electrónico depende de Documentos (RQ04) + Firma (RQ05) (próximamente).")'><i class="bi bi-file-earmark-text"></i> Índice</button>
+            <button class="exp-btn" @onclick='() => Toast("Rótulo depende del módulo de rotulación (próximamente).")'><i class="bi bi-tag"></i> Rótulo</button>
+            <button class="exp-btn" @onclick='() => Toast("Compartir expediente depende del módulo de Compartir (RF11, próximamente).")'><i class="bi bi-share"></i> Compartir</button>
+            @if (_canEdit && _d.Estado == EstadoExpediente.Abierto)
+            {
+                <button class="exp-btn danger" @onclick="@(() => _showCerrar = true)"><i class="bi bi-lock"></i> Cerrar Expediente</button>
+            }
+            @if (_canEdit && _d.Estado == EstadoExpediente.Cerrado)
+            {
+                <button class="exp-btn" @onclick="AbrirReabrir"><i class="bi bi-unlock"></i> Abrir Expediente</button>
+            }
+        </div>
+    </div>
+
+    @* ===================== TABS ===================== *@
+    <div class="exp-tabs det-tabs">
+        <button class="exp-tab @TabCls("documentos")" @onclick='() => SetTab("documentos")'><i class="bi bi-file-text"></i> Documentos</button>
+        <button class="exp-tab @TabCls("detalle")" @onclick='() => SetTab("detalle")'><i class="bi bi-info-circle"></i> Detalle</button>
+        <button class="exp-tab @TabCls("ubicacion")" @onclick='() => SetTab("ubicacion")'><i class="bi bi-geo-alt"></i> Ubicación Física</button>
+        <button class="exp-tab @TabCls("trazabilidad")" @onclick='() => SetTab("trazabilidad")'><i class="bi bi-clock-history"></i> Trazabilidad</button>
+        <button class="exp-tab @TabCls("vinculados")" @onclick='() => SetTab("vinculados")'><i class="bi bi-link-45deg"></i> Expedientes Vinculados</button>
+    </div>
+
+    @* ===================== PANE: DOCUMENTOS ===================== *@
+    @if (_tab == "documentos")
+    {
+        <div class="exp-card det-defer">
+            <i class="bi bi-file-earmark-text"></i>
+            <div><strong>Documentos del expediente</strong>
+                <div class="exp-empty-sub">La gestión de documentos (subir, versionar, firmar, foliar) se habilita con el módulo <strong>Documentos (RQ04)</strong>. Aún no está construido.</div>
+            </div>
+        </div>
+    }
+
+    @* ===================== PANE: DETALLE ===================== *@
+    @if (_tab == "detalle")
+    {
+        <div class="exp-card det-ficha">
+            <div class="det-sec">
+                <div class="det-sec-t">Identificación</div>
+                <div class="det-grid">
+                    <div><span class="k">Código</span><span class="v mono">@_d.Codigo</span></div>
+                    <div><span class="k">Nombre</span><span class="v">@_d.Nombre</span></div>
+                    <div><span class="k">Estado</span><span class="v"><span class="exp-pill @EstadoClass(_d.Estado)"><span class="dot"></span>@_d.Estado</span></span></div>
+                    <div><span class="k">Fase</span><span class="v"><span class="exp-pill @FaseClass(_d.Fase)">@_d.Fase</span></span></div>
+                    <div><span class="k">Clasificación</span><span class="v"><span class="exp-pill @ClasClass(_d.NivelNombre)">@_d.NivelNombre</span></span></div>
+                    <div><span class="k">Estado ubicación</span><span class="v">@UbicTexto(_d.EstadoUbicacion)</span></div>
+                </div>
+            </div>
+            <div class="det-sec">
+                <div class="det-sec-t">Clasificación TRD</div>
+                <div class="det-grid">
+                    <div><span class="k">Fondo</span><span class="v">@(_d.FondoNombre ?? "—")</span></div>
+                    <div><span class="k">Dependencia</span><span class="v">@_d.DependenciaNombre</span></div>
+                    <div><span class="k">Serie / Subserie</span><span class="v">@_d.SerieCodigo — @_d.SerieNombre</span></div>
+                    <div><span class="k">Código CCD</span><span class="v mono">@_d.CodigoCcd</span></div>
+                    <div><span class="k">Versión TRD</span><span class="v">@_d.VersionTrd</span></div>
+                </div>
+            </div>
+            <div class="det-sec">
+                <div class="det-sec-t">Información TRD (retención y disposición)</div>
+                <div class="det-grid">
+                    <div><span class="k">Tiempo en Gestión</span><span class="v">@_d.TiempoGestion años</span></div>
+                    <div><span class="k">Tiempo en Central</span><span class="v">@_d.TiempoCentral años</span></div>
+                    <div><span class="k">Disposición final</span><span class="v">@DispTexto(_d.DisposicionFinal)</span></div>
+                    <div><span class="k">Documentos DD.HH / DIH</span><span class="v">@(_d.SerieDdhhDih ? "Sí" : "No")</span></div>
+                    <div class="wide"><span class="k">Procedimiento</span><span class="v">@(string.IsNullOrWhiteSpace(_d.Procedimiento) ? "—" : _d.Procedimiento)</span></div>
+                </div>
+            </div>
+            <div class="det-sec">
+                <div class="det-sec-t">Datos del sistema</div>
+                <div class="det-grid">
+                    <div><span class="k">Fecha apertura</span><span class="v">@_d.FechaApertura.ToString("yyyy-MM-dd")</span></div>
+                    <div><span class="k">Fecha cierre</span><span class="v">@(_d.FechaCierre?.ToString("yyyy-MM-dd") ?? "—")</span></div>
+                    <div><span class="k">Creado en sistema</span><span class="v">@_d.FechaCreacion.ToString("yyyy-MM-dd HH:mm")</span></div>
+                    <div><span class="k">Creado por</span><span class="v">@(_d.CreadoPorNombre ?? "—")</span></div>
+                </div>
+            </div>
+            @if (_d.Metadatos.Count > 0)
+            {
+                <div class="det-sec">
+                    <div class="det-sec-t">Metadatos de la serie</div>
+                    <div class="det-grid">
+                        @foreach (var m in _d.Metadatos)
+                        {
+                            <div><span class="k">@m.Nombre</span><span class="v">@(string.IsNullOrWhiteSpace(m.Valor) ? "—" : m.Valor)</span></div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* ===================== PANE: UBICACION ===================== *@
+    @if (_tab == "ubicacion")
+    {
+        <div class="exp-card" style="padding:18px">
+            <div class="det-secbar">
+                <div>
+                    <div class="det-sec-t" style="margin:0">Ubicación Física</div>
+                    <div class="exp-empty-sub">Historial topográfico del expediente (append-only) ligado a la topografía del archivo (RQ02).</div>
+                </div>
+                @if (_canEdit)
+                {
+                    <button class="exp-btn exp-btn-primary" @onclick="AbrirUbicacion"><i class="bi bi-geo-alt"></i> Asignar / Cambiar ubicación</button>
+                }
+            </div>
+            @if (_ubic?.Actual is not null)
+            {
+                <div class="det-ubic-actual">
+                    <i class="bi bi-geo-alt-fill"></i>
+                    <div>
+                        <div class="k">Ubicación actual</div>
+                        <div class="v mono">@_ubic.Actual.Ubicacion</div>
+                        <div class="exp-empty-sub">Fase @_ubic.Actual.Fase · por @(_ubic.Actual.AsignadoPor ?? "—") · @_ubic.Actual.Fecha.ToString("yyyy-MM-dd HH:mm")</div>
+                    </div>
+                </div>
+            }
+            @if (_ubic is null)
+            {
+                <div class="exp-empty">Cargando...</div>
+            }
+            else if (_ubic.Historial.Count == 0)
+            {
+                <div class="exp-empty"><i class="bi bi-geo-alt"></i><div><strong>Sin ubicación</strong><div class="exp-empty-sub">Este expediente aún no tiene una ubicación física asignada.</div></div></div>
+            }
+            else
+            {
+                <table class="exp-table" style="margin-top:12px">
+                    <thead><tr><th>Ubicación</th><th>Fase</th><th>Asignado por</th><th>Fecha</th><th>Observación</th></tr></thead>
+                    <tbody>
+                        @foreach (var h in _ubic.Historial)
+                        {
+                            <tr><td class="mono">@h.Ubicacion</td><td>@h.Fase</td><td>@(h.AsignadoPor ?? "—")</td><td>@h.Fecha.ToString("yyyy-MM-dd HH:mm")</td><td>@(h.Observacion ?? "—")</td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+
+    @* ===================== PANE: TRAZABILIDAD ===================== *@
+    @if (_tab == "trazabilidad")
+    {
+        <div class="exp-card" style="padding:18px">
+            <div class="det-sec-t" style="margin-top:0">Trazabilidad</div>
+            <div class="exp-empty-sub" style="margin-bottom:12px">Pistas de auditoría del expediente (append-only, RF09).</div>
+            @if (_traza is null)
+            {
+                <div class="exp-empty">Cargando...</div>
+            }
+            else if (_traza.Count == 0)
+            {
+                <div class="exp-empty"><i class="bi bi-clock-history"></i><div><strong>Sin eventos</strong></div></div>
+            }
+            else
+            {
+                <div class="det-timeline">
+                    @foreach (var t in _traza)
+                    {
+                        <div class="det-tl-item">
+                            <div class="det-tl-dot"></div>
+                            <div class="det-tl-body">
+                                <div class="det-tl-head"><strong>@AccionTexto(t.Accion)</strong> <span class="exp-empty-sub">· @(t.Usuario ?? "—") · @t.Fecha.ToString("yyyy-MM-dd HH:mm")</span></div>
+                                @if (!string.IsNullOrWhiteSpace(t.Detalle)) { <div class="det-tl-detalle mono">@t.Detalle</div> }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* ===================== PANE: VINCULADOS ===================== *@
+    @if (_tab == "vinculados")
+    {
+        <div class="exp-card" style="padding:18px">
+            <div class="det-sec-t" style="margin-top:0">Expedientes Vinculados</div>
+            @if (_canEdit)
+            {
+                <div class="det-vinc-buscar">
+                    <input class="exp-search" style="flex:1" placeholder="Buscar expediente por código o nombre..." @bind="_vincTexto" @bind:event="oninput" @onkeyup="OnVincKey" />
+                    <button class="exp-btn" @onclick="BuscarVinculo"><i class="bi bi-search"></i> Buscar</button>
+                </div>
+                @if (_vincResultados.Count > 0)
+                {
+                    <div class="det-vinc-res">
+                        <input class="exp-search" style="width:100%;margin-bottom:8px" placeholder="Observación del vínculo (opcional)" @bind="_vincObs" />
+                        <table class="exp-table">
+                            <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var r in _vincResultados)
+                                {
+                                    var rr = r;
+                                    <tr><td class="mono">@rr.Codigo</td><td>@rr.Nombre</td><td><span class="exp-pill @EstadoClass(rr.Estado)"><span class="dot"></span>@rr.Estado</span></td>
+                                        <td class="center"><button class="exp-btn sm exp-btn-primary" @onclick="@(() => Vincular(rr.Id))"><i class="bi bi-link"></i> Vincular</button></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+            @if (_vinculos is null)
+            {
+                <div class="exp-empty">Cargando...</div>
+            }
+            else if (_vinculos.Count == 0)
+            {
+                <div class="exp-empty"><i class="bi bi-link-45deg"></i><div><strong>Sin vínculos</strong><div class="exp-empty-sub">Este expediente no está vinculado con otros.</div></div></div>
+            }
+            else
+            {
+                <table class="exp-table" style="margin-top:12px">
+                    <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th>Vinculado por</th><th>Fecha</th><th>Observación</th><th class="center">Acciones</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in _vinculos)
+                        {
+                            var vv = v;
+                            <tr>
+                                <td class="mono">@vv.OtroCodigo</td><td>@vv.OtroNombre</td>
+                                <td><span class="exp-pill @EstadoClass(vv.OtroEstado)"><span class="dot"></span>@vv.OtroEstado</span></td>
+                                <td>@(vv.VinculadoPor ?? "—")</td><td>@vv.Fecha.ToString("yyyy-MM-dd")</td><td>@(vv.Observacion ?? "—")</td>
+                                <td class="center"><div class="exp-row-actions">
+                                    <button class="exp-act" title="Ver" @onclick="@(() => Nav.NavigateTo($"/modulo/expedientes-detalle/{vv.OtroExpedienteId}"))"><i class="bi bi-eye"></i></button>
+                                    @if (_canEdit) { <button class="exp-act danger" title="Desvincular" @onclick="@(() => Desvincular(vv.VinculoId))"><i class="bi bi-link-45deg"></i></button> }
+                                </div></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+}
+</div>
+
+@* ===================== Modales ===================== *@
+@if (_showCerrar && _d is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showCerrar = false)">
+        <div class="modal-dialog" style="max-width:520px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3><i class="bi bi-lock"></i> Cerrar expediente</h3><button class="modal-close" @onclick="@(() => _showCerrar = false)">&times;</button></div>
+            <div class="modal-body">
+                <p>Se cerrará el expediente <strong class="mono">@_d.Codigo</strong>. Se calcula un <strong>hash SHA-256</strong> del índice como sello de integridad y se registra en la trazabilidad. La firma criptográfica se aplicará cuando exista el módulo de firma (RQ05).</p>
+            </div>
+            <div class="modal-foot">
+                <button class="exp-btn" @onclick="@(() => _showCerrar = false)" disabled="@_busy">Cancelar</button>
+                <button class="exp-btn danger" @onclick="CerrarExp" disabled="@_busy"><i class="bi bi-lock"></i> Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showReabrir && _d is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showReabrir = false)">
+        <div class="modal-dialog" style="max-width:520px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3><i class="bi bi-unlock"></i> Abrir expediente</h3><button class="modal-close" @onclick="@(() => _showReabrir = false)">&times;</button></div>
+            <div class="modal-body">
+                @if (_modalErr is not null) { <div class="exp-flash err">@_modalErr</div> }
+                <p>Reabrir <strong class="mono">@_d.Codigo</strong>. Indica la justificación (mínimo 20 caracteres):</p>
+                <textarea class="exp-search" style="width:100%;height:90px;padding:10px" maxlength="1000" @bind="_reJustif"></textarea>
+            </div>
+            <div class="modal-foot">
+                <button class="exp-btn" @onclick="@(() => _showReabrir = false)" disabled="@_busy">Cancelar</button>
+                <button class="exp-btn exp-btn-primary" @onclick="ReabrirExp" disabled="@_busy">Reabrir</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showUbic && _d is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showUbic = false)">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3><i class="bi bi-geo-alt"></i> Asignar / Cambiar ubicación</h3><button class="modal-close" @onclick="@(() => _showUbic = false)">&times;</button></div>
+            <div class="modal-body">
+                @if (_modalErr is not null) { <div class="exp-flash err">@_modalErr</div> }
+                <div class="exp-field">
+                    <label>Ubicación topográfica <span class="req">*</span></label>
+                    <select class="exp-sel full" @bind="_ubTopoId">
+                        <option value="0">— Selecciona —</option>
+                        @foreach (var o in _topoOpts) { <option value="@o.Id">@o.Codigo — @o.Nombre</option> }
+                    </select>
+                    @if (_topoOpts.Count == 0) { <div class="exp-hint">No hay nodos de topografía. Créalos en Topografía Física (RQ02).</div> }
+                </div>
+                <div class="exp-field"><label>Observación</label><input class="exp-sel full" maxlength="1000" @bind="_ubObs" /></div>
+            </div>
+            <div class="modal-foot">
+                <button class="exp-btn" @onclick="@(() => _showUbic = false)" disabled="@_busy">Cancelar</button>
+                <button class="exp-btn exp-btn-primary" @onclick="GuardarUbicacion" disabled="@(_busy || _ubTopoId <= 0)">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_toast is not null) { <div class="exp-toast" @onclick="@(() => _toast = null)"><i class="bi bi-info-circle"></i> @_toast</div> }
+
+<style>
+    /* ---- Base .exp-* compartida con la bandeja (autocontenida para carga directa del detalle) ---- */
+    .exp-wrap .sep { margin:0 6px; color:#CBD5E1; } .exp-wrap .cur { color:#0F172A; font-weight:600; }
+    .exp-btn { display:inline-flex; align-items:center; gap:7px; height:38px; padding:0 14px; border-radius:9px; border:1px solid #E2E8F0; background:#fff; color:#475569; font-size:13.5px; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .exp-btn:hover { background:#F8FAFC; } .exp-btn.sm { height:32px; padding:0 11px; font-size:12.5px; }
+    .exp-btn-primary { background:#2563EB; border-color:#2563EB; color:#fff; } .exp-btn-primary:hover { background:#1D4ED8; }
+    .exp-btn.danger { background:#DC2626; border-color:#DC2626; color:#fff; } .exp-btn:disabled { opacity:.55; cursor:default; }
+    .exp-flash { display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:9px; font-size:13.5px; margin-bottom:12px; }
+    .exp-flash.ok { background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; } .exp-flash.err { background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; }
+    .exp-tabs { display:flex; gap:4px; border-bottom:1px solid #E2E8F0; margin-bottom:14px; flex-wrap:wrap; }
+    .exp-tab { border:none; background:none; padding:9px 16px; cursor:pointer; font-size:13.5px; font-weight:600; color:#475569; border-radius:8px 8px 0 0; display:inline-flex; align-items:center; gap:6px; }
+    .exp-tab:hover { background:#F8FAFC; } .exp-tab.active { background:#2563EB; color:#fff; }
+    .exp-card { background:#fff; border:1px solid #E2E8F0; border-radius:14px; overflow:hidden; }
+    .exp-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .exp-table thead th { background:#F8FAFC; color:#64748B; font-size:11px; font-weight:700; text-transform:uppercase; text-align:left; padding:11px 14px; border-bottom:1px solid #E2E8F0; white-space:nowrap; }
+    .exp-table thead th.center { text-align:center; } .exp-table tbody td { padding:11px 14px; border-bottom:1px solid #F1F5F9; vertical-align:middle; }
+    .exp-table tbody tr:hover { background:#F8FAFC; } .exp-table td.center { text-align:center; }
+    .exp-pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:11.5px; font-weight:700; background:#F1F5F9; color:#475569; }
+    .exp-pill .dot { width:7px; height:7px; border-radius:50%; }
+    .exp-pill.est-ab { background:#DCFCE7; color:#15803D; } .exp-pill.est-ab .dot { background:#16A34A; }
+    .exp-pill.est-ce { background:#FEE2E2; color:#B91C1C; } .exp-pill.est-ce .dot { background:#DC2626; }
+    .exp-pill.fa-ges { background:#DBEAFE; color:#1D4ED8; } .exp-pill.fa-cen { background:#FEF3C7; color:#B45309; } .exp-pill.fa-his { background:#EDE9FE; color:#6D28D9; }
+    .exp-pill.cl-pub { background:#DCFCE7; color:#15803D; } .exp-pill.cl-int { background:#DBEAFE; color:#1D4ED8; } .exp-pill.cl-res { background:#FEF3C7; color:#B45309; } .exp-pill.cl-cla { background:#FEE2E2; color:#B91C1C; }
+    .exp-row-actions { display:inline-flex; gap:4px; }
+    .exp-act { width:30px; height:30px; border-radius:7px; border:1px solid #E2E8F0; background:#fff; color:#475569; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:13px; }
+    .exp-act:hover { background:#EFF6FF; color:#2563EB; border-color:#BFDBFE; } .exp-act.danger:hover { background:#FEE2E2; color:#DC2626; border-color:#FECACA; }
+    .exp-empty { text-align:center; padding:34px 14px; color:#94A3B8; } .exp-empty i { font-size:30px; display:block; margin-bottom:8px; color:#CBD5E1; }
+    .exp-empty-sub { font-size:12px; color:#94A3B8; }
+    .exp-field { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; } .exp-field label { font-size:13px; font-weight:600; color:#334155; } .exp-field .req { color:#DC2626; }
+    .exp-hint { font-size:11.5px; color:#94A3B8; }
+    .exp-search { height:40px; border:1px solid #E2E8F0; border-radius:9px; padding:0 12px; font-size:13.5px; background:#fff; }
+    .exp-sel { height:40px; border:1px solid #E2E8F0; border-radius:9px; padding:0 12px; font-size:13.5px; background:#fff; color:#0F172A; cursor:pointer; } .exp-sel.full { width:100%; }
+    .exp-search:focus, .exp-sel:focus { outline:none; border-color:#93C5FD; box-shadow:0 0 0 3px rgba(37,99,235,.10); }
+    .exp-toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#0F172A; color:#fff; padding:12px 18px; border-radius:10px; font-size:13px; z-index:1200; cursor:pointer; box-shadow:0 10px 30px rgba(15,23,42,.3); display:flex; align-items:center; gap:8px; max-width:520px; }
+    .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; z-index:1080; padding:20px; }
+    .modal-dialog { background:#fff; border-radius:14px; box-shadow:0 20px 45px rgba(15,23,42,.25); display:flex; flex-direction:column; max-height:92vh; }
+    .modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:15px 18px; border-bottom:1px solid #E2E8F0; } .modal-head h3 { margin:0; font-size:16px; font-weight:700; }
+    .modal-close { border:none; background:none; font-size:22px; color:#94A3B8; cursor:pointer; line-height:1; } .modal-body { padding:18px; overflow-y:auto; }
+    .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:14px 18px; border-top:1px solid #E2E8F0; } .mono { font-family:Consolas, monospace; }
+
+    .exp-wrap.det { font-family: Poppins, sans-serif; color:#0F172A; padding-bottom:40px; }
+    .det-head { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:18px 20px; margin:8px 0 14px; }
+    .det-ruta { font-size:12px; color:#94A3B8; margin-bottom:4px; }
+    .det-codigo { font-size:22px; font-weight:800; margin:0; color:#0F172A; }
+    .det-nombre { font-size:15px; color:#334155; margin:2px 0 10px; }
+    .det-badges { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+    .det-metaline { display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; color:#64748B; }
+    .det-metaline i { margin-right:4px; }
+    .det-head-actions { display:flex; gap:8px; flex-wrap:wrap; align-content:flex-start; }
+    .det-tabs { margin-bottom:14px; }
+    .det-defer { display:flex; align-items:center; gap:16px; padding:30px 24px; color:#475569; }
+    .det-defer i { font-size:30px; color:#CBD5E1; }
+    .det-ficha { padding:6px 20px 18px; }
+    .det-sec { padding:16px 0; border-bottom:1px solid #F1F5F9; }
+    .det-sec:last-child { border-bottom:none; }
+    .det-sec-t { font-size:13px; font-weight:700; color:#2563EB; text-transform:uppercase; letter-spacing:.03em; margin-bottom:12px; }
+    .det-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px 18px; }
+    .det-grid > div { display:flex; flex-direction:column; gap:3px; }
+    .det-grid > div.wide { grid-column:1 / -1; }
+    .det-grid .k { font-size:11.5px; color:#94A3B8; text-transform:uppercase; letter-spacing:.02em; }
+    .det-grid .v { font-size:13.5px; color:#0F172A; }
+    .det-secbar { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .det-ubic-actual { display:flex; gap:12px; align-items:center; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+    .det-ubic-actual i { font-size:22px; color:#2563EB; }
+    .det-ubic-actual .k { font-size:11px; color:#64748B; text-transform:uppercase; }
+    .det-ubic-actual .v { font-size:14px; font-weight:600; }
+    .det-timeline { display:flex; flex-direction:column; }
+    .det-tl-item { display:flex; gap:12px; padding-bottom:14px; position:relative; }
+    .det-tl-item:not(:last-child)::before { content:""; position:absolute; left:5px; top:14px; bottom:0; width:2px; background:#E2E8F0; }
+    .det-tl-dot { width:12px; height:12px; min-width:12px; border-radius:50%; background:#2563EB; margin-top:3px; z-index:1; }
+    .det-tl-head { font-size:13.5px; }
+    .det-tl-detalle { font-size:11.5px; color:#64748B; background:#F8FAFC; border:1px solid #F1F5F9; border-radius:6px; padding:6px 8px; margin-top:4px; word-break:break-word; }
+    .det-vinc-buscar { display:flex; gap:8px; margin-bottom:12px; }
+    .det-vinc-res { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px; margin-bottom:12px; }
+    @@media (max-width:900px){ .det-grid { grid-template-columns:1fr 1fr; } }
+    @@media (max-width:600px){ .det-grid { grid-template-columns:1fr; } }
+</style>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    private const string ModuleKey = "modulo/expedientes-mios";
+
+    private long Actor => Tenant.UserId ?? 0;
+    private bool _canEdit;
+    private bool _notFound;
+
+    private ExpedienteDetalleDto? _d;
+    private string _tab = "detalle";
+
+    private ExpedienteUbicacionDto? _ubic;
+    private IReadOnlyList<TrazaItemDto>? _traza;
+    private IReadOnlyList<VinculoDto>? _vinculos;
+
+    private string? _flash; private bool _flashOk;
+    private string? _toast;
+    private string? _modalErr;
+    private bool _busy;
+
+    // Cerrar / reabrir
+    private bool _showCerrar, _showReabrir;
+    private string _reJustif = "";
+
+    // Ubicacion
+    private bool _showUbic;
+    private IReadOnlyList<TopografiaOpcionDto> _topoOpts = [];
+    private long _ubTopoId; private string _ubObs = "";
+
+    // Vinculos
+    private string _vincTexto = "", _vincObs = "";
+    private IReadOnlyList<VinculoBusquedaDto> _vincResultados = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        var res = await Svc.GetDetalleAsync(Id, Actor);
+        if (!res.IsOk) { _notFound = true; _d = null; return; }
+        _notFound = false; _d = res.Value;
+        _ubic = null; _traza = null; _vinculos = null; _tab = "detalle";
+    }
+
+    private string TabCls(string t) => _tab == t ? "active" : "";
+    private async Task SetTab(string t)
+    {
+        _tab = t;
+        if (t == "ubicacion" && _ubic is null) { var r = await Svc.GetUbicacionAsync(Id, Actor); _ubic = r.IsOk ? r.Value : new ExpedienteUbicacionDto(null, []); }
+        if (t == "trazabilidad" && _traza is null) { _traza = await Svc.GetTrazabilidadAsync(Id, Actor); }
+        if (t == "vinculados" && _vinculos is null) { var r = await Svc.GetVinculosAsync(Id, Actor); _vinculos = r.IsOk ? r.Value : []; }
+    }
+
+    private void AbrirReabrir() { _reJustif = ""; _modalErr = null; _showReabrir = true; }
+    private void Volver() => Nav.NavigateTo("/modulo/expedientes-mios");
+    private void Toast(string m) => _toast = m;
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+
+    // ---- Cerrar / reabrir ----
+    private async Task CerrarExp()
+    {
+        _busy = true; _modalErr = null;
+        try
+        {
+            var r = await Svc.CerrarAsync(Id, Actor);
+            if (!r.IsOk) { _modalErr = r.Error; return; }
+            _showCerrar = false; Flash("Expediente cerrado. Se registró el hash de integridad.", true);
+            await Recargar();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ReabrirExp()
+    {
+        _busy = true; _modalErr = null;
+        try
+        {
+            var r = await Svc.ReabrirAsync(Id, _reJustif, Actor);
+            if (!r.IsOk) { _modalErr = r.Error; return; }
+            _showReabrir = false; Flash("Expediente reabierto.", true);
+            await Recargar();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Recargar()
+    {
+        var res = await Svc.GetDetalleAsync(Id, Actor);
+        if (res.IsOk) { _d = res.Value; }
+        _traza = null; // la traza cambio
+        if (_tab == "trazabilidad") { _traza = await Svc.GetTrazabilidadAsync(Id, Actor); }
+    }
+
+    // ---- Ubicacion ----
+    private async Task AbrirUbicacion()
+    {
+        _modalErr = null; _ubTopoId = 0; _ubObs = "";
+        if (_topoOpts.Count == 0) { _topoOpts = await Svc.GetTopografiaOpcionesAsync(); }
+        _showUbic = true;
+    }
+
+    private async Task GuardarUbicacion()
+    {
+        _busy = true; _modalErr = null;
+        try
+        {
+            var r = await Svc.AsignarUbicacionAsync(Id, _ubTopoId, _ubObs, Actor);
+            if (!r.IsOk) { _modalErr = r.Error; return; }
+            _showUbic = false; Flash("Ubicación asignada.", true);
+            var ru = await Svc.GetUbicacionAsync(Id, Actor); _ubic = ru.IsOk ? ru.Value : _ubic;
+            var rd = await Svc.GetDetalleAsync(Id, Actor); if (rd.IsOk) { _d = rd.Value; }
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Vinculos ----
+    private async Task OnVincKey(KeyboardEventArgs e) { if (e.Key == "Enter") { await BuscarVinculo(); } }
+    private async Task BuscarVinculo() => _vincResultados = await Svc.BuscarParaVincularAsync(Id, _vincTexto, Actor);
+
+    private async Task Vincular(long destinoId)
+    {
+        _busy = true;
+        try
+        {
+            var r = await Svc.CrearVinculoAsync(Id, destinoId, _vincObs, Actor);
+            if (!r.IsOk) { Flash(r.Error ?? "No se pudo vincular.", false); return; }
+            _vincResultados = []; _vincTexto = ""; _vincObs = "";
+            var rv = await Svc.GetVinculosAsync(Id, Actor); _vinculos = rv.IsOk ? rv.Value : _vinculos;
+            Flash("Expediente vinculado.", true);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Desvincular(long vinculoId)
+    {
+        _busy = true;
+        try
+        {
+            await Svc.DesvincularAsync(vinculoId, Actor);
+            var rv = await Svc.GetVinculosAsync(Id, Actor); _vinculos = rv.IsOk ? rv.Value : _vinculos;
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Helpers de presentacion ----
+    private static string EstadoClass(EstadoExpediente e) => e == EstadoExpediente.Abierto ? "est-ab" : "est-ce";
+    private static string FaseClass(FaseArchivo f) => f switch { FaseArchivo.Gestion => "fa-ges", FaseArchivo.Central => "fa-cen", _ => "fa-his" };
+    private static string ClasClass(string nivel) => nivel?.ToLowerInvariant() switch
+    { "publico" or "público" => "cl-pub", "interno" => "cl-int", "reservado" => "cl-res", "clasificado" => "cl-cla", _ => "plain" };
+    private static string UbicTexto(EstadoUbicacionExpediente u) => u switch
+    { EstadoUbicacionExpediente.SinUbicar => "Sin ubicar", EstadoUbicacionExpediente.Ubicado => "Ubicado", _ => "Reubicado" };
+    private static string DispTexto(DisposicionFinal d) => d switch
+    { DisposicionFinal.ConservacionTotal => "Conservación total", DisposicionFinal.Seleccion => "Selección", DisposicionFinal.Eliminacion => "Eliminación", _ => d.ToString() };
+    private static string AccionTexto(string a) => a switch
+    {
+        "expediente.crear" => "Expediente creado", "expediente.editar" => "Expediente editado",
+        "expediente.eliminar" => "Expediente eliminado", "expediente.cerrar" => "Expediente cerrado",
+        "expediente.reabrir" => "Expediente reabierto", "expediente.ubicar" => "Ubicación asignada",
+        "expediente.vincular" => "Expediente vinculado", "expediente.desvincular" => "Vínculo retirado",
+        _ => a
+    };
+}

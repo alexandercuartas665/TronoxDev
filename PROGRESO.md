@@ -522,3 +522,33 @@ legacy: en TRONOX la entidad es el tenant de la sesion).
   `DbContext` scoped ("A second operation was started on this context"). Se le dio su propio scope de DI
   (`OwningComponentBase`); el tenant sigue resolviendo por el `IHttpContextAccessor` singleton.
 - Verificado en local: renderiza completo, autosembro 18 festivos 2026, sin errores de circuito.
+
+---
+
+## 11. Expedientes RQ03: bandeja milimetrica + detalle + backends + Azure Blob por entidad (2026-08-17)
+
+Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.aspx` + `exp_detalle.aspx`.
+
+- **Bandeja "Mis Expedientes"** (`Expedientes.razor`) recalcada con el sistema visual `.exp-*` del legacy:
+  5 KPIs (con "con alertas"/"pendientes transferencia" placeholder), 5 pestanas (+ Mis Vistas),
+  filtros rapidos (incl. Fase) + panel avanzado (dependencia/serie/fechas), seleccion masiva,
+  badges pill de color, paginacion cliente 20/pag. Modal Editar calcado (3 secciones: inmutables,
+  clasificacion TRD read-only, datos editables).
+- **Pagina de detalle** `ExpedienteDetalle.razor` (`/modulo/expedientes-detalle/{id}`): el ojo/codigo de
+  la bandeja NAVEGAN (no modal, como el redirect legacy). Boton "Volver a la bandeja". 5 pestanas:
+  Detalle (ficha con datos TRD reales), Ubicacion Fisica, Trazabilidad, Vinculados; Documentos difiere.
+- **Backends autocontenidos nuevos** (Domain+App+Infra+migracion `ExpedienteCierreUbicacionVinculos`):
+  - `ExpedienteCierre`: cerrar/reabrir con hash SHA-256 del indice (append-only); la firma real es RQ05.
+  - `ExpedienteUbicacion`: historial de ubicacion fisica ligado a la topografia (RQ02).
+  - `ExpedienteVinculo`: vinculos bidireccionales entre expedientes (desvincular logico).
+  - Trazabilidad: lectura de `SuperAdminAuditLogs` por expediente.
+  - `GetDetalleAsync` extendido con retencion TRD (tiempos gestion/central, disposicion, DDHH/DIH, procedimiento).
+  - Diferidos con aviso honesto (no inventados): Documentos RQ04, Firma/Indice RQ05, Cambiar Fase
+    (Transferencias), Rotulo, Compartir.
+- **Almacenamiento Azure Blob POR ENTIDAD** (ADR-012 sobre ADR-009): seccion en Datos de la Entidad con
+  cadena de conexion CIFRADA (AES-256 via ISecretProtector), contenedor, prefijo, activar y probar
+  conexion. `AzureBlobObjectStorage` pasa a scoped y resuelve la cuenta por-tenant con fallback global.
+  Nuevas tablas `almacenamientos_config`, entidad `AlmacenamientoConfig`, `IBlobConnectionTester`.
+- **ETL de datos de prueba** (solo LOCAL tenant 2): 23 expedientes reales del legacy 00132 (Azure SQL via
+  10.0.0.2), creando el andamiaje TRD (3 dependencias GTH/1.2/ATC + 6 series 50/50.02/50.02.01/1/3/10 +
+  7 asignaciones). Codigo/nombre/estado/fase/nivel/fechas fieles. No se despliega a prod.

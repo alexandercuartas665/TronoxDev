@@ -39,12 +39,29 @@ public sealed class FirmaConfigDto
     public bool FirmaConsentimiento { get; set; } = true;
 }
 
+/// <summary>Config de almacenamiento de binarios (Azure Blob) por entidad. La cadena de conexion NUNCA
+/// se devuelve en claro: en la lectura solo se informa si esta configurada.</summary>
+public sealed class AlmacenamientoDto
+{
+    /// <summary>true si ya hay una cadena de conexion guardada (cifrada).</summary>
+    public bool Configurado { get; set; }
+    public bool Activo { get; set; }
+    public string Contenedor { get; set; } = "tronox-documentos";
+    public string? Prefijo { get; set; }
+    /// <summary>Solo ESCRITURA: si viene con valor se cifra y reemplaza; si va vacio se conserva la actual.</summary>
+    public string? ConnectionString { get; set; }
+}
+
 public interface IEntidadConfigExtraService
 {
     Task<SeguridadDto> GetSeguridadAsync(CancellationToken ct = default);
     Task GuardarSeguridadAsync(SeguridadDto dto, CancellationToken ct = default);
     Task<FirmaConfigDto> GetFirmaAsync(CancellationToken ct = default);
     Task GuardarFirmaAsync(FirmaConfigDto dto, CancellationToken ct = default);
+    Task<AlmacenamientoDto> GetAlmacenamientoAsync(CancellationToken ct = default);
+    Task GuardarAlmacenamientoAsync(AlmacenamientoDto dto, CancellationToken ct = default);
+    /// <summary>Prueba la conexion contra Azure Blob con la cadena/contenedor dados. Devuelve error o null si OK.</summary>
+    Task<string?> ProbarAlmacenamientoAsync(string connectionString, string contenedor, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -55,11 +72,16 @@ public sealed class EntidadConfigExtraService : IEntidadConfigExtraService
 {
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenant;
+    private readonly ISecretProtector _protector;
+    private readonly IBlobConnectionTester _blobTester;
 
-    public EntidadConfigExtraService(IApplicationDbContext db, ITenantContext tenant)
+    public EntidadConfigExtraService(
+        IApplicationDbContext db, ITenantContext tenant, ISecretProtector protector, IBlobConnectionTester blobTester)
     {
         _db = db;
         _tenant = tenant;
+        _protector = protector;
+        _blobTester = blobTester;
     }
 
     private long TenantId => _tenant.TenantId ?? throw new InvalidOperationException("Tenant no resuelto.");
@@ -123,4 +145,38 @@ public sealed class EntidadConfigExtraService : IEntidadConfigExtraService
 
         FirmaConfig Add() { var n = new FirmaConfig { TenantId = TenantId }; _db.FirmaConfigs.Add(n); return n; }
     }
+
+    // ---- Almacenamiento de binarios (Azure Blob por entidad, ADR-012) ----
+
+    public async Task<AlmacenamientoDto> GetAlmacenamientoAsync(CancellationToken ct = default)
+    {
+        var a = await _db.AlmacenamientosConfig.AsNoTracking().FirstOrDefaultAsync(ct);
+        return new AlmacenamientoDto
+        {
+            Configurado = a is not null && !string.IsNullOrWhiteSpace(a.ConnectionStringCifrada),
+            Activo = a?.Activo ?? false,
+            Contenedor = a?.Contenedor ?? "tronox-documentos",
+            Prefijo = a?.Prefijo,
+            ConnectionString = null // el secreto nunca se devuelve
+        };
+    }
+
+    public async Task GuardarAlmacenamientoAsync(AlmacenamientoDto d, CancellationToken ct = default)
+    {
+        var a = await _db.AlmacenamientosConfig.FirstOrDefaultAsync(ct);
+        if (a is null) { a = new AlmacenamientoConfig { TenantId = TenantId }; _db.AlmacenamientosConfig.Add(a); }
+
+        // Si viene una cadena nueva, se cifra y reemplaza; si va vacia, se conserva la actual.
+        if (!string.IsNullOrWhiteSpace(d.ConnectionString))
+        {
+            a.ConnectionStringCifrada = _protector.Protect(d.ConnectionString.Trim());
+        }
+        a.Contenedor = string.IsNullOrWhiteSpace(d.Contenedor) ? "tronox-documentos" : d.Contenedor.Trim();
+        a.Prefijo = string.IsNullOrWhiteSpace(d.Prefijo) ? null : d.Prefijo.Trim();
+        a.Activo = d.Activo && !string.IsNullOrWhiteSpace(a.ConnectionStringCifrada);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public Task<string?> ProbarAlmacenamientoAsync(string connectionString, string contenedor, CancellationToken ct = default)
+        => _blobTester.TestAsync(connectionString, string.IsNullOrWhiteSpace(contenedor) ? "tronox-documentos" : contenedor, ct);
 }
