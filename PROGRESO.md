@@ -552,3 +552,18 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 - **ETL de datos de prueba** (solo LOCAL tenant 2): 23 expedientes reales del legacy 00132 (Azure SQL via
   10.0.0.2), creando el andamiaje TRD (3 dependencias GTH/1.2/ATC + 6 series 50/50.02/50.02.01/1/3/10 +
   7 asignaciones). Codigo/nombre/estado/fase/nivel/fechas fieles. No se despliega a prod.
+
+---
+
+## 12. Carga de documentos del legacy en el detalle (2026-08-17)
+
+- **Pestana "Documentos"** del detalle de expediente cableada (antes "proximamente"):
+  `IDocumentoService.ListarPorExpedienteAsync` + `ExpedienteDocumentoDto`; tabla con #orden, nombre,
+  formato, folios, tamano, fecha incorporacion, estado, firma y **descarga** (reutiliza `DescargarAsync`
+  + `tronoxDownload` JS). La descarga sale por el `IObjectStorage` del tenant (cuenta Azure Blob
+  configurada en Datos de la Entidad, ADR-012).
+- **ETL de documentos** (solo LOCAL tenant 2): 96 documentos actuales (no historicos) de los 23
+  expedientes 00132, con nombre/formato/folios/paginas/tamano/hash/estado/firma/OCR y su
+  `ruta_almacenamiento` (GUID del blob legacy). 83 con binario. Mapeo de enums (Sin_Firma->SinFirma,
+  No_Aplica->NoAplica, Terminado->Archivado) y FKs (expediente por codigo, asignacion heredada). Las
+  versiones historicas (57) no se cargaron (UI de versionado diferida).

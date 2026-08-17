@@ -12,6 +12,9 @@ public interface IDocumentoService
 
     Task<IReadOnlyList<ArchivadoItemDto>> ListarArchivadosPorMiAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);
 
+    /// <summary>Documentos archivados de un expediente (RQ03, pestana Documentos del detalle). Excluye anulados e historicos.</summary>
+    Task<IReadOnlyList<ExpedienteDocumentoDto>> ListarPorExpedienteAsync(long expedienteId, long actorUserId, CancellationToken cancellationToken = default);
+
     Task<DocumentoResult<DocumentoDetalleDto>> GetDetalleAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>Crea un borrador con binario: sube al object storage y calcula el hash.</summary>

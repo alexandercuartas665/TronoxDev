@@ -29,6 +29,19 @@ public sealed class DocumentoService : IDocumentoService
 
     // ---- Bandejas ----
 
+    public async Task<IReadOnlyList<ExpedienteDocumentoDto>> ListarPorExpedienteAsync(
+        long expedienteId, long actorUserId, CancellationToken cancellationToken = default)
+        => await _db.Documentos.AsNoTracking()
+            .Where(d => d.ExpedienteId == expedienteId
+                        && d.Estado != EstadoDocumento.Anulado
+                        && !d.EsVersionHistorica)
+            .OrderBy(d => d.OrdenEnExpediente).ThenBy(d => d.FechaIncorporacion)
+            .Select(d => new ExpedienteDocumentoDto(
+                d.Id, d.OrdenEnExpediente, d.Nombre, d.Formato, d.TamanoBytes,
+                d.PaginaInicio, d.PaginaFin, d.Folios, d.FechaDocumento, d.FechaIncorporacion,
+                d.Estado, d.EstadoFirma, d.TieneBinario))
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<BorradorItemDto>> ListarBorradoresAsync(
         long actorUserId, string? texto = null, CancellationToken cancellationToken = default)
     {

@@ -67,6 +67,22 @@ public sealed record DocMetadatoValorDto(long TrdMetadatoId, string Nombre, Tipo
 
 public sealed record DocumentoDescargaDto(byte[] Contenido, string NombreArchivo, string ContentType);
 
+/// <summary>Documento de un expediente para la pestana Documentos de la vista de detalle (RQ03).</summary>
+public sealed record ExpedienteDocumentoDto(
+    long Id,
+    int? OrdenEnExpediente,
+    string Nombre,
+    string? Formato,
+    long? TamanoBytes,
+    int? PaginaInicio,
+    int? PaginaFin,
+    int? Folios,
+    DateOnly? FechaDocumento,
+    DateTime? FechaIncorporacion,
+    EstadoDocumento Estado,
+    EstadoFirmaDocumento EstadoFirma,
+    bool TieneBinario);
+
 // ---- Requests de creacion (Flujo B) ----
 
 public sealed record CrearBorradorFisicoRequest(string Nombre, DateOnly? FechaDocumento);

@@ -6,12 +6,15 @@
    Firma/Indice (RQ05), Cambiar Fase (Transferencias), Rotulo, Compartir. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Tronox.Application.Expedientes
+@using Tronox.Application.Documentos
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
 @inject IExpedienteService Svc
+@inject IDocumentoService DocSvc
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Expediente - TRONOX SGDEA</PageTitle>
 
@@ -84,11 +87,52 @@ else
     @* ===================== PANE: DOCUMENTOS ===================== *@
     @if (_tab == "documentos")
     {
-        <div class="exp-card det-defer">
-            <i class="bi bi-file-earmark-text"></i>
-            <div><strong>Documentos del expediente</strong>
-                <div class="exp-empty-sub">La gestión de documentos (subir, versionar, firmar, foliar) se habilita con el módulo <strong>Documentos (RQ04)</strong>. Aún no está construido.</div>
-            </div>
+        <div class="exp-card" style="padding:18px">
+            <div class="det-sec-t" style="margin-top:0">Documentos del expediente</div>
+            <div class="exp-empty-sub" style="margin-bottom:12px">Documentos archivados en el expediente (foliación). La descarga usa la cuenta Azure Blob configurada en Datos de la Entidad.</div>
+            @if (_docs is null)
+            {
+                <div class="exp-empty">Cargando...</div>
+            }
+            else if (_docs.Count == 0)
+            {
+                <div class="exp-empty"><i class="bi bi-file-earmark-text"></i><div><strong>Sin documentos</strong><div class="exp-empty-sub">Este expediente aún no tiene documentos archivados.</div></div></div>
+            }
+            else
+            {
+                <div class="exp-table-wrap">
+                    <table class="exp-table">
+                        <thead><tr><th>#</th><th>Nombre</th><th>Formato</th><th>Folios</th><th>Tamaño</th><th>Fecha incorp.</th><th>Estado</th><th>Firma</th><th class="center">Acciones</th></tr></thead>
+                        <tbody>
+                            @foreach (var doc in _docs)
+                            {
+                                var dd = doc;
+                                <tr>
+                                    <td>@(dd.OrdenEnExpediente?.ToString() ?? "—")</td>
+                                    <td><span class="exp-nombre">@dd.Nombre</span></td>
+                                    <td>@(string.IsNullOrWhiteSpace(dd.Formato) ? "—" : dd.Formato!.ToUpperInvariant())</td>
+                                    <td>@FoliosTexto(dd)</td>
+                                    <td>@TamTexto(dd.TamanoBytes)</td>
+                                    <td>@(dd.FechaIncorporacion?.ToString("yyyy-MM-dd") ?? "—")</td>
+                                    <td><span class="exp-pill">@dd.Estado</span></td>
+                                    <td><span class="exp-pill">@FirmaTexto(dd.EstadoFirma)</span></td>
+                                    <td class="center"><div class="exp-row-actions">
+                                        @if (dd.TieneBinario)
+                                        {
+                                            <button class="exp-act" title="Descargar" @onclick="@(() => Descargar(dd.Id))"><i class="bi bi-download"></i></button>
+                                        }
+                                        else
+                                        {
+                                            <button class="exp-act off" title="Sin binario (soporte físico)" disabled><i class="bi bi-file-earmark"></i></button>
+                                        }
+                                    </div></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="exp-empty-sub" style="margin-top:8px">@_docs.Count documento(s).</div>
+            }
         </div>
     }
 
@@ -356,6 +400,15 @@ else
 
 @if (_toast is not null) { <div class="exp-toast" @onclick="@(() => _toast = null)"><i class="bi bi-info-circle"></i> @_toast</div> }
 
+<script>
+    window.tronoxDownload = function (fileName, contentType, base64) {
+        const a = document.createElement('a');
+        a.href = 'data:' + contentType + ';base64,' + base64;
+        a.download = fileName;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    };
+</script>
+
 <style>
     /* ---- Base .exp-* compartida con la bandeja (autocontenida para carga directa del detalle) ---- */
     .exp-wrap .sep { margin:0 6px; color:#CBD5E1; } .exp-wrap .cur { color:#0F172A; font-weight:600; }
@@ -448,6 +501,7 @@ else
     private ExpedienteUbicacionDto? _ubic;
     private IReadOnlyList<TrazaItemDto>? _traza;
     private IReadOnlyList<VinculoDto>? _vinculos;
+    private IReadOnlyList<ExpedienteDocumentoDto>? _docs;
 
     private string? _flash; private bool _flashOk;
     private string? _toast;
@@ -484,7 +538,23 @@ else
         if (t == "ubicacion" && _ubic is null) { var r = await Svc.GetUbicacionAsync(Id, Actor); _ubic = r.IsOk ? r.Value : new ExpedienteUbicacionDto(null, []); }
         if (t == "trazabilidad" && _traza is null) { _traza = await Svc.GetTrazabilidadAsync(Id, Actor); }
         if (t == "vinculados" && _vinculos is null) { var r = await Svc.GetVinculosAsync(Id, Actor); _vinculos = r.IsOk ? r.Value : []; }
+        if (t == "documentos" && _docs is null) { _docs = await DocSvc.ListarPorExpedienteAsync(Id, Actor); }
     }
+
+    private async Task Descargar(long docId)
+    {
+        var res = await DocSvc.DescargarAsync(docId, Actor);
+        if (!res.IsOk) { Flash(res.Error ?? "No se pudo descargar.", false); return; }
+        var d = res.Value!;
+        await JS.InvokeVoidAsync("tronoxDownload", d.NombreArchivo, d.ContentType, Convert.ToBase64String(d.Contenido));
+    }
+
+    private static string FoliosTexto(ExpedienteDocumentoDto d)
+        => d.PaginaInicio is int pi && d.PaginaFin is int pf ? $"{pi}-{pf}" : (d.Folios?.ToString() ?? "—");
+    private static string TamTexto(long? bytes)
+        => bytes is not long b ? "—" : b < 1024 ? $"{b} B" : b < 1048576 ? $"{b / 1024.0:0.#} KB" : $"{b / 1048576.0:0.#} MB";
+    private static string FirmaTexto(EstadoFirmaDocumento f)
+        => f switch { EstadoFirmaDocumento.Firmado => "Firmado", EstadoFirmaDocumento.Pendiente => "Pendiente", _ => "Sin firma" };
 
     private void AbrirReabrir() { _reJustif = ""; _modalErr = null; _showReabrir = true; }
     private void Volver() => Nav.NavigateTo("/modulo/expedientes-mios");
