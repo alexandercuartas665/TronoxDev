@@ -6,6 +6,26 @@ namespace Tronox.Application.Expedientes;
 
 public sealed record TopografiaOpcionDto(long Id, string Codigo, string Nombre);
 
+/// <summary>
+/// Nodo de la topografia fisica para la cascada de Asignar/Cambiar ubicacion (RF12), calcada del
+/// legacy (ObtenerElementosRaiz/Hijos + ValidarUbicacionAsignable). Aplana el arbol con enlace al
+/// padre para que la UI arme la cascada por niveles (raiz -> hoja). <c>EsHoja</c> marca los nodos
+/// finales (sin hijos), unicos asignables; <c>Asignable</c> es true si esa hoja no esta Llena ni
+/// pertenece a una rama Inactiva; <c>Motivo</c> lleva el bloqueo cuando no lo es.
+/// </summary>
+public sealed record TopografiaCascadaNodoDto(
+    long Id,
+    long? ParentId,
+    int NivelOrden,
+    string NivelNombre,
+    string Nombre,
+    string Sigla,
+    string Codigo,
+    TopografiaEstado Estado,
+    bool EsHoja,
+    bool Asignable,
+    string? Motivo);
+
 public sealed record UbicacionActualDto(
     long TopografiaElementoId, string Ubicacion, FaseArchivo Fase, string? AsignadoPor, DateTimeOffset Fecha);
 

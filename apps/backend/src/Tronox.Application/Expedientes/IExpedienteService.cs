@@ -61,6 +61,9 @@ public interface IExpedienteService
     /// <summary>Nodos de topografia asignables (arbol aplanado con su codigo topografico).</summary>
     Task<IReadOnlyList<TopografiaOpcionDto>> GetTopografiaOpcionesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Arbol topografico aplanado para la cascada de asignacion (RF12): raiz -&gt; hoja, con asignabilidad.</summary>
+    Task<IReadOnlyList<TopografiaCascadaNodoDto>> GetTopografiaArbolAsync(CancellationToken cancellationToken = default);
+
     Task<ExpedienteResult<bool>> AsignarUbicacionAsync(
         long id, long topografiaElementoId, string? observacion, long actorUserId, CancellationToken cancellationToken = default);
 

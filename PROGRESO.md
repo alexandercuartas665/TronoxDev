@@ -584,3 +584,21 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
   Backend `IncorporarEnExpedienteAsync`: sube al object storage (Azure Blob por entidad), hash SHA-256,
   foliacion continua (orden + paginas), nace Archivado, nivel heredado, cuenta paginas de PDF. Tipologia
   opcional; metadatos dinamicos de la tipologia. Refresca la grilla via callback.
+
+---
+
+## 14. Ubicacion Fisica milimetrica: cascada topografica + validacion (RQ03 RF12, 2026-08-17)
+
+- La pestana **Ubicacion Fisica** del detalle se recalco al legacy `exp_detalle` (RF12, Mantis #6491).
+  Antes era un dropdown plano (Opcion C); ahora es la **cascada de niveles** del legacy sobre la
+  topografia fisica real del tenant (RQ02 - Topografia Fisica), no un modulo inventado.
+- Modal "Asignar / Cambiar ubicacion": selects en cascada raiz -> hoja (Bodega > Estante > Entrepano
+  > Caja...), breadcrumb en vivo, precarga con la ubicacion actual, exige seleccionar la HOJA final.
+- Validacion calcada de `ValidarUbicacionAsignable`: recorre la cadena hoja->raiz; bloquea si la hoja
+  o cualquier ancestro esta Inactivo ("esta Inactiva" / "pertenece a una rama Inactiva") o si la hoja
+  esta Llena ("esta Llena"). Fail-closed: el servidor re-valida (hoja + cadena) en `AsignarUbicacionAsync`.
+- Backend: `GetTopografiaArbolAsync` (arbol aplanado con codigo topografico + asignabilidad por nodo) +
+  helper `ValidarUbicacionAsignable`. Historial append-only + estado_ubicacion (Sin_Ubicar/Ubicado/Reubicado).
+- Auditoria e2e con dev-login (tenant 2, 14 nodos): OK hoja valida (Guardar activo, breadcrump de 4
+  niveles), BLOQUEA hoja Llena, BLOQUEA hoja bajo rama Inactiva, guardado real crea fila + pobla panel
+  actual e historial con el codigo topografico NOR-EST01-ENT01-CAJ001.

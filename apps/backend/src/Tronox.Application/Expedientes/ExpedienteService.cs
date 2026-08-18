@@ -569,6 +569,58 @@ public sealed class ExpedienteService : IExpedienteService
             .OrderBy(o => o.Codigo).ToList();
     }
 
+    public async Task<IReadOnlyList<TopografiaCascadaNodoDto>> GetTopografiaArbolAsync(CancellationToken cancellationToken = default)
+    {
+        var niveles = await _db.TopografiaNiveles.AsNoTracking()
+            .Select(n => new { n.Id, n.NombreNivel, n.Orden }).ToListAsync(cancellationToken);
+        var nivPorId = niveles.ToDictionary(n => n.Id);
+
+        var elems = await _db.TopografiaElementos.AsNoTracking()
+            .Select(t => new { t.Id, t.ParentId, t.NivelId, t.Nombre, t.Sigla, t.Estado }).ToListAsync(cancellationToken);
+        if (elems.Count == 0) { return []; }
+
+        var codigos = await TopografiaCodigosAsync(cancellationToken);
+        var idx = elems.ToDictionary(t => t.Id, t => (t.ParentId, t.Estado));
+        var conHijos = elems.Where(t => t.ParentId is not null).Select(t => t.ParentId!.Value).ToHashSet();
+
+        return elems.Select(t =>
+        {
+            var esHoja = !conHijos.Contains(t.Id);
+            var motivo = esHoja ? ValidarUbicacionAsignable(t.Id, idx) : null;
+            var niv = nivPorId.TryGetValue(t.NivelId, out var n) ? n : null;
+            return new TopografiaCascadaNodoDto(
+                t.Id, t.ParentId, niv?.Orden ?? 0, niv?.NombreNivel ?? "", t.Nombre, t.Sigla,
+                codigos.TryGetValue(t.Id, out var c) ? c : "", t.Estado,
+                esHoja, esHoja && string.IsNullOrEmpty(motivo), string.IsNullOrEmpty(motivo) ? null : motivo);
+        })
+        .OrderBy(n => n.NivelOrden).ThenBy(n => n.Nombre).ToList();
+    }
+
+    /// <summary>
+    /// RF12 (Mantis #6491, calcado del legacy ValidarUbicacionAsignable): recorre la cadena hoja-&gt;raiz
+    /// por ParentId. Ni la hoja ni ningun ancestro puede estar Inactivo; la hoja no puede estar Llena.
+    /// Devuelve "" si es asignable, o el motivo del bloqueo.
+    /// </summary>
+    private static string ValidarUbicacionAsignable(long hojaId, Dictionary<long, (long? ParentId, TopografiaEstado Estado)> idx)
+    {
+        if (!idx.ContainsKey(hojaId)) { return "La ubicacion seleccionada no existe."; }
+        var cur = (long?)hojaId;
+        var prof = 0;
+        var guard = 0;
+        while (cur is long cid && idx.TryGetValue(cid, out var node) && guard++ < 50)
+        {
+            if (node.Estado == TopografiaEstado.Inactivo)
+            {
+                return prof == 0 ? "La ubicacion seleccionada esta Inactiva."
+                                 : "La ubicacion seleccionada pertenece a una rama Inactiva.";
+            }
+            if (prof == 0 && node.Estado == TopografiaEstado.Lleno) { return "La ubicacion seleccionada esta Llena."; }
+            cur = node.ParentId;
+            prof++;
+        }
+        return "";
+    }
+
     public async Task<ExpedienteResult<bool>> AsignarUbicacionAsync(
         long id, long topografiaElementoId, string? observacion, long actorUserId, CancellationToken cancellationToken = default)
     {
@@ -576,6 +628,18 @@ public sealed class ExpedienteService : IExpedienteService
         if (e is null) { return ExpedienteResult<bool>.NotFound("El expediente no existe."); }
         var nodo = await _db.TopografiaElementos.AsNoTracking().FirstOrDefaultAsync(t => t.Id == topografiaElementoId, cancellationToken);
         if (nodo is null) { return ExpedienteResult<bool>.NotFound("La ubicacion topografica no existe."); }
+
+        // RF12: solo se asigna a una HOJA (nivel final de la topografia) que no sea Llena ni Inactiva
+        // (ni bajo rama Inactiva). Fail-closed: el servidor re-valida aunque la UI ya filtre.
+        var todos = await _db.TopografiaElementos.AsNoTracking()
+            .Select(t => new { t.Id, t.ParentId, t.Estado }).ToListAsync(cancellationToken);
+        if (todos.Any(t => t.ParentId == topografiaElementoId))
+        {
+            return ExpedienteResult<bool>.Invalid("Seleccione el nivel final (hoja) de la topografia.");
+        }
+        var idx = todos.ToDictionary(t => t.Id, t => (t.ParentId, t.Estado));
+        var motivo = ValidarUbicacionAsignable(topografiaElementoId, idx);
+        if (!string.IsNullOrEmpty(motivo)) { return ExpedienteResult<bool>.Invalid(motivo); }
 
         var tenantId = _tenantContext.TenantId!.Value;
         var yaTenia = await _db.ExpedienteUbicaciones.AnyAsync(u => u.ExpedienteId == id, cancellationToken);

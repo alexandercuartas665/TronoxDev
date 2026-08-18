@@ -390,19 +390,36 @@ else
             <div class="modal-head"><h3><i class="bi bi-geo-alt"></i> Asignar / Cambiar ubicación</h3><button class="modal-close" @onclick="@(() => _showUbic = false)">&times;</button></div>
             <div class="modal-body">
                 @if (_modalErr is not null) { <div class="exp-flash err">@_modalErr</div> }
-                <div class="exp-field">
-                    <label>Ubicación topográfica <span class="req">*</span></label>
-                    <select class="exp-sel full" @bind="_ubTopoId">
-                        <option value="0">— Selecciona —</option>
-                        @foreach (var o in _topoOpts) { <option value="@o.Id">@o.Codigo — @o.Nombre</option> }
-                    </select>
-                    @if (_topoOpts.Count == 0) { <div class="exp-hint">No hay nodos de topografía. Créalos en Topografía Física (RQ02).</div> }
-                </div>
-                <div class="exp-field"><label>Observación</label><input class="exp-sel full" maxlength="1000" @bind="_ubObs" /></div>
+                @if (_topoArbol.Count == 0)
+                {
+                    <div class="exp-hint">No hay nodos de topografía. Créalos en Topografía Física (RQ02).</div>
+                }
+                else
+                {
+                    <div class="exp-field">
+                        <label>Ubicación topográfica <span class="req">*</span></label>
+                        @foreach (var (data, nivel) in UbLevels().Select((d, i) => (d, i)))
+                        {
+                            <select class="exp-sel full ub-casc" value="@data.Sel" @onchange="e => OnUbLevelChange(nivel, e)">
+                                <option value="0">— Seleccione —</option>
+                                @foreach (var o in data.Opts)
+                                {
+                                    <option value="@o.Id">@o.NivelNombre @o.Nombre@(o.Estado != TopografiaEstado.Disponible ? $" ({o.Estado})" : "")</option>
+                                }
+                            </select>
+                        }
+                    </div>
+                    <div class="ub-path"><i class="bi bi-signpost-split"></i> <span class="mono">@UbBreadcrumb()</span></div>
+                    @if (UbHint() is string hint)
+                    {
+                        <div class="exp-hint warn">@hint</div>
+                    }
+                    <div class="exp-field"><label>Observación</label><input class="exp-sel full" maxlength="1000" @bind="_ubObs" /></div>
+                }
             </div>
             <div class="modal-foot">
                 <button class="exp-btn" @onclick="@(() => _showUbic = false)" disabled="@_busy">Cancelar</button>
-                <button class="exp-btn exp-btn-primary" @onclick="GuardarUbicacion" disabled="@(_busy || _ubTopoId <= 0)">Guardar</button>
+                <button class="exp-btn exp-btn-primary" @onclick="GuardarUbicacion" disabled="@(_busy || !UbListoParaGuardar())">Guardar</button>
             </div>
         </div>
     </div>
@@ -493,6 +510,11 @@ else
     .exp-empty-sub { font-size:12px; color:#94A3B8; }
     .exp-field { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; } .exp-field label { font-size:13px; font-weight:600; color:#334155; } .exp-field .req { color:#DC2626; }
     .exp-hint { font-size:11.5px; color:#94A3B8; }
+    .exp-hint.warn { color:#B45309; }
+    .ub-casc { margin-bottom:8px; }
+    .ub-casc:last-of-type { margin-bottom:0; }
+    .ub-path { margin:8px 0 4px; font-size:12px; color:#475569; }
+    .ub-path .mono { color:#0F172A; }
     .exp-search { height:40px; border:1px solid #E2E8F0; border-radius:9px; padding:0 12px; font-size:13.5px; background:#fff; }
     .exp-sel { height:40px; border:1px solid #E2E8F0; border-radius:9px; padding:0 12px; font-size:13.5px; background:#fff; color:#0F172A; cursor:pointer; } .exp-sel.full { width:100%; }
     .exp-search:focus, .exp-sel:focus { outline:none; border-color:#93C5FD; box-shadow:0 0 0 3px rgba(37,99,235,.10); }
@@ -586,10 +608,11 @@ else
     private bool _showCerrar, _showReabrir;
     private string _reJustif = "";
 
-    // Ubicacion
+    // Ubicacion (cascada topografica, calcada del legacy RF12)
     private bool _showUbic;
-    private IReadOnlyList<TopografiaOpcionDto> _topoOpts = [];
-    private long _ubTopoId; private string _ubObs = "";
+    private IReadOnlyList<TopografiaCascadaNodoDto> _topoArbol = [];
+    private readonly List<long> _ubPath = new(); // ids seleccionados por nivel (raiz -> hoja)
+    private string _ubObs = "";
 
     // Vinculos
     private string _vincTexto = "", _vincObs = "";
@@ -685,20 +708,90 @@ else
         if (_tab == "trazabilidad") { _traza = await Svc.GetTrazabilidadAsync(Id, Actor); }
     }
 
-    // ---- Ubicacion ----
+    // ---- Ubicacion (cascada RF12) ----
     private async Task AbrirUbicacion()
     {
-        _modalErr = null; _ubTopoId = 0; _ubObs = "";
-        if (_topoOpts.Count == 0) { _topoOpts = await Svc.GetTopografiaOpcionesAsync(); }
+        _modalErr = null; _ubObs = ""; _ubPath.Clear();
+        if (_topoArbol.Count == 0) { _topoArbol = await Svc.GetTopografiaArbolAsync(); }
+        // Precarga la cascada con la ubicacion actual (como ubPrecargarUbicacion del legacy).
+        if (_ubic?.Actual is { } a) { PrecargarPath(a.TopografiaElementoId); }
         _showUbic = true;
+    }
+
+    private void PrecargarPath(long hojaId)
+    {
+        var chain = new List<long>();
+        var cur = _topoArbol.FirstOrDefault(n => n.Id == hojaId);
+        var guard = 0;
+        while (cur is not null && guard++ < 50)
+        {
+            chain.Insert(0, cur.Id);
+            cur = cur.ParentId is long p ? _topoArbol.FirstOrDefault(n => n.Id == p) : null;
+        }
+        _ubPath.Clear(); _ubPath.AddRange(chain);
+    }
+
+    // Niveles a renderizar: raiz siempre; cada nivel siguiente cuelga del seleccionado en el anterior.
+    private List<(long Sel, IReadOnlyList<TopografiaCascadaNodoDto> Opts)> UbLevels()
+    {
+        var res = new List<(long, IReadOnlyList<TopografiaCascadaNodoDto>)>();
+        IReadOnlyList<TopografiaCascadaNodoDto> opts = _topoArbol.Where(n => n.ParentId is null).ToList();
+        var depth = 0;
+        while (opts.Count > 0)
+        {
+            var sel = depth < _ubPath.Count ? _ubPath[depth] : 0;
+            res.Add((sel, opts));
+            if (sel <= 0) { break; }
+            opts = _topoArbol.Where(n => n.ParentId == sel).ToList();
+            depth++;
+        }
+        return res;
+    }
+
+    private void OnUbLevelChange(int level, ChangeEventArgs e)
+    {
+        _modalErr = null;
+        var v = long.TryParse(e.Value?.ToString(), out var x) ? x : 0;
+        if (_ubPath.Count > level) { _ubPath.RemoveRange(level, _ubPath.Count - level); }
+        if (v > 0) { _ubPath.Add(v); }
+    }
+
+    private TopografiaCascadaNodoDto? UbSeleccion()
+        => _ubPath.Count == 0 ? null : _topoArbol.FirstOrDefault(n => n.Id == _ubPath[^1]);
+
+    private string UbBreadcrumb()
+    {
+        var partes = _ubPath
+            .Select(id => _topoArbol.FirstOrDefault(n => n.Id == id))
+            .Where(n => n is not null)
+            .Select(n => $"{n!.NivelNombre} {n.Nombre}".Trim());
+        var txt = string.Join(" › ", partes);
+        return string.IsNullOrEmpty(txt) ? "(sin selección)" : txt;
+    }
+
+    private bool UbListoParaGuardar()
+    {
+        var sel = UbSeleccion();
+        return sel is not null && sel.EsHoja && sel.Asignable;
+    }
+
+    private string? UbHint()
+    {
+        var sel = UbSeleccion();
+        if (sel is null) { return null; }
+        if (!sel.EsHoja) { return "Seleccione el nivel final (hoja) de la topografía."; }
+        if (!sel.Asignable) { return $"{sel.Motivo} No se permiten ubicaciones Llenas o Inactivas."; }
+        return null;
     }
 
     private async Task GuardarUbicacion()
     {
+        var sel = UbSeleccion();
+        if (sel is null) { _modalErr = "Seleccione una ubicación válida."; return; }
         _busy = true; _modalErr = null;
         try
         {
-            var r = await Svc.AsignarUbicacionAsync(Id, _ubTopoId, _ubObs, Actor);
+            var r = await Svc.AsignarUbicacionAsync(Id, sel.Id, _ubObs, Actor);
             if (!r.IsOk) { _modalErr = r.Error; return; }
             _showUbic = false; Flash("Ubicación asignada.", true);
             var ru = await Svc.GetUbicacionAsync(Id, Actor); _ubic = ru.IsOk ? ru.Value : _ubic;
