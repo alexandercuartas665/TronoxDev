@@ -602,3 +602,21 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 - Auditoria e2e con dev-login (tenant 2, 14 nodos): OK hoja valida (Guardar activo, breadcrump de 4
   niveles), BLOQUEA hoja Llena, BLOQUEA hoja bajo rama Inactiva, guardado real crea fila + pobla panel
   actual e historial con el codigo topografico NOR-EST01-ENT01-CAJ001.
+
+---
+
+## 15. Vinculos milimetricos: buscador + feedback + confirm (RQ03 RF14, 2026-08-18)
+
+- La pestana **Expedientes Vinculados** se calco al legacy `exp_detalle` (Fase 13). El backend ya era
+  fiel (bidireccional, excluye ya-vinculados y a si mismo, filtro por clasificacion, top-20, dup-check,
+  auditoria vincular/desvincular); se cerraron las brechas de UI:
+  - Panel "Agregar vinculo a otro expediente" con buscador + Observacion SIEMPRE visible + hint
+    "Relacion bidireccional - aparece en ambos expedientes".
+  - Validacion minimo 2 caracteres ("Escriba al menos 2 caracteres.") y mensaje "Sin resultados
+    (filtrado por permisos de clasificacion y excluye los ya vinculados)." calcados del legacy.
+  - Resultados con caption "Resultados (top 20)". Boton Ver (ir al vinculado) + Desvincular con
+    CONFIRM ("Desvincular este expediente? La accion queda en auditoria.").
+  - Observacion pasa a @bind:event=oninput para capturarla sin depender del blur.
+- Auditoria e2e con dev-login + MCP Chrome (tenant 2): min-2-chars OK, busqueda+resultados OK, Vincular
+  crea vinculo + toast + limpia buscador, Observacion persiste, BIDIRECCIONAL (aparece en ambos),
+  Desvincular Cancelar conserva / Aceptar soft-delete (activo=false) + toast + estado vacio.

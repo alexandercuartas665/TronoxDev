@@ -289,30 +289,35 @@ else
     @if (_tab == "vinculados")
     {
         <div class="exp-card" style="padding:18px">
-            <div class="det-sec-t" style="margin-top:0">Expedientes Vinculados</div>
+            <div class="det-sec-t" style="margin-top:0">Expedientes Vinculados <span class="det-vinc-hint">Relación bidireccional — aparece en ambos expedientes</span></div>
             @if (_canEdit)
             {
-                <div class="det-vinc-buscar">
-                    <input class="exp-search" style="flex:1" placeholder="Buscar expediente por código o nombre..." @bind="_vincTexto" @bind:event="oninput" @onkeyup="OnVincKey" />
-                    <button class="exp-btn" @onclick="BuscarVinculo"><i class="bi bi-search"></i> Buscar</button>
-                </div>
-                @if (_vincResultados.Count > 0)
-                {
-                    <div class="det-vinc-res">
-                        <input class="exp-search" style="width:100%;margin-bottom:8px" placeholder="Observación del vínculo (opcional)" @bind="_vincObs" />
-                        <table class="exp-table">
-                            <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
-                            <tbody>
-                                @foreach (var r in _vincResultados)
-                                {
-                                    var rr = r;
-                                    <tr><td class="mono">@rr.Codigo</td><td>@rr.Nombre</td><td><span class="exp-pill @EstadoClass(rr.Estado)"><span class="dot"></span>@rr.Estado</span></td>
-                                        <td class="center"><button class="exp-btn sm exp-btn-primary" @onclick="@(() => Vincular(rr.Id))"><i class="bi bi-link"></i> Vincular</button></td></tr>
-                                }
-                            </tbody>
-                        </table>
+                <div class="det-vinc-add">
+                    <div class="det-vinc-add-t"><i class="bi bi-plus-circle"></i> Agregar vínculo a otro expediente</div>
+                    <div class="det-vinc-buscar">
+                        <input class="exp-search" style="flex:1" placeholder="Código o nombre del expediente..." @bind="_vincTexto" @bind:event="oninput" @onkeyup="OnVincKey" />
+                        <button class="exp-btn" @onclick="BuscarVinculo"><i class="bi bi-search"></i> Buscar</button>
                     </div>
-                }
+                    <input class="exp-search" style="width:100%;margin-top:8px" placeholder="Observación (opcional)" @bind="_vincObs" @bind:event="oninput" />
+                    @if (_vincMsg is not null) { <div class="exp-hint" style="margin-top:8px">@_vincMsg</div> }
+                    @if (_vincResultados.Count > 0)
+                    {
+                        <div class="det-vinc-res">
+                            <div class="exp-hint" style="margin-bottom:6px">Resultados (top 20). Clic «Vincular» para agregar:</div>
+                            <table class="exp-table">
+                                <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th class="center">Acción</th></tr></thead>
+                                <tbody>
+                                    @foreach (var r in _vincResultados)
+                                    {
+                                        var rr = r;
+                                        <tr><td class="mono">@rr.Codigo</td><td>@rr.Nombre</td><td><span class="exp-pill @EstadoClass(rr.Estado)"><span class="dot"></span>@rr.Estado</span></td>
+                                            <td class="center"><button class="exp-btn sm exp-btn-primary" @onclick="@(() => Vincular(rr.Id))"><i class="bi bi-link"></i> Vincular</button></td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
             }
             @if (_vinculos is null)
             {
@@ -558,7 +563,10 @@ else
     .det-tl-head { font-size:13.5px; }
     .det-tl-detalle { font-size:11.5px; color:#64748B; background:#F8FAFC; border:1px solid #F1F5F9; border-radius:6px; padding:6px 8px; margin-top:4px; word-break:break-word; }
     .det-vinc-buscar { display:flex; gap:8px; margin-bottom:12px; }
-    .det-vinc-res { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px; margin-bottom:12px; }
+    .det-vinc-res { background:#fff; border:1px solid #E2E8F0; border-radius:10px; padding:12px; margin-top:10px; }
+    .det-vinc-add { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:14px; margin-bottom:16px; }
+    .det-vinc-add-t { font-size:12px; font-weight:700; color:#475569; margin-bottom:8px; }
+    .det-vinc-hint { margin-left:8px; font-size:11px; font-weight:400; color:#94A3B8; }
     .exp-doc-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 18px; border-bottom:1px solid #F1F5F9; }
     .exp-doc-count { font-size:13px; color:#475569; font-weight:600; }
     .exp-doc-tbtns { display:flex; gap:6px; flex-wrap:wrap; }
@@ -616,6 +624,7 @@ else
 
     // Vinculos
     private string _vincTexto = "", _vincObs = "";
+    private string? _vincMsg;
     private IReadOnlyList<VinculoBusquedaDto> _vincResultados = [];
 
     protected override async Task OnParametersSetAsync()
@@ -802,7 +811,20 @@ else
 
     // ---- Vinculos ----
     private async Task OnVincKey(KeyboardEventArgs e) { if (e.Key == "Enter") { await BuscarVinculo(); } }
-    private async Task BuscarVinculo() => _vincResultados = await Svc.BuscarParaVincularAsync(Id, _vincTexto, Actor);
+
+    private async Task BuscarVinculo()
+    {
+        // Legacy: minimo 2 caracteres antes de buscar.
+        if (_vincTexto.Trim().Length < 2)
+        {
+            _vincResultados = []; _vincMsg = "Escriba al menos 2 caracteres.";
+            return;
+        }
+        _vincResultados = await Svc.BuscarParaVincularAsync(Id, _vincTexto, Actor);
+        _vincMsg = _vincResultados.Count == 0
+            ? "Sin resultados (filtrado por permisos de clasificación y excluye los ya vinculados)."
+            : null;
+    }
 
     private async Task Vincular(long destinoId)
     {
@@ -811,20 +833,25 @@ else
         {
             var r = await Svc.CrearVinculoAsync(Id, destinoId, _vincObs, Actor);
             if (!r.IsOk) { Flash(r.Error ?? "No se pudo vincular.", false); return; }
-            _vincResultados = []; _vincTexto = ""; _vincObs = "";
+            _vincResultados = []; _vincTexto = ""; _vincObs = ""; _vincMsg = null;
             var rv = await Svc.GetVinculosAsync(Id, Actor); _vinculos = rv.IsOk ? rv.Value : _vinculos;
-            Flash("Expediente vinculado.", true);
+            Flash("Expediente vinculado correctamente.", true);
         }
         finally { _busy = false; }
     }
 
     private async Task Desvincular(long vinculoId)
     {
+        // Legacy: confirmacion antes de desvincular (queda en auditoria).
+        var ok = await JS.InvokeAsync<bool>("confirm", "¿Desvincular este expediente? La acción queda en auditoría.");
+        if (!ok) { return; }
         _busy = true;
         try
         {
-            await Svc.DesvincularAsync(vinculoId, Actor);
+            var r = await Svc.DesvincularAsync(vinculoId, Actor);
+            if (!r.IsOk) { Flash(r.Error ?? "No se pudo desvincular.", false); return; }
             var rv = await Svc.GetVinculosAsync(Id, Actor); _vinculos = rv.IsOk ? rv.Value : _vinculos;
+            Flash("Vínculo eliminado correctamente.", true);
         }
         finally { _busy = false; }
     }
