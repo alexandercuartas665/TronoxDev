@@ -640,3 +640,20 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 - Auditoria e2e con dev-login + MCP Chrome (tenant 2, exp 5): cerrar -> estado Cerrado + registro N1 con
   hash + mensaje + header cambia a Reabrir; reabrir con <20 deshabilita, contador verde >=20, reapertura
   -> estado Abierto + evento N2 con justificacion + mensaje + header vuelve a Cerrar.
+
+---
+
+## 17. Deploy a prod del lote de detalle de Expedientes (2026-08-18)
+
+Desplegado a prod (host 10.0.0.3) el lote acumulado en `desarrollo` (commit `75e223d`):
+dev-login (solo-Development), Documentos milimetrica + Carga de Archivos, Ubicacion Fisica (cascada),
+Vinculos (buscador+confirm), Cerrar/Reabrir (modales fieles).
+
+- **Pure image swap, 0 migraciones nuevas**: prod ya estaba en 32 migraciones (el lote RQ03 con esquema
+  se desplego el 17-ago); todo lo de hoy es codigo. Backup previo `tronox_prod_20260818_045224_pre_detalle_ux.sql.gz`.
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (200 en /login, blazor.web.js,
+  custom.css; 32 migraciones limpias) -> scp -> docker load -> `up -d --force-recreate app`.
+- Verificacion prod: /login /_framework/blazor.web.js /velzon/css/custom.css = 200; **/dev/login = 404**
+  (correcto, gate IsDevelopment); migraciones 32 (sin cambios); **postgres NO recreado** (created 2026-07-23,
+  restarts=0 -> claves/datos intactos); vecinos **29** (sin bajar); DLLs con mtime 2026-08-18 09:4x UTC (build de hoy).
+- Rollback disponible: imagen anterior (`tronox-web:prod` 92dd69c8) queda como `<none>` en el host.
