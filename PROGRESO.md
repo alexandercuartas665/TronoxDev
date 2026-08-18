@@ -732,3 +732,33 @@ reutiliza una PAGINA VISOR (`exp_visor.aspx`) como iframe overlay. Se porto fiel
   completo, pestana Trazabilidad (endpoint real), boton Cerrar. Iconos FA via CDN.
 - Datos de validacion: se limpiaron los borradores de admin2 y se cargaron 5 PDFs de muestra en
   Azurite local (tenant 2 con config de blob desactivada -> usa Azurite), para probar el visor.
+
+---
+
+## 21. OCR / Reprocesar - diseno validado (PENDIENTE de construir) (RQ04 RF04, 2026-08-18)
+
+Validacion del diseno del OCR antes de construir (decision del usuario: "solo valido, aun no construyo").
+
+**Servicio: Azure Computer Vision (Read API).** Legacy `OcrDocumentoHelper.ProcesarOcr`:
+descarga el binario del blob -> llama a Azure Vision -> guarda OCR_ESTADO + OCR_TEXTO en el documento.
+
+**Parametros del OCR (donde viven en el legacy):**
+- Cuenta: parametro `COMPUTER_VISION` (Optimizer, por modulo/sucursal; fallback modulo 000783).
+- Endpoint + llave: tabla `SUCURSAL_INT` con NOMBRE='VISIONIA' (URL=endpoint, TOKEN=key).
+- Si no esta configurado: "Azure Computer Vision no esta configurado (parametro COMPUTER_VISION).
+  El OCR no puede ejecutarse hasta configurarlo."
+
+**Flujo reocr (visor):** valida binario -> resuelve cuenta -> OCR_ESTADO='Procesando' ->
+encola background -> guarda texto. op=ocr devuelve {estado, texto}.
+
+**Decision de diseno (confirmada con el usuario):** en TRONOX la config del OCR va en
+**Datos de la Entidad**, con el MISMO patron que el Almacenamiento Azure Blob por entidad (ADR-012):
+per-tenant, llave cifrada AES-256 (ISecretProtector), nunca en claro, con activo/fallback. TRONOX
+NO tiene esta config todavia.
+
+**Plan cuando se retome (config primero, servicio despues):**
+1. Entidad `OcrConfig` tenant-scoped (Activo, Endpoint, ApiKeyCifrada) + migracion + seccion en
+   DatosEntidad.razor (calcada de la seccion "Almacenamiento de Documentos (Azure Blob)").
+2. Servicio OCR (Azure Computer Vision Read API) + wire de los endpoints /visor/data op=ocr/reocr
+   (hoy placeholders en VisorEndpoints.cs). Nota: Azure no es alcanzable desde el equipo local
+   (igual que el Blob); la ejecucion real solo funcionara en prod.
