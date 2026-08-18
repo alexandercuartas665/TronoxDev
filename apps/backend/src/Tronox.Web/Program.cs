@@ -342,6 +342,62 @@ app.MapPost("/auth/login", async (
     return Results.Redirect(redirect);
 }).DisableAntiforgery();
 
+// Dev-login: SOLO en entorno Development. Firma la sesion de un usuario por correo SIN pedir clave,
+// replicando exactamente los claims/esquema de /auth/login (misma cookie). Sirve para automatizar
+// pruebas de UI sin depender del autofill del formulario. NUNCA se registra fuera de Development,
+// por lo que en produccion la ruta no existe (404). Uso: /dev/login  o  /dev/login?email=otro@correo.
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/dev/login", async (
+        HttpContext http,
+        IApplicationDbContext db,
+        [FromQuery] string? email) =>
+    {
+        var normalized = (email ?? "admin2@tronox.local").Trim().ToLowerInvariant();
+        var user = await db.PlatformUsers.FirstOrDefaultAsync(u => u.Email == normalized);
+        if (user is null)
+        {
+            return Results.Text($"[dev-login] usuario '{normalized}' no encontrado", "text/plain", null, 404);
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.DisplayName ?? user.Email),
+            new(ClaimTypes.Email, user.Email)
+        };
+
+        var isOperator = user.PlatformRole is PlatformRole;
+        if (isOperator)
+        {
+            claims.Add(new Claim("platform_role", user.PlatformRole!.Value.ToString()));
+        }
+
+        var membership = await db.TenantUsers
+            .IgnoreQueryFilters()
+            .Where(tu => tu.PlatformUserId == user.Id && tu.Status == PlatformUserStatus.Active)
+            .OrderBy(tu => tu.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (membership is not null)
+        {
+            claims.Add(new Claim("tenant_id", membership.TenantId.ToString()));
+            claims.Add(new Claim("tenant_role", membership.TenantRole.ToString()));
+        }
+
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await http.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity),
+            new Microsoft.AspNetCore.Authentication.AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30)
+            });
+        return Results.Redirect(isOperator ? "/" : "/inicio");
+    });
+}
+
 // Auto-registro (autogestion): un visitante crea su propia agencia + usuario Owner. La cuenta
 // queda en PendingActivation; se envia un codigo de 6 digitos por correo y el visitante debe
 // ingresarlo en /activar antes de poder iniciar sesion. La agencia nace activa sin plan.
