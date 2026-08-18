@@ -8,6 +8,7 @@ using Tronox.Infrastructure;
 using Tronox.Infrastructure.Persistence;
 using Tronox.Web.Auth;
 using Tronox.Web.Components;
+using Tronox.Web.Visor;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -261,6 +262,9 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.MapHub<Tronox.Web.RealTime.NotificationHub>("/hubs/notifications");
+
+// Visor documental (RF04): endpoints de binario + datos consumidos por wwwroot/visor/exp_visor.js.
+app.MapVisorEndpoints();
 
 app.MapPost("/auth/login", async (
     HttpContext http,

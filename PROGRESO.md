@@ -708,3 +708,27 @@ Dos entregas sobre Mis Documentos (modulo/documentos), calcadas del legacy.
   - Digitalizar/Editor -> "proximamente"; Fuente externa -> deshabilitada.
   - Auditado e2e (dev-login + MCP Chrome): selector sin breadcrumb + 4 tarjetas, carga en modo borrador,
     borrador FISICO creado (doc 97), la bandeja se refresca con flash "Documento(s) creado(s) como borrador".
+
+---
+
+## 20. Visor documental completo con pdf.js (RQ04 RF04, 2026-08-18)
+
+El "ojo" de la parrilla de documentos abria el PDF crudo en una pestana (incorrecto). El legacy
+reutiliza una PAGINA VISOR (`exp_visor.aspx`) como iframe overlay. Se porto fiel:
+
+- **Assets reutilizados** (vanilla, framework-agnosticos) en `wwwroot/visor/`: pdf.js + pdf.worker.js
+  + `exp_visor.css` + `exp_visor.js` (68KB, endpoints reapuntados a `/visor/*`).
+- **Pagina** `/modulo/documento-visor` (static SSR, EmptyLayout) que replica el DOM de exp_visor.aspx:
+  barra superior (nombre, PDF N pag., acciones), miniaturas, viewer pdf.js (toolbar zoom/rotar/nav),
+  panel derecho con pestanas Metadatos / Anotaciones / Trazabilidad / Versiones. Metadatos
+  server-rendered desde `GetDetalleAsync`.
+- **Endpoints** (`VisorEndpoints.cs`, calcados de exp_visor_data.ashx / doc_visor.ashx):
+  `/visor/bin` (binario para pdf.js), `/visor/data?op=traz` (auditoria del documento), `op=ocr`
+  (estado), `op=tipos/campos` + POST `op=guardar` (editor de metadatos reusando el servicio),
+  `op=vers` y `/visor/anotaciones` diferidos (vacio). Firmar/Compartir/Correo = avisos "proximamente".
+- El **ojo** en Mis Documentos y en la pestana Documentos del detalle abre el visor como iframe
+  overlay (vzAbrirVisor/vzCerrarVisor), no el PDF crudo.
+- Auditado e2e (dev-login + MCP Chrome): render pdf.js del PDF, miniaturas, panel de metadatos
+  completo, pestana Trazabilidad (endpoint real), boton Cerrar. Iconos FA via CDN.
+- Datos de validacion: se limpiaron los borradores de admin2 y se cargaron 5 PDFs de muestra en
+  Azurite local (tenant 2 con config de blob desactivada -> usa Azurite), para probar el visor.
