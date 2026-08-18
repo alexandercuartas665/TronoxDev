@@ -620,3 +620,23 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 - Auditoria e2e con dev-login + MCP Chrome (tenant 2): min-2-chars OK, busqueda+resultados OK, Vincular
   crea vinculo + toast + limpia buscador, Observacion persiste, BIDIRECCIONAL (aparece en ambos),
   Desvincular Cancelar conserva / Aceptar soft-delete (activo=false) + toast + estado vacio.
+
+---
+
+## 16. Cerrar/Reabrir milimetricos (RQ03 RF08, 2026-08-18)
+
+- Modales Cerrar (Fase 19) y Reabrir (Fase 20) calcados del legacy `exp_detalle`. El backend ya era
+  fiel (numero de cierre incremental + hash SHA-256 del indice + registro de cierre/firma + auditoria;
+  Reabrir valida justificacion >= 20 chars server-side). Se cerraron las brechas de UI:
+  - **Cerrar**: icono circular ambar (candado), "Confirmar cierre del expediente?", texto descriptivo,
+    caja de aviso ambar "La firma del indice es inmutable...", boton rojo "Confirmar cierre".
+  - **Reabrir**: icono circular azul (candado abierto), "Reabrir expediente cerrado", texto, label
+    "Justificacion * (minimo 20 caracteres)", textarea, contador en vivo N/20 (ambar<20 / verde>=20),
+    boton deshabilitado hasta 20 chars, caja info "queda registrada en la trazabilidad", boton azul
+    "Confirmar reapertura".
+  - Header con botones mutuamente excluyentes (Cerrar si Abierto / Reabrir si Cerrado).
+  - `CerrarAsync`/`ReabrirAsync` devuelven ahora el NUMERO de cierre/evento para el mensaje calcado:
+    "Expediente cerrado correctamente (cierre N X, indice firmado)." / "Expediente reabierto. Evento N X registrado."
+- Auditoria e2e con dev-login + MCP Chrome (tenant 2, exp 5): cerrar -> estado Cerrado + registro N1 con
+  hash + mensaje + header cambia a Reabrir; reabrir con <20 deshabilita, contador verde >=20, reapertura
+  -> estado Abierto + evento N2 con justificacion + mensaje + header vuelve a Cerrar.

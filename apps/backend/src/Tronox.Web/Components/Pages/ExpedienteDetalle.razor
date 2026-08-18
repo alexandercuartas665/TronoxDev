@@ -70,7 +70,7 @@ else
             }
             @if (_canEdit && _d.Estado == EstadoExpediente.Cerrado)
             {
-                <button class="exp-btn" @onclick="AbrirReabrir"><i class="bi bi-unlock"></i> Abrir Expediente</button>
+                <button class="exp-btn" @onclick="AbrirReabrir"><i class="bi bi-unlock"></i> Reabrir Expediente</button>
             }
         </div>
     </div>
@@ -358,13 +358,17 @@ else
 {
     <div class="modal-overlay" @onclick="@(() => _showCerrar = false)">
         <div class="modal-dialog" style="max-width:520px;width:96%" @onclick:stopPropagation="true">
-            <div class="modal-head"><h3><i class="bi bi-lock"></i> Cerrar expediente</h3><button class="modal-close" @onclick="@(() => _showCerrar = false)">&times;</button></div>
-            <div class="modal-body">
-                <p>Se cerrará el expediente <strong class="mono">@_d.Codigo</strong>. Se calcula un <strong>hash SHA-256</strong> del índice como sello de integridad y se registra en la trazabilidad. La firma criptográfica se aplicará cuando exista el módulo de firma (RQ05).</p>
+            <div class="modal-head"><h3>Cerrar Expediente</h3><button class="modal-close" @onclick="@(() => _showCerrar = false)">&times;</button></div>
+            <div class="modal-body" style="text-align:center">
+                @if (_modalErr is not null) { <div class="exp-flash err">@_modalErr</div> }
+                <div class="ce-ico ce-ico-amber"><i class="bi bi-lock-fill"></i></div>
+                <div class="ce-q">¿Confirmar cierre del expediente?</div>
+                <p class="ce-desc">Esta acción <strong>cerrará el expediente y firmará el índice electrónico</strong> con hash SHA-256. No se podrán agregar nuevos documentos hasta que se reabra.</p>
+                <div class="ce-warn"><i class="bi bi-exclamation-triangle-fill"></i><div>La firma del índice es <strong>inmutable</strong>. Una vez generada, no puede modificarse.</div></div>
             </div>
-            <div class="modal-foot">
+            <div class="modal-foot" style="justify-content:center">
                 <button class="exp-btn" @onclick="@(() => _showCerrar = false)" disabled="@_busy">Cancelar</button>
-                <button class="exp-btn danger" @onclick="CerrarExp" disabled="@_busy"><i class="bi bi-lock"></i> Cerrar</button>
+                <button class="exp-btn danger" @onclick="CerrarExp" disabled="@_busy"><i class="bi bi-lock"></i> Confirmar cierre</button>
             </div>
         </div>
     </div>
@@ -374,15 +378,22 @@ else
 {
     <div class="modal-overlay" @onclick="@(() => _showReabrir = false)">
         <div class="modal-dialog" style="max-width:520px;width:96%" @onclick:stopPropagation="true">
-            <div class="modal-head"><h3><i class="bi bi-unlock"></i> Abrir expediente</h3><button class="modal-close" @onclick="@(() => _showReabrir = false)">&times;</button></div>
+            <div class="modal-head"><h3>Reabrir Expediente</h3><button class="modal-close" @onclick="@(() => _showReabrir = false)">&times;</button></div>
             <div class="modal-body">
                 @if (_modalErr is not null) { <div class="exp-flash err">@_modalErr</div> }
-                <p>Reabrir <strong class="mono">@_d.Codigo</strong>. Indica la justificación (mínimo 20 caracteres):</p>
-                <textarea class="exp-search" style="width:100%;height:90px;padding:10px" maxlength="1000" @bind="_reJustif"></textarea>
+                <div style="text-align:center">
+                    <div class="ce-ico ce-ico-blue"><i class="bi bi-unlock-fill"></i></div>
+                    <div class="ce-q">Reabrir expediente cerrado</div>
+                    <p class="ce-desc">El índice continuará acumulando desde donde estaba; las firmas previas se conservan intactas.</p>
+                </div>
+                <label class="re-label">Justificación <span class="req">*</span> <span class="re-hint">(mínimo 20 caracteres)</span></label>
+                <textarea class="exp-search" style="width:100%;height:96px;padding:10px" maxlength="1000" @bind="_reJustif" @bind:event="oninput"></textarea>
+                <div class="re-count @(_reJustif.Trim().Length < 20 ? "short" : "ok")">@_reJustif.Trim().Length / 20</div>
+                <div class="ce-warn"><i class="bi bi-info-circle-fill"></i><div>Esta acción quedará registrada en la trazabilidad del expediente.</div></div>
             </div>
-            <div class="modal-foot">
+            <div class="modal-foot" style="justify-content:center">
                 <button class="exp-btn" @onclick="@(() => _showReabrir = false)" disabled="@_busy">Cancelar</button>
-                <button class="exp-btn exp-btn-primary" @onclick="ReabrirExp" disabled="@_busy">Reabrir</button>
+                <button class="exp-btn exp-btn-primary" @onclick="ReabrirExp" disabled="@(_busy || _reJustif.Trim().Length < 20)"><i class="bi bi-unlock"></i> Confirmar reapertura</button>
             </div>
         </div>
     </div>
@@ -567,6 +578,16 @@ else
     .det-vinc-add { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:14px; margin-bottom:16px; }
     .det-vinc-add-t { font-size:12px; font-weight:700; color:#475569; margin-bottom:8px; }
     .det-vinc-hint { margin-left:8px; font-size:11px; font-weight:400; color:#94A3B8; }
+    .ce-ico { width:64px; height:64px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin:8px auto 14px; font-size:26px; }
+    .ce-ico-amber { background:#FEF3C7; color:#92400E; }
+    .ce-ico-blue { background:#DBEAFE; color:#1D4ED8; }
+    .ce-q { font-size:16px; font-weight:700; color:#0F172A; margin-bottom:10px; }
+    .ce-desc { font-size:13px; color:#475569; line-height:1.55; margin:0 auto 16px; max-width:420px; }
+    .ce-warn { background:#FFFBEB; border:1px solid #FDE68A; border-radius:8px; padding:10px 14px; font-size:12px; color:#92400E; display:flex; align-items:flex-start; gap:8px; text-align:left; margin-top:10px; }
+    .re-label { display:block; font-size:12px; font-weight:700; color:#475569; margin:14px 0 6px; }
+    .re-label .re-hint { font-weight:400; font-size:11px; color:#94A3B8; }
+    .re-count { text-align:right; font-size:11px; margin-top:4px; }
+    .re-count.short { color:#B45309; } .re-count.ok { color:#059669; }
     .exp-doc-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 18px; border-bottom:1px solid #F1F5F9; }
     .exp-doc-count { font-size:13px; color:#475569; font-weight:600; }
     .exp-doc-tbtns { display:flex; gap:6px; flex-wrap:wrap; }
@@ -690,7 +711,7 @@ else
         {
             var r = await Svc.CerrarAsync(Id, Actor);
             if (!r.IsOk) { _modalErr = r.Error; return; }
-            _showCerrar = false; Flash("Expediente cerrado. Se registró el hash de integridad.", true);
+            _showCerrar = false; Flash($"Expediente cerrado correctamente (cierre N° {r.Value}, índice firmado).", true);
             await Recargar();
         }
         finally { _busy = false; }
@@ -703,7 +724,7 @@ else
         {
             var r = await Svc.ReabrirAsync(Id, _reJustif, Actor);
             if (!r.IsOk) { _modalErr = r.Error; return; }
-            _showReabrir = false; Flash("Expediente reabierto.", true);
+            _showReabrir = false; Flash($"Expediente reabierto. Evento N° {r.Value} registrado.", true);
             await Recargar();
         }
         finally { _busy = false; }

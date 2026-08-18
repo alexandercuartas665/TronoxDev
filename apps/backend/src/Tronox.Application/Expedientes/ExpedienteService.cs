@@ -469,12 +469,12 @@ public sealed class ExpedienteService : IExpedienteService
 
     // ================= Cierre / reapertura (RF08) =================
 
-    public async Task<ExpedienteResult<bool>> CerrarAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
+    public async Task<ExpedienteResult<int>> CerrarAsync(long id, long actorUserId, CancellationToken cancellationToken = default)
     {
         var e = await _db.Expedientes.Include(x => x.Metadatos)
             .FirstOrDefaultAsync(x => x.Id == id && !x.Eliminado, cancellationToken);
-        if (e is null) { return ExpedienteResult<bool>.NotFound("El expediente no existe."); }
-        if (e.Estado == EstadoExpediente.Cerrado) { return ExpedienteResult<bool>.Invalid("El expediente ya esta cerrado."); }
+        if (e is null) { return ExpedienteResult<int>.NotFound("El expediente no existe."); }
+        if (e.Estado == EstadoExpediente.Cerrado) { return ExpedienteResult<int>.Invalid("El expediente ya esta cerrado."); }
 
         var tenantId = _tenantContext.TenantId!.Value;
         var numero = await _db.ExpedienteCierres.Where(c => c.ExpedienteId == id).CountAsync(cancellationToken) + 1;
@@ -489,19 +489,19 @@ public sealed class ExpedienteService : IExpedienteService
         _audit.Write(actorUserId, "expediente.cerrar", nameof(Expediente), e,
             previousValue: prev, newValue: new { e.Estado, e.FechaCierre, HashIndice = hash }, tenantId: tenantId);
         await _db.SaveChangesAsync(cancellationToken);
-        return ExpedienteResult<bool>.Ok(true);
+        return ExpedienteResult<int>.Ok(numero);
     }
 
-    public async Task<ExpedienteResult<bool>> ReabrirAsync(long id, string justificacion, long actorUserId, CancellationToken cancellationToken = default)
+    public async Task<ExpedienteResult<int>> ReabrirAsync(long id, string justificacion, long actorUserId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(justificacion) || justificacion.Trim().Length < 20)
         {
-            return ExpedienteResult<bool>.Invalid("La justificacion de reapertura debe tener al menos 20 caracteres.");
+            return ExpedienteResult<int>.Invalid("La justificacion de reapertura debe tener al menos 20 caracteres.");
         }
         var e = await _db.Expedientes.Include(x => x.Metadatos)
             .FirstOrDefaultAsync(x => x.Id == id && !x.Eliminado, cancellationToken);
-        if (e is null) { return ExpedienteResult<bool>.NotFound("El expediente no existe."); }
-        if (e.Estado == EstadoExpediente.Abierto) { return ExpedienteResult<bool>.Invalid("El expediente ya esta abierto."); }
+        if (e is null) { return ExpedienteResult<int>.NotFound("El expediente no existe."); }
+        if (e.Estado == EstadoExpediente.Abierto) { return ExpedienteResult<int>.Invalid("El expediente ya esta abierto."); }
 
         var tenantId = _tenantContext.TenantId!.Value;
         var numero = await _db.ExpedienteCierres.Where(c => c.ExpedienteId == id).CountAsync(cancellationToken) + 1;
@@ -516,7 +516,7 @@ public sealed class ExpedienteService : IExpedienteService
         _audit.Write(actorUserId, "expediente.reabrir", nameof(Expediente), e,
             previousValue: prev, newValue: new { e.Estado, Motivo = justificacion.Trim() }, tenantId: tenantId);
         await _db.SaveChangesAsync(cancellationToken);
-        return ExpedienteResult<bool>.Ok(true);
+        return ExpedienteResult<int>.Ok(numero);
     }
 
     private static string CalcularHashIndice(Expediente e)

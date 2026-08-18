@@ -48,11 +48,11 @@ public interface IExpedienteService
 
     // ---- Cierre / reapertura (RF08) ----
 
-    /// <summary>Cierra un expediente Abierto: calcula el hash del indice, firma el asiento y audita.</summary>
-    Task<ExpedienteResult<bool>> CerrarAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
+    /// <summary>Cierra un expediente Abierto: calcula el hash del indice, firma el asiento y audita. Devuelve el numero de cierre.</summary>
+    Task<ExpedienteResult<int>> CerrarAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>Reabre un expediente Cerrado con justificacion (&gt;= 20 chars); deja asiento y auditoria.</summary>
-    Task<ExpedienteResult<bool>> ReabrirAsync(long id, string justificacion, long actorUserId, CancellationToken cancellationToken = default);
+    /// <summary>Reabre un expediente Cerrado con justificacion (&gt;= 20 chars); deja asiento y auditoria. Devuelve el numero de evento.</summary>
+    Task<ExpedienteResult<int>> ReabrirAsync(long id, string justificacion, long actorUserId, CancellationToken cancellationToken = default);
 
     // ---- Ubicacion fisica (RF12) ----
 
