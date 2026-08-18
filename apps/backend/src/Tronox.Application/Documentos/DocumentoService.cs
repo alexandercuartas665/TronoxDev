@@ -187,6 +187,123 @@ public sealed class DocumentoService : IDocumentoService
         return DocumentoResult<DocumentoDetalleDto>.Ok(await BuildDetalleAsync(doc, cancellationToken));
     }
 
+    // ---- Editar metadatos (RF04/RF05, calcado de exp_visor_data.ashx op=doc/tipos/campos/guardar) ----
+
+    public async Task<DocumentoResult<DocEditarMetadatosDto>> GetEditarMetadatosAsync(
+        long docId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var doc = await _db.Documentos.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == docId && d.Estado != EstadoDocumento.Anulado, cancellationToken);
+        if (doc is null) { return DocumentoResult<DocEditarMetadatosDto>.NotFound("El documento no existe."); }
+
+        // op=tipos: todas las tipologias activas del tenant (no scopeadas a serie, como el legacy).
+        var tipos = await _db.TrdTipologias.AsNoTracking()
+            .Where(t => !t.IsArchived)
+            .OrderBy(t => t.Nombre)
+            .Select(t => new DocTipoOpcionDto(t.Id, t.Nombre))
+            .ToListAsync(cancellationToken);
+
+        // op=campos del tipo actual (con valores).
+        var campos = doc.TrdTipologiaId is long tid
+            ? await CargarCamposConValoresAsync(docId, tid, cancellationToken)
+            : [];
+
+        return DocumentoResult<DocEditarMetadatosDto>.Ok(
+            new DocEditarMetadatosDto(doc.Id, doc.Nombre, doc.FechaDocumento, doc.TrdTipologiaId, tipos, campos));
+    }
+
+    public Task<IReadOnlyList<DocMetadatoValorDefDto>> GetMetadatosTipologiaConValoresAsync(
+        long docId, long trdTipologiaId, CancellationToken cancellationToken = default)
+        => CargarCamposConValoresAsync(docId, trdTipologiaId, cancellationToken);
+
+    /// <summary>Carga los metadatos de una tipologia (contexto Documento) con el valor actual del documento.</summary>
+    private async Task<IReadOnlyList<DocMetadatoValorDefDto>> CargarCamposConValoresAsync(
+        long docId, long trdTipologiaId, CancellationToken cancellationToken)
+    {
+        var metas = await _db.TrdMetadatos.AsNoTracking()
+            .Where(m => m.TrdTipologiaId == trdTipologiaId && m.Contexto == ContextoMetadato.Documento && !m.IsArchived)
+            .OrderBy(m => m.Orden)
+            .Select(m => new { m.Id, m.Nombre, m.TipoDato, m.Obligatorio, m.ListaMaestraId })
+            .ToListAsync(cancellationToken);
+        if (metas.Count == 0) { return []; }
+
+        var valores = await _db.DocumentoMetadatos.AsNoTracking()
+            .Where(v => v.DocumentoId == docId)
+            .Select(v => new { v.TrdMetadatoId, v.Valor })
+            .ToListAsync(cancellationToken);
+        var valMap = valores.GroupBy(v => v.TrdMetadatoId).ToDictionary(g => g.Key, g => g.Last().Valor);
+
+        var listaIds = metas.Where(m => m.ListaMaestraId is not null).Select(m => m.ListaMaestraId!.Value).Distinct().ToList();
+        var opciones = listaIds.Count == 0
+            ? []
+            : await _db.ListaOpciones.AsNoTracking()
+                .Where(o => listaIds.Contains(o.ListaMaestraId))
+                .OrderBy(o => o.Orden)
+                .Select(o => new { o.ListaMaestraId, o.Clave, o.Valor })
+                .ToListAsync(cancellationToken);
+
+        return metas.Select(m => new DocMetadatoValorDefDto(
+            m.Id, m.Nombre, m.TipoDato, m.Obligatorio, m.ListaMaestraId,
+            opciones.Where(o => o.ListaMaestraId == m.ListaMaestraId)
+                .Select(o => new DocMetadatoOpcionDto(o.Clave, o.Valor)).ToList(),
+            valMap.TryGetValue(m.Id, out var v) ? v : null)).ToList();
+    }
+
+    public async Task<DocumentoResult<bool>> GuardarMetadatosAsync(
+        GuardarMetadatosRequest request, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        // op=guardar: nombre + fecha obligatorios (calcado del legacy mdGuardar).
+        var errNombre = DocumentoRules.ValidateNombre(request.Nombre);
+        if (errNombre is not null) { return DocumentoResult<bool>.Invalid(errNombre); }
+        if (request.Fecha is null) { return DocumentoResult<bool>.Invalid("El nombre y la fecha son obligatorios."); }
+
+        var doc = await _db.Documentos.FirstOrDefaultAsync(d => d.Id == request.DocId && d.Estado != EstadoDocumento.Anulado, cancellationToken);
+        if (doc is null) { return DocumentoResult<bool>.NotFound("El documento no existe."); }
+
+        var tenantId = _tenantContext.TenantId!.Value;
+        long? tipoFinal = doc.TrdTipologiaId;
+        if (request.TipologiaId is long nuevoTipo && nuevoTipo > 0)
+        {
+            if (nuevoTipo != doc.TrdTipologiaId)
+            {
+                var existe = await _db.TrdTipologias.AnyAsync(t => t.Id == nuevoTipo && !t.IsArchived, cancellationToken);
+                if (!existe) { return DocumentoResult<bool>.Invalid("El tipo documental no existe."); }
+            }
+            tipoFinal = nuevoTipo;
+        }
+        else
+        {
+            tipoFinal = null; // "-- Sin tipo --"
+        }
+
+        var prev = new { doc.Nombre, doc.FechaDocumento, doc.TrdTipologiaId };
+        doc.Nombre = request.Nombre.Trim();
+        doc.FechaDocumento = request.Fecha;
+        doc.TrdTipologiaId = tipoFinal;
+
+        // ReemplazarMetadatosDocumento: borra los existentes y reinserta solo los del tipo final con valor.
+        var existentes = await _db.DocumentoMetadatos.Where(v => v.DocumentoId == doc.Id).ToListAsync(cancellationToken);
+        if (existentes.Count > 0) { _db.DocumentoMetadatos.RemoveRange(existentes); }
+        if (tipoFinal is long ft)
+        {
+            var validos = await _db.TrdMetadatos.AsNoTracking()
+                .Where(m => m.TrdTipologiaId == ft && m.Contexto == ContextoMetadato.Documento && !m.IsArchived)
+                .Select(m => m.Id).ToListAsync(cancellationToken);
+            foreach (var m in request.Metadatos.Where(m => validos.Contains(m.TrdMetadatoId) && !string.IsNullOrWhiteSpace(m.Valor)))
+            {
+                _db.DocumentoMetadatos.Add(new DocumentoMetadato
+                {
+                    TenantId = tenantId, DocumentoId = doc.Id, TrdMetadatoId = m.TrdMetadatoId, Valor = m.Valor!.Trim()
+                });
+            }
+        }
+
+        _audit.Write(actorUserId, "documento.editar_metadatos", nameof(Documento), doc,
+            previousValue: prev, newValue: new { doc.Nombre, doc.FechaDocumento, doc.TrdTipologiaId }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return DocumentoResult<bool>.Ok(true);
+    }
+
     // ---- Descargar ----
 
     public async Task<DocumentoResult<DocumentoDescargaDto>> DescargarAsync(

@@ -118,6 +118,44 @@ public sealed record DocMetadatoDefDto(
 
 public sealed record DocMetadatoOpcionDto(string Clave, string Valor);
 
+// ---- Editar metadatos (RF04/RF05, calcado de exp_visor_data.ashx op=doc/tipos/campos/guardar) ----
+
+/// <summary>Opcion de tipo documental (tipologia) para el editor de metadatos. Calcado de op=tipos.</summary>
+public sealed record DocTipoOpcionDto(long Id, string Nombre);
+
+/// <summary>
+/// Metadato con su valor ACTUAL para el editor de metadatos. Calcado de op=campos
+/// (reg/nombre/tipo/obligatorio/valor). Igual que <see cref="DocMetadatoDefDto"/> pero con el valor.
+/// </summary>
+public sealed record DocMetadatoValorDefDto(
+    long TrdMetadatoId,
+    string Nombre,
+    TipoDatoMetadato TipoDato,
+    bool Obligatorio,
+    long? ListaMaestraId,
+    IReadOnlyList<DocMetadatoOpcionDto> OpcionesLista,
+    string? Valor);
+
+/// <summary>Estado inicial del editor de metadatos (op=doc + op=tipos + op=campos del tipo actual).</summary>
+public sealed record DocEditarMetadatosDto(
+    long DocId,
+    string Nombre,
+    DateOnly? Fecha,
+    long? TipologiaId,
+    IReadOnlyList<DocTipoOpcionDto> Tipos,
+    IReadOnlyList<DocMetadatoValorDefDto> Campos);
+
+/// <summary>
+/// Guardado del editor de metadatos (calcado de op=guardar): nombre + fecha (obligatorios) + tipo
+/// documental (0/null = sin tipo) + valores de los metadatos del tipo.
+/// </summary>
+public sealed record GuardarMetadatosRequest(
+    long DocId,
+    string Nombre,
+    DateOnly? Fecha,
+    long? TipologiaId,
+    IReadOnlyList<DocMetadatoInput> Metadatos);
+
 // ---- Archivar (RF16) ----
 
 /// <summary>Expediente destino candidato para archivar (visible y Abierto).</summary>

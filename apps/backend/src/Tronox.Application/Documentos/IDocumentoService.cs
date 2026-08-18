@@ -29,6 +29,17 @@ public interface IDocumentoService
     Task<DocumentoResult<DocumentoDetalleDto>> EditarBorradorAsync(
         long id, string nombre, DateOnly? fechaDocumento, long actorUserId, CancellationToken cancellationToken = default);
 
+    // ---- Editar metadatos (RF04/RF05, calcado de exp_visor_data.ashx) ----
+
+    /// <summary>Estado inicial del editor de metadatos: nombre/fecha/tipo actual + tipologias activas + campos con valores.</summary>
+    Task<DocumentoResult<DocEditarMetadatosDto>> GetEditarMetadatosAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Metadatos de una tipologia con el valor actual del documento (al cambiar el tipo en el editor).</summary>
+    Task<IReadOnlyList<DocMetadatoValorDefDto>> GetMetadatosTipologiaConValoresAsync(long docId, long trdTipologiaId, CancellationToken cancellationToken = default);
+
+    /// <summary>Guarda nombre + fecha + tipo documental + valores de metadatos (op=guardar); audita el diff.</summary>
+    Task<DocumentoResult<bool>> GuardarMetadatosAsync(GuardarMetadatosRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
     /// <summary>Descarga el binario del documento (respeta propiedad/clasificacion).</summary>
     Task<DocumentoResult<DocumentoDescargaDto>> DescargarAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 

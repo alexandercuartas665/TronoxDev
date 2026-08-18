@@ -221,16 +221,38 @@
 {
     <div class="modal-overlay" @onclick="@(() => _showEditar = false)">
         <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
-            <div class="modal-head"><h3>Editar metadatos</h3><button class="modal-close" @onclick="@(() => _showEditar = false)">&times;</button></div>
+            <div class="modal-head"><h3><i class="bi bi-tags"></i> Editar metadatos</h3><button class="modal-close" @onclick="@(() => _showEditar = false)">&times;</button></div>
             <div class="modal-body tx-mod tx-trdc">
                 @if (_editError is not null) { <div class="tx-ent-fielderr">@_editError</div> }
-                <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_eNombre" maxlength="200" /></div>
-                <div class="tx-ent-field"><label>Fecha del documento <span class="opt">(opcional)</span></label><input type="date" class="tx-ent-input" @bind="_eFecha" /></div>
-                <div class="tx-ent-hint">El tipo documental y sus metadatos se asignan al archivar el borrador en un expediente (RF16).</div>
+                <div class="tx-ent-field"><label>Nombre del documento <span class="req">*</span></label><input class="tx-ent-input" @bind="_eNombre" maxlength="200" /></div>
+                <div class="tx-ent-field"><label>Fecha del documento <span class="req">*</span></label><input type="date" class="tx-ent-input" @bind="_eFecha" /></div>
+                <div class="tx-ent-field">
+                    <label>Tipo documental</label>
+                    <select class="tx-ent-input" @onchange="OnEditTipoChanged">
+                        <option value="0" selected="@(_eTipoId is null)">— Sin tipo —</option>
+                        @foreach (var t in _eTipos) { <option value="@t.Id" selected="@(t.Id == _eTipoId)">@t.Nombre</option> }
+                    </select>
+                </div>
+                @if (_eCampos.Count > 0)
+                {
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin:14px 0 8px;border-top:1px solid #F1F5F9;padding-top:12px">Metadatos del tipo documental</div>
+                    @foreach (var m in _eCampos)
+                    {
+                        <div class="tx-ent-field"><label>@m.Nombre @if (m.Obligatorio) { <span class="req">*</span> }</label>@EditMetaInput(m)</div>
+                    }
+                }
+                else if (_eTipoId is not null)
+                {
+                    <div class="tx-ent-hint" style="margin-top:8px">Este tipo no tiene metadatos configurados.</div>
+                }
+                else
+                {
+                    <div class="tx-ent-hint" style="margin-top:8px">Elige un tipo documental para capturar sus metadatos.</div>
+                }
             </div>
             <div class="modal-foot">
                 <button class="tx-ent-btn" @onclick="@(() => _showEditar = false)" disabled="@_editBusy">Cancelar</button>
-                <button class="tx-ent-btn primary" @onclick="GuardarEditar" disabled="@_editBusy">Guardar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarEditar" disabled="@_editBusy"><i class="bi bi-save"></i> Guardar</button>
             </div>
         </div>
     </div>
@@ -370,12 +392,16 @@
     private string? _fileName;
     private long _fileSize;
 
-    // Editar
+    // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
     private string? _editError;
     private long _editId;
     private string _eNombre = "";
     private DateTime? _eFecha;
+    private long? _eTipoId;
+    private IReadOnlyList<DocTipoOpcionDto> _eTipos = [];
+    private IReadOnlyList<DocMetadatoValorDefDto> _eCampos = [];
+    private readonly Dictionary<long, string?> _eMetaValores = [];
 
     // Archivar
     private bool _showArchivar, _arcBusy;
@@ -519,12 +545,30 @@
     private async Task OpenEditar(long id)
     {
         CloseMenu();
-        var res = await Svc.GetDetalleAsync(id, Actor);
+        var res = await Svc.GetEditarMetadatosAsync(id, Actor);
         if (!res.IsOk) { _pageError = res.Error; return; }
         var d = res.Value!;
-        _editId = d.Id; _eNombre = d.Nombre;
-        _eFecha = d.FechaDocumento is DateOnly fd ? fd.ToDateTime(TimeOnly.MinValue) : null;
+        _editId = d.DocId; _eNombre = d.Nombre;
+        _eFecha = d.Fecha is DateOnly fd ? fd.ToDateTime(TimeOnly.MinValue) : null;
+        _eTipoId = d.TipologiaId;
+        _eTipos = d.Tipos;
+        _eCampos = d.Campos;
+        _eMetaValores.Clear();
+        foreach (var c in d.Campos) { _eMetaValores[c.TrdMetadatoId] = c.Valor; }
         _editError = null; _showEditar = true;
+    }
+
+    private async Task OnEditTipoChanged(ChangeEventArgs e)
+    {
+        var id = long.TryParse(e.Value?.ToString(), out var x) ? x : 0;
+        _eTipoId = id > 0 ? id : null;
+        _eMetaValores.Clear();
+        if (_eTipoId is long tid)
+        {
+            _eCampos = await Svc.GetMetadatosTipologiaConValoresAsync(_editId, tid);
+            foreach (var c in _eCampos) { _eMetaValores[c.TrdMetadatoId] = c.Valor; }
+        }
+        else { _eCampos = []; }
     }
 
     private async Task GuardarEditar()
@@ -533,12 +577,47 @@
         try
         {
             var fecha = _eFecha is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
-            var res = await Svc.EditarBorradorAsync(_editId, _eNombre, fecha, Actor);
+            var metadatos = _eCampos.Select(c => new DocMetadatoInput(c.TrdMetadatoId, _eMetaValores.TryGetValue(c.TrdMetadatoId, out var v) ? v : null)).ToList();
+            var req = new GuardarMetadatosRequest(_editId, _eNombre, fecha, _eTipoId, metadatos);
+            var res = await Svc.GuardarMetadatosAsync(req, Actor);
             if (!res.IsOk) { _editError = res.Error; return; }
-            _showEditar = false; _pageOk = "Borrador actualizado."; await Reload();
+            _showEditar = false; _pageOk = "Metadatos guardados."; await Reload();
         }
         finally { _editBusy = false; }
     }
+
+    // Render de metadato del editor (con valor actual) por tipo de dato.
+    private RenderFragment EditMetaInput(DocMetadatoValorDefDto m) => __builder =>
+    {
+        string? current = _eMetaValores.TryGetValue(m.TrdMetadatoId, out var v) ? v : null;
+        void Set(ChangeEventArgs e) => _eMetaValores[m.TrdMetadatoId] = e.Value?.ToString();
+
+        switch (m.TipoDato)
+        {
+            case TipoDatoMetadato.TextoLargo:
+                <textarea class="tx-ent-input" rows="2" value="@current" @onchange="Set"></textarea>
+                break;
+            case TipoDatoMetadato.Numerico:
+            case TipoDatoMetadato.Moneda:
+                <input type="number" step="any" class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Fecha:
+                <input type="date" class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Booleano:
+                <select class="tx-ent-input" value="@current" @onchange="Set"><option value="">--</option><option value="true">Sí</option><option value="false">No</option></select>
+                break;
+            case TipoDatoMetadato.Lista:
+                <select class="tx-ent-input" value="@current" @onchange="Set">
+                    <option value="">— Selecciona —</option>
+                    @foreach (var o in m.OpcionesLista) { <option value="@o.Clave">@o.Valor</option> }
+                </select>
+                break;
+            default:
+                <input class="tx-ent-input" value="@current" @onchange="Set" />
+                break;
+        }
+    };
 
     // ---- Archivar ----
 
