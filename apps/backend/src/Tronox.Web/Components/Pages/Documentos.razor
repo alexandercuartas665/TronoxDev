@@ -8,7 +8,6 @@
    Acciones sin backend en TRONOX (Solicitar tarea, Terminar/Firmar RQ05, Editor, Compartir RF07,
    Enviar correo, Imprimir) se muestran como el legacy pero marcadas "proximamente". *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
-@using Microsoft.AspNetCore.Components.Forms
 @using Tronox.Application.Documentos
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
@@ -37,7 +36,7 @@
         </div>
         @if (_canCreate)
         {
-            <button class="tx-ent-btn primary" @onclick="OpenCrear"><i class="bi bi-file-earmark-plus"></i> Cargar Documento</button>
+            <button class="tx-ent-btn primary" @onclick="@(() => _showSelector = true)"><i class="bi bi-file-earmark-plus"></i> Cargar Documento</button>
         }
     </div>
 
@@ -181,39 +180,48 @@
     }
 </div>
 
-@* ============ Modal CREAR ============ *@
-@if (_showCrear)
+@* ============ Modal SELECTOR (¿Cómo deseas incorporar?) — calcado de ctrlIncorporarDoc (MisDocumentos) ============ *@
+@if (_showSelector)
 {
-    <div class="modal-overlay" @onclick="@(() => _showCrear = false)">
-        <div class="modal-dialog" style="max-width:640px;width:96%" @onclick:stopPropagation="true">
-            <div class="modal-head"><h3>Cargar Documento</h3><button class="modal-close" @onclick="@(() => _showCrear = false)">&times;</button></div>
+    <div class="modal-overlay" @onclick="@(() => _showSelector = false)">
+        <div class="modal-dialog" style="max-width:760px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3><i class="bi bi-plus-circle"></i> ¿Cómo deseas incorporar el documento?</h3><button class="modal-close" @onclick="@(() => _showSelector = false)">&times;</button></div>
             <div class="modal-body tx-mod tx-trdc">
-                @if (_crearError is not null) { <div class="tx-ent-fielderr">@_crearError</div> }
-                <div class="tx-ent-field">
-                    <label>Tipo de creación</label>
-                    <div style="display:flex;gap:14px">
-                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="modo" checked="@(_crearModo == "ARCHIVO")" @onchange="@(() => _crearModo = "ARCHIVO")" /> Subir archivo</label>
-                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="modo" checked="@(_crearModo == "FISICO")" @onchange="@(() => _crearModo = "FISICO")" /> Documento físico (papel)</label>
+                <div class="nd-info"><span class="nd-rf">RF09</span> <strong>Producción Documental Independiente (Flujo B).</strong> Elige el método de entrada del documento. Quedará como <strong>Borrador</strong> privado hasta ser archivado.</div>
+                <div class="nd-sectitle">Métodos directos</div>
+                <div class="nd-grid">
+                    <div class="nd-card" @onclick="AbrirCargaBorrador">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <div class="nd-card-t">Carga de Archivos <span class="nd-rfsm">RF01 · RF02</span></div>
+                        <div class="nd-card-d">Sube uno o varios archivos (PDF, imagen, ofimática) y clasifícalos uno a uno.</div>
+                    </div>
+                    <div class="nd-card" @onclick='() => Soon("Digitalizar (RF18)")'>
+                        <i class="bi bi-camera"></i>
+                        <div class="nd-card-t">Digitalizar <span class="nd-rfsm">RF18</span></div>
+                        <div class="nd-card-d">Escáner local (agente TWAIN) o cámara del dispositivo móvil.</div>
+                    </div>
+                    <div class="nd-card" @onclick='() => Soon("Desde Plantilla / Editor (RF09)")'>
+                        <i class="bi bi-pencil-square"></i>
+                        <div class="nd-card-t">Desde Plantilla / Editor <span class="nd-rfsm">RF09</span></div>
+                        <div class="nd-card-d">Crea un documento en el procesador de texto interno.</div>
+                    </div>
+                    <div class="nd-card disabled">
+                        <span class="nd-soon">Próximamente</span>
+                        <i class="bi bi-cloud"></i>
+                        <div class="nd-card-t">Fuente externa <span class="nd-rfsm">RF20 · RF21</span></div>
+                        <div class="nd-card-d">OneDrive, Google Drive, SharePoint, FTP/SFTP.</div>
                     </div>
                 </div>
-                <div class="tx-ent-field"><label>Nombre del documento <span class="req">*</span></label><input class="tx-ent-input" @bind="_cNombre" maxlength="200" /></div>
-                <div class="tx-ent-field"><label>Fecha del documento <span class="opt">(opcional)</span></label><input type="date" class="tx-ent-input" @bind="_cFecha" /></div>
-                @if (_crearModo == "ARCHIVO")
-                {
-                    <div class="tx-ent-field">
-                        <label>Archivo <span class="req">*</span></label>
-                        <InputFile OnChange="OnFileSelected" class="tx-ent-input" />
-                        <div class="tx-ent-hint">Máx 50 MB. PDF, DOCX, XLSX, PPTX, imágenes, audio/video, XML. @(_fileName is null ? "" : $"Seleccionado: {_fileName} ({Tamano(_fileSize)})")</div>
-                    </div>
-                }
-                <div class="tx-ent-hint" style="margin-top:8px"><i class="bi bi-info-circle"></i> El documento quedará en <strong>Mis Borradores</strong> (privado, sin foliación). Se incorpora a un expediente con la acción <strong>Archivar</strong> (RF16).</div>
-            </div>
-            <div class="modal-foot">
-                <button class="tx-ent-btn" @onclick="@(() => _showCrear = false)" disabled="@_crearBusy">Cancelar</button>
-                <button class="tx-ent-btn primary" @onclick="GuardarCrear" disabled="@_crearBusy">@(_crearBusy ? "Guardando..." : "Crear")</button>
             </div>
         </div>
     </div>
+}
+
+@* Carga de Archivos (modo borrador) *@
+@if (_showCarga)
+{
+    <CargaArchivosModal ModoBorrador="true" Actor="Actor"
+                        OnGuardados="OnCargaGuardados" OnCerrar="@(() => _showCarga = false)" />
 }
 
 @* ============ Modal EDITAR (metadatos) ============ *@
@@ -348,6 +356,19 @@
     .dm-item i { margin-top:2px; font-size:14px; flex-shrink:0; }
     .dm-tx { display:flex; flex-direction:column; line-height:1.3; }
     .dm-tx .dm-s { font-size:11px; color:#94A3B8; }
+    .nd-info { background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:11px 14px; font-size:13px; color:#1e40af; margin-bottom:14px; }
+    .nd-rf { display:inline-block; background:#2563EB; color:#fff; font-size:10.5px; font-weight:700; border-radius:5px; padding:2px 6px; margin-right:6px; }
+    .nd-sectitle { font-size:11px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px; }
+    .nd-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .nd-card { position:relative; border:1px solid #E2E8F0; border-radius:12px; padding:18px; cursor:pointer; transition:.12s; }
+    .nd-card:hover:not(.disabled) { border-color:#2563EB; box-shadow:0 2px 10px rgba(37,99,235,.10); }
+    .nd-card.disabled { background:#F8FAFC; cursor:default; opacity:.75; }
+    .nd-card > i { font-size:26px; color:#2563EB; display:block; margin-bottom:10px; }
+    .nd-card.disabled > i { color:#94A3B8; }
+    .nd-card-t { font-size:14.5px; font-weight:700; color:#0F172A; margin-bottom:4px; }
+    .nd-rfsm { font-size:10.5px; font-weight:600; color:#94A3B8; margin-left:4px; }
+    .nd-card-d { font-size:12.5px; color:#64748B; line-height:1.45; }
+    .nd-soon { position:absolute; top:10px; right:10px; font-size:10px; font-weight:700; color:#94A3B8; background:#F1F5F9; border-radius:999px; padding:2px 8px; }
 </style>
 
 <script>
@@ -368,7 +389,6 @@
 
 @code {
     private const string ModuleKey = "modulo/documentos";
-    private const long MaxUpload = 50L * 1024 * 1024;
 
     private bool _canCreate, _canEdit, _canDelete;
     private long Actor => Tenant.UserId ?? 0;
@@ -382,15 +402,8 @@
     // Menu de acciones (dm) abierto por fila
     private long _menuOpenId;
 
-    // Crear
-    private bool _showCrear, _crearBusy;
-    private string? _crearError;
-    private string _crearModo = "ARCHIVO";
-    private string _cNombre = "";
-    private DateTime? _cFecha;
-    private IBrowserFile? _file;
-    private string? _fileName;
-    private long _fileSize;
+    // Cargar Documento: selector (¿Cómo deseas incorporar?) + carga multi-archivo en modo borrador
+    private bool _showSelector, _showCarga;
 
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
@@ -473,50 +486,15 @@
         else if (_bandeja == BandejaDocumento.ArchivadosPorMi) { _archivados = await Svc.ListarArchivadosPorMiAsync(Actor, t); }
     }
 
-    // ---- Crear ----
+    // ---- Cargar Documento (selector + carga en modo borrador) ----
 
-    private void OpenCrear()
-    {
-        _crearError = null; _crearBusy = false; _crearModo = "ARCHIVO";
-        _cNombre = ""; _cFecha = null; _file = null; _fileName = null; _fileSize = 0;
-        _pageOk = null; _pageInfo = null; _pageError = null;
-        _showCrear = true;
-    }
+    private void AbrirCargaBorrador() { _showSelector = false; _showCarga = true; }
 
-    private void OnFileSelected(InputFileChangeEventArgs e)
+    private async Task OnCargaGuardados()
     {
-        _file = e.File;
-        _fileName = e.File.Name;
-        _fileSize = e.File.Size;
-        if (string.IsNullOrWhiteSpace(_cNombre)) { _cNombre = System.IO.Path.GetFileNameWithoutExtension(e.File.Name); }
-    }
-
-    private async Task GuardarCrear()
-    {
-        _crearBusy = true; _crearError = null;
-        try
-        {
-            var fecha = _cFecha is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
-            DocumentoResult<DocumentoDetalleDto> res;
-            if (_crearModo == "FISICO")
-            {
-                res = await Svc.CrearBorradorFisicoAsync(new CrearBorradorFisicoRequest(_cNombre, fecha), Actor);
-            }
-            else
-            {
-                if (_file is null) { _crearError = "Selecciona un archivo."; return; }
-                if (_file.Size > MaxUpload) { _crearError = "El archivo supera 50 MB."; return; }
-                using var ms = new MemoryStream();
-                await _file.OpenReadStream(MaxUpload).CopyToAsync(ms);
-                res = await Svc.CrearBorradorBinarioAsync(_cNombre, fecha, ms.ToArray(), _file.Name, Actor);
-            }
-            if (!res.IsOk) { _crearError = res.Error; return; }
-            _showCrear = false;
-            _pageOk = "Documento creado como borrador.";
-            _bandeja = BandejaDocumento.MisBorradores;
-            await Reload();
-        }
-        finally { _crearBusy = false; }
+        _pageOk = "Documento(s) creado(s) como borrador.";
+        _bandeja = BandejaDocumento.MisBorradores;
+        await Reload();
     }
 
     // ---- Ver (visor) / descargar ----

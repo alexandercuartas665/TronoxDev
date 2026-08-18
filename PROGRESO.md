@@ -684,3 +684,27 @@ muy divergentes). Sin cambios de backend (solo Razor).
   "binario no disponible" localmente porque el blob vive en Azure; en prod existe.)
 - PENDIENTE menor: el legacy muestra "Editar metadatos" inline tambien en Archivados; se omitio porque
   editar metadatos de un archivado necesita backend diferido. A confirmar con el usuario.
+
+---
+
+## 19. "Cargar Documento" milimetrico + backend editar metadatos (RQ04, 2026-08-18)
+
+Dos entregas sobre Mis Documentos (modulo/documentos), calcadas del legacy.
+
+- **Backend editar metadatos** (commit f657bd3): copiado del handler `exp_visor_data.ashx`
+  (op=doc/tipos/campos/guardar). `GetEditarMetadatosAsync` (nombre/fecha/tipo actual + tipologias
+  activas + campos con valores), `GetMetadatosTipologiaConValoresAsync` (al cambiar tipo),
+  `GuardarMetadatosAsync` (nombre+fecha obligatorios + tipo documental + reemplaza metadatos + audita
+  el diff). Editor UI calcado de mdRender (Nombre*/Fecha*/Tipo documental + metadatos dinamicos con
+  valores). Auditado e2e: asigna tipo + captura metadatos + persiste + round-trip al reabrir.
+
+- **Modal "Cargar Documento"** ahora abre el SELECTOR "Como deseas incorporar el documento?"
+  (`ctrlIncorporarDoc` modo MisDocumentos): 4 tarjetas (Carga de Archivos / Digitalizar / Editor /
+  Fuente externa), SIN miga archivistica (borrador privado), caja RF09 "Flujo B". Antes abria un
+  formulario simple Subir/Fisico (por eso "difiere mucho").
+  - `CargaArchivosModal` gana el parametro **ModoBorrador**: en ese modo crea BORRADORES
+    (CrearBorradorBinario/Fisico), oculta folios/tipologia y muestra la ruta "Mis Documentos > Borrador
+    privado". Reusa el mismo modal 3-columnas del detalle.
+  - Digitalizar/Editor -> "proximamente"; Fuente externa -> deshabilitada.
+  - Auditado e2e (dev-login + MCP Chrome): selector sin breadcrumb + 4 tarjetas, carga en modo borrador,
+    borrador FISICO creado (doc 97), la bandeja se refresca con flash "Documento(s) creado(s) como borrador".
