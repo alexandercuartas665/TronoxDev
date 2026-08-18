@@ -657,3 +657,30 @@ Vinculos (buscador+confirm), Cerrar/Reabrir (modales fieles).
   (correcto, gate IsDevelopment); migraciones 32 (sin cambios); **postgres NO recreado** (created 2026-07-23,
   restarts=0 -> claves/datos intactos); vecinos **29** (sin bajar); DLLs con mtime 2026-08-18 09:4x UTC (build de hoy).
 - Rollback disponible: imagen anterior (`tronox-web:prod` 92dd69c8) queda como `<none>` en el host.
+
+---
+
+## 18. "Mis Documentos" milimetrico: acciones calcadas del legacy (RQ04 RF15, 2026-08-18)
+
+La bandeja `modulo/documentos` se recalco a `doc_bandeja.aspx`, con foco en las ACCIONES (que estaban
+muy divergentes). Sin cambios de backend (solo Razor).
+
+- **Se elimino la accion inventada** "Solicitar revision/aprobacion (RF11)" que estaba como boton inline
+  funcional; en el legacy eso son placeholders. Tambien se quito el modal RF11 y el uso de IValidacionService.
+- **Columnas** calcadas: Borradores = Nombre/Tipo documental/Fecha creacion/Folios/Tamano/Estado/Firma/Acciones;
+  Archivados = Nombre/Tipo documental/Expediente/Fecha incorporacion/Folios/Tamano/Estado/Firma/Acciones.
+- **Acciones por fila** = inline **Ver** (visor, solo si hay binario) + **Editar metadatos** + **menu de
+  mas acciones (dm)** con las secciones/items exactos del legacy:
+  - Asignar tarea: Solicitar Revision/Aprobacion/Tramite/Firma (placeholders "proximamente", como el legacy).
+  - Firma: Terminar (proximamente; solo si binario).
+  - Otras: Editar contenido (proximamente), Descargar (real, si binario), Archivar (real, wizard RF16),
+    Compartir/Enviar por correo/Imprimir (proximamente), y Eliminar documento (real, danger).
+  - Archivados: Ver + menu Otras (Descargar/Compartir/Enviar).
+- **Ver** ahora es el VISOR (abre el binario en pestana via blob), no un modal de metadatos.
+- Nombre es link al visor cuando hay binario (fisico = texto plano, sin Ver), calcado del legacy.
+- Auditado e2e (dev-login + MCP Chrome, tenant 2, admin2): columnas OK, menu con orden/labels identicos,
+  placeholders muestran "proximamente", modales Editar/Archivar(17 exp)/Eliminar abren, fisico omite
+  Ver/Terminar/Descargar/Imprimir, visor JS abre blob en _blank. (Descarga real de docs del ETL da
+  "binario no disponible" localmente porque el blob vive en Azure; en prod existe.)
+- PENDIENTE menor: el legacy muestra "Editar metadatos" inline tambien en Archivados; se omitio porque
+  editar metadatos de un archivado necesita backend diferido. A confirmar con el usuario.
