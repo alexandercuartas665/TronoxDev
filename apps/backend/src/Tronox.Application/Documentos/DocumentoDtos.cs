@@ -67,11 +67,28 @@ public sealed record DocMetadatoValorDto(long TrdMetadatoId, string Nombre, Tipo
 
 public sealed record DocumentoDescargaDto(byte[] Contenido, string NombreArchivo, string ContentType);
 
+/// <summary>
+/// Incorporacion de UN documento directamente en un expediente (RQ04 - Carga de Archivos, Flujo A del
+/// legacy ctrlIncorporarDoc). Sube el binario, calcula hash y folia; nace Archivado. El nivel se hereda
+/// del expediente (no se pide). La tipologia es opcional (solo si la serie tiene tipologias).
+/// </summary>
+public sealed record IncorporarDocRequest(
+    long ExpedienteId,
+    string Nombre,
+    DateOnly FechaDocumento,
+    long? TrdTipologiaId,
+    int Folios,
+    bool EsFisico,
+    byte[]? Contenido,
+    string? NombreArchivo,
+    IReadOnlyList<DocMetadatoInput> Metadatos);
+
 /// <summary>Documento de un expediente para la pestana Documentos de la vista de detalle (RQ03).</summary>
 public sealed record ExpedienteDocumentoDto(
     long Id,
     int? OrdenEnExpediente,
     string Nombre,
+    string? TipologiaNombre,
     string? Formato,
     long? TamanoBytes,
     int? PaginaInicio,
@@ -79,6 +96,7 @@ public sealed record ExpedienteDocumentoDto(
     int? Folios,
     DateOnly? FechaDocumento,
     DateTime? FechaIncorporacion,
+    SoporteDocumento Soporte,
     EstadoDocumento Estado,
     EstadoFirmaDocumento EstadoFirma,
     bool TieneBinario);

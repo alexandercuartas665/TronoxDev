@@ -32,14 +32,15 @@ public sealed class DocumentoService : IDocumentoService
     public async Task<IReadOnlyList<ExpedienteDocumentoDto>> ListarPorExpedienteAsync(
         long expedienteId, long actorUserId, CancellationToken cancellationToken = default)
         => await _db.Documentos.AsNoTracking()
+            .Include(d => d.TrdTipologia)
             .Where(d => d.ExpedienteId == expedienteId
                         && d.Estado != EstadoDocumento.Anulado
                         && !d.EsVersionHistorica)
             .OrderBy(d => d.OrdenEnExpediente).ThenBy(d => d.FechaIncorporacion)
             .Select(d => new ExpedienteDocumentoDto(
-                d.Id, d.OrdenEnExpediente, d.Nombre, d.Formato, d.TamanoBytes,
+                d.Id, d.OrdenEnExpediente, d.Nombre, d.TrdTipologia!.Nombre, d.Formato, d.TamanoBytes,
                 d.PaginaInicio, d.PaginaFin, d.Folios, d.FechaDocumento, d.FechaIncorporacion,
-                d.Estado, d.EstadoFirma, d.TieneBinario))
+                d.Soporte, d.Estado, d.EstadoFirma, d.TieneBinario))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<BorradorItemDto>> ListarBorradoresAsync(
@@ -373,6 +374,132 @@ public sealed class DocumentoService : IDocumentoService
             tenantId: doc.TenantId);
         await _db.SaveChangesAsync(cancellationToken);
         return DocumentoResult<DocumentoDetalleDto>.Ok(await BuildDetalleAsync(doc, cancellationToken));
+    }
+
+    // ---- Carga de Archivos: incorporar directo en el expediente (Flujo A, RQ04) ----
+
+    public async Task<DocumentoResult<bool>> IncorporarEnExpedienteAsync(
+        IncorporarDocRequest request, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var errNombre = DocumentoRules.ValidateNombre(request.Nombre);
+        if (errNombre is not null) { return DocumentoResult<bool>.Invalid(errNombre); }
+
+        var nivelMax = await ResolveNivelMaxOrdenAsync(actorUserId, cancellationToken);
+        var expediente = await _db.Expedientes.AsNoTracking()
+            .Include(e => e.NivelClasificacion)
+            .FirstOrDefaultAsync(e => e.Id == request.ExpedienteId && !e.Eliminado, cancellationToken);
+        if (expediente is null || expediente.NivelClasificacion!.NivelOrden > nivelMax)
+        { return DocumentoResult<bool>.NotFound("El expediente no existe."); }
+        if (expediente.Estado != EstadoExpediente.Abierto)
+        { return DocumentoResult<bool>.Invalid("El expediente esta Cerrado; no admite nuevos documentos."); }
+
+        var tenantId = _tenantContext.TenantId!.Value;
+
+        // Tipologia OPCIONAL: si viene, debe pertenecer a la serie del expediente; carga sus metadatos.
+        List<(long Id, string Nombre, bool Obligatorio)> defs = [];
+        if (request.TrdTipologiaId is long tipId)
+        {
+            var tipologia = await _db.TrdTipologias.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == tipId && t.TrdAsignacionId == expediente.TrdAsignacionId && !t.IsArchived, cancellationToken);
+            if (tipologia is null) { return DocumentoResult<bool>.Invalid("La tipologia no pertenece a la serie del expediente."); }
+            defs = (await _db.TrdMetadatos.AsNoTracking()
+                .Where(m => m.TrdTipologiaId == tipId && m.Contexto == ContextoMetadato.Documento && !m.IsArchived)
+                .Select(m => new { m.Id, m.Nombre, m.Obligatorio }).ToListAsync(cancellationToken))
+                .Select(x => (x.Id, x.Nombre, x.Obligatorio)).ToList();
+        }
+        var valores = request.Metadatos.GroupBy(m => m.TrdMetadatoId).ToDictionary(g => g.Key, g => g.Last().Valor);
+        var errMeta = DocumentoRules.ValidateMetadatosObligatorios(defs, valores);
+        if (errMeta is not null) { return DocumentoResult<bool>.Invalid(errMeta); }
+
+        // Binario (si no es fisico): sube al object storage AL CONFIRMAR.
+        string? key = null, hash = null, formato = null, contentType = null;
+        long? tamano = null;
+        var soporte = SoporteDocumento.Fisico;
+        var tieneBinario = false;
+        var ocr = OcrEstadoDocumento.NoAplica;
+        var folios = Math.Max(1, request.Folios);
+        if (!request.EsFisico)
+        {
+            if (request.Contenido is null || request.Contenido.Length == 0 || string.IsNullOrWhiteSpace(request.NombreArchivo))
+            { return DocumentoResult<bool>.Invalid("Falta el archivo a subir."); }
+            var errBin = DocumentoRules.ValidateBinario(request.NombreArchivo, request.Contenido.LongLength);
+            if (errBin is not null) { return DocumentoResult<bool>.Invalid(errBin); }
+            var ext = DocumentoRules.Extension(request.NombreArchivo);
+            key = $"{tenantId}/{Guid.NewGuid():N}.{ext}";
+            hash = DocumentoRules.HashSha256(request.Contenido);
+            formato = DocumentoRules.Formato(request.NombreArchivo);
+            tamano = request.Contenido.LongLength;
+            contentType = DocumentoRules.ContentType(request.NombreArchivo);
+            soporte = SoporteDocumento.Electronico;
+            tieneBinario = true;
+            ocr = DocumentoRules.OcrInicial(request.NombreArchivo);
+            folios = ext == "pdf" ? ContarPaginasPdf(request.Contenido) : EsImagen(ext) ? 1 : Math.Max(1, request.Folios);
+            using var ms = new MemoryStream(request.Contenido, writable: false);
+            await _storage.PutAsync(key, ms, contentType, cancellationToken);
+        }
+
+        // Foliacion continua por expediente (inmutable): orden de incorporacion + rango de folios.
+        var maxOrden = await _db.Documentos.AsNoTracking()
+            .Where(d => d.ExpedienteId == expediente.Id && d.Estado == EstadoDocumento.Archivado)
+            .Select(d => (int?)d.OrdenEnExpediente).MaxAsync(cancellationToken) ?? 0;
+        var maxFolio = await _db.Documentos.AsNoTracking()
+            .Where(d => d.ExpedienteId == expediente.Id && d.Estado == EstadoDocumento.Archivado)
+            .Select(d => (int?)d.PaginaFin).MaxAsync(cancellationToken) ?? 0;
+        var pini = maxFolio + 1;
+
+        var doc = new Documento
+        {
+            TenantId = tenantId,
+            Nombre = request.Nombre.Trim(),
+            NombreArchivoOriginal = request.NombreArchivo,
+            Soporte = soporte,
+            Estado = EstadoDocumento.Archivado,
+            EstadoFirma = EstadoFirmaDocumento.SinFirma,
+            ExpedienteId = expediente.Id,
+            TrdAsignacionId = expediente.TrdAsignacionId,          // DAT-03: hereda y congela
+            TrdTipologiaId = request.TrdTipologiaId,
+            NivelClasificacionId = expediente.NivelClasificacionId, // heredado del expediente (RF13)
+            FechaDocumento = request.FechaDocumento,
+            FechaIncorporacion = DateTime.UtcNow,
+            OrdenEnExpediente = maxOrden + 1,
+            PaginaInicio = pini,
+            PaginaFin = pini + folios - 1,
+            Folios = folios,
+            Formato = formato,
+            TamanoBytes = tamano,
+            HashSha256 = hash,
+            TieneBinario = tieneBinario,
+            RutaAlmacenamiento = key,
+            OcrEstado = ocr
+        };
+        var defIds = defs.Select(x => x.Id).ToHashSet();
+        foreach (var input in valores)
+        {
+            if (!defIds.Contains(input.Key) || string.IsNullOrWhiteSpace(input.Value)) { continue; }
+            doc.Metadatos.Add(new DocumentoMetadato { TenantId = tenantId, TrdMetadatoId = input.Key, Valor = input.Value!.Trim() });
+        }
+        _db.Documentos.Add(doc);
+        _audit.Write(actorUserId, "documento.incorporar", nameof(Documento), doc,
+            previousValue: null,
+            newValue: new { doc.Nombre, ExpedienteId = expediente.Id, doc.OrdenEnExpediente, doc.HashSha256 }, tenantId: tenantId);
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch { if (key is not null) { await _storage.DeleteAsync(key, cancellationToken); } throw; }
+        return DocumentoResult<bool>.Ok(true);
+    }
+
+    private static bool EsImagen(string ext)
+        => ext is "jpg" or "jpeg" or "png" or "tif" or "tiff" or "gif" or "bmp" or "webp";
+
+    /// <summary>Cuenta paginas de un PDF de forma heuristica (marcadores /Type /Page). Fallback 1.</summary>
+    private static int ContarPaginasPdf(byte[] contenido)
+    {
+        try
+        {
+            var txt = System.Text.Encoding.Latin1.GetString(contenido);
+            var count = System.Text.RegularExpressions.Regex.Matches(txt, @"/Type\s*/Page[^s]").Count;
+            return count > 0 ? count : 1;
+        }
+        catch { return 1; }
     }
 
     // ---- Helpers ----

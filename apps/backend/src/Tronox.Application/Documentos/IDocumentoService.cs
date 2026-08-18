@@ -47,4 +47,8 @@ public interface IDocumentoService
 
     Task<DocumentoResult<DocumentoDetalleDto>> ArchivarAsync(
         ArchivarRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Incorpora UN documento directo en un expediente (Carga de Archivos): sube, folia y archiva.</summary>
+    Task<DocumentoResult<bool>> IncorporarEnExpedienteAsync(
+        IncorporarDocRequest request, long actorUserId, CancellationToken cancellationToken = default);
 }

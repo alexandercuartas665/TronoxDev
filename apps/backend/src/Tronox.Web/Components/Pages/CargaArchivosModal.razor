@@ -1,0 +1,415 @@
+@using Tronox.Application.Documentos
+@using Tronox.Domain.Enums
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDocumentoService DocSvc
+
+@* RQ04 - "Carga de Archivos" (Flujo A), calcado del legacy ctrlIncorporarDoc: modal 3 columnas
+   (dropzone+cola | visor | metadatos), cola con FOCO secuencial (no wizard), indexacion uno-a-uno.
+   El binario se sube AL CONFIRMAR cada documento (IncorporarEnExpedienteAsync). Nace Archivado con
+   foliacion continua; el nivel se hereda del expediente. *@
+
+<div class="ca-overlay" @onclick="Cerrar">
+    <div class="ca-modal" @onclick:stopPropagation="true">
+        <div class="ca-head">
+            <div>
+                <h3><i class="bi bi-cloud-arrow-up"></i> Carga masiva e indexación rápida</h3>
+                <div class="ca-ruta">@FondoNombre <span>›</span> @SerieCodigo - @SerieNombre <span>›</span> <strong>@Codigo</strong></div>
+            </div>
+            <div class="ca-head-right">
+                <span class="ca-counter">@Guardados/@_cola.Count indexados</span>
+                <button class="ca-x" @onclick="Cerrar">&times;</button>
+            </div>
+        </div>
+
+        @if (_flash is not null) { <div class="ca-flash @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+        <div class="ca-grid">
+            @* ---------- IZQUIERDA: dropzone + cola ---------- *@
+            <div class="ca-col ca-left">
+                <label class="ca-dropzone">
+                    <InputFile OnChange="OnFiles" multiple />
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <div class="ca-dz-t">Arrastra o haz clic para subir</div>
+                    <div class="ca-hint">PDF, DOCX, XLSX, JPG, PNG, MP4, MP3, XML · Máx. 50 MB c/u</div>
+                </label>
+
+                <label class="ca-fisico-chk"><input type="checkbox" @bind="_fisicoMode" /> Documento físico (sin archivo)</label>
+                @if (_fisicoMode)
+                {
+                    <div class="ca-fisico-box">
+                        <input type="number" min="1" class="ca-inp" style="width:80px" @bind="_fisicoFolios" /> folios
+                        <button class="ca-btn sm" @onclick="AgregarFisico">Agregar</button>
+                    </div>
+                }
+
+                @if (_cola.Count > 0)
+                {
+                    <div class="ca-progress">
+                        <div class="ca-prog-stats"><span>Total @_cola.Count</span><span>Pend. @Pendientes</span><span class="ok">Ok @Guardados</span>@if (Errores > 0) { <span class="err">Err. @Errores</span> }</div>
+                        <div class="ca-bar"><div class="ca-bar-fill" style="width:@(_cola.Count == 0 ? 0 : Guardados * 100 / _cola.Count)%"></div></div>
+                    </div>
+                }
+
+                <div class="ca-cola">
+                    @if (_cola.Count == 0) { <div class="ca-cola-empty">La cola está vacía. Sube archivos para empezar.</div> }
+                    @for (var i = 0; i < _cola.Count; i++)
+                    {
+                        var idx = i; var it = _cola[i];
+                        <div class="ca-row @(idx == _foco ? "cur" : "") @(it.Estado != "Pendiente" ? "done" : "")">
+                            <span class="ca-badge @BadgeClass(it)">@(it.EsFisico ? "FIS" : (it.Formato?.ToUpperInvariant() ?? "?"))</span>
+                            <div class="ca-row-main">
+                                <div class="ca-row-nom">@it.Nombre</div>
+                                <div class="ca-row-meta">@TamTexto(it.Tamano) · @it.Folios folio(s)@if (it.OcrPend) { <span> · OCR pend.</span> }</div>
+                            </div>
+                            <span class="ca-estado ca-e-@it.Estado.ToLower()">@it.Estado</span>
+                            <div class="ca-row-acts">
+                                @if (it.Estado == "Pendiente") { <button class="ca-ic" title="Indexar" @onclick="@(() => _foco = idx)"><i class="bi bi-pencil"></i></button> }
+                                <button class="ca-ic" title="Quitar" @onclick="@(() => Quitar(idx))"><i class="bi bi-trash"></i></button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ---------- CENTRO: visor ---------- *@
+            <div class="ca-col ca-center">
+                @if (Foco is null) { <div class="ca-visor-empty"><i class="bi bi-eye"></i><div>Selecciona un documento de la cola para previsualizarlo.</div></div> }
+                else if (Foco.EsFisico) { <div class="ca-visor-empty"><i class="bi bi-file-earmark"></i><div>Documento físico — sin archivo digital.</div></div> }
+                else if (_previewUri is not null && Foco.Formato == "pdf") { <iframe class="ca-visor-frame" src="@_previewUri" title="Vista previa"></iframe> }
+                else if (_previewUri is not null) { <div class="ca-visor-img"><img src="@_previewUri" alt="Vista previa" /></div> }
+                else { <div class="ca-visor-empty"><i class="bi bi-file-earmark-text"></i><div>Vista previa no disponible para @(Foco.Formato?.ToUpperInvariant()).</div></div> }
+            </div>
+
+            @* ---------- DERECHA: metadatos ---------- *@
+            <div class="ca-col ca-right">
+                @if (Foco is null || Foco.Estado != "Pendiente")
+                {
+                    <div class="ca-idx-empty"><i class="bi bi-arrow-left-circle"></i><div>Sube o selecciona un documento pendiente para indexarlo.</div></div>
+                }
+                else
+                {
+                    var it = Foco;
+                    <div class="ca-idx-h">Metadatos · Documento #@(_foco + 1) · @Pendientes pendiente(s)</div>
+                    <div class="ca-idx-file"><i class="bi @IconoFormato(it.Formato)"></i> <span class="mono">@(it.NombreArchivo ?? "físico")</span></div>
+
+                    <div class="ca-field"><label>Nombre del documento <span class="req">*</span></label>
+                        <input class="ca-inp" maxlength="200" @bind="it.Nombre" />
+                        <div class="ca-hint">Se normaliza (sin tildes; espacios → guión bajo) al guardar.</div>
+                    </div>
+                    <div class="ca-field"><label>Fecha del documento <span class="req">*</span></label>
+                        <input type="date" class="ca-inp" @bind="it.Fecha" />
+                    </div>
+                    @if (_tipologias.Count > 0)
+                    {
+                        <div class="ca-field"><label>Tipo documental</label>
+                            <select class="ca-inp" value="@(it.TipologiaId?.ToString() ?? "")" @onchange="e => OnTipologiaChanged(it, e)">
+                                <option value="">— Sin tipología —</option>
+                                @foreach (var t in _tipologias) { <option value="@t.Id">@t.Nombre</option> }
+                            </select>
+                        </div>
+                    }
+                    <div class="ca-field"><label>Nº de folios</label>
+                        <input type="number" min="1" class="ca-inp" @bind="it.Folios" readonly="@(!it.FolioManual && !it.EsFisico)" />
+                        @if (!it.FolioManual && !it.EsFisico) { <div class="ca-hint">Automático (PDF: páginas; imagen: 1). Se recalcula al guardar.</div> }
+                    </div>
+
+                    @if (it.TipologiaId is long tid && _metaDefs.TryGetValue(tid, out var defs) && defs.Count > 0)
+                    {
+                        <div class="ca-metas-t">Metadatos de la tipología</div>
+                        @foreach (var m in defs)
+                        {
+                            <div class="ca-field"><label>@m.Nombre @if (m.Obligatorio) { <span class="req">*</span> }</label>@MetaInput(m, it.Metas)</div>
+                        }
+                    }
+
+                    <div class="ca-idx-acts">
+                        <button class="ca-btn primary" @onclick="GuardarActual" disabled="@_busy"><i class="bi bi-save"></i> Guardar y siguiente</button>
+                        <button class="ca-btn" @onclick="Omitir" disabled="@_busy"><i class="bi bi-skip-forward"></i> Omitir</button>
+                        @if (_ultimoGuardado is not null) { <button class="ca-btn" @onclick="@(() => Replicar(it))" disabled="@_busy"><i class="bi bi-clipboard"></i> Replicar anterior</button> }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="ca-foot">
+            <button class="ca-btn" @onclick="Cerrar">Devolver</button>
+            <button class="ca-btn primary" @onclick="Finalizar"><i class="bi bi-check-lg"></i> Finalizar</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .ca-overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:1090; display:flex; align-items:center; justify-content:center; padding:10px; }
+    .ca-modal { background:#fff; border-radius:14px; width:99vw; height:calc(100vh - 20px); max-width:1500px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 50px rgba(15,23,42,.35); font-family:Poppins,sans-serif; }
+    .ca-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; border-bottom:1px solid #E2E8F0; }
+    .ca-head h3 { margin:0; font-size:17px; font-weight:700; color:#0F172A; }
+    .ca-ruta { font-size:12px; color:#94A3B8; margin-top:3px; } .ca-ruta span { color:#CBD5E1; margin:0 4px; } .ca-ruta strong { color:#2563EB; }
+    .ca-head-right { display:flex; align-items:center; gap:14px; }
+    .ca-counter { font-size:13px; font-weight:700; color:#2563EB; background:#EFF6FF; border-radius:999px; padding:4px 12px; }
+    .ca-x { border:none; background:none; font-size:24px; color:#94A3B8; cursor:pointer; line-height:1; }
+    .ca-flash { margin:10px 18px 0; padding:9px 14px; border-radius:9px; font-size:13px; }
+    .ca-flash.ok { background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; } .ca-flash.err { background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; }
+    .ca-grid { flex:1; display:grid; grid-template-columns:360px minmax(0,1fr) 400px; gap:0; overflow:hidden; }
+    .ca-col { overflow-y:auto; padding:16px; }
+    .ca-left { border-right:1px solid #E2E8F0; } .ca-center { background:#F1F5F9; display:flex; } .ca-right { border-left:1px solid #E2E8F0; }
+    .ca-dropzone { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed #CBD5E1; border-radius:12px; padding:22px 14px; text-align:center; cursor:pointer; background:#F8FAFC; }
+    .ca-dropzone:hover { border-color:#2563EB; background:#EFF6FF; }
+    .ca-dropzone i { font-size:30px; color:#2563EB; } .ca-dz-t { font-size:13.5px; font-weight:600; color:#334155; }
+    .ca-dropzone input[type=file] { display:none; }
+    .ca-hint { font-size:11px; color:#94A3B8; }
+    .ca-fisico-chk { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#475569; margin:12px 0 0; cursor:pointer; }
+    .ca-fisico-box { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12.5px; color:#475569; }
+    .ca-progress { margin:14px 0 8px; } .ca-prog-stats { display:flex; gap:12px; font-size:11.5px; color:#64748B; margin-bottom:5px; } .ca-prog-stats .ok { color:#16A34A; } .ca-prog-stats .err { color:#DC2626; }
+    .ca-bar { height:7px; background:#E2E8F0; border-radius:999px; overflow:hidden; } .ca-bar-fill { height:100%; background:#16A34A; transition:.2s; }
+    .ca-cola { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+    .ca-cola-empty { font-size:12px; color:#94A3B8; text-align:center; padding:16px; }
+    .ca-row { display:flex; align-items:center; gap:8px; border:1px solid #E2E8F0; border-radius:9px; padding:8px 10px; background:#fff; }
+    .ca-row.cur { border-color:#2563EB; box-shadow:0 0 0 2px rgba(37,99,235,.12); } .ca-row.done { opacity:.75; }
+    .ca-badge { font-size:9.5px; font-weight:700; border-radius:5px; padding:3px 5px; background:#EFF6FF; color:#2563EB; min-width:34px; text-align:center; }
+    .ca-badge.fis { background:#FEF3C7; color:#B45309; }
+    .ca-row-main { flex:1; min-width:0; } .ca-row-nom { font-size:12.5px; font-weight:600; color:#0F172A; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ca-row-meta { font-size:10.5px; color:#94A3B8; }
+    .ca-estado { font-size:9.5px; font-weight:700; border-radius:999px; padding:2px 7px; text-transform:uppercase; }
+    .ca-e-pendiente { background:#FEF3C7; color:#B45309; } .ca-e-guardado { background:#DCFCE7; color:#15803D; } .ca-e-omitido { background:#E2E8F0; color:#64748B; } .ca-e-error { background:#FEE2E2; color:#B91C1C; }
+    .ca-row-acts { display:flex; gap:2px; } .ca-ic { border:none; background:none; color:#94A3B8; cursor:pointer; font-size:13px; padding:3px; } .ca-ic:hover { color:#2563EB; }
+    .ca-center { align-items:stretch; justify-content:center; padding:0; }
+    .ca-visor-frame { width:100%; height:100%; border:none; }
+    .ca-visor-img { width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:16px; overflow:auto; } .ca-visor-img img { max-width:100%; max-height:100%; box-shadow:0 4px 16px rgba(15,23,42,.2); }
+    .ca-visor-empty { margin:auto; text-align:center; color:#94A3B8; font-size:13px; } .ca-visor-empty i { font-size:38px; display:block; margin-bottom:10px; color:#CBD5E1; }
+    .ca-idx-h { font-size:13px; font-weight:700; color:#2563EB; margin-bottom:10px; }
+    .ca-idx-file { font-size:12px; color:#475569; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:8px 10px; margin-bottom:12px; word-break:break-all; }
+    .ca-idx-empty { color:#94A3B8; text-align:center; font-size:13px; margin-top:40px; } .ca-idx-empty i { font-size:32px; display:block; margin-bottom:8px; color:#CBD5E1; }
+    .ca-field { display:flex; flex-direction:column; gap:5px; margin-bottom:11px; } .ca-field label { font-size:12.5px; font-weight:600; color:#334155; } .ca-field .req { color:#DC2626; }
+    .ca-inp { height:38px; border:1px solid #E2E8F0; border-radius:8px; padding:0 11px; font-size:13px; background:#fff; width:100%; } .ca-inp[readonly] { background:#F1F5F9; color:#64748B; }
+    textarea.ca-inp { height:auto; padding:8px 11px; }
+    .ca-metas-t { font-size:11.5px; font-weight:700; color:#94A3B8; text-transform:uppercase; margin:8px 0 8px; }
+    .ca-idx-acts { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+    .ca-btn { display:inline-flex; align-items:center; gap:6px; height:38px; padding:0 14px; border-radius:9px; border:1px solid #E2E8F0; background:#fff; color:#475569; font-size:13px; font-weight:600; cursor:pointer; }
+    .ca-btn:hover { background:#F8FAFC; } .ca-btn.sm { height:30px; padding:0 10px; font-size:12px; }
+    .ca-btn.primary { background:#2563EB; border-color:#2563EB; color:#fff; } .ca-btn.primary:hover { background:#1D4ED8; } .ca-btn:disabled { opacity:.55; cursor:default; }
+    .ca-foot { display:flex; justify-content:space-between; gap:8px; padding:12px 18px; border-top:1px solid #E2E8F0; }
+    .mono { font-family:Consolas,monospace; }
+    @@media (max-width:1100px){ .ca-grid { grid-template-columns:1fr; } .ca-center { display:none; } }
+</style>
+
+@code {
+    [Parameter] public long ExpedienteId { get; set; }
+    [Parameter] public string? FondoNombre { get; set; }
+    [Parameter] public string? SerieCodigo { get; set; }
+    [Parameter] public string? SerieNombre { get; set; }
+    [Parameter] public string? Codigo { get; set; }
+    [Parameter] public long Actor { get; set; }
+    [Parameter] public EventCallback OnGuardados { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private const long MaxSize = 50L * 1024 * 1024;
+    private const int MaxFiles = 30;
+    private static readonly string[] Permitidas = ["pdf", "docx", "xlsx", "pptx", "jpg", "jpeg", "png", "tif", "tiff", "mp3", "mp4", "aac", "xml"];
+
+    private sealed class ColaItem
+    {
+        public byte[]? Bytes;
+        public string? NombreArchivo;
+        public string? Formato;
+        public long Tamano;
+        public bool EsFisico;
+        public string Nombre = "";
+        public DateTime Fecha = DateTime.Today;
+        public long? TipologiaId;
+        public int Folios = 1;
+        public bool FolioManual;
+        public bool OcrPend;
+        public Dictionary<long, string?> Metas = new();
+        public string Estado = "Pendiente";
+    }
+
+    private readonly List<ColaItem> _cola = new();
+    private int _foco = -1;
+    private bool _fisicoMode;
+    private int _fisicoFolios = 1;
+    private bool _busy;
+    private bool _huboGuardado;
+    private ColaItem? _ultimoGuardado;
+    private string? _flash; private bool _flashOk;
+    private string? _previewUri;
+
+    private IReadOnlyList<TipologiaOpcionDto> _tipologias = [];
+    private readonly Dictionary<long, IReadOnlyList<DocMetadatoDefDto>> _metaDefs = new();
+
+    private ColaItem? Foco => _foco >= 0 && _foco < _cola.Count ? _cola[_foco] : null;
+    private int Guardados => _cola.Count(i => i.Estado == "Guardado");
+    private int Pendientes => _cola.Count(i => i.Estado == "Pendiente");
+    private int Errores => _cola.Count(i => i.Estado == "Error");
+
+    protected override async Task OnInitializedAsync()
+        => _tipologias = await DocSvc.GetTipologiasExpedienteAsync(ExpedienteId, Actor);
+
+    protected override void OnParametersSet() => ActualizarPreview();
+
+    private async Task OnFiles(InputFileChangeEventArgs e)
+    {
+        _flash = null;
+        foreach (var f in e.GetMultipleFiles(MaxFiles))
+        {
+            var ext = (System.IO.Path.GetExtension(f.Name) ?? "").TrimStart('.').ToLowerInvariant();
+            if (!Permitidas.Contains(ext)) { Flash($"'{f.Name}': extensión no permitida.", false); continue; }
+            if (f.Size <= 0 || f.Size > MaxSize) { Flash($"'{f.Name}': tamaño inválido (máx 50 MB).", false); continue; }
+            byte[] bytes;
+            using (var ms = new MemoryStream())
+            {
+                await f.OpenReadStream(MaxSize).CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+            var esImg = ext is "jpg" or "jpeg" or "png" or "tif" or "tiff" or "gif" or "bmp";
+            _cola.Add(new ColaItem
+            {
+                Bytes = bytes, NombreArchivo = f.Name, Formato = ext, Tamano = bytes.LongLength,
+                Nombre = NormalizarNombre(System.IO.Path.GetFileNameWithoutExtension(f.Name)),
+                Folios = esImg ? 1 : 1,
+                FolioManual = ext is "docx" or "xlsx" or "pptx",
+                OcrPend = ext is "pdf" or "jpg" or "jpeg" or "png" or "tif" or "tiff"
+            });
+        }
+        if (_foco < 0) { _foco = _cola.FindIndex(i => i.Estado == "Pendiente"); }
+        ActualizarPreview();
+    }
+
+    private void AgregarFisico()
+    {
+        _cola.Add(new ColaItem { EsFisico = true, Nombre = "documento_fisico", Folios = Math.Max(1, _fisicoFolios), FolioManual = true });
+        if (_foco < 0) { _foco = _cola.Count - 1; }
+        _fisicoMode = false;
+    }
+
+    private void Quitar(int idx)
+    {
+        if (idx < 0 || idx >= _cola.Count) { return; }
+        _cola.RemoveAt(idx);
+        if (_foco >= _cola.Count) { _foco = _cola.FindIndex(i => i.Estado == "Pendiente"); }
+        ActualizarPreview();
+    }
+
+    private async Task OnTipologiaChanged(ColaItem it, ChangeEventArgs e)
+    {
+        it.TipologiaId = long.TryParse(e.Value?.ToString(), out var id) && id > 0 ? id : null;
+        it.Metas.Clear();
+        if (it.TipologiaId is long tid && !_metaDefs.ContainsKey(tid))
+        {
+            _metaDefs[tid] = await DocSvc.GetMetadatosTipologiaAsync(tid);
+        }
+    }
+
+    private async Task GuardarActual()
+    {
+        var it = Foco;
+        if (it is null) { return; }
+        if (string.IsNullOrWhiteSpace(it.Nombre)) { Flash("El nombre es obligatorio.", false); return; }
+        _busy = true; _flash = null;
+        try
+        {
+            var metas = it.Metas.Select(kv => new DocMetadatoInput(kv.Key, kv.Value)).ToList();
+            var req = new IncorporarDocRequest(
+                ExpedienteId, it.Nombre, DateOnly.FromDateTime(it.Fecha), it.TipologiaId,
+                it.Folios, it.EsFisico, it.EsFisico ? null : it.Bytes, it.EsFisico ? null : it.NombreArchivo, metas);
+            var res = await DocSvc.IncorporarEnExpedienteAsync(req, Actor);
+            if (!res.IsOk) { Flash(res.Error ?? "No se pudo guardar.", false); return; }
+            it.Estado = "Guardado";
+            it.Bytes = null; // libera memoria
+            _huboGuardado = true; _ultimoGuardado = it;
+            await OnGuardados.InvokeAsync();
+            Avanzar();
+        }
+        finally { _busy = false; }
+    }
+
+    private void Omitir()
+    {
+        if (Foco is { } it) { it.Estado = "Omitido"; it.Bytes = null; }
+        Avanzar();
+    }
+
+    private void Replicar(ColaItem it)
+    {
+        if (_ultimoGuardado is null) { return; }
+        it.Fecha = _ultimoGuardado.Fecha;
+        it.TipologiaId = _ultimoGuardado.TipologiaId;
+        it.Metas = new Dictionary<long, string?>(_ultimoGuardado.Metas);
+    }
+
+    private void Avanzar()
+    {
+        _foco = _cola.FindIndex(i => i.Estado == "Pendiente");
+        ActualizarPreview();
+    }
+
+    private void ActualizarPreview()
+    {
+        var it = Foco;
+        _previewUri = null;
+        if (it is null || it.EsFisico || it.Bytes is null) { return; }
+        if (it.Formato is "pdf" or "jpg" or "jpeg" or "png" or "gif" or "bmp" or "webp")
+        {
+            var ct = it.Formato == "pdf" ? "application/pdf" : $"image/{(it.Formato == "jpg" ? "jpeg" : it.Formato)}";
+            _previewUri = $"data:{ct};base64,{Convert.ToBase64String(it.Bytes)}";
+        }
+    }
+
+    private async Task Finalizar()
+    {
+        if (_huboGuardado) { await OnGuardados.InvokeAsync(); }
+        await OnCerrar.InvokeAsync();
+    }
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync();
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+
+    // ---- Helpers de presentacion ----
+    private static string TamTexto(long b) => b <= 0 ? "—" : b < 1024 ? $"{b} B" : b < 1048576 ? $"{b / 1024.0:0.#} KB" : $"{b / 1048576.0:0.#} MB";
+    private static string BadgeClass(ColaItem it) => it.EsFisico ? "fis" : "";
+    private static string IconoFormato(string? f) => f switch
+    {
+        "pdf" => "bi-file-earmark-pdf", "docx" => "bi-file-earmark-word", "xlsx" => "bi-file-earmark-excel",
+        "jpg" or "jpeg" or "png" or "gif" or "bmp" or "tif" or "tiff" => "bi-file-earmark-image", _ => "bi-file-earmark-text"
+    };
+
+    private static string NormalizarNombre(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) { return "documento"; }
+        var norm = s.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in norm)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.NonSpacingMark) { continue; }
+            sb.Append(c == ' ' ? '_' : c);
+        }
+        var res = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"[^A-Za-z0-9_\-.]", "").ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(res) ? "documento" : res;
+    }
+
+    private RenderFragment MetaInput(DocMetadatoDefDto m, Dictionary<long, string?> store) => __builder =>
+    {
+        string? current = store.TryGetValue(m.TrdMetadatoId, out var v) ? v : null;
+        void Set(ChangeEventArgs e) => store[m.TrdMetadatoId] = e.Value?.ToString();
+        switch (m.TipoDato)
+        {
+            case TipoDatoMetadato.TextoLargo:
+                <textarea class="ca-inp" rows="2" value="@current" @onchange="Set"></textarea>
+                break;
+            case TipoDatoMetadato.Numerico:
+            case TipoDatoMetadato.Moneda:
+                <input type="number" step="any" class="ca-inp" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Fecha:
+                <input type="date" class="ca-inp" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Booleano:
+                <select class="ca-inp" value="@current" @onchange="Set"><option value="">--</option><option value="true">Sí</option><option value="false">No</option></select>
+                break;
+            case TipoDatoMetadato.Lista:
+                <select class="ca-inp" value="@current" @onchange="Set"><option value="">— Selecciona —</option>@foreach (var o in m.OpcionesLista) { <option value="@o.Clave">@o.Valor</option> }</select>
+                break;
+            default:
+                <input class="ca-inp" value="@current" @onchange="Set" />
+                break;
+        }
+    };
+}

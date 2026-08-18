@@ -87,51 +87,61 @@ else
     @* ===================== PANE: DOCUMENTOS ===================== *@
     @if (_tab == "documentos")
     {
-        <div class="exp-card" style="padding:18px">
-            <div class="det-sec-t" style="margin-top:0">Documentos del expediente</div>
-            <div class="exp-empty-sub" style="margin-bottom:12px">Documentos archivados en el expediente (foliación). La descarga usa la cuenta Azure Blob configurada en Datos de la Entidad.</div>
+        <div class="exp-card" style="padding:0">
+            <div class="exp-doc-toolbar">
+                <div class="exp-doc-count">@(_docs?.Count ?? 0) documentos · @FoliosTotales folios totales</div>
+                <div class="exp-doc-tbtns">
+                    <button class="exp-btn sm" @onclick='() => Toast("Configurar columnas visibles: fase posterior de RQ04.")'><i class="bi bi-layout-three-columns"></i> Vista</button>
+                    <button class="exp-btn sm" @onclick='() => Toast("Exportar la grilla de documentos (CSV): fase posterior de RQ04.")'><i class="bi bi-filetype-csv"></i> CSV</button>
+                    <button class="exp-btn sm" @onclick='() => Toast("Exportar la grilla de documentos (XLSX): fase posterior de RQ04.")'><i class="bi bi-file-earmark-excel"></i> XLSX</button>
+                    <button class="exp-btn sm" @onclick='() => Toast("Exportar la grilla de documentos (XML): fase posterior de RQ04.")'><i class="bi bi-filetype-xml"></i> XML</button>
+                    <button class="exp-btn sm" @onclick='() => Toast("Exportar la grilla de documentos (PDF): fase posterior de RQ04.")'><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+                    <button class="exp-btn sm exp-btn-primary" @onclick="AbrirNuevoDoc"><i class="bi bi-plus-lg"></i> Nuevo Documento</button>
+                </div>
+            </div>
             @if (_docs is null)
             {
                 <div class="exp-empty">Cargando...</div>
             }
             else if (_docs.Count == 0)
             {
-                <div class="exp-empty"><i class="bi bi-file-earmark-text"></i><div><strong>Sin documentos</strong><div class="exp-empty-sub">Este expediente aún no tiene documentos archivados.</div></div></div>
+                <div class="exp-empty"><i class="bi bi-file-earmark-text"></i><div><strong>Sin documentos</strong><div class="exp-empty-sub">Este expediente aún no tiene documentos. Usa "Nuevo Documento" para incorporar.</div></div></div>
             }
             else
             {
                 <div class="exp-table-wrap">
                     <table class="exp-table">
-                        <thead><tr><th>#</th><th>Nombre</th><th>Formato</th><th>Folios</th><th>Tamaño</th><th>Fecha incorp.</th><th>Estado</th><th>Firma</th><th class="center">Acciones</th></tr></thead>
+                        <thead><tr>
+                            <th>Tipo</th><th>Nombre del documento</th><th>Tipo documental</th><th>Fecha doc.</th>
+                            <th>Fecha incorporación</th><th>Folios</th><th>Formato</th><th>Tamaño</th>
+                            <th>Origen</th><th>Estado</th><th>Firma</th><th class="center">Acciones</th>
+                        </tr></thead>
                         <tbody>
                             @foreach (var doc in _docs)
                             {
                                 var dd = doc;
                                 <tr>
-                                    <td>@(dd.OrdenEnExpediente?.ToString() ?? "—")</td>
+                                    <td><i class="bi @IconoFormato(dd.Formato)" style="font-size:18px;color:#64748B"></i></td>
                                     <td><span class="exp-nombre">@dd.Nombre</span></td>
-                                    <td>@(string.IsNullOrWhiteSpace(dd.Formato) ? "—" : dd.Formato!.ToUpperInvariant())</td>
-                                    <td>@FoliosTexto(dd)</td>
-                                    <td>@TamTexto(dd.TamanoBytes)</td>
+                                    <td>@(string.IsNullOrWhiteSpace(dd.TipologiaNombre) ? "—" : dd.TipologiaNombre)</td>
+                                    <td>@(dd.FechaDocumento?.ToString("yyyy-MM-dd") ?? "—")</td>
                                     <td>@(dd.FechaIncorporacion?.ToString("yyyy-MM-dd") ?? "—")</td>
-                                    <td><span class="exp-pill">@dd.Estado</span></td>
-                                    <td><span class="exp-pill">@FirmaTexto(dd.EstadoFirma)</span></td>
+                                    <td>@FoliosTexto(dd)</td>
+                                    <td>@(string.IsNullOrWhiteSpace(dd.Formato) ? "—" : dd.Formato!.ToUpperInvariant())</td>
+                                    <td>@TamTexto(dd.TamanoBytes)</td>
+                                    <td>@dd.Soporte</td>
+                                    <td><span class="exp-pill @EstDocClass(dd.Estado)">@dd.Estado</span></td>
+                                    <td><span class="exp-pill @FirmaClass(dd.EstadoFirma)">@FirmaTexto(dd.EstadoFirma)</span></td>
                                     <td class="center"><div class="exp-row-actions">
-                                        @if (dd.TieneBinario)
-                                        {
-                                            <button class="exp-act" title="Descargar" @onclick="@(() => Descargar(dd.Id))"><i class="bi bi-download"></i></button>
-                                        }
-                                        else
-                                        {
-                                            <button class="exp-act off" title="Sin binario (soporte físico)" disabled><i class="bi bi-file-earmark"></i></button>
-                                        }
+                                        <button class="exp-act" title="Ver / descargar" @onclick="@(() => Descargar(dd.Id))" disabled="@(!dd.TieneBinario)"><i class="bi bi-eye"></i></button>
+                                        <button class="exp-act" title="Editar metadatos" @onclick='() => Toast("Editar metadatos del documento: fase posterior de RQ04.")'><i class="bi bi-pencil-square"></i></button>
+                                        <button class="exp-act" title="Más acciones" @onclick='() => Toast("Más acciones del documento (versiones, firma, referenciar, anular): fase posterior de RQ04/RQ05.")'><i class="bi bi-three-dots-vertical"></i></button>
                                     </div></td>
                                 </tr>
                             }
                         </tbody>
                     </table>
                 </div>
-                <div class="exp-empty-sub" style="margin-top:8px">@_docs.Count documento(s).</div>
             }
         </div>
     }
@@ -398,6 +408,50 @@ else
     </div>
 }
 
+@if (_showNuevoDoc && _d is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showNuevoDoc = false)">
+        <div class="modal-dialog" style="max-width:760px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3><i class="bi bi-plus-circle"></i> ¿Cómo deseas incorporar el documento?</h3><button class="modal-close" @onclick="@(() => _showNuevoDoc = false)">&times;</button></div>
+            <div class="modal-body">
+                <div class="nd-breadcrumb"><i class="bi bi-folder2-open"></i> @_d.FondoNombre <span class="nd-sep">›</span> @_d.SerieCodigo - @_d.SerieNombre <span class="nd-sep">›</span> <strong>@_d.Codigo</strong></div>
+                <div class="nd-info"><span class="nd-rf">RF09</span> <strong>Producción Documental Independiente (Flujo 8).</strong> Elige el método de entrada del documento. Quedará como Borrador hasta ser archivado.</div>
+                <div class="nd-sectitle">Métodos directos</div>
+                <div class="nd-grid">
+                    <div class="nd-card" @onclick="AbrirCarga">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <div class="nd-card-t">Carga de Archivos <span class="nd-rfsm">RF01 · RF02</span></div>
+                        <div class="nd-card-d">Sube uno o varios archivos (PDF, imagen, ofimática) y clasifícalos uno a uno.</div>
+                    </div>
+                    <div class="nd-card" @onclick='() => Toast("Digitalizar (RF18): escáner TWAIN / cámara, se habilita con el módulo Documentos (RQ04).")'>
+                        <i class="bi bi-printer"></i>
+                        <div class="nd-card-t">Digitalizar <span class="nd-rfsm">RF18</span></div>
+                        <div class="nd-card-d">Escáner local (agente TWAIN) o cámara del dispositivo móvil.</div>
+                    </div>
+                    <div class="nd-card" @onclick='() => Toast("Editor de texto / plantillas (RF09): se habilita con el editor interno (RF08).")'>
+                        <i class="bi bi-pencil-square"></i>
+                        <div class="nd-card-t">Desde Plantilla / Editor <span class="nd-rfsm">RF09</span></div>
+                        <div class="nd-card-d">Crea un documento en el procesador de texto interno.</div>
+                    </div>
+                    <div class="nd-card disabled">
+                        <span class="nd-soon">Próximamente</span>
+                        <i class="bi bi-cloud"></i>
+                        <div class="nd-card-t">Fuente externa <span class="nd-rfsm">RF20 · RF21</span></div>
+                        <div class="nd-card-d">OneDrive, Google Drive, SharePoint, FTP/SFTP.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showCarga && _d is not null)
+{
+    <CargaArchivosModal ExpedienteId="Id" FondoNombre="@_d.FondoNombre" SerieCodigo="@_d.SerieCodigo"
+                        SerieNombre="@_d.SerieNombre" Codigo="@_d.Codigo" Actor="Actor"
+                        OnGuardados="OnDocsGuardados" OnCerrar="@(() => _showCarga = false)" />
+}
+
 @if (_toast is not null) { <div class="exp-toast" @onclick="@(() => _toast = null)"><i class="bi bi-info-circle"></i> @_toast</div> }
 
 <script>
@@ -483,6 +537,24 @@ else
     .det-tl-detalle { font-size:11.5px; color:#64748B; background:#F8FAFC; border:1px solid #F1F5F9; border-radius:6px; padding:6px 8px; margin-top:4px; word-break:break-word; }
     .det-vinc-buscar { display:flex; gap:8px; margin-bottom:12px; }
     .det-vinc-res { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px; margin-bottom:12px; }
+    .exp-doc-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 18px; border-bottom:1px solid #F1F5F9; }
+    .exp-doc-count { font-size:13px; color:#475569; font-weight:600; }
+    .exp-doc-tbtns { display:flex; gap:6px; flex-wrap:wrap; }
+    .nd-breadcrumb { display:flex; align-items:center; gap:6px; flex-wrap:wrap; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:10px 14px; font-size:13px; color:#475569; margin-bottom:12px; }
+    .nd-breadcrumb .nd-sep { color:#CBD5E1; } .nd-breadcrumb strong { color:#2563EB; }
+    .nd-info { background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:11px 14px; font-size:13px; color:#1e40af; margin-bottom:14px; }
+    .nd-rf { display:inline-block; background:#2563EB; color:#fff; font-size:10.5px; font-weight:700; border-radius:5px; padding:2px 6px; margin-right:6px; }
+    .nd-sectitle { font-size:11px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px; }
+    .nd-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .nd-card { position:relative; border:1px solid #E2E8F0; border-radius:12px; padding:18px; cursor:pointer; transition:.12s; }
+    .nd-card:hover:not(.disabled) { border-color:#2563EB; box-shadow:0 2px 10px rgba(37,99,235,.10); }
+    .nd-card.disabled { background:#F8FAFC; cursor:default; opacity:.75; }
+    .nd-card > i { font-size:26px; color:#2563EB; display:block; margin-bottom:10px; }
+    .nd-card.disabled > i { color:#94A3B8; }
+    .nd-card-t { font-size:14.5px; font-weight:700; color:#0F172A; margin-bottom:4px; }
+    .nd-rfsm { font-size:10.5px; font-weight:600; color:#94A3B8; margin-left:4px; }
+    .nd-card-d { font-size:12.5px; color:#64748B; line-height:1.45; }
+    .nd-soon { position:absolute; top:12px; right:12px; background:#E2E8F0; color:#64748B; font-size:10px; font-weight:700; text-transform:uppercase; border-radius:999px; padding:2px 8px; }
     @@media (max-width:900px){ .det-grid { grid-template-columns:1fr 1fr; } }
     @@media (max-width:600px){ .det-grid { grid-template-columns:1fr; } }
 </style>
@@ -502,6 +574,8 @@ else
     private IReadOnlyList<TrazaItemDto>? _traza;
     private IReadOnlyList<VinculoDto>? _vinculos;
     private IReadOnlyList<ExpedienteDocumentoDto>? _docs;
+    private bool _showNuevoDoc;
+    private bool _showCarga;
 
     private string? _flash; private bool _flashOk;
     private string? _toast;
@@ -555,6 +629,21 @@ else
         => bytes is not long b ? "—" : b < 1024 ? $"{b} B" : b < 1048576 ? $"{b / 1024.0:0.#} KB" : $"{b / 1048576.0:0.#} MB";
     private static string FirmaTexto(EstadoFirmaDocumento f)
         => f switch { EstadoFirmaDocumento.Firmado => "Firmado", EstadoFirmaDocumento.Pendiente => "Pendiente", _ => "Sin firma" };
+
+    private void AbrirNuevoDoc() => _showNuevoDoc = true;
+    private void AbrirCarga() { _showNuevoDoc = false; _showCarga = true; }
+    private async Task OnDocsGuardados() { _docs = await DocSvc.ListarPorExpedienteAsync(Id, Actor); StateHasChanged(); }
+    private int FoliosTotales => _docs?.Sum(d => d.Folios ?? (d.PaginaInicio is int a && d.PaginaFin is int b ? b - a + 1 : 0)) ?? 0;
+    private static string IconoFormato(string? f) => f?.ToLowerInvariant() switch
+    {
+        "pdf" => "bi-file-earmark-pdf", "doc" or "docx" => "bi-file-earmark-word",
+        "xls" or "xlsx" => "bi-file-earmark-excel", "png" or "jpg" or "jpeg" or "gif" or "bmp" or "webp" => "bi-file-earmark-image",
+        _ => "bi-file-earmark-text"
+    };
+    private static string EstDocClass(EstadoDocumento e) => e switch
+    { EstadoDocumento.Archivado => "cl-pub", EstadoDocumento.Anulado => "cl-cla", _ => "fa-cen" };
+    private static string FirmaClass(EstadoFirmaDocumento f) => f switch
+    { EstadoFirmaDocumento.Firmado => "cl-pub", EstadoFirmaDocumento.Pendiente => "fa-cen", _ => "plain" };
 
     private void AbrirReabrir() { _reJustif = ""; _modalErr = null; _showReabrir = true; }
     private void Volver() => Nav.NavigateTo("/modulo/expedientes-mios");

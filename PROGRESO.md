@@ -567,3 +567,20 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
   `ruta_almacenamiento` (GUID del blob legacy). 83 con binario. Mapeo de enums (Sin_Firma->SinFirma,
   No_Aplica->NoAplica, Terminado->Archivado) y FKs (expediente por codigo, asignacion heredada). Las
   versiones historicas (57) no se cargaron (UI de versionado diferida).
+
+---
+
+## 13. Documentos milimetricos en el detalle + Carga de Archivos (RQ04, 2026-08-17)
+
+- **Pestana Documentos** del detalle recalcada al legacy `exp_detalle`: toolbar (Vista, CSV, XLSX, XML,
+  PDF, + Nuevo Documento) + contador "N documentos · N folios totales" + 12 columnas exactas (Tipo,
+  Nombre, Tipo documental, Fecha doc., Fecha incorporacion, Folios, Formato, Tamano, Origen, Estado,
+  Firma, Acciones ojo/lapiz/mas). Exportadores/Vista diferidos con aviso honesto.
+- **Modal "Nuevo Documento"** (menu de incorporacion, calcado): breadcrumb Fondo>Serie>Codigo, caja RF09,
+  4 metodos (Carga de Archivos RF01·RF02, Digitalizar RF18, Editor RF09, Fuente externa RF20·RF21
+  proximamente). Validado contra `ctrlIncorporarDoc.ascx`.
+- **Carga de Archivos** (Flujo A, `CargaArchivosModal.razor`): modal 3 columnas (dropzone+cola con foco |
+  visor | metadatos), indexacion uno-a-uno como el legacy (no wizard). Subida al CONFIRMAR cada doc.
+  Backend `IncorporarEnExpedienteAsync`: sube al object storage (Azure Blob por entidad), hash SHA-256,
+  foliacion continua (orden + paginas), nace Archivado, nivel heredado, cuenta paginas de PDF. Tipologia
+  opcional; metadatos dinamicos de la tipologia. Refresca la grilla via callback.
