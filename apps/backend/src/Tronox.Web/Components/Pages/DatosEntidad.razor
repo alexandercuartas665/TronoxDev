@@ -584,6 +584,34 @@
         </div>
     </div>
 
+    @* ===== OCR / Reconocimiento de texto (Azure Computer Vision, RQ04 RF04) ===== *@
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-head">
+            <div class="tx-ent-card-icon tone-primary"><i class="bi bi-body-text"></i></div>
+            <div>
+                <div class="tx-ent-card-title">OCR / Reconocimiento de texto (Azure Computer Vision)</div>
+                <div class="tx-ent-card-sub">Recurso de Azure Computer Vision (Read API) que indexa el texto de los documentos para la búsqueda por contenido. La API key se cifra (AES-256) y nunca se muestra en claro. Sin config activa, el "Reprocesar" del visor avisa que el OCR no está configurado.</div>
+            </div>
+            <button class="tx-ent-btn primary" style="margin-left:auto;" @onclick="GuardarOcrAsync" disabled="@_busy">Guardar OCR</button>
+        </div>
+        <div class="tx-ent-card-body">
+            <label class="dc-req" style="margin-bottom:12px;display:inline-flex;gap:8px;"><input type="checkbox" @bind="_ocr.Activo" /> Habilitar OCR para los documentos de la entidad</label>
+            <div class="tx-ent-grid c2">
+                <div class="tx-ent-field">
+                    <label>Endpoint</label>
+                    <input class="tx-ent-input" maxlength="300" @bind="_ocr.Endpoint" placeholder="https://miorg-vision.cognitiveservices.azure.com/" />
+                    <div class="tx-ent-hint">URL del recurso Azure Computer Vision.</div>
+                </div>
+                <div class="tx-ent-field">
+                    <label>API Key @if (_ocr.Configurado) { <span class="tx-ent-badge sm ok">Configurada</span> }</label>
+                    <input class="tx-ent-input" type="password" @bind="_ocrKey" placeholder="@(_ocr.Configurado ? "Guardada — deja vacío para conservarla" : "Clave del recurso (Key 1 / Key 2)")" />
+                    <div class="tx-ent-hint">Se cifra al guardar. Déjala vacía para conservar la actual.</div>
+                </div>
+            </div>
+            @if (_ocrMsg is not null) { <div class="tx-ent-alert @(_ocrOk ? "ok" : "")" style="margin-top:10px;"><i class="bi @(_ocrOk ? "bi-check-circle" : "bi-x-circle")"></i><span>@_ocrMsg</span></div> }
+        </div>
+    </div>
+
     @* ===== Calendario Habil (legacy ctrlCalendarioHabil) - siempre visible, sin gateo por seleccion ===== *@
     <CalendarioHabilPanel />
 </div>
@@ -646,6 +674,10 @@
     private AlmacenamientoDto _alm = new();
     private string _almConn = "";
     private string? _almMsg; private bool _almOk;
+
+    private OcrConfigDto _ocr = new();
+    private string _ocrKey = "";
+    private string? _ocrMsg; private bool _ocrOk;
     private string? _logoUrl;
     private string? _logoError;
     private string _zonaHoraria = "America/Bogota";
@@ -679,6 +711,7 @@
         _seg = await ConfigExtra.GetSeguridadAsync();
         _fir = await ConfigExtra.GetFirmaAsync();
         _alm = await ConfigExtra.GetAlmacenamientoAsync();
+        _ocr = await ConfigExtra.GetOcrAsync();
         _loading = false;
     }
 
@@ -718,6 +751,25 @@
             var err = await ConfigExtra.ProbarAlmacenamientoAsync(_almConn, _alm.Contenedor);
             if (err is null) { _almMsg = "Conexión exitosa al contenedor."; _almOk = true; }
             else { _almMsg = $"No se pudo conectar: {err}"; _almOk = false; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task GuardarOcrAsync()
+    {
+        _busy = true; _ocrMsg = null;
+        try
+        {
+            if (_ocr.Activo && (string.IsNullOrWhiteSpace(_ocr.Endpoint) || (!_ocr.Configurado && string.IsNullOrWhiteSpace(_ocrKey))))
+            {
+                _ocrMsg = "Para activar el OCR necesitas endpoint y API key."; _ocrOk = false;
+                return;
+            }
+            _ocr.ApiKey = string.IsNullOrWhiteSpace(_ocrKey) ? null : _ocrKey;
+            await ConfigExtra.GuardarOcrAsync(_ocr);
+            _ocrKey = "";
+            _ocr = await ConfigExtra.GetOcrAsync();
+            _ocrMsg = "Configuración de OCR guardada."; _ocrOk = true;
         }
         finally { _busy = false; }
     }

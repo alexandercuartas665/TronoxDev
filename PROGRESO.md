@@ -762,3 +762,23 @@ NO tiene esta config todavia.
 2. Servicio OCR (Azure Computer Vision Read API) + wire de los endpoints /visor/data op=ocr/reocr
    (hoy placeholders en VisorEndpoints.cs). Nota: Azure no es alcanzable desde el equipo local
    (igual que el Blob); la ejecucion real solo funcionara en prod.
+
+---
+
+## 22. Config de OCR (Azure Computer Vision) en Datos de la Entidad (RQ04 RF04, 2026-08-18)
+
+Se construyo la CONFIG del OCR (paso 1 del plan de la seccion 21), calcada del patron del
+Almacenamiento Azure Blob por entidad (ADR-012).
+
+- Entidad `OcrConfig` tenant-scoped (Endpoint, ApiKeyCifrada, Activo) + config EF (indice unico por
+  tenant) + migracion `OcrConfigAzureVision` (tabla `ocr_configs`).
+- `IEntidadConfigExtraService.GetOcrAsync/GuardarOcrAsync`: la API key se cifra AES-256 (ISecretProtector),
+  NUNCA se devuelve en claro; solo queda activo si hay endpoint + llave.
+- Seccion en Datos de la Entidad "OCR / Reconocimiento de texto (Azure Computer Vision)": toggle activo
+  + Endpoint + API Key (password), badge "Configurada", "deja vacio para conservar la actual".
+- Auditado e2e (dev-login + MCP Chrome, tenant 2): guardar -> endpoint + activo=true + api_key_cifrada
+  (prefijo CfDJ8 de DataProtection); la clave en claro NO aparece en BD; badge Configurada + mensaje OK;
+  el campo de key se limpia tras guardar.
+
+PENDIENTE (paso 2, seccion 21): el servicio Azure Computer Vision Read API + wire de /visor/data
+op=ocr/reocr (hoy placeholders). Azure no es alcanzable desde local; corre en prod.

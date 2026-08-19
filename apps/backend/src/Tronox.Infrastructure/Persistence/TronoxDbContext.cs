@@ -137,6 +137,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<ParametrosSeguridad> ParametrosSeguridad => Set<ParametrosSeguridad>();
     public DbSet<FirmaConfig> FirmaConfigs => Set<FirmaConfig>();
     public DbSet<AlmacenamientoConfig> AlmacenamientosConfig => Set<AlmacenamientoConfig>();
+    public DbSet<OcrConfig> OcrConfigs => Set<OcrConfig>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -1523,6 +1524,13 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.ConnectionStringCifrada).HasMaxLength(4000);
             b.Property(x => x.Contenedor).HasMaxLength(100).IsRequired();
             b.Property(x => x.Prefijo).HasMaxLength(200);
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        modelBuilder.Entity<OcrConfig>(b =>
+        {
+            b.Property(x => x.Endpoint).HasMaxLength(300);
+            b.Property(x => x.ApiKeyCifrada).HasMaxLength(4000);
             b.HasIndex(x => x.TenantId).IsUnique();
         });
 

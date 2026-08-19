@@ -52,6 +52,16 @@ public sealed class AlmacenamientoDto
     public string? ConnectionString { get; set; }
 }
 
+/// <summary>Config del OCR (Azure Computer Vision) por entidad. La API key NUNCA se devuelve en claro.</summary>
+public sealed class OcrConfigDto
+{
+    public bool Configurado { get; set; }
+    public bool Activo { get; set; }
+    public string? Endpoint { get; set; }
+    /// <summary>Solo de ENTRADA al guardar; nunca se devuelve poblada.</summary>
+    public string? ApiKey { get; set; }
+}
+
 public interface IEntidadConfigExtraService
 {
     Task<SeguridadDto> GetSeguridadAsync(CancellationToken ct = default);
@@ -62,6 +72,10 @@ public interface IEntidadConfigExtraService
     Task GuardarAlmacenamientoAsync(AlmacenamientoDto dto, CancellationToken ct = default);
     /// <summary>Prueba la conexion contra Azure Blob con la cadena/contenedor dados. Devuelve error o null si OK.</summary>
     Task<string?> ProbarAlmacenamientoAsync(string connectionString, string contenedor, CancellationToken ct = default);
+
+    // ---- OCR (Azure Computer Vision) por entidad, RQ04 RF04 ----
+    Task<OcrConfigDto> GetOcrAsync(CancellationToken ct = default);
+    Task GuardarOcrAsync(OcrConfigDto dto, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -174,6 +188,36 @@ public sealed class EntidadConfigExtraService : IEntidadConfigExtraService
         a.Contenedor = string.IsNullOrWhiteSpace(d.Contenedor) ? "tronox-documentos" : d.Contenedor.Trim();
         a.Prefijo = string.IsNullOrWhiteSpace(d.Prefijo) ? null : d.Prefijo.Trim();
         a.Activo = d.Activo && !string.IsNullOrWhiteSpace(a.ConnectionStringCifrada);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    // ---- OCR (Azure Computer Vision) por entidad, calcado del patron de Almacenamiento ----
+
+    public async Task<OcrConfigDto> GetOcrAsync(CancellationToken ct = default)
+    {
+        var o = await _db.OcrConfigs.AsNoTracking().FirstOrDefaultAsync(ct);
+        return new OcrConfigDto
+        {
+            Configurado = o is not null && !string.IsNullOrWhiteSpace(o.ApiKeyCifrada),
+            Activo = o?.Activo ?? false,
+            Endpoint = o?.Endpoint,
+            ApiKey = null // el secreto nunca se devuelve
+        };
+    }
+
+    public async Task GuardarOcrAsync(OcrConfigDto d, CancellationToken ct = default)
+    {
+        var o = await _db.OcrConfigs.FirstOrDefaultAsync(ct);
+        if (o is null) { o = new OcrConfig { TenantId = TenantId }; _db.OcrConfigs.Add(o); }
+
+        o.Endpoint = string.IsNullOrWhiteSpace(d.Endpoint) ? null : d.Endpoint.Trim();
+        // Si viene una llave nueva, se cifra y reemplaza; si va vacia, se conserva la actual.
+        if (!string.IsNullOrWhiteSpace(d.ApiKey))
+        {
+            o.ApiKeyCifrada = _protector.Protect(d.ApiKey.Trim());
+        }
+        // Solo puede quedar activo si hay endpoint + llave cifrada.
+        o.Activo = d.Activo && !string.IsNullOrWhiteSpace(o.Endpoint) && !string.IsNullOrWhiteSpace(o.ApiKeyCifrada);
         await _db.SaveChangesAsync(ct);
     }
 

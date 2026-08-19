@@ -143,6 +143,7 @@ public interface IApplicationDbContext
     DbSet<ParametrosSeguridad> ParametrosSeguridad { get; }
     DbSet<FirmaConfig> FirmaConfigs { get; }
     DbSet<AlmacenamientoConfig> AlmacenamientosConfig { get; }
+    DbSet<OcrConfig> OcrConfigs { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
