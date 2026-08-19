@@ -134,7 +134,7 @@ else
                                     <td><span class="exp-pill @FirmaClass(dd.EstadoFirma)">@FirmaTexto(dd.EstadoFirma)</span></td>
                                     <td class="center"><div class="exp-row-actions">
                                         <button class="exp-act" title="Ver" @onclick="@(() => VerDocVisor(dd.Id))" disabled="@(!dd.TieneBinario)"><i class="bi bi-eye"></i></button>
-                                        <button class="exp-act" title="Editar metadatos" @onclick='() => Toast("Editar metadatos del documento: fase posterior de RQ04.")'><i class="bi bi-pencil-square"></i></button>
+                                        <button class="exp-act" title="Editar metadatos" @onclick="@(() => OpenEditarMetaDoc(dd.Id))"><i class="bi bi-pencil-square"></i></button>
                                         <button class="exp-act" title="Más acciones" @onclick='() => Toast("Más acciones del documento (versiones, firma, referenciar, anular): fase posterior de RQ04/RQ05.")'><i class="bi bi-three-dots-vertical"></i></button>
                                     </div></td>
                                 </tr>
@@ -487,6 +487,43 @@ else
 
 @if (_toast is not null) { <div class="exp-toast" @onclick="@(() => _toast = null)"><i class="bi bi-info-circle"></i> @_toast</div> }
 
+@* Editar metadatos del documento (RF05, calcado de exp_detalle mdAbrir): reusa el servicio de Documentos. *@
+@if (_showEditMeta && _d is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showEditMeta = false)">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3><i class="bi bi-tags"></i> Editar metadatos del documento</h3><button class="modal-close" @onclick="@(() => _showEditMeta = false)">&times;</button></div>
+            <div class="modal-body">
+                @if (_editMetaError is not null) { <div class="exp-flash err">@_editMetaError</div> }
+                <div class="exp-field"><label>Nombre del documento <span class="req">*</span></label><input class="exp-sel full" @bind="_emNombre" maxlength="200" /></div>
+                <div class="exp-field"><label>Fecha del documento <span class="req">*</span></label><input type="date" class="exp-sel full" @bind="_emFecha" /></div>
+                <div class="exp-field"><label>Tipo documental</label>
+                    <select class="exp-sel full" @onchange="OnEditMetaTipoChanged">
+                        <option value="0" selected="@(_emTipoId is null)">— Sin tipo —</option>
+                        @foreach (var t in _emTipos) { <option value="@t.Id" selected="@(t.Id == _emTipoId)">@t.Nombre</option> }
+                    </select>
+                </div>
+                @if (_emCampos.Count > 0)
+                {
+                    <div class="det-sec-t" style="margin:12px 0 8px">Metadatos del tipo documental</div>
+                    @foreach (var m in _emCampos)
+                    {
+                        <div class="exp-field"><label>@m.Nombre @if (m.Obligatorio) { <span class="req">*</span> }</label>@EditMetaInput(m)</div>
+                    }
+                }
+                else if (_emTipoId is not null)
+                {
+                    <div class="exp-hint" style="margin-top:8px">Este tipo no tiene metadatos configurados.</div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="exp-btn" @onclick="@(() => _showEditMeta = false)" disabled="@_editMetaBusy">Cancelar</button>
+                <button class="exp-btn exp-btn-primary" @onclick="GuardarEditarMeta" disabled="@_editMetaBusy"><i class="bi bi-save"></i> Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @* Visor documental (RF04): iframe overlay, patron vzAbrirVisor/vzCerrarVisor del legacy. *@
 <div id="vzOverlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.75)">
     <iframe id="vzFrame" src="about:blank" title="Visor documental" style="width:100%;height:100%;border:none;background:#0f172a"></iframe>
@@ -693,6 +730,87 @@ else
     // RF04: abre el visor documental (pdf.js) en un iframe overlay, igual que en Mis Documentos.
     private async Task VerDocVisor(long docId)
         => await JS.InvokeVoidAsync("vzAbrirVisor", $"/modulo/documento-visor?doc={docId}");
+
+    // ---- Editar metadatos del documento (RF05, calcado de exp_detalle mdAbrir) ----
+    private bool _showEditMeta, _editMetaBusy;
+    private string? _editMetaError;
+    private long _editMetaId;
+    private string _emNombre = "";
+    private DateTime? _emFecha;
+    private long? _emTipoId;
+    private IReadOnlyList<DocTipoOpcionDto> _emTipos = [];
+    private IReadOnlyList<DocMetadatoValorDefDto> _emCampos = [];
+    private readonly Dictionary<long, string?> _emMetaValores = [];
+
+    private async Task OpenEditarMetaDoc(long id)
+    {
+        var res = await DocSvc.GetEditarMetadatosAsync(id, Actor);
+        if (!res.IsOk || res.Value is null) { Flash(res.Error ?? "No se pudo abrir el editor.", false); return; }
+        var d = res.Value;
+        _editMetaId = d.DocId; _emNombre = d.Nombre;
+        _emFecha = d.Fecha is DateOnly fd ? fd.ToDateTime(TimeOnly.MinValue) : null;
+        _emTipoId = d.TipologiaId; _emTipos = d.Tipos; _emCampos = d.Campos;
+        _emMetaValores.Clear();
+        foreach (var c in d.Campos) { _emMetaValores[c.TrdMetadatoId] = c.Valor; }
+        _editMetaError = null; _showEditMeta = true;
+    }
+
+    private async Task OnEditMetaTipoChanged(ChangeEventArgs e)
+    {
+        var id = long.TryParse(e.Value?.ToString(), out var x) ? x : 0;
+        _emTipoId = id > 0 ? id : null;
+        _emMetaValores.Clear();
+        if (_emTipoId is long tid)
+        {
+            _emCampos = await DocSvc.GetMetadatosTipologiaConValoresAsync(_editMetaId, tid);
+            foreach (var c in _emCampos) { _emMetaValores[c.TrdMetadatoId] = c.Valor; }
+        }
+        else { _emCampos = []; }
+    }
+
+    private async Task GuardarEditarMeta()
+    {
+        _editMetaBusy = true; _editMetaError = null;
+        try
+        {
+            var fecha = _emFecha is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+            var metadatos = _emCampos.Select(c => new DocMetadatoInput(c.TrdMetadatoId, _emMetaValores.TryGetValue(c.TrdMetadatoId, out var v) ? v : null)).ToList();
+            var req = new GuardarMetadatosRequest(_editMetaId, _emNombre, fecha, _emTipoId, metadatos);
+            var r = await DocSvc.GuardarMetadatosAsync(req, Actor);
+            if (!r.IsOk) { _editMetaError = r.Error; return; }
+            _showEditMeta = false; Flash("Metadatos del documento guardados.", true);
+            _docs = await DocSvc.ListarPorExpedienteAsync(Id, Actor);
+        }
+        finally { _editMetaBusy = false; }
+    }
+
+    private RenderFragment EditMetaInput(DocMetadatoValorDefDto m) => __builder =>
+    {
+        string? current = _emMetaValores.TryGetValue(m.TrdMetadatoId, out var v) ? v : null;
+        void Set(ChangeEventArgs e) => _emMetaValores[m.TrdMetadatoId] = e.Value?.ToString();
+        switch (m.TipoDato)
+        {
+            case TipoDatoMetadato.TextoLargo:
+                <textarea class="exp-sel full" rows="2" value="@current" @onchange="Set"></textarea>
+                break;
+            case TipoDatoMetadato.Numerico:
+            case TipoDatoMetadato.Moneda:
+                <input type="number" step="any" class="exp-sel full" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Fecha:
+                <input type="date" class="exp-sel full" value="@current" @onchange="Set" />
+                break;
+            case TipoDatoMetadato.Booleano:
+                <select class="exp-sel full" value="@current" @onchange="Set"><option value="">--</option><option value="true">Sí</option><option value="false">No</option></select>
+                break;
+            case TipoDatoMetadato.Lista:
+                <select class="exp-sel full" value="@current" @onchange="Set"><option value="">— Selecciona —</option>@foreach (var o in m.OpcionesLista) { <option value="@o.Clave">@o.Valor</option> }</select>
+                break;
+            default:
+                <input class="exp-sel full" value="@current" @onchange="Set" />
+                break;
+        }
+    };
 
     private static string FoliosTexto(ExpedienteDocumentoDto d)
         => d.PaginaInicio is int pi && d.PaginaFin is int pf ? $"{pi}-{pf}" : (d.Folios?.ToString() ?? "—");

@@ -800,3 +800,17 @@ Paso 2 (seccion 21): el servicio real que ejecuta el OCR usando la config de la 
   Azure; el endpoint de prueba (fake) da error controlado "Host desconocido"; OcrEstado transiciona
   Pendiente->Procesando->Error y persiste. **Azure Cognitive Services SI es alcanzable desde local**
   (el DNS se intento; fallo solo por hostname de prueba). Con endpoint+llave reales, corre completo.
+
+---
+
+## 24. Fix: boton Editar metadatos en la pestana Documentos del detalle (RQ04 RF05, 2026-08-18)
+
+En expedientes-detalle, el lapiz de cada documento (pestana Documentos) era un placeholder (Toast
+"fase posterior"). El legacy exp_detalle (docRpDocumentos, CommandName="EditarMetadatos") abre el
+modal "Editar metadatos del documento" (RF05). Se cableo:
+
+- El lapiz abre ahora el editor de metadatos real (Nombre/Fecha/Tipo documental + metadatos dinamicos
+  con valores), reusando el servicio ya existente (GetEditarMetadatosAsync/GuardarMetadatosAsync) - el
+  mismo de Mis Documentos y del visor.
+- Auditado e2e (dev-login + MCP Chrome, expediente 20): el lapiz abre el modal, edita el nombre y
+  guarda -> persiste + refresca la grilla.
