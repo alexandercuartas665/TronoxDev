@@ -37,7 +37,7 @@ public static class VisorEndpoints
 
         // ---- Datos (exp_visor_data.ashx) GET ----
         g.MapGet("/data", async (HttpContext http, string op, long doc, long? tipo,
-            IDocumentoService svc, IApplicationDbContext db) =>
+            IDocumentoService svc, IApplicationDbContext db, IOcrService ocr) =>
         {
             var actor = ActorId(http);
             switch ((op ?? "").ToLowerInvariant())
@@ -51,14 +51,18 @@ public static class VisorEndpoints
 
                 case "ocr":
                 {
-                    var docRow = await db.Documentos.AsNoTracking()
-                        .Where(x => x.Id == doc).Select(x => new { x.OcrEstado }).FirstOrDefaultAsync();
-                    return Results.Json(new { estado = docRow?.OcrEstado.ToString() ?? "NoAplica", texto = (string?)null });
+                    var (estado, texto) = await ocr.GetEstadoAsync(doc);
+                    return Results.Json(new { estado, texto = texto ?? "" });
                 }
 
                 case "reocr":
-                    // OCR diferido: no reprocesa.
-                    return Results.Json(new { success = false, error = "El OCR se habilita en un avance posterior." });
+                {
+                    // OCR real: Azure Computer Vision (Read API) con la config de la entidad.
+                    var r = await ocr.ReprocesarAsync(doc, actor);
+                    return r.Ok
+                        ? Results.Json(new { estado = r.Estado })
+                        : Results.Json(new { estado = r.Estado, error = r.Error });
+                }
 
                 case "tipos":
                 {

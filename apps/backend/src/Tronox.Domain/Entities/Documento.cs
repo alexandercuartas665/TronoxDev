@@ -80,6 +80,9 @@ public class Documento : TenantEntity
 
     public OcrEstadoDocumento OcrEstado { get; set; } = OcrEstadoDocumento.NoAplica;
 
+    /// <summary>Texto extraido por OCR (Azure Computer Vision Read API). Null hasta procesarse (RF04).</summary>
+    public string? OcrTexto { get; set; }
+
     // ---- Versionamiento (RF03; UI diferida, columnas presentes para fidelidad) ----
 
     public int VersionActual { get; set; } = 1;

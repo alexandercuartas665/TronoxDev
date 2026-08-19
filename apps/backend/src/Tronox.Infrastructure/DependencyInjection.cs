@@ -64,6 +64,7 @@ public static class DependencyInjection
 
         // Gateway de IA multi-proveedor (base de RQ16).
         services.AddHttpClient<Tronox.Application.Tenancy.IAiProviderClient, Ai.AiProviderClient>();
+        services.AddHttpClient<Tronox.Application.Documentos.IOcrService, Ocr.OcrService>();
         services.AddHttpClient<Tronox.Application.Auth.IGoogleOAuthClient, Auth.GoogleOAuthClient>();
 
         // Aprovisionamiento del menu canonico por tenant (RF09 5.9.4). Cuelga del ALTA de tenant,

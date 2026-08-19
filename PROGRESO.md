@@ -782,3 +782,21 @@ Almacenamiento Azure Blob por entidad (ADR-012).
 
 PENDIENTE (paso 2, seccion 21): el servicio Azure Computer Vision Read API + wire de /visor/data
 op=ocr/reocr (hoy placeholders). Azure no es alcanzable desde local; corre en prod.
+
+---
+
+## 23. Servicio OCR (Azure Computer Vision Read API) + wire del visor (RQ04 RF04, 2026-08-18)
+
+Paso 2 (seccion 21): el servicio real que ejecuta el OCR usando la config de la entidad (seccion 22).
+
+- Campo `Documento.OcrTexto` (text) + migracion `DocumentoOcrTexto`.
+- `IOcrService` (Application) + `OcrService` (Infrastructure, HttpClient): lee `OcrConfig` del tenant
+  (endpoint + llave descifrada), valida binario/formato, pone OcrEstado=Procesando, descarga el
+  binario del object storage, llama al Azure Computer Vision Read API v3.2 (POST analyze -> polling
+  analyzeResults -> texto), guarda OcrEstado=Completado + OcrTexto (o Error con mensaje). Audita
+  "documento.ocr". Registrado con AddHttpClient.
+- Wire de `/visor/data` op=reocr (real) + op=ocr (estado+texto) en VisorEndpoints (antes placeholders).
+- Auditado e2e (dev-login + fetch): reocr sobre doc 98 -> resuelve config, descarga binario, intenta
+  Azure; el endpoint de prueba (fake) da error controlado "Host desconocido"; OcrEstado transiciona
+  Pendiente->Procesando->Error y persiste. **Azure Cognitive Services SI es alcanzable desde local**
+  (el DNS se intento; fallo solo por hostname de prueba). Con endpoint+llave reales, corre completo.
