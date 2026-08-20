@@ -46,6 +46,17 @@ public interface IDocumentoService
     /// <summary>Elimina un borrador (unico borrado FISICO del sistema): solo Borrador del creador.</summary>
     Task<DocumentoResult<bool>> EliminarBorradorAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 
+    // ---- Editor de texto interno (RF08) ----
+
+    /// <summary>Reabre un borrador en el editor: devuelve nombre + cuerpo HTML. Solo Borrador del creador.</summary>
+    Task<DocumentoResult<EditorContenidoDto>> AbrirEditorAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Guarda el cuerpo HTML del editor (crea el borrador si DocId es null/0). No genera PDF. Devuelve el DocId.</summary>
+    Task<DocumentoResult<long>> GuardarContenidoAsync(GuardarContenidoRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Genera el PDF del HTML (Chromium), lo sube al object storage y deja el borrador CON binario (sigue Borrador). Devuelve el DocId.</summary>
+    Task<DocumentoResult<long>> GenerarPdfDesdeEditorAsync(GuardarContenidoRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
     // ---- Archivar (RF16) ----
 
     Task<IReadOnlyList<ExpedienteDestinoDto>> GetExpedientesDestinoAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);

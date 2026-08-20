@@ -814,3 +814,29 @@ modal "Editar metadatos del documento" (RF05). Se cableo:
   mismo de Mis Documentos y del visor.
 - Auditado e2e (dev-login + MCP Chrome, expediente 20): el lapiz abre el modal, edita el nombre y
   guarda -> persiste + refresca la grilla.
+
+---
+
+## 25. Editor de texto interno (RF08): port de ctrlEditorTexto (2026-08-20)
+
+Port fiel del editor de texto interno del legacy (`ctrlEditorTexto.ascx`), con tres decisiones de
+sustitucion registradas en ADR-015 (repo publico + Linux + invariante de expediente):
+
+- **Editor: TinyMCE 7 self-hosted** (reemplaza CKEditor 4 EOL). Assets en `wwwroot/tinymce`; carga
+  bajo demanda via `wwwroot/js/editor-texto.js`. Toolbar equivalente + hoja Carta. Componente
+  `EditorTextoModal.razor` (modal full-screen, nombre editable, autoguardado 60s).
+- **HTML->PDF: PuppeteerSharp/Chromium** (reemplaza SelectPdf comercial/Windows). Abstraccion
+  `IHtmlToPdfConverter` + `PuppeteerHtmlToPdfConverter` (Infra). Binario por config
+  (`PUPPETEER_EXECUTABLE_PATH`): Dockerfile instala `chromium`; dev apunta a Chrome local.
+- **"Generar PDF" deja Borrador CON binario** (no Archivado): sube el PDF al object storage y marca
+  `tiene_binario/formato=pdf`, conservando Estado=Borrador; se archiva luego con RF16. El HTML se
+  guarda en la nueva columna `documentos.contenido_html` (migracion DocumentoContenidoHtml).
+- Servicio: `AbrirEditorAsync` / `GuardarContenidoAsync` (crea/actualiza borrador-texto, solo HTML) /
+  `GenerarPdfDesdeEditorAsync`. Auditoria: documento.crear_borrador_texto / editar_contenido /
+  generar_pdf.
+- Wire en Mis Documentos: menu "Editar contenido" (reabrir borrador) + selector "Desde Plantilla /
+  Editor" (nuevo en blanco).
+- Auditado e2e (dev-login + MCP Chrome): TinyMCE abre, se escribe contenido, Generar PDF -> doc 106
+  queda Borrador con binario PDF (16 KB, 1 folio, contenido_html persistido) y el **visor renderiza el
+  PDF** generado por Chromium.
+- Pendiente/diferido: plantillas (RF10), nueva version desde el editor (RF03), sanitizacion de HTML.

@@ -1,0 +1,169 @@
+@* Editor de texto interno (RF08), calca ctrlEditorTexto del legacy: modal full-screen con TinyMCE
+   (reemplazo de CKEditor 4), hoja tamano Carta, nombre editable, y dos guardados: "Guardar borrador"
+   (solo HTML, sigue Borrador) y "Generar PDF" (HTML->PDF via Chromium, deja el borrador CON binario;
+   luego se archiva en un expediente con RF16). Autoguardado cada 60s. *@
+@using Tronox.Application.Documentos
+@inject IDocumentoService Svc
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="txed-ov">
+    <div class="txed-card">
+        <div class="txed-head">
+            <div class="txed-head-l">
+                <i class="bi bi-file-earmark-text"></i>
+                <input class="txed-nombre" @bind="_nombre" placeholder="Nombre del documento" maxlength="200" />
+            </div>
+            <div class="txed-head-r">
+                <span class="txed-status">@_status</span>
+                <button class="txed-x" title="Cerrar" @onclick="Cerrar" disabled="@_busy">&times;</button>
+            </div>
+        </div>
+
+        @if (_err is not null) { <div class="txed-err">@_err</div> }
+
+        <div class="txed-body">
+            <textarea id="txEdArea"></textarea>
+        </div>
+
+        <div class="txed-foot">
+            <button class="tx-ent-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <div style="flex:1"></div>
+            <button class="tx-ent-btn" @onclick="GuardarBorrador" disabled="@_busy">
+                <i class="bi bi-save"></i> Guardar borrador
+            </button>
+            <button class="tx-ent-btn primary" @onclick="GenerarPdf" disabled="@_busy">
+                <i class="bi bi-filetype-pdf"></i> Generar PDF
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .txed-ov { position:fixed; inset:0; z-index:1000010; background:rgba(15,23,42,.55); display:flex; align-items:stretch; justify-content:center; padding:18px; }
+    .txed-card { background:#fff; border-radius:14px; width:100%; max-width:1100px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(15,23,42,.25); }
+    .txed-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; border-bottom:1px solid #E2E8F0; background:#F8FAFC; }
+    .txed-head-l { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+    .txed-head-l > i { font-size:20px; color:#2563EB; }
+    .txed-nombre { flex:1; min-width:0; border:1px solid #E2E8F0; border-radius:8px; padding:8px 12px; font-size:15px; font-weight:600; color:#0F172A; }
+    .txed-head-r { display:flex; align-items:center; gap:12px; }
+    .txed-status { font-size:12px; color:#64748B; white-space:nowrap; }
+    .txed-x { border:none; background:none; font-size:26px; line-height:1; color:#64748B; cursor:pointer; }
+    .txed-x:hover { color:#DC2626; }
+    .txed-err { margin:10px 16px 0; padding:8px 12px; border-radius:8px; background:#FEF2F2; color:#DC2626; font-size:13px; border:1px solid #FECACA; }
+    .txed-body { flex:1; overflow:auto; background:#E8ECF3; }
+    .txed-foot { display:flex; align-items:center; gap:10px; padding:12px 16px; border-top:1px solid #E2E8F0; background:#F8FAFC; }
+</style>
+
+@code {
+    [Parameter] public long DocId { get; set; }
+    [Parameter] public string? InitialNombre { get; set; }
+    [Parameter] public string? InitialHtml { get; set; }
+    [Parameter] public EventCallback<long> OnGuardado { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private long _docId;
+    private string _nombre = "";
+    private string? _status;
+    private string? _err;
+    private bool _busy;
+    private bool _inicializado;
+    private System.Threading.Timer? _autosave;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override void OnInitialized()
+    {
+        _docId = DocId;
+        _nombre = string.IsNullOrWhiteSpace(InitialNombre)
+            ? (DocId > 0 ? "" : "Nuevo_documento")
+            : InitialNombre!;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _inicializado) { return; }
+        _inicializado = true;
+
+        string? contenido = InitialHtml;
+        if (_docId > 0 && InitialHtml is null)
+        {
+            var r = await Svc.AbrirEditorAsync(_docId, Actor);
+            if (r.IsOk && r.Value is not null)
+            {
+                _nombre = r.Value.Nombre;
+                contenido = r.Value.ContenidoHtml;
+            }
+            else
+            {
+                _err = r.Error ?? "No se pudo abrir el borrador.";
+            }
+            StateHasChanged();
+        }
+
+        await JS.InvokeVoidAsync("txEditor.init", contenido ?? "");
+
+        // Autoguardado cada 60s (silencioso), calca ed8IniciarAutoGuardado.
+        _autosave = new System.Threading.Timer(async _ => await InvokeAsync(AutoGuardar), null,
+            TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+    }
+
+    private async Task<string> LeerHtmlAsync() => await JS.InvokeAsync<string>("txEditor.getContent");
+
+    private async Task GuardarBorrador()
+    {
+        _err = null; _busy = true;
+        try
+        {
+            var html = await LeerHtmlAsync();
+            var r = await Svc.GuardarContenidoAsync(new GuardarContenidoRequest(_docId, _nombre, html), Actor);
+            if (r.IsOk) { _docId = r.Value; _status = $"Guardado {DateTime.Now:HH:mm:ss}"; await OnGuardado.InvokeAsync(_docId); }
+            else { _err = r.Error ?? "No se pudo guardar."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task AutoGuardar()
+    {
+        if (_busy) { return; }
+        var tiene = await JS.InvokeAsync<bool>("txEditor.tieneTexto");
+        if (!tiene) { return; }
+        var html = await LeerHtmlAsync();
+        var r = await Svc.GuardarContenidoAsync(new GuardarContenidoRequest(_docId, _nombre, html), Actor);
+        if (r.IsOk) { _docId = r.Value; _status = $"Autoguardado {DateTime.Now:HH:mm:ss}"; StateHasChanged(); }
+    }
+
+    private async Task GenerarPdf()
+    {
+        _err = null;
+        var tiene = await JS.InvokeAsync<bool>("txEditor.tieneTexto");
+        if (!tiene) { _err = "El documento esta vacio. Escribe contenido antes de generar el PDF."; return; }
+        _busy = true; _status = "Generando PDF...";
+        try
+        {
+            var html = await LeerHtmlAsync();
+            var r = await Svc.GenerarPdfDesdeEditorAsync(new GuardarContenidoRequest(_docId, _nombre, html), Actor);
+            if (r.IsOk)
+            {
+                _docId = r.Value;
+                await JS.InvokeVoidAsync("txEditor.destroy");
+                await OnGuardado.InvokeAsync(_docId);
+                await OnCerrar.InvokeAsync();
+            }
+            else { _err = r.Error ?? "No se pudo generar el PDF."; _status = null; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar()
+    {
+        await OnCerrar.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_autosave is not null) { await _autosave.DisposeAsync(); }
+        try { await JS.InvokeVoidAsync("txEditor.destroy"); } catch { /* circuito cerrado */ }
+    }
+}

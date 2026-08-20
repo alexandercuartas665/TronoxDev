@@ -17,14 +17,17 @@ public sealed class DocumentoService : IDocumentoService
     private readonly ITenantContext _tenantContext;
     private readonly IObjectStorage _storage;
     private readonly IAuditWriter _audit;
+    private readonly IHtmlToPdfConverter _htmlToPdf;
 
     public DocumentoService(
-        IApplicationDbContext db, ITenantContext tenantContext, IObjectStorage storage, IAuditWriter audit)
+        IApplicationDbContext db, ITenantContext tenantContext, IObjectStorage storage, IAuditWriter audit,
+        IHtmlToPdfConverter htmlToPdf)
     {
         _db = db;
         _tenantContext = tenantContext;
         _storage = storage;
         _audit = audit;
+        _htmlToPdf = htmlToPdf;
     }
 
     // ---- Bandejas ----
@@ -302,6 +305,148 @@ public sealed class DocumentoService : IDocumentoService
             previousValue: prev, newValue: new { doc.Nombre, doc.FechaDocumento, doc.TrdTipologiaId }, tenantId: tenantId);
         await _db.SaveChangesAsync(cancellationToken);
         return DocumentoResult<bool>.Ok(true);
+    }
+
+    // ---- Editor de texto interno (RF08): calca ctrlEditorTexto ----
+
+    public async Task<DocumentoResult<EditorContenidoDto>> AbrirEditorAsync(
+        long docId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        // Solo un borrador PROPIO se reabre en el editor (calca GuardarContenidoHtml: ESTADO='Borrador' AND CREATED_BY).
+        var doc = await _db.Documentos.AsNoTracking()
+            .Where(d => d.Id == docId && d.Estado == EstadoDocumento.Borrador && d.CreatedBy == actorUserId)
+            .Select(d => new EditorContenidoDto(d.Id, d.Nombre, d.ContenidoHtml))
+            .FirstOrDefaultAsync(cancellationToken);
+        return doc is null
+            ? DocumentoResult<EditorContenidoDto>.NotFound("El borrador no existe o no es tuyo.")
+            : DocumentoResult<EditorContenidoDto>.Ok(doc);
+    }
+
+    public async Task<DocumentoResult<long>> GuardarContenidoAsync(
+        GuardarContenidoRequest request, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var up = await UpsertBorradorTextoAsync(request, actorUserId, cancellationToken);
+        if (!up.IsOk) { return DocumentoResult<long>.FromError(up); }
+        await _db.SaveChangesAsync(cancellationToken);
+        return DocumentoResult<long>.Ok(up.Value.Doc.Id);
+    }
+
+    public async Task<DocumentoResult<long>> GenerarPdfDesdeEditorAsync(
+        GuardarContenidoRequest request, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        // El PDF exige contenido real (HTML sin tags ni &nbsp; no vacio), calca ed8BtnGenerarPdf_Click.
+        if (string.IsNullOrWhiteSpace(TextoPlano(request.Html)))
+        {
+            return DocumentoResult<long>.Invalid("El documento esta vacio. Escribe contenido antes de generar el PDF.");
+        }
+
+        // 1) Asegura el borrador de texto (crea o actualiza) y persiste el HTML.
+        var up = await UpsertBorradorTextoAsync(request, actorUserId, cancellationToken);
+        if (!up.IsOk) { return DocumentoResult<long>.FromError(up); }
+        var doc = up.Value.Doc;
+        var tenantId = _tenantContext.TenantId!.Value;
+
+        // 2) HTML -> PDF (Chromium). 3) Sube el binario al object storage ANTES de tocar mas la fila.
+        byte[] pdf;
+        try { pdf = await _htmlToPdf.ConvertirAsync(request.Html ?? "", cancellationToken); }
+        catch (Exception ex) { return DocumentoResult<long>.Invalid("No se pudo generar el PDF: " + ex.Message); }
+        if (pdf.Length == 0) { return DocumentoResult<long>.Invalid("El PDF generado quedo vacio."); }
+
+        var key = $"{tenantId}/{Guid.NewGuid():N}.pdf";
+        using (var ms = new MemoryStream(pdf, writable: false))
+        {
+            await _storage.PutAsync(key, ms, "application/pdf", cancellationToken);
+        }
+
+        // 4) El borrador queda CON binario PDF, pero SIGUE Borrador (decision de diseno): luego se
+        //    incorpora a un expediente con el flujo Archivar (RF16). Asi se respeta el invariante
+        //    "Archivado = en expediente". El HTML se conserva para poder reabrir y regenerar.
+        var nombreArchivo = NombreArchivoPdf(doc.Nombre);
+        doc.NombreArchivoOriginal = nombreArchivo;
+        doc.Soporte = SoporteDocumento.Electronico;
+        doc.Formato = "pdf";
+        doc.TieneBinario = true;
+        doc.RutaAlmacenamiento = key;
+        doc.HashSha256 = DocumentoRules.HashSha256(pdf);
+        doc.TamanoBytes = pdf.LongLength;
+        doc.Folios = ContarPaginasPdf(pdf);
+        doc.OcrEstado = OcrEstadoDocumento.Pendiente;
+
+        _audit.Write(actorUserId, "documento.generar_pdf", nameof(Documento), doc,
+            previousValue: null, newValue: new { doc.Formato, doc.HashSha256, doc.TamanoBytes }, tenantId: tenantId);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            await _storage.DeleteAsync(key, cancellationToken); // no dejar binario sin fila
+            throw;
+        }
+        return DocumentoResult<long>.Ok(doc.Id);
+    }
+
+    /// <summary>
+    /// Crea (DocId null/0) o actualiza (DocId &gt; 0, solo Borrador propio) un borrador nacido del editor de
+    /// texto, fijando Nombre + ContenidoHtml. Devuelve la entidad rastreada; NO llama SaveChanges (el caller
+    /// decide). Calca CrearBorradorTexto / GuardarContenidoHtml del legacy.
+    /// </summary>
+    private async Task<DocumentoResult<(Documento Doc, bool EsNuevo)>> UpsertBorradorTextoAsync(
+        GuardarContenidoRequest request, long actorUserId, CancellationToken cancellationToken)
+    {
+        var nombre = string.IsNullOrWhiteSpace(request.Nombre) ? "Documento_sin_nombre" : request.Nombre.Trim();
+        var html = request.Html ?? "";
+        var tenantId = _tenantContext.TenantId!.Value;
+
+        if (request.DocId is long id && id > 0)
+        {
+            var doc = await _db.Documentos.FirstOrDefaultAsync(
+                d => d.Id == id && d.Estado == EstadoDocumento.Borrador && d.CreatedBy == actorUserId, cancellationToken);
+            if (doc is null)
+            {
+                return DocumentoResult<(Documento, bool)>.Invalid(
+                    "No se pudo guardar: el documento ya no es un borrador tuyo (puede estar archivado o pertenecer a otro usuario).");
+            }
+            doc.Nombre = nombre;
+            doc.ContenidoHtml = html;
+            _audit.Write(actorUserId, "documento.editar_contenido", nameof(Documento), doc,
+                previousValue: null, newValue: new { doc.Nombre, Longitud = html.Length }, tenantId: tenantId);
+            return DocumentoResult<(Documento, bool)>.Ok((doc, false));
+        }
+
+        var nuevo = new Documento
+        {
+            TenantId = tenantId,
+            Nombre = nombre,
+            Soporte = SoporteDocumento.Electronico,
+            Estado = EstadoDocumento.Borrador,
+            EstadoFirma = EstadoFirmaDocumento.SinFirma,
+            FechaDocumento = DateOnly.FromDateTime(DateTime.UtcNow),
+            TieneBinario = false,
+            OcrEstado = OcrEstadoDocumento.NoAplica,
+            ContenidoHtml = html
+        };
+        _db.Documentos.Add(nuevo);
+        _audit.Write(actorUserId, "documento.crear_borrador_texto", nameof(Documento), nuevo,
+            previousValue: null, newValue: new { nuevo.Nombre, Origen = "editor_texto" }, tenantId: tenantId);
+        return DocumentoResult<(Documento, bool)>.Ok((nuevo, true));
+    }
+
+    /// <summary>HTML sin etiquetas ni &nbsp; y recortado, para validar que el editor tenga contenido real.</summary>
+    private static string TextoPlano(string? html)
+        => System.Text.RegularExpressions.Regex.Replace(html ?? "", "<[^>]+>", "")
+            .Replace("&nbsp;", "").Trim();
+
+    /// <summary>Normaliza el nombre a un archivo .pdf (sin tildes, espacios a guion bajo), calca NormalizarNombre.</summary>
+    private static string NombreArchivoPdf(string nombre)
+    {
+        var sinTilde = new string(nombre.Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+            .ToArray()).Normalize(System.Text.NormalizationForm.FormC);
+        var limpio = System.Text.RegularExpressions.Regex.Replace(sinTilde.Trim(), @"\s+", "_");
+        limpio = System.Text.RegularExpressions.Regex.Replace(limpio, @"[^A-Za-z0-9_\-.]", "");
+        if (string.IsNullOrWhiteSpace(limpio)) { limpio = "Documento_sin_nombre"; }
+        return limpio + ".pdf";
     }
 
     // ---- Descargar ----

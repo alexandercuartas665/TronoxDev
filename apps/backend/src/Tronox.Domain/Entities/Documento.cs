@@ -83,6 +83,12 @@ public class Documento : TenantEntity
     /// <summary>Texto extraido por OCR (Azure Computer Vision Read API). Null hasta procesarse (RF04).</summary>
     public string? OcrTexto { get; set; }
 
+    /// <summary>
+    /// Cuerpo HTML del editor de texto interno (RF08), calca EXP_DOCUMENTOS.CONTENIDO_HTML. Se conserva
+    /// aun tras generar el PDF, para poder reabrir y seguir editando. Null si el documento no nace del editor.
+    /// </summary>
+    public string? ContenidoHtml { get; set; }
+
     // ---- Versionamiento (RF03; UI diferida, columnas presentes para fidelidad) ----
 
     public int VersionActual { get; set; } = 1;

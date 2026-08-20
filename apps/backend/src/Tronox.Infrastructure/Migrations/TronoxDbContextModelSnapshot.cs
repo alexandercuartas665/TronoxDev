@@ -1286,6 +1286,10 @@ namespace Tronox.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("ContenidoHtml")
+                        .HasColumnType("text")
+                        .HasColumnName("contenido_html");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");

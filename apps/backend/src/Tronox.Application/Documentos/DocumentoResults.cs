@@ -19,4 +19,9 @@ public sealed record DocumentoResult<T>(DocumentoServiceStatus Status, T? Value,
     public static DocumentoResult<T> Invalid(string error) => new(DocumentoServiceStatus.Invalid, default, error);
     public static DocumentoResult<T> Conflict(string error) => new(DocumentoServiceStatus.Conflict, default, error);
     public static DocumentoResult<T> Forbidden(string error) => new(DocumentoServiceStatus.Forbidden, default, error);
+
+    /// <summary>Propaga el estado y error de otro resultado (no-Ok) a este tipo, sin valor.</summary>
+    public static DocumentoResult<T> FromError<TOther>(DocumentoResult<TOther> other)
+        => new(other.Status == DocumentoServiceStatus.Ok ? DocumentoServiceStatus.Invalid : other.Status,
+               default, other.Error ?? "Operacion invalida.");
 }

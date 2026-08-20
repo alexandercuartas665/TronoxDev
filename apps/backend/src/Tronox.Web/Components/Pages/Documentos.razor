@@ -104,7 +104,7 @@
                                                 }
                                                 <div class="dm-sep"></div>
                                                 <div class="dm-sec">Otras</div>
-                                                <button class="dm-item" @onclick='() => Soon("Editar contenido")'><i class="bi bi-file-text" style="color:#475569"></i><span class="dm-tx"><span>Editar contenido</span><span class="dm-s">Abre el editor de texto del borrador</span></span></button>
+                                                <button class="dm-item" @onclick="@(() => OpenEditorContenido(dd.Id))"><i class="bi bi-file-text" style="color:#475569"></i><span class="dm-tx"><span>Editar contenido</span><span class="dm-s">Abre el editor de texto del borrador</span></span></button>
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => DescargarClose(dd.Id))"><i class="bi bi-download" style="color:#475569"></i><span class="dm-tx"><span>Descargar</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => ArchivarClose(dd.Id))"><i class="bi bi-archive" style="color:#475569"></i><span class="dm-tx"><span>Archivar</span><span class="dm-s">Wizard TRD · RF16</span></span></button> }
                                                 <button class="dm-item" @onclick='() => Soon("Compartir")'><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button>
@@ -200,7 +200,7 @@
                         <div class="nd-card-t">Digitalizar <span class="nd-rfsm">RF18</span></div>
                         <div class="nd-card-d">Escáner local (agente TWAIN) o cámara del dispositivo móvil.</div>
                     </div>
-                    <div class="nd-card" @onclick='() => Soon("Desde Plantilla / Editor (RF09)")'>
+                    <div class="nd-card" @onclick="AbrirEditorNuevo">
                         <i class="bi bi-pencil-square"></i>
                         <div class="nd-card-t">Desde Plantilla / Editor <span class="nd-rfsm">RF09</span></div>
                         <div class="nd-card-d">Crea un documento en el procesador de texto interno.</div>
@@ -222,6 +222,13 @@
 {
     <CargaArchivosModal ModoBorrador="true" Actor="Actor"
                         OnGuardados="OnCargaGuardados" OnCerrar="@(() => _showCarga = false)" />
+}
+
+@* Editor de texto interno (RF08) *@
+@if (_showEditor)
+{
+    <EditorTextoModal DocId="_editorDocId" InitialNombre="@_editorNombre"
+                      OnGuardado="OnEditorGuardado" OnCerrar="CloseEditor" />
 }
 
 @* ============ Modal EDITAR (metadatos) ============ *@
@@ -425,6 +432,11 @@
     // Cargar Documento: selector (¿Cómo deseas incorporar?) + carga multi-archivo en modo borrador
     private bool _showSelector, _showCarga;
 
+    // Editor de texto interno (RF08): docId 0 = nuevo en blanco
+    private bool _showEditor;
+    private long _editorDocId;
+    private string? _editorNombre;
+
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
     private string? _editError;
@@ -513,6 +525,33 @@
     private async Task OnCargaGuardados()
     {
         _pageOk = "Documento(s) creado(s) como borrador.";
+        _bandeja = BandejaDocumento.MisBorradores;
+        await Reload();
+    }
+
+    // ---- Editor de texto interno (RF08) ----
+
+    private void OpenEditorContenido(long id)
+    {
+        CloseMenu();
+        _editorDocId = id;
+        _editorNombre = null; // el editor carga el nombre real del borrador
+        _showEditor = true;
+    }
+
+    private void AbrirEditorNuevo()
+    {
+        _showSelector = false;
+        _editorDocId = 0;
+        _editorNombre = "Nuevo_documento";
+        _showEditor = true;
+    }
+
+    private void CloseEditor() => _showEditor = false;
+
+    private async Task OnEditorGuardado(long id)
+    {
+        // Al generar el PDF (o guardar), refresca la bandeja de borradores para reflejar el binario.
         _bandeja = BandejaDocumento.MisBorradores;
         await Reload();
     }
