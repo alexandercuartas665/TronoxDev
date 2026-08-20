@@ -840,3 +840,27 @@ sustitucion registradas en ADR-015 (repo publico + Linux + invariante de expedie
   queda Borrador con binario PDF (16 KB, 1 folio, contenido_html persistido) y el **visor renderiza el
   PDF** generado por Chromium.
 - Pendiente/diferido: plantillas (RF10), nueva version desde el editor (RF03), sanitizacion de HTML.
+
+---
+
+## 26. Campo "Origen migracion" en el menu + Compartir documento RF07 (2026-08-20)
+
+**Menu (Administrador de Menu):** nuevo metadato `menu_nodes.origen_migracion` (texto libre) para
+documentar de que modulo/pantalla legacy proviene cada item (trazabilidad del port). Cableado en
+MenuNode + DTOs (editor/edit/export) + servicio (read/update/export/import/clonado) + editor
+ConfiguracionMenu.razor. Migracion MenuNodeOrigenMigracion. Verificado: guarda y persiste.
+
+**Compartir (RF07):** port fiel del sub-flujo Compartir del legacy (EXP_DOCUMENTOS_COMPARTIDOS / shr*).
+- Entidad DocumentoCompartido (beneficiario PlatformUser; permisos Ver siempre + Editar metadatos +
+  Descargar; OrigenRol snapshot; soft-delete Activo/RevocadoPor/FechaRevocado). Migracion + config EF.
+- Servicio en DocumentoService: BuscarDestinos (usuarios+roles, excluye ya-compartidos), Compartir
+  (expande rol->usuarios snapshot, upsert de permisos, Ver implicito, audita documento.compartir,
+  notifica campana via INotificationService + email best-effort), Revocar (soft-delete),
+  ListarActivos, ListarCompartidosConmigo (reemplaza el stub de la 3a pestana).
+- UI: CompartirModal (buscador + checkboxes de permiso + accesos actuales con revocar) cableado al
+  menu Compartir en Borradores/Archivados; pestana "Compartidos conmigo" encendida (Ver + Descargar
+  si permiso). Gate por Edit (proxy de gestion: TRONOX no tiene accion Share dedicada).
+- Verificado e2e: compartir con Rita -> fila persistida; Compartidos conmigo muestra el doc con
+  permisos, compartido por y acciones.
+- Diferido/pendiente de Mis Documentos: Enviar por correo, Imprimir (copia con estampa), Busqueda
+  avanzada (RF14). Firma (Mis Firmas) es modulo aparte (grande), ya investigado a fondo.
