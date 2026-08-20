@@ -219,6 +219,12 @@ else
                                 <label class="form-label">Texto de ayuda</label>
                                 <textarea class="form-control" rows="2" maxlength="400" @bind="_pHelpText"></textarea>
                             </div>
+                            <div class="field">
+                                <label class="form-label">Origen migracion</label>
+                                <input class="form-control" maxlength="200" placeholder="ej. doc_bandeja.aspx"
+                                       @bind="_pOrigenMigracion" />
+                                <div class="tx-ent-hint" style="margin-top:4px">De que modulo/pantalla del sistema legacy proviene este item (trazabilidad del port).</div>
+                            </div>
                             @if (_selected.Kind is MenuNodeKind.Section or MenuNodeKind.Subgroup)
                             {
                                 <div class="field">
@@ -437,6 +443,7 @@ else
     private string? _pRoute;
     private string? _pDescription;
     private string? _pHelpText;
+    private string? _pOrigenMigracion;
     private MenuNodeState _pState;
     private bool _pIsProcessGroup;
     private string? _propError;
@@ -592,6 +599,7 @@ else
         _pRoute = _selected.Route;
         _pDescription = _selected.Description;
         _pHelpText = _selected.HelpText;
+        _pOrigenMigracion = _selected.OrigenMigracion;
         _pState = _selected.State;
         _pIsProcessGroup = _selected.IsProcessGroup;
     }
@@ -609,6 +617,7 @@ else
                 Route: _pRoute ?? "",
                 Description: _pDescription ?? "",
                 HelpText: _pHelpText ?? "",
+                OrigenMigracion: _pOrigenMigracion ?? "",
                 State: _pState,
                 IsProcessGroup: _pIsProcessGroup);
             var res = await MenuSvc.UpdateNodeAsync(_selected.Id, edit);
