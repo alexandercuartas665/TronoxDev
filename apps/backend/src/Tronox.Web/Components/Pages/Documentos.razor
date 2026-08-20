@@ -107,7 +107,7 @@
                                                 <button class="dm-item" @onclick="@(() => OpenEditorContenido(dd.Id))"><i class="bi bi-file-text" style="color:#475569"></i><span class="dm-tx"><span>Editar contenido</span><span class="dm-s">Abre el editor de texto del borrador</span></span></button>
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => DescargarClose(dd.Id))"><i class="bi bi-download" style="color:#475569"></i><span class="dm-tx"><span>Descargar</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => ArchivarClose(dd.Id))"><i class="bi bi-archive" style="color:#475569"></i><span class="dm-tx"><span>Archivar</span><span class="dm-s">Wizard TRD · RF16</span></span></button> }
-                                                <button class="dm-item" @onclick='() => Soon("Compartir")'><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button>
+                                                @if (_canEdit) { <button class="dm-item" @onclick="@(() => OpenCompartir(dd.Id, dd.Nombre))"><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button> }
                                                 <button class="dm-item" @onclick='() => Soon("Enviar por correo")'><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button>
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick='() => Soon("Imprimir")'><i class="bi bi-printer" style="color:#475569"></i><span class="dm-tx"><span>Imprimir</span></span></button> }
                                                 @if (_canDelete)
@@ -161,7 +161,7 @@
                                             <div class="dm-panel">
                                                 <div class="dm-sec">Otras</div>
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => DescargarClose(dd.Id))"><i class="bi bi-download" style="color:#475569"></i><span class="dm-tx"><span>Descargar</span></span></button> }
-                                                <button class="dm-item" @onclick='() => Soon("Compartir")'><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button>
+                                                @if (_canEdit) { <button class="dm-item" @onclick="@(() => OpenCompartir(dd.Id, dd.Nombre))"><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button> }
                                                 <button class="dm-item" @onclick='() => Soon("Enviar por correo")'><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button>
                                             </div>
                                         }
@@ -176,7 +176,38 @@
     }
     else
     {
-        <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>La bandeja "Compartidos conmigo" (RF07) se habilita en un siguiente avance.</span></div>
+        @* Compartidos conmigo (RF07): calca rpCompartidos. Acciones: Ver (si binario) + Descargar (si permiso). *@
+        <div class="tx-ent-table-wrap">
+            <table class="tx-ent-table">
+                <thead><tr><th>NOMBRE</th><th>TIPO DOCUMENTAL</th><th>COMPARTIDO POR</th><th>PERMISOS</th><th>FECHA</th><th class="right">ACCIONES</th></tr></thead>
+                <tbody>
+                    @if (_compartidos is null) { <tr><td colspan="6" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_compartidos.Count == 0) { <tr><td colspan="6" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes documentos compartidos contigo.</td></tr> }
+                    else
+                    {
+                        @foreach (var c in _compartidos)
+                        {
+                            var cc = c;
+                            <tr>
+                                <td>
+                                    @if (cc.TieneBinario) { <a href="javascript:void(0)" class="doc-nom" @onclick="@(() => VerDoc(cc.DocId))">@cc.Nombre</a> }
+                                    else { <span>@cc.Nombre</span> }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(cc.TipologiaNombre) ? "—" : cc.TipologiaNombre)</td>
+                                <td>@cc.CompartidoPor</td>
+                                <td>@foreach (var p in cc.Permisos) { <span class="cmp-badge" style="background:#EFF6FF;color:#2563EB;border-radius:6px;padding:1px 7px;font-size:11px;margin-right:4px">@p</span> }</td>
+                                <td>@cc.FechaOtorgado.ToString("yyyy-MM-dd")</td>
+                                <td class="right" style="white-space:nowrap">
+                                    @if (cc.TieneBinario) { <button class="tx-ent-btn sm" title="Ver documento" @onclick="@(() => VerDoc(cc.DocId))"><i class="bi bi-eye"></i></button> }
+                                    @if (cc.TieneBinario && cc.PuedeDescargar) { <button class="tx-ent-btn sm" title="Descargar" @onclick="@(() => DescargarClose(cc.DocId))"><i class="bi bi-download"></i></button> }
+                                    @if (!cc.TieneBinario) { <span class="tx-ent-hint">Sin binario</span> }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
     }
 </div>
 
@@ -229,6 +260,12 @@
 {
     <EditorTextoModal DocId="_editorDocId" InitialNombre="@_editorNombre"
                       OnGuardado="OnEditorGuardado" OnCerrar="CloseEditor" />
+}
+
+@* Compartir (RF07) *@
+@if (_showCompartir)
+{
+    <CompartirModal DocId="_compartirDocId" Nombre="@_compartirNombre" OnCerrar="CloseCompartir" />
 }
 
 @* ============ Modal EDITAR (metadatos) ============ *@
@@ -437,6 +474,12 @@
     private long _editorDocId;
     private string? _editorNombre;
 
+    // Compartir (RF07)
+    private bool _showCompartir;
+    private long _compartirDocId;
+    private string _compartirNombre = "";
+    private IReadOnlyList<CompartidoConmigoDto>? _compartidos;
+
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
     private string? _editError;
@@ -516,6 +559,7 @@
         var t = string.IsNullOrWhiteSpace(_texto) ? null : _texto;
         if (_bandeja == BandejaDocumento.MisBorradores) { _borradores = await Svc.ListarBorradoresAsync(Actor, t); }
         else if (_bandeja == BandejaDocumento.ArchivadosPorMi) { _archivados = await Svc.ListarArchivadosPorMiAsync(Actor, t); }
+        else if (_bandeja == BandejaDocumento.CompartidosConmigo) { _compartidos = await Svc.ListarCompartidosConmigoAsync(Actor, t); }
     }
 
     // ---- Cargar Documento (selector + carga en modo borrador) ----
@@ -554,6 +598,22 @@
         // Al generar el PDF (o guardar), refresca la bandeja de borradores para reflejar el binario.
         _bandeja = BandejaDocumento.MisBorradores;
         await Reload();
+    }
+
+    // ---- Compartir (RF07) ----
+
+    private void OpenCompartir(long id, string nombre)
+    {
+        CloseMenu();
+        _compartirDocId = id;
+        _compartirNombre = nombre;
+        _showCompartir = true;
+    }
+
+    private async Task CloseCompartir()
+    {
+        _showCompartir = false;
+        if (_bandeja == BandejaDocumento.CompartidosConmigo) { await Reload(); }
     }
 
     // ---- Ver (visor) / descargar ----

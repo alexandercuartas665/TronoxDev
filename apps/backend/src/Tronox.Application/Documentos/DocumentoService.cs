@@ -18,16 +18,20 @@ public sealed class DocumentoService : IDocumentoService
     private readonly IObjectStorage _storage;
     private readonly IAuditWriter _audit;
     private readonly IHtmlToPdfConverter _htmlToPdf;
+    private readonly Notifications.INotificationService _notifications;
+    private readonly IEmailSender _email;
 
     public DocumentoService(
         IApplicationDbContext db, ITenantContext tenantContext, IObjectStorage storage, IAuditWriter audit,
-        IHtmlToPdfConverter htmlToPdf)
+        IHtmlToPdfConverter htmlToPdf, Notifications.INotificationService notifications, IEmailSender email)
     {
         _db = db;
         _tenantContext = tenantContext;
         _storage = storage;
         _audit = audit;
         _htmlToPdf = htmlToPdf;
+        _notifications = notifications;
+        _email = email;
     }
 
     // ---- Bandejas ----
@@ -447,6 +451,244 @@ public sealed class DocumentoService : IDocumentoService
         limpio = System.Text.RegularExpressions.Regex.Replace(limpio, @"[^A-Za-z0-9_\-.]", "");
         if (string.IsNullOrWhiteSpace(limpio)) { limpio = "Documento_sin_nombre"; }
         return limpio + ".pdf";
+    }
+
+    // ---- Compartir (RF07): calca EXP_DOCUMENTOS_COMPARTIDOS / shr* del legacy ----
+
+    public async Task<IReadOnlyList<DestinoBusquedaDto>> BuscarDestinosCompartirAsync(
+        long docId, string? criterio, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var ql = (criterio ?? "").Trim().ToLowerInvariant();
+
+        // Ya compartidos activos sobre el doc -> se excluyen del buscador de usuarios (calca BuscarDestinos).
+        var yaCompartidos = await _db.DocumentosCompartidos.AsNoTracking()
+            .Where(c => c.DocumentoId == docId && c.Activo)
+            .Select(c => c.BeneficiarioPlatformUserId).ToListAsync(cancellationToken);
+
+        var usuariosQ = _db.TenantUsers.AsNoTracking()
+            .Where(u => u.Status == PlatformUserStatus.Active
+                        && u.PlatformUserId != actorUserId
+                        && !yaCompartidos.Contains(u.PlatformUserId));
+        if (ql.Length > 0)
+        {
+            usuariosQ = usuariosQ.Where(u =>
+                u.Email.ToLower().Contains(ql)
+                || ((u.Nombres ?? "") + " " + (u.Apellidos ?? "")).ToLower().Contains(ql));
+        }
+        var usuarios = (await usuariosQ.OrderBy(u => u.Apellidos).ThenBy(u => u.Nombres).Take(20)
+                .Select(u => new { u.PlatformUserId, u.Email, u.Nombres, u.Apellidos })
+                .ToListAsync(cancellationToken))
+            .Select(u => new DestinoBusquedaDto("U", u.PlatformUserId, NombrePersona(u.Nombres, u.Apellidos, u.Email), u.Email))
+            .ToList();
+
+        var rolesQ = _db.Roles.AsNoTracking().Where(r => r.Estado == RolEstado.Activo);
+        if (ql.Length > 0) { rolesQ = rolesQ.Where(r => r.Name.ToLower().Contains(ql)); }
+        var roles = await rolesQ.OrderBy(r => r.Name).Take(20)
+            .Select(r => new DestinoBusquedaDto("R", r.Id, r.Name, "Rol"))
+            .ToListAsync(cancellationToken);
+
+        return usuarios.Concat(roles).ToList();
+    }
+
+    public async Task<DocumentoResult<int>> CompartirAsync(
+        CompartirRequest request, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var doc = await _db.Documentos.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == request.DocId && d.Estado != EstadoDocumento.Anulado, cancellationToken);
+        if (doc is null) { return DocumentoResult<int>.NotFound("El documento no existe."); }
+        var tenantId = _tenantContext.TenantId!.Value;
+
+        // Resolver beneficiarios (PlatformUserId -> rol de origen). Un rol se EXPANDE a sus usuarios ahora
+        // (snapshot). Se excluye siempre al propio otorgante. Calca ObtenerUsuariosDeRol + el bucle Otorgar.
+        var beneficiarios = new Dictionary<long, long?>();
+        foreach (var d in request.Destinos)
+        {
+            if (string.Equals(d.Tipo, "U", StringComparison.OrdinalIgnoreCase))
+            {
+                if (d.Id != actorUserId) { beneficiarios.TryAdd(d.Id, null); }
+            }
+            else if (string.Equals(d.Tipo, "R", StringComparison.OrdinalIgnoreCase))
+            {
+                var users = await _db.UsuariosRoles.AsNoTracking()
+                    .Where(ur => ur.RolId == d.Id)
+                    .Join(_db.TenantUsers.AsNoTracking().Where(u => u.Status == PlatformUserStatus.Active),
+                          ur => ur.TenantUserId, u => u.Id, (ur, u) => u.PlatformUserId)
+                    .Distinct().ToListAsync(cancellationToken);
+                foreach (var pu in users) { if (pu != actorUserId) { beneficiarios.TryAdd(pu, d.Id); } }
+            }
+        }
+        if (beneficiarios.Count == 0) { return DocumentoResult<int>.Ok(0); }
+
+        var existentes = await _db.DocumentosCompartidos
+            .Where(c => c.DocumentoId == doc.Id).ToListAsync(cancellationToken);
+        var mapa = existentes.ToDictionary(c => c.BeneficiarioPlatformUserId);
+        var notificar = new List<long>();
+
+        foreach (var (pu, origenRol) in beneficiarios)
+        {
+            if (mapa.TryGetValue(pu, out var c))
+            {
+                var cambio = false;
+                if (!c.Activo) { c.Activo = true; c.RevocadoPor = null; c.FechaRevocado = null; cambio = true; }
+                if (request.PuedeEditarMetadatos && !c.PuedeEditarMetadatos) { c.PuedeEditarMetadatos = true; cambio = true; }
+                if (request.PuedeDescargar && !c.PuedeDescargar) { c.PuedeDescargar = true; cambio = true; }
+                if (cambio) { notificar.Add(pu); }
+            }
+            else
+            {
+                _db.DocumentosCompartidos.Add(new DocumentoCompartido
+                {
+                    TenantId = tenantId,
+                    DocumentoId = doc.Id,
+                    BeneficiarioPlatformUserId = pu,
+                    PuedeVer = true,
+                    PuedeEditarMetadatos = request.PuedeEditarMetadatos,
+                    PuedeDescargar = request.PuedeDescargar,
+                    OrigenRolId = origenRol,
+                    Activo = true
+                });
+                notificar.Add(pu);
+            }
+        }
+
+        if (notificar.Count == 0) { return DocumentoResult<int>.Ok(0); }
+
+        _audit.Write(actorUserId, "documento.compartir", nameof(Documento), doc,
+            previousValue: null, newValue: new { doc.Nombre, Destinatarios = notificar.Count }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await NotificarCompartidoAsync(doc.Id, doc.Nombre, notificar, actorUserId, revocado: false, cancellationToken);
+        return DocumentoResult<int>.Ok(notificar.Count);
+    }
+
+    public async Task<DocumentoResult<bool>> RevocarComparticionAsync(
+        long docId, long beneficiarioPlatformUserId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var c = await _db.DocumentosCompartidos.FirstOrDefaultAsync(
+            x => x.DocumentoId == docId && x.BeneficiarioPlatformUserId == beneficiarioPlatformUserId && x.Activo,
+            cancellationToken);
+        if (c is null) { return DocumentoResult<bool>.NotFound("No existe una comparticion activa para revocar."); }
+
+        var doc = await _db.Documentos.AsNoTracking().FirstOrDefaultAsync(d => d.Id == docId, cancellationToken);
+        c.Activo = false;
+        c.RevocadoPor = actorUserId;
+        c.FechaRevocado = DateTime.UtcNow;
+        if (doc is not null)
+        {
+            _audit.Write(actorUserId, "documento.compartir", nameof(Documento), doc,
+                previousValue: null, newValue: new { Accion = "revocar", Beneficiario = beneficiarioPlatformUserId },
+                tenantId: _tenantContext.TenantId!.Value);
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+
+        if (doc is not null)
+        {
+            await NotificarCompartidoAsync(docId, doc.Nombre, [beneficiarioPlatformUserId], actorUserId,
+                revocado: true, cancellationToken);
+        }
+        return DocumentoResult<bool>.Ok(true);
+    }
+
+    public async Task<IReadOnlyList<CompartidoActivoDto>> ListarActivosComparticionAsync(
+        long docId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.DocumentosCompartidos.AsNoTracking()
+            .Where(c => c.DocumentoId == docId && c.Activo)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => new { c.BeneficiarioPlatformUserId, c.PuedeEditarMetadatos, c.PuedeDescargar, c.OrigenRolId })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0) { return []; }
+
+        var ids = rows.Select(r => r.BeneficiarioPlatformUserId).Distinct().ToList();
+        var nombres = await _db.TenantUsers.AsNoTracking()
+            .Where(u => ids.Contains(u.PlatformUserId))
+            .Select(u => new { u.PlatformUserId, u.Nombres, u.Apellidos, u.Email })
+            .ToListAsync(cancellationToken);
+        var nm = nombres.ToDictionary(n => n.PlatformUserId);
+
+        return rows.Select(r => new CompartidoActivoDto(
+            r.BeneficiarioPlatformUserId,
+            nm.TryGetValue(r.BeneficiarioPlatformUserId, out var n) ? NombrePersona(n.Nombres, n.Apellidos, n.Email) : $"Usuario {r.BeneficiarioPlatformUserId}",
+            r.PuedeEditarMetadatos, r.PuedeDescargar, r.OrigenRolId is not null)).ToList();
+    }
+
+    public async Task<IReadOnlyList<CompartidoConmigoDto>> ListarCompartidosConmigoAsync(
+        long actorUserId, string? texto = null, CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.DocumentosCompartidos.AsNoTracking()
+            .Where(c => c.BeneficiarioPlatformUserId == actorUserId && c.Activo
+                        && c.Documento!.Estado != EstadoDocumento.Anulado)
+            .OrderByDescending(c => c.CreatedAt)
+            .Select(c => new
+            {
+                c.DocumentoId, c.PuedeEditarMetadatos, c.PuedeDescargar, c.CreatedBy, c.CreatedAt,
+                c.Documento!.Nombre, c.Documento.Formato, c.Documento.TieneBinario,
+                Tipologia = c.Documento.TrdTipologia != null ? c.Documento.TrdTipologia.Nombre : null
+            })
+            .ToListAsync(cancellationToken);
+
+        var q = (texto ?? "").Trim();
+        if (q.Length > 0)
+        {
+            rows = rows.Where(r => r.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        var otorgantes = rows.Where(r => r.CreatedBy is not null).Select(r => r.CreatedBy!.Value).Distinct().ToList();
+        var nombres = await _db.PlatformUsers.AsNoTracking()
+            .Where(u => otorgantes.Contains(u.Id))
+            .Select(u => new { u.Id, Nombre = u.DisplayName ?? u.Email })
+            .ToListAsync(cancellationToken);
+        var nm = nombres.ToDictionary(n => n.Id, n => n.Nombre);
+
+        return rows.Select(r =>
+        {
+            var permisos = new List<string> { "Ver" };
+            if (r.PuedeEditarMetadatos) { permisos.Add("Editar metadatos"); }
+            if (r.PuedeDescargar) { permisos.Add("Descargar"); }
+            var por = r.CreatedBy is long cb && nm.TryGetValue(cb, out var o) ? o : "(sistema)";
+            return new CompartidoConmigoDto(r.DocumentoId, r.Nombre, r.Formato, r.Tipologia, r.TieneBinario,
+                por, r.CreatedAt.LocalDateTime, r.PuedeDescargar, permisos);
+        }).ToList();
+    }
+
+    /// <summary>Campana (Notification) + correo best-effort para cada beneficiario, calca shrNotificar.</summary>
+    private async Task NotificarCompartidoAsync(
+        long docId, string nombreDoc, IReadOnlyCollection<long> beneficiariosPlatformUserId, long actorUserId,
+        bool revocado, CancellationToken cancellationToken)
+    {
+        var actor = await _db.PlatformUsers.AsNoTracking()
+            .Where(u => u.Id == actorUserId).Select(u => u.DisplayName ?? u.Email).FirstOrDefaultAsync(cancellationToken)
+            ?? "Un usuario";
+
+        var titulo = revocado ? "Acceso revocado" : "Documento compartido contigo";
+        var cuerpo = revocado
+            ? $"Se revoco tu acceso al documento \"{nombreDoc}\"."
+            : $"{actor} compartio contigo el documento \"{nombreDoc}\".";
+
+        var destinos = await _db.TenantUsers.AsNoTracking()
+            .Where(u => beneficiariosPlatformUserId.Contains(u.PlatformUserId))
+            .Select(u => new { u.Id, u.Email }).ToListAsync(cancellationToken);
+
+        foreach (var d in destinos)
+        {
+            try
+            {
+                await _notifications.CreateAsync(d.Id, NotificationKind.General, titulo, cuerpo,
+                    linkRoute: "/modulo/documentos", actorName: actor, cancellationToken: cancellationToken);
+            }
+            catch { /* best-effort, como el legacy */ }
+            if (!string.IsNullOrWhiteSpace(d.Email))
+            {
+                try { await _email.SendAsync(d.Email, titulo, $"<p>{cuerpo}</p>", cancellationToken); }
+                catch { /* best-effort */ }
+            }
+        }
+    }
+
+    private static string NombrePersona(string? nombres, string? apellidos, string email)
+    {
+        var full = $"{nombres} {apellidos}".Trim();
+        return string.IsNullOrWhiteSpace(full) ? email : full;
     }
 
     // ---- Descargar ----

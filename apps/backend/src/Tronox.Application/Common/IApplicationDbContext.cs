@@ -89,6 +89,7 @@ public interface IApplicationDbContext
     // nunca BLOB); metadatos EAV sobre el motor de RQ02 (DAT-04, contexto Documento).
     DbSet<Documento> Documentos { get; }
     DbSet<DocumentoMetadato> DocumentoMetadatos { get; }
+    DbSet<DocumentoCompartido> DocumentosCompartidos { get; }
     // Tareas de validacion (RQ04 - RF11/RF12): revision/aprobacion. Flujo de metadatos paralelo que NO
     // cambia el estado del documento.
     DbSet<DocumentoValidacion> DocumentoValidaciones { get; }

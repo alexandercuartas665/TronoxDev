@@ -57,6 +57,23 @@ public interface IDocumentoService
     /// <summary>Genera el PDF del HTML (Chromium), lo sube al object storage y deja el borrador CON binario (sigue Borrador). Devuelve el DocId.</summary>
     Task<DocumentoResult<long>> GenerarPdfDesdeEditorAsync(GuardarContenidoRequest request, long actorUserId, CancellationToken cancellationToken = default);
 
+    // ---- Compartir (RF07) ----
+
+    /// <summary>Buscador de destinatarios del modal Compartir: usuarios (no compartidos aun) + roles.</summary>
+    Task<IReadOnlyList<DestinoBusquedaDto>> BuscarDestinosCompartirAsync(long docId, string? criterio, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Otorga acceso a los destinatarios (expande roles a usuarios). Devuelve cuantos recibieron algo nuevo.</summary>
+    Task<DocumentoResult<int>> CompartirAsync(CompartirRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Revoca (soft-delete) todo el acceso de un beneficiario sobre el documento.</summary>
+    Task<DocumentoResult<bool>> RevocarComparticionAsync(long docId, long beneficiarioPlatformUserId, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Accesos activos de un documento, para la lista del modal.</summary>
+    Task<IReadOnlyList<CompartidoActivoDto>> ListarActivosComparticionAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Bandeja "Compartidos conmigo": documentos compartidos activos con el usuario actual.</summary>
+    Task<IReadOnlyList<CompartidoConmigoDto>> ListarCompartidosConmigoAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);
+
     // ---- Archivar (RF16) ----
 
     Task<IReadOnlyList<ExpedienteDestinoDto>> GetExpedientesDestinoAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);

@@ -98,6 +98,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<ExpedienteVinculo> ExpedienteVinculos => Set<ExpedienteVinculo>();
     public DbSet<Documento> Documentos => Set<Documento>();
     public DbSet<DocumentoMetadato> DocumentoMetadatos => Set<DocumentoMetadato>();
+    public DbSet<DocumentoCompartido> DocumentosCompartidos => Set<DocumentoCompartido>();
     public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
     public DbSet<Plantilla> Plantillas => Set<Plantilla>();
     public DbSet<PlantillaTipo> PlantillaTipos => Set<PlantillaTipo>();
@@ -1125,6 +1126,17 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasOne(x => x.TrdMetadato).WithMany()
                 .HasForeignKey(x => x.TrdMetadatoId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.DocumentoId, x.TrdMetadatoId }).IsUnique();
+        });
+
+        // Comparticion interna de documentos (RF07). Cascade con el documento (si el borrador se borra
+        // fisico, sus comparticiones se van con el). Indice de la bandeja "Compartidos conmigo": por
+        // beneficiario + activo. Unico por (documento, beneficiario) para el upsert de permisos.
+        modelBuilder.Entity<DocumentoCompartido>(b =>
+        {
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.BeneficiarioPlatformUserId, x.Activo });
+            b.HasIndex(x => new { x.DocumentoId, x.BeneficiarioPlatformUserId }).IsUnique();
         });
 
         // Tareas de validacion (RQ04 - RF11/RF12): revision/aprobacion asignada a un usuario. Cuelga del
