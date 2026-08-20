@@ -122,7 +122,15 @@ else
                                 var dd = doc;
                                 <tr>
                                     <td><i class="bi @IconoFormato(dd.Formato)" style="font-size:18px;color:#64748B"></i></td>
-                                    <td><span class="exp-nombre">@dd.Nombre</span></td>
+                                    @* Calca FormatearNombreVisorArch: el nombre es enlace al visor solo si hay binario. *@
+                                    <td>@if (dd.TieneBinario)
+                                        {
+                                            <a href="javascript:void(0)" class="exp-nombre" style="cursor:pointer;text-decoration:none;" title="Abrir en el visor" @onclick="@(() => VerDocVisor(dd.Id))">@dd.Nombre</a>
+                                        }
+                                        else
+                                        {
+                                            <span class="exp-nombre">@dd.Nombre</span>
+                                        }</td>
                                     <td>@(string.IsNullOrWhiteSpace(dd.TipologiaNombre) ? "—" : dd.TipologiaNombre)</td>
                                     <td>@(dd.FechaDocumento?.ToString("yyyy-MM-dd") ?? "—")</td>
                                     <td>@(dd.FechaIncorporacion?.ToString("yyyy-MM-dd") ?? "—")</td>
@@ -133,7 +141,11 @@ else
                                     <td><span class="exp-pill @EstDocClass(dd.Estado)">@dd.Estado</span></td>
                                     <td><span class="exp-pill @FirmaClass(dd.EstadoFirma)">@FirmaTexto(dd.EstadoFirma)</span></td>
                                     <td class="center"><div class="exp-row-actions">
-                                        <button class="exp-act" title="Ver" @onclick="@(() => VerDocVisor(dd.Id))" disabled="@(!dd.TieneBinario)"><i class="bi bi-eye"></i></button>
+                                        @* Calca doc_bandeja.aspx (FormatearBtnVerArch): el ojo solo aparece si el documento tiene binario digital. *@
+                                        @if (dd.TieneBinario)
+                                        {
+                                            <button class="exp-act" title="Ver documento" @onclick="@(() => VerDocVisor(dd.Id))"><i class="bi bi-eye"></i></button>
+                                        }
                                         <button class="exp-act" title="Editar metadatos" @onclick="@(() => OpenEditarMetaDoc(dd.Id))"><i class="bi bi-pencil-square"></i></button>
                                         <button class="exp-act" title="Más acciones" @onclick='() => Toast("Más acciones del documento (versiones, firma, referenciar, anular): fase posterior de RQ04/RQ05.")'><i class="bi bi-three-dots-vertical"></i></button>
                                     </div></td>
