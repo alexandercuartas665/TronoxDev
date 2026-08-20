@@ -74,6 +74,9 @@ public interface IDocumentoService
     /// <summary>Bandeja "Compartidos conmigo": documentos compartidos activos con el usuario actual.</summary>
     Task<IReadOnlyList<CompartidoConmigoDto>> ListarCompartidosConmigoAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);
 
+    /// <summary>Contadores de las 3 bandejas (para los tabs): borradores, archivados por mi, compartidos conmigo.</summary>
+    Task<(int Borradores, int Archivados, int Compartidos)> ContarBandejasAsync(long actorUserId, CancellationToken cancellationToken = default);
+
     // ---- Archivar (RF16) ----
 
     Task<IReadOnlyList<ExpedienteDestinoDto>> GetExpedientesDestinoAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);

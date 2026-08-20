@@ -651,6 +651,20 @@ public sealed class DocumentoService : IDocumentoService
         }).ToList();
     }
 
+    public async Task<(int Borradores, int Archivados, int Compartidos)> ContarBandejasAsync(
+        long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var borradores = await _db.Documentos.AsNoTracking()
+            .CountAsync(d => d.Estado == EstadoDocumento.Borrador && d.CreatedBy == actorUserId, cancellationToken);
+        var archivados = await _db.Documentos.AsNoTracking()
+            .CountAsync(d => d.Estado == EstadoDocumento.Archivado && d.CreatedBy == actorUserId, cancellationToken);
+        var compartidos = await _db.DocumentosCompartidos.AsNoTracking()
+            .Where(c => c.BeneficiarioPlatformUserId == actorUserId && c.Activo
+                        && c.Documento!.Estado != EstadoDocumento.Anulado)
+            .Select(c => c.DocumentoId).Distinct().CountAsync(cancellationToken);
+        return (borradores, archivados, compartidos);
+    }
+
     /// <summary>Campana (Notification) + correo best-effort para cada beneficiario, calca shrNotificar.</summary>
     private async Task NotificarCompartidoAsync(
         long docId, string nombreDoc, IReadOnlyCollection<long> beneficiariosPlatformUserId, long actorUserId,

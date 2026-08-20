@@ -18,25 +18,48 @@
 
 <PageTitle>Mis Documentos - TRONOX SGDEA</PageTitle>
 
-<div class="tx-mod tx-dep tx-trdc">
-    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
-        <a href="/inicio">Inicio</a>
-        <span>/</span>
-        <span>Gestión Documental</span>
-        <span>/</span>
-        <span>Gestión Integral de Documentos</span>
-        <span>/</span>
-        <span class="current">Mis Documentos</span>
-    </nav>
+<style>
+    /* Mis Documentos (RQ04 RF15): diseno calcado del legacy doc_bandeja.aspx (tokens del modulo). */
+    .doc-wrap { padding: 8px 0 40px; }
+    .doc-header { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+    .doc-title { font-size:20px; font-weight:800; color:#0F172A; margin:0; display:flex; align-items:center; gap:10px; }
+    .doc-subtitle { font-size:12.5px; color:#94A3B8; margin-top:3px; }
+    .exp-btn { display:inline-flex; align-items:center; gap:7px; padding:9px 16px; border-radius:10px; font-size:13px; font-weight:700; border:1px solid #E2E8F0; background:#fff; color:#475569; text-decoration:none; cursor:pointer; transition:all .15s; }
+    .exp-btn:hover { background:#F8FAFC; }
+    .exp-btn-primary { background:#2563EB; border-color:#2563EB; color:#fff; box-shadow:0 1px 2px rgba(37,99,235,.25); }
+    .exp-btn-primary:hover { background:#1D4ED8; color:#fff; }
+    .doc-card { background:#fff; border:1px solid #E2E8F0; border-radius:16px; overflow:hidden; }
+    .doc-tabs { display:flex; gap:4px; padding:10px 14px 0; border-bottom:1px solid #E2E8F0; background:#F8FAFC; }
+    .doc-tab { padding:9px 16px; font-size:13px; font-weight:700; color:#64748B; border:1px solid transparent; border-bottom:none; border-radius:10px 10px 0 0; cursor:pointer; display:inline-flex; align-items:center; gap:7px; background:none; }
+    .doc-tab.active { background:#fff; color:#2563EB; border-color:#E2E8F0; }
+    .doc-tab .cnt { background:#EFF6FF; color:#2563EB; border-radius:999px; font-size:11px; padding:1px 8px; }
+    table.doc-grid { width:100%; border-collapse:collapse; }
+    table.doc-grid th { text-align:left; font-size:11px; font-weight:800; color:#94A3B8; text-transform:uppercase; letter-spacing:.05em; padding:12px 14px; border-bottom:1px solid #E2E8F0; background:#fff; }
+    table.doc-grid td { padding:12px 14px; font-size:13px; color:#0F172A; border-bottom:1px solid #F1F5F9; vertical-align:middle; }
+    table.doc-grid tr:hover td { background:#F8FAFC; }
+    .doc-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
+    .doc-badge-borrador { background:#FEF3C7; color:#B45309; }
+    .doc-badge-archivado { background:#DCFCE7; color:#15803D; }
+    .doc-badge-firma { background:#F1F5F9; color:#64748B; }
+    .doc-badge-firmado { background:#DBEAFE; color:#1D4ED8; }
+    .doc-fmt { display:inline-flex; align-items:center; justify-content:center; min-width:38px; padding:3px 7px; border-radius:7px; background:#EFF6FF; color:#1D4ED8; font-size:10px; font-weight:800; letter-spacing:.04em; }
+    .doc-nomlink { font-weight:700; color:#0F172A; text-decoration:none; cursor:pointer; }
+    .doc-nomlink:hover { color:#2563EB; }
+    .doc-accion { width:30px; height:30px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; color:#64748B; display:inline-flex; align-items:center; justify-content:center; font-size:12px; text-decoration:none; cursor:pointer; margin-right:4px; }
+    .doc-accion:hover { background:#F8FAFC; color:#2563EB; border-color:#BFDBFE; }
+    .doc-vacio { padding:56px 20px; text-align:center; color:#94A3B8; }
+    .doc-vacio i { font-size:40px; opacity:.4; display:block; margin-bottom:10px; }
+</style>
 
-    <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+<div class="doc-wrap tx-mod">
+    <div class="doc-header">
         <div>
-            <h1 class="tx-ent-title">Mis Documentos</h1>
-            <p class="tx-ent-sub" style="margin:2px 0 0">Producción documental: crea borradores, súbelos o márcalos físicos, y archívalos en un expediente.</p>
+            <h3 class="doc-title"><i class="bi bi-files" style="color:#2563EB"></i> Mis Documentos</h3>
+            <div class="doc-subtitle">Producción documental independiente. Los borradores son privados: solo tú los ves.</div>
         </div>
         @if (_canCreate)
         {
-            <button class="tx-ent-btn primary" @onclick="@(() => _showSelector = true)"><i class="bi bi-file-earmark-plus"></i> Cargar Documento</button>
+            <button class="exp-btn exp-btn-primary" @onclick="@(() => _showSelector = true)"><i class="bi bi-plus-lg"></i> Crear Documento</button>
         }
     </div>
 
@@ -44,24 +67,34 @@
     @if (_pageInfo is not null) { <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>@_pageInfo</span></div> }
     @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
 
-    <div class="tx-tabs" style="display:flex;gap:6px;border-bottom:1px solid var(--kt-border,#e9ebec);margin:12px 0;flex-wrap:wrap">
-        @foreach (var b in new[] { BandejaDocumento.MisBorradores, BandejaDocumento.ArchivadosPorMi, BandejaDocumento.CompartidosConmigo })
-        {
-            var bb = b;
-            <button class="tx-tab" style="border:none;background:none;padding:8px 14px;cursor:pointer;border-bottom:2px solid @(_bandeja == bb ? "var(--kt-primary,#405189)" : "transparent");font-weight:@(_bandeja == bb ? "600" : "400")"
-                    @onclick="@(() => SwitchBandeja(bb))">@BandejaLabel(bb)</button>
-        }
+    @* Busqueda (RF14 avanzada diferida) *@
+    <div class="doc-card" style="margin-bottom:14px;padding:14px 16px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="position:relative;flex:1;min-width:260px">
+                <i class="bi bi-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94A3B8"></i>
+                <input placeholder="Buscar por nombre, contenido (OCR), metadatos…" @bind="_texto" @bind:event="oninput" @onkeyup="OnSearchKey"
+                       style="width:100%;padding:10px 12px 10px 38px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;outline:none;font-size:13.5px;box-sizing:border-box" />
+            </div>
+            <button class="exp-btn" @onclick="Reload"><i class="bi bi-search"></i>&nbsp; Buscar</button>
+            <button class="exp-btn" @onclick='() => Soon("Búsqueda avanzada (RF14)")'><i class="bi bi-sliders"></i>&nbsp; Búsqueda avanzada</button>
+        </div>
     </div>
 
-    <div class="tx-ent-toolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
-        <input class="tx-ent-input" style="flex:1;min-width:200px" placeholder="Buscar por nombre..." @bind="_texto" @bind:event="oninput" @onkeyup="OnSearchKey" />
-        <button class="tx-ent-btn" @onclick="Reload"><i class="bi bi-search"></i> Buscar</button>
-    </div>
+    <div class="doc-card">
+        <div class="doc-tabs">
+            @foreach (var b in new[] { BandejaDocumento.MisBorradores, BandejaDocumento.ArchivadosPorMi, BandejaDocumento.CompartidosConmigo })
+            {
+                var bb = b;
+                <button class="doc-tab @(_bandeja == bb ? "active" : "")" @onclick="@(() => SwitchBandeja(bb))">
+                    <i class="bi @TabIcon(bb)"></i> @BandejaLabel(bb) <span class="cnt">@Cnt(bb)</span>
+                </button>
+            }
+        </div>
 
     @if (_bandeja == BandejaDocumento.MisBorradores)
     {
-        <div class="tx-ent-table-wrap">
-            <table class="tx-ent-table">
+        <div style="overflow-x:auto">
+            <table class="doc-grid">
                 <thead><tr><th>NOMBRE</th><th>TIPO DOCUMENTAL</th><th>FECHA CREACIÓN</th><th>FOLIOS</th><th>TAMAÑO</th><th>ESTADO</th><th>FIRMA</th><th class="right">ACCIONES</th></tr></thead>
                 <tbody>
                     @if (_borradores is null) { <tr><td colspan="8" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
@@ -80,13 +113,13 @@
                                 <td>@dd.FechaCreacion.ToString("yyyy-MM-dd HH:mm")</td>
                                 <td>@(dd.Folios?.ToString() ?? "—")</td>
                                 <td>@Tamano(dd.TamanoBytes)</td>
-                                <td><span class="tx-ent-badge off">Borrador</span></td>
-                                <td><span class="tx-ent-badge">@FirmaTexto(dd.EstadoFirma)</span></td>
+                                <td><span class="doc-badge doc-badge-borrador">Borrador</span></td>
+                                <td><span class="doc-badge @(dd.EstadoFirma == EstadoFirmaDocumento.Firmado ? "doc-badge-firmado" : "doc-badge-firma")">@FirmaTexto(dd.EstadoFirma)</span></td>
                                 <td class="right" style="white-space:nowrap">
-                                    @if (dd.TieneBinario) { <button class="tx-ent-btn sm" title="Ver documento" @onclick="@(() => VerDoc(dd.Id))"><i class="bi bi-eye"></i></button> }
-                                    @if (_canEdit) { <button class="tx-ent-btn sm" title="Editar metadatos y tipo documental" @onclick="@(() => OpenEditar(dd.Id))"><i class="bi bi-pencil-square"></i></button> }
+                                    @if (dd.TieneBinario) { <button class="doc-accion" title="Ver documento" @onclick="@(() => VerDoc(dd.Id))"><i class="bi bi-eye"></i></button> }
+                                    @if (_canEdit) { <button class="doc-accion" title="Editar metadatos y tipo documental" @onclick="@(() => OpenEditar(dd.Id))"><i class="bi bi-pencil-square"></i></button> }
                                     <span class="dm-menu">
-                                        <button class="tx-ent-btn sm" title="Más acciones" @onclick="@(() => ToggleMenu(dd.Id))"><i class="bi bi-three-dots-vertical"></i></button>
+                                        <button class="doc-accion" title="Más acciones" @onclick="@(() => ToggleMenu(dd.Id))"><i class="bi bi-three-dots-vertical"></i></button>
                                         @if (_menuOpenId == dd.Id)
                                         {
                                             <div class="dm-backdrop" @onclick="CloseMenu"></div>
@@ -128,8 +161,8 @@
     }
     else if (_bandeja == BandejaDocumento.ArchivadosPorMi)
     {
-        <div class="tx-ent-table-wrap">
-            <table class="tx-ent-table">
+        <div style="overflow-x:auto">
+            <table class="doc-grid">
                 <thead><tr><th>NOMBRE</th><th>TIPO DOCUMENTAL</th><th>EXPEDIENTE</th><th>FECHA INCORPORACIÓN</th><th>FOLIOS</th><th>TAMAÑO</th><th>ESTADO</th><th>FIRMA</th><th class="right">ACCIONES</th></tr></thead>
                 <tbody>
                     @if (_archivados is null) { <tr><td colspan="9" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
@@ -149,12 +182,12 @@
                                 <td>@(dd.FechaIncorporacion?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
                                 <td>@(dd.Folios?.ToString() ?? "—")</td>
                                 <td>@Tamano(dd.TamanoBytes)</td>
-                                <td><span class="tx-ent-badge ok">Archivado</span></td>
-                                <td><span class="tx-ent-badge">@FirmaTexto(dd.EstadoFirma)</span></td>
+                                <td><span class="doc-badge doc-badge-archivado">Archivado</span></td>
+                                <td><span class="doc-badge @(dd.EstadoFirma == EstadoFirmaDocumento.Firmado ? "doc-badge-firmado" : "doc-badge-firma")">@FirmaTexto(dd.EstadoFirma)</span></td>
                                 <td class="right" style="white-space:nowrap">
-                                    @if (dd.TieneBinario) { <button class="tx-ent-btn sm" title="Ver documento" @onclick="@(() => VerDoc(dd.Id))"><i class="bi bi-eye"></i></button> }
+                                    @if (dd.TieneBinario) { <button class="doc-accion" title="Ver documento" @onclick="@(() => VerDoc(dd.Id))"><i class="bi bi-eye"></i></button> }
                                     <span class="dm-menu">
-                                        <button class="tx-ent-btn sm" title="Más acciones" @onclick="@(() => ToggleMenu(dd.Id))"><i class="bi bi-three-dots-vertical"></i></button>
+                                        <button class="doc-accion" title="Más acciones" @onclick="@(() => ToggleMenu(dd.Id))"><i class="bi bi-three-dots-vertical"></i></button>
                                         @if (_menuOpenId == dd.Id)
                                         {
                                             <div class="dm-backdrop" @onclick="CloseMenu"></div>
@@ -177,8 +210,8 @@
     else
     {
         @* Compartidos conmigo (RF07): calca rpCompartidos. Acciones: Ver (si binario) + Descargar (si permiso). *@
-        <div class="tx-ent-table-wrap">
-            <table class="tx-ent-table">
+        <div style="overflow-x:auto">
+            <table class="doc-grid">
                 <thead><tr><th>NOMBRE</th><th>TIPO DOCUMENTAL</th><th>COMPARTIDO POR</th><th>PERMISOS</th><th>FECHA</th><th class="right">ACCIONES</th></tr></thead>
                 <tbody>
                     @if (_compartidos is null) { <tr><td colspan="6" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
@@ -198,8 +231,8 @@
                                 <td>@foreach (var p in cc.Permisos) { <span class="cmp-badge" style="background:#EFF6FF;color:#2563EB;border-radius:6px;padding:1px 7px;font-size:11px;margin-right:4px">@p</span> }</td>
                                 <td>@cc.FechaOtorgado.ToString("yyyy-MM-dd")</td>
                                 <td class="right" style="white-space:nowrap">
-                                    @if (cc.TieneBinario) { <button class="tx-ent-btn sm" title="Ver documento" @onclick="@(() => VerDoc(cc.DocId))"><i class="bi bi-eye"></i></button> }
-                                    @if (cc.TieneBinario && cc.PuedeDescargar) { <button class="tx-ent-btn sm" title="Descargar" @onclick="@(() => DescargarClose(cc.DocId))"><i class="bi bi-download"></i></button> }
+                                    @if (cc.TieneBinario) { <button class="doc-accion" title="Ver documento" @onclick="@(() => VerDoc(cc.DocId))"><i class="bi bi-eye"></i></button> }
+                                    @if (cc.TieneBinario && cc.PuedeDescargar) { <button class="doc-accion" title="Descargar" @onclick="@(() => DescargarClose(cc.DocId))"><i class="bi bi-download"></i></button> }
                                     @if (!cc.TieneBinario) { <span class="tx-ent-hint">Sin binario</span> }
                                 </td>
                             </tr>
@@ -209,7 +242,8 @@
             </table>
         </div>
     }
-</div>
+    </div>@* doc-card *@
+</div>@* doc-wrap *@
 
 @* ============ Modal SELECTOR (¿Cómo deseas incorporar?) — calcado de ctrlIncorporarDoc (MisDocumentos) ============ *@
 @if (_showSelector)
@@ -529,6 +563,29 @@
         _ => b.ToString()
     };
 
+    private static string TabIcon(BandejaDocumento b) => b switch
+    {
+        BandejaDocumento.MisBorradores => "bi-pencil-square",
+        BandejaDocumento.ArchivadosPorMi => "bi-archive",
+        BandejaDocumento.CompartidosConmigo => "bi-share",
+        _ => "bi-folder"
+    };
+
+    // Contadores vivos de los tabs (calca cntB/cntA/cntC del legacy).
+    private int _cntB, _cntA, _cntC;
+    private int Cnt(BandejaDocumento b) => b switch
+    {
+        BandejaDocumento.MisBorradores => _cntB,
+        BandejaDocumento.ArchivadosPorMi => _cntA,
+        _ => _cntC
+    };
+
+    private async Task RecargarContadores()
+    {
+        var c = await Svc.ContarBandejasAsync(Actor);
+        _cntB = c.Borradores; _cntA = c.Archivados; _cntC = c.Compartidos;
+    }
+
     private static string FirmaTexto(EstadoFirmaDocumento f) => f switch
     {
         EstadoFirmaDocumento.Firmado => "Firmado",
@@ -560,6 +617,7 @@
         if (_bandeja == BandejaDocumento.MisBorradores) { _borradores = await Svc.ListarBorradoresAsync(Actor, t); }
         else if (_bandeja == BandejaDocumento.ArchivadosPorMi) { _archivados = await Svc.ListarArchivadosPorMiAsync(Actor, t); }
         else if (_bandeja == BandejaDocumento.CompartidosConmigo) { _compartidos = await Svc.ListarCompartidosConmigoAsync(Actor, t); }
+        await RecargarContadores();
     }
 
     // ---- Cargar Documento (selector + carga en modo borrador) ----
