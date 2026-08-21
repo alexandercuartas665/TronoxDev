@@ -35,6 +35,16 @@ public static class VisorEndpoints
                 : Results.File(d.Contenido, d.ContentType);
         });
 
+        // ---- Copia para imprimir (doc_visor.ashx print=1): estampa "COPIA NO CONTROLADA" y entrega inline ----
+        g.MapGet("/print", async (HttpContext http, long doc, IDocumentoService svc) =>
+        {
+            var actor = ActorId(http);
+            var res = await svc.GetCopiaImpresionAsync(doc, actor);
+            if (!res.IsOk || res.Value is null) { return Results.NotFound(); }
+            // Inline: el navegador lo muestra y el usuario imprime (Ctrl+P), como el legacy con print=1.
+            return Results.File(res.Value.Contenido, res.Value.ContentType);
+        });
+
         // ---- Datos (exp_visor_data.ashx) GET ----
         g.MapGet("/data", async (HttpContext http, string op, long doc, long? tipo,
             IDocumentoService svc, IApplicationDbContext db, IOcrService ocr) =>
@@ -124,7 +134,7 @@ public static class VisorEndpoints
                 : Results.Json(new { error = res.Error ?? "No se pudo guardar." });
         });
 
-        // ---- Anotaciones (doc_anotaciones.ashx) — diferido ----
+        // ---- Anotaciones (doc_anotaciones.ashx) - diferido ----
         g.MapGet("/anotaciones", (string? op) => Results.Json(Array.Empty<object>()));
         g.MapPost("/anotaciones", () => Results.Json(new { error = "Las anotaciones se habilitan en un avance posterior." }));
     }

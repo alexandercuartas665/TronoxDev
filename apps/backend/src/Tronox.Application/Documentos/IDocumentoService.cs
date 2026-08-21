@@ -80,6 +80,9 @@ public interface IDocumentoService
     /// <summary>Envia el documento como adjunto por correo (RF05 cob*): valida acceso+binario, descarga y adjunta.</summary>
     Task<DocumentoResult<bool>> EnviarPorCorreoAsync(long docId, string para, string asunto, string? mensaje, long actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>Copia para imprimir (RF05): descarga el binario, estampa "COPIA NO CONTROLADA..." al pie (PDF) y audita "Impresion".</summary>
+    Task<DocumentoResult<DocumentoDescargaDto>> GetCopiaImpresionAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
+
     // ---- Archivar (RF16) ----
 
     Task<IReadOnlyList<ExpedienteDestinoDto>> GetExpedientesDestinoAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);

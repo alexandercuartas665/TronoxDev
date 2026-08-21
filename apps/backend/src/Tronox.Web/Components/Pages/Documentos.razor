@@ -142,7 +142,7 @@
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => ArchivarClose(dd.Id))"><i class="bi bi-archive" style="color:#475569"></i><span class="dm-tx"><span>Archivar</span><span class="dm-s">Wizard TRD · RF16</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => OpenCompartir(dd.Id, dd.Nombre))"><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button> }
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => OpenCorreo(dd.Id, dd.Nombre))"><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button> }
-                                                @if (dd.TieneBinario) { <button class="dm-item" @onclick='() => Soon("Imprimir")'><i class="bi bi-printer" style="color:#475569"></i><span class="dm-tx"><span>Imprimir</span></span></button> }
+                                                @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => Imprimir(dd.Id))"><i class="bi bi-printer" style="color:#475569"></i><span class="dm-tx"><span>Imprimir</span><span class="dm-s">Copia con estampa</span></span></button> }
                                                 @if (_canDelete)
                                                 {
                                                     <div class="dm-sep"></div>
@@ -699,6 +699,13 @@
     {
         _showCorreo = false;
         if (ok is not null) { _pageOk = ok; }
+    }
+
+    // ---- Imprimir (RF05): copia con estampa "COPIA NO CONTROLADA", se abre en pestana nueva ----
+    private async Task Imprimir(long id)
+    {
+        CloseMenu();
+        await JS.InvokeVoidAsync("open", $"/visor/print?doc={id}", "_blank");
     }
 
     // ---- Ver (visor) / descargar ----

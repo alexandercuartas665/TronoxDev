@@ -20,10 +20,12 @@ public sealed class DocumentoService : IDocumentoService
     private readonly IHtmlToPdfConverter _htmlToPdf;
     private readonly Notifications.INotificationService _notifications;
     private readonly IEmailSender _email;
+    private readonly IPdfPrintStamper _printStamper;
 
     public DocumentoService(
         IApplicationDbContext db, ITenantContext tenantContext, IObjectStorage storage, IAuditWriter audit,
-        IHtmlToPdfConverter htmlToPdf, Notifications.INotificationService notifications, IEmailSender email)
+        IHtmlToPdfConverter htmlToPdf, Notifications.INotificationService notifications, IEmailSender email,
+        IPdfPrintStamper printStamper)
     {
         _db = db;
         _tenantContext = tenantContext;
@@ -32,6 +34,7 @@ public sealed class DocumentoService : IDocumentoService
         _htmlToPdf = htmlToPdf;
         _notifications = notifications;
         _email = email;
+        _printStamper = printStamper;
     }
 
     // ---- Bandejas ----
@@ -699,6 +702,32 @@ public sealed class DocumentoService : IDocumentoService
             await _db.SaveChangesAsync(cancellationToken);
         }
         return DocumentoResult<bool>.Ok(true);
+    }
+
+    public async Task<DocumentoResult<DocumentoDescargaDto>> GetCopiaImpresionAsync(
+        long docId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var desc = await DescargarAsync(docId, actorUserId, cancellationToken);
+        if (!desc.IsOk || desc.Value is null) { return desc; }
+        var d = desc.Value;
+
+        var nombreImpresor = await _db.PlatformUsers.AsNoTracking()
+            .Where(u => u.Id == actorUserId).Select(u => u.DisplayName ?? u.Email)
+            .FirstOrDefaultAsync(cancellationToken) ?? "Usuario";
+        var leyenda = $"COPIA NO CONTROLADA - Impreso por: {nombreImpresor} - Fecha: {DateTime.Now:dd/MM/yyyy HH:mm} - TRONOX";
+
+        var esPdf = string.Equals(d.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase)
+                    || d.NombreArchivo.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        var contenido = esPdf ? _printStamper.EstamparLeyendaPie(d.Contenido, leyenda) : d.Contenido;
+
+        var doc = await _db.Documentos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == docId, cancellationToken);
+        if (doc is not null)
+        {
+            _audit.Write(actorUserId, "documento.imprimir", nameof(Documento), doc,
+                previousValue: null, newValue: new { Archivo = d.NombreArchivo }, tenantId: _tenantContext.TenantId!.Value);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        return DocumentoResult<DocumentoDescargaDto>.Ok(new DocumentoDescargaDto(contenido, d.NombreArchivo, d.ContentType));
     }
 
     /// <summary>Campana (Notification) + correo best-effort para cada beneficiario, calca shrNotificar.</summary>

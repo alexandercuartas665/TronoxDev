@@ -90,6 +90,9 @@ public static class DependencyInjection
         // Reemplaza a SelectPdf (comercial, solo Windows) por un motor cross-platform (contenedor Linux).
         services.AddSingleton<Application.Common.IHtmlToPdfConverter, Pdf.PuppeteerHtmlToPdfConverter>();
 
+        // Estampado de la copia de impresion (RF05) con PdfSharpCore (cross-platform, ver ADR-016).
+        services.AddSingleton<Application.Common.IPdfPrintStamper, Pdf.PdfSharpPrintStamper>();
+
         return services;
     }
 }
