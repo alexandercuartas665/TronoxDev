@@ -77,6 +77,9 @@ public interface IDocumentoService
     /// <summary>Contadores de las 3 bandejas (para los tabs): borradores, archivados por mi, compartidos conmigo.</summary>
     Task<(int Borradores, int Archivados, int Compartidos)> ContarBandejasAsync(long actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>Envia el documento como adjunto por correo (RF05 cob*): valida acceso+binario, descarga y adjunta.</summary>
+    Task<DocumentoResult<bool>> EnviarPorCorreoAsync(long docId, string para, string asunto, string? mensaje, long actorUserId, CancellationToken cancellationToken = default);
+
     // ---- Archivar (RF16) ----
 
     Task<IReadOnlyList<ExpedienteDestinoDto>> GetExpedientesDestinoAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);

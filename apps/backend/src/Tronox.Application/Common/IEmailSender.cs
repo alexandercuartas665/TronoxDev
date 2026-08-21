@@ -10,4 +10,14 @@ public sealed record EmailSendResult(bool Ok, string? Error);
 public interface IEmailSender
 {
     Task<EmailSendResult> SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Envia a uno o varios destinatarios con un adjunto (RQ04 RF05 "Enviar por correo"). Calca el
+    /// envio del legacy que adjunta el binario del documento. Los correos vacios se ignoran; si no
+    /// queda ninguno valido devuelve Ok=false.
+    /// </summary>
+    Task<EmailSendResult> SendWithAttachmentAsync(
+        IReadOnlyList<string> toEmails, string subject, string htmlBody,
+        byte[] attachmentBytes, string attachmentFileName, string attachmentContentType,
+        CancellationToken cancellationToken = default);
 }

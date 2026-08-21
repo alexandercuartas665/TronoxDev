@@ -1,0 +1,82 @@
+@* Enviar por correo (RQ04 RF05, cob* del legacy): adjunta el binario del documento y lo envia por
+   SMTP a uno o varios destinatarios. Calca el modal pnlModalCorreoB (exp-modal-*). *@
+@using Tronox.Application.Documentos
+@inject IDocumentoService Svc
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<div class="exp-modal-overlay open">
+    <div class="exp-modal-shell" style="max-width:520px">
+        <div class="exp-modal-header">
+            <h4 class="exp-modal-title"><i class="bi bi-envelope" style="color:#2563EB"></i>&nbsp; Enviar por correo</h4>
+            <button class="exp-modal-close" @onclick="Cerrar"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="exp-modal-body">
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#475569">
+                <i class="bi bi-paperclip" style="color:#94A3B8"></i>&nbsp; Adjunto: <strong>@NombreDoc</strong>
+            </div>
+
+            @if (_err is not null) { <div class="tx-ent-fielderr" style="margin-bottom:10px">@_err</div> }
+
+            <label class="det-label">Para <span class="req">*</span></label>
+            <input class="det-input" placeholder="correo1@@dominio.com; correo2@@dominio.com" @bind="_para" />
+            <div style="font-size:11px;color:#94A3B8;margin-top:4px">Separa varios destinatarios con coma o punto y coma.</div>
+
+            <label class="det-label" style="margin-top:12px">Asunto <span class="req">*</span></label>
+            <input class="det-input" maxlength="200" @bind="_asunto" />
+
+            <label class="det-label" style="margin-top:12px">Mensaje</label>
+            <textarea class="det-input" rows="4" @bind="_mensaje"></textarea>
+        </div>
+        <div class="exp-modal-footer">
+            <button class="exp-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <button class="exp-btn exp-btn-primary" @onclick="Enviar" disabled="@_busy">
+                <i class="bi bi-send"></i>&nbsp; @(_busy ? "Enviando…" : "Enviar")
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .exp-modal-overlay { position:fixed; inset:0; z-index:1000008; background:rgba(15,23,42,.45); display:flex; align-items:flex-start; justify-content:center; padding:90px 20px 30px; }
+    .exp-modal-shell { background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.18); width:100%; max-height:calc(100vh - 120px); overflow-y:auto; }
+    .exp-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #E2E8F0; }
+    .exp-modal-title { font-size:16px; font-weight:800; color:#0F172A; margin:0; }
+    .exp-modal-close { width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; color:#475569; display:inline-flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; }
+    .exp-modal-close:hover { background:#F8FAFC; color:#DC2626; }
+    .exp-modal-body { padding:18px 20px; }
+    .exp-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid #E2E8F0; }
+    .det-label { display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:5px; }
+    .det-label .req { color:#DC2626; margin-left:2px; }
+    .det-input { width:100%; padding:9px 12px; border:1px solid #E2E8F0; border-radius:10px; font-size:13px; color:#0F172A; background:#fff; box-sizing:border-box; }
+    .det-input:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+</style>
+
+@code {
+    [Parameter] public long DocId { get; set; }
+    [Parameter] public string NombreDoc { get; set; } = "";
+    [Parameter] public EventCallback<string?> OnCerrar { get; set; }
+
+    private string _para = "";
+    private string _asunto = "";
+    private string _mensaje = "";
+    private bool _busy;
+    private string? _err;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override void OnInitialized() => _asunto = NombreDoc;
+
+    private async Task Enviar()
+    {
+        _err = null; _busy = true;
+        try
+        {
+            var res = await Svc.EnviarPorCorreoAsync(DocId, _para, _asunto, _mensaje, Actor);
+            if (res.IsOk) { await OnCerrar.InvokeAsync("Correo enviado."); }
+            else { _err = res.Error ?? "No se pudo enviar el correo."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync(null);
+}

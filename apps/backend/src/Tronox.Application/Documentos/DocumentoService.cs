@@ -665,6 +665,42 @@ public sealed class DocumentoService : IDocumentoService
         return (borradores, archivados, compartidos);
     }
 
+    public async Task<DocumentoResult<bool>> EnviarPorCorreoAsync(
+        long docId, string para, string asunto, string? mensaje, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(para)) { return DocumentoResult<bool>.Invalid("Indica al menos un destinatario."); }
+        if (string.IsNullOrWhiteSpace(asunto)) { return DocumentoResult<bool>.Invalid("El asunto es obligatorio."); }
+
+        // DescargarAsync valida acceso (LoadForRead) + que tenga binario, y trae el contenido.
+        var desc = await DescargarAsync(docId, actorUserId, cancellationToken);
+        if (!desc.IsOk || desc.Value is null) { return DocumentoResult<bool>.FromError(desc); }
+        var d = desc.Value;
+
+        var destinos = para
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (destinos.Count == 0) { return DocumentoResult<bool>.Invalid("Indica al menos un destinatario."); }
+
+        var cuerpo = string.IsNullOrWhiteSpace(mensaje)
+            ? "<p></p>"
+            : "<p>" + System.Net.WebUtility.HtmlEncode(mensaje).Replace("\n", "<br>") + "</p>";
+
+        var res = await _email.SendWithAttachmentAsync(
+            destinos, asunto.Trim(), cuerpo, d.Contenido, d.NombreArchivo, d.ContentType, cancellationToken);
+        if (!res.Ok) { return DocumentoResult<bool>.Invalid(res.Error ?? "No se pudo enviar el correo."); }
+
+        // Auditoria (calca "Envio Correo").
+        var doc = await _db.Documentos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == docId, cancellationToken);
+        if (doc is not null)
+        {
+            _audit.Write(actorUserId, "documento.enviar_correo", nameof(Documento), doc,
+                previousValue: null, newValue: new { Para = string.Join(", ", destinos), Archivo = d.NombreArchivo },
+                tenantId: _tenantContext.TenantId!.Value);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        return DocumentoResult<bool>.Ok(true);
+    }
+
     /// <summary>Campana (Notification) + correo best-effort para cada beneficiario, calca shrNotificar.</summary>
     private async Task NotificarCompartidoAsync(
         long docId, string nombreDoc, IReadOnlyCollection<long> beneficiariosPlatformUserId, long actorUserId,

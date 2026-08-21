@@ -141,7 +141,7 @@
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => DescargarClose(dd.Id))"><i class="bi bi-download" style="color:#475569"></i><span class="dm-tx"><span>Descargar</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => ArchivarClose(dd.Id))"><i class="bi bi-archive" style="color:#475569"></i><span class="dm-tx"><span>Archivar</span><span class="dm-s">Wizard TRD · RF16</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => OpenCompartir(dd.Id, dd.Nombre))"><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button> }
-                                                <button class="dm-item" @onclick='() => Soon("Enviar por correo")'><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button>
+                                                @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => OpenCorreo(dd.Id, dd.Nombre))"><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button> }
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick='() => Soon("Imprimir")'><i class="bi bi-printer" style="color:#475569"></i><span class="dm-tx"><span>Imprimir</span></span></button> }
                                                 @if (_canDelete)
                                                 {
@@ -195,7 +195,7 @@
                                                 <div class="dm-sec">Otras</div>
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => DescargarClose(dd.Id))"><i class="bi bi-download" style="color:#475569"></i><span class="dm-tx"><span>Descargar</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => OpenCompartir(dd.Id, dd.Nombre))"><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button> }
-                                                <button class="dm-item" @onclick='() => Soon("Enviar por correo")'><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button>
+                                                @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => OpenCorreo(dd.Id, dd.Nombre))"><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button> }
                                             </div>
                                         }
                                     </span>
@@ -300,6 +300,12 @@
 @if (_showCompartir)
 {
     <CompartirModal DocId="_compartirDocId" Nombre="@_compartirNombre" OnCerrar="CloseCompartir" />
+}
+
+@* Enviar por correo (RF05) *@
+@if (_showCorreo)
+{
+    <EnviarCorreoModal DocId="_correoDocId" NombreDoc="@_correoNombre" OnCerrar="CloseCorreo" />
 }
 
 @* ============ Modal EDITAR (metadatos) ============ *@
@@ -514,6 +520,11 @@
     private string _compartirNombre = "";
     private IReadOnlyList<CompartidoConmigoDto>? _compartidos;
 
+    // Enviar por correo (RF05)
+    private bool _showCorreo;
+    private long _correoDocId;
+    private string _correoNombre = "";
+
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
     private string? _editError;
@@ -672,6 +683,22 @@
     {
         _showCompartir = false;
         if (_bandeja == BandejaDocumento.CompartidosConmigo) { await Reload(); }
+    }
+
+    // ---- Enviar por correo (RF05) ----
+
+    private void OpenCorreo(long id, string nombre)
+    {
+        CloseMenu();
+        _correoDocId = id;
+        _correoNombre = nombre;
+        _showCorreo = true;
+    }
+
+    private void CloseCorreo(string? ok)
+    {
+        _showCorreo = false;
+        if (ok is not null) { _pageOk = ok; }
     }
 
     // ---- Ver (visor) / descargar ----
