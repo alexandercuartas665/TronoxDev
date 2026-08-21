@@ -63,6 +63,13 @@
     .ba-chip.on { background:#EFF6FF; border-color:#BFDBFE; color:#1D4ED8; font-weight:600; }
     .ba-chip input { accent-color:#2563EB; }
     .ba-actions { display:flex; align-items:center; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    /* Paginacion de las bandejas (calca doc-pager legacy, 12/pagina) */
+    .doc-pager { display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:12px 16px; border-top:1px solid #F1F5F9; font-size:12.5px; color:#64748B; }
+    .doc-pg-info { color:#94A3B8; margin-right:auto; }
+    .doc-pg-btn { border:1px solid #E2E8F0; background:#fff; color:#475569; border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:15px; line-height:1; }
+    .doc-pg-btn:hover:not(:disabled) { background:#F8FAFC; color:#2563EB; border-color:#BFDBFE; }
+    .doc-pg-btn:disabled { opacity:.4; cursor:not-allowed; }
+    .doc-pg-cur { font-weight:700; color:#0F172A; }
 </style>
 
 <div class="doc-wrap tx-mod">
@@ -176,7 +183,7 @@
                         @if (_bsqResultados.Count == 0) { <tr><td colspan="9" class="tx-ent-hint" style="text-align:center;padding:28px">Sin resultados para los filtros aplicados.</td></tr> }
                         else
                         {
-                            @foreach (var r in _bsqResultados)
+                            @foreach (var r in PageOf(_bsqResultados, _pgR))
                             {
                                 var rr = r;
                                 <tr>
@@ -203,6 +210,7 @@
                         }
                     </tbody>
                 </table>
+                @DocPager(_bsqResultados.Count, _pgR, p => _pgR = p)
             </div>
         </div>
     }
@@ -229,7 +237,7 @@
                     else if (_borradores.Count == 0) { <tr><td colspan="8" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes borradores. Crea tu primer documento con <strong>Cargar Documento</strong>.</td></tr> }
                     else
                     {
-                        @foreach (var d in _borradores)
+                        @foreach (var d in PageOf(_borradores, _pgB))
                         {
                             var dd = d;
                             <tr>
@@ -298,6 +306,7 @@
                     }
                 </tbody>
             </table>
+            @if (_borradores is not null) { @DocPager(_borradores.Count, _pgB, p => _pgB = p) }
         </div>
     }
     else if (_bandeja == BandejaDocumento.ArchivadosPorMi)
@@ -310,7 +319,7 @@
                     else if (_archivados.Count == 0) { <tr><td colspan="9" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes documentos archivados. Archiva un borrador con el wizard <strong>Archivar</strong>.</td></tr> }
                     else
                     {
-                        @foreach (var d in _archivados)
+                        @foreach (var d in PageOf(_archivados, _pgA))
                         {
                             var dd = d;
                             <tr>
@@ -346,6 +355,7 @@
                     }
                 </tbody>
             </table>
+            @if (_archivados is not null) { @DocPager(_archivados.Count, _pgA, p => _pgA = p) }
         </div>
     }
     else
@@ -359,7 +369,7 @@
                     else if (_compartidos.Count == 0) { <tr><td colspan="6" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes documentos compartidos contigo.</td></tr> }
                     else
                     {
-                        @foreach (var c in _compartidos)
+                        @foreach (var c in PageOf(_compartidos, _pgC))
                         {
                             var cc = c;
                             <tr>
@@ -381,6 +391,7 @@
                     }
                 </tbody>
             </table>
+            @if (_compartidos is not null) { @DocPager(_compartidos.Count, _pgC, p => _pgC = p) }
         </div>
     }
     </div>@* doc-card *@
@@ -753,11 +764,32 @@
                 _baClasifSel.Count > 0 ? _baClasifSel.ToList() : null,
                 _baEstadoSel.Count > 0 ? _baEstadoSel.ToList() : null);
             _bsqResultados = await Svc.BuscarAvanzadoAsync(req, Actor);
+            _pgR = 1;
         }
         finally { _baBusy = false; }
     }
 
     private void CerrarBusqueda() { _bsqResultados = null; }
+
+    // ---- Paginacion client-side de las bandejas (calca docPaginarTabla, 12/pagina) ----
+    private const int PageSize = 12;
+    private int _pgB = 1, _pgA = 1, _pgC = 1, _pgR = 1;
+
+    private static IEnumerable<T> PageOf<T>(IReadOnlyList<T> list, int page)
+        => list.Skip((page - 1) * PageSize).Take(PageSize);
+
+    private RenderFragment DocPager(int total, int page, Action<int> setPage) => __builder =>
+    {
+        if (total <= PageSize) { return; }
+        var paginas = (total + PageSize - 1) / PageSize;
+        var cur = Math.Clamp(page, 1, paginas);
+        <div class="doc-pager">
+            <span class="doc-pg-info">@total documentos</span>
+            <button type="button" class="doc-pg-btn" disabled="@(cur == 1)" @onclick="@(() => setPage(cur - 1))">&lsaquo;</button>
+            <span>Página <span class="doc-pg-cur">@cur</span> de @paginas</span>
+            <button type="button" class="doc-pg-btn" disabled="@(cur == paginas)" @onclick="@(() => setPage(cur + 1))">&rsaquo;</button>
+        </div>
+    };
 
     private static RenderFragment EstadoBadge(string estado) => __builder =>
     {
@@ -829,6 +861,7 @@
     private async Task Reload()
     {
         CloseMenu();
+        _pgB = _pgA = _pgC = 1;
         var t = string.IsNullOrWhiteSpace(_texto) ? null : _texto;
         if (_bandeja == BandejaDocumento.MisBorradores) { _borradores = await Svc.ListarBorradoresAsync(Actor, t); }
         else if (_bandeja == BandejaDocumento.ArchivadosPorMi) { _archivados = await Svc.ListarArchivadosPorMiAsync(Actor, t); }
