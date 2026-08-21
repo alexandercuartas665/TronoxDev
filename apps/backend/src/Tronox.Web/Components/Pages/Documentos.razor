@@ -113,7 +113,16 @@
                                 <td>@dd.FechaCreacion.ToString("yyyy-MM-dd HH:mm")</td>
                                 <td>@(dd.Folios?.ToString() ?? "—")</td>
                                 <td>@Tamano(dd.TamanoBytes)</td>
-                                <td><span class="doc-badge doc-badge-borrador">Borrador</span></td>
+                                <td>
+                                    @if (dd.Estado == EstadoDocumento.Terminado)
+                                    {
+                                        <span class="doc-badge" style="background:#EFF6FF;color:#1D4ED8">Terminado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="doc-badge doc-badge-borrador">Borrador</span>
+                                    }
+                                </td>
                                 <td><span class="doc-badge @(dd.EstadoFirma == EstadoFirmaDocumento.Firmado ? "doc-badge-firmado" : "doc-badge-firma")">@FirmaTexto(dd.EstadoFirma)</span></td>
                                 <td class="right" style="white-space:nowrap">
                                     @if (dd.TieneBinario) { <button class="doc-accion" title="Ver documento" @onclick="@(() => VerDoc(dd.Id))"><i class="bi bi-eye"></i></button> }
@@ -131,19 +140,23 @@
                                                 <button class="dm-item" @onclick='() => Soon("Solicitar Firma")'><i class="bi bi-pencil-square" style="color:#7C3AED"></i><span class="dm-tx"><span>Solicitar Firma</span><span class="dm-s">Placeholder RQ08</span></span></button>
                                                 <div class="dm-sep"></div>
                                                 <div class="dm-sec">Firma</div>
-                                                @if (dd.TieneBinario)
+                                                @if (dd.Estado == EstadoDocumento.Borrador && dd.TieneBinario)
                                                 {
-                                                    <button class="dm-item" @onclick='() => Soon("Terminar")'><i class="bi bi-check-circle" style="color:#2563EB"></i><span class="dm-tx"><span>Terminar</span><span class="dm-s">Marca el PDF como final (listo para firmar)</span></span></button>
+                                                    <button class="dm-item" @onclick="@(() => TerminarDoc(dd.Id))"><i class="bi bi-check-circle" style="color:#2563EB"></i><span class="dm-tx"><span>Terminar</span><span class="dm-s">Marca el PDF como final (listo para firmar)</span></span></button>
+                                                }
+                                                @if (dd.Estado == EstadoDocumento.Terminado)
+                                                {
+                                                    <button class="dm-item" @onclick='() => Soon("Firmar electrónicamente")'><i class="bi bi-patch-check" style="color:#7C3AED"></i><span class="dm-tx"><span>Firmar electrónicamente</span><span class="dm-s">Stepper de firma (RQ05)</span></span></button>
                                                 }
                                                 <div class="dm-sep"></div>
                                                 <div class="dm-sec">Otras</div>
-                                                <button class="dm-item" @onclick="@(() => OpenEditorContenido(dd.Id))"><i class="bi bi-file-text" style="color:#475569"></i><span class="dm-tx"><span>Editar contenido</span><span class="dm-s">Abre el editor de texto del borrador</span></span></button>
+                                                @if (dd.Estado != EstadoDocumento.Terminado) { <button class="dm-item" @onclick="@(() => OpenEditorContenido(dd.Id))"><i class="bi bi-file-text" style="color:#475569"></i><span class="dm-tx"><span>Editar contenido</span><span class="dm-s">Abre el editor de texto del borrador</span></span></button> }
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => DescargarClose(dd.Id))"><i class="bi bi-download" style="color:#475569"></i><span class="dm-tx"><span>Descargar</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => ArchivarClose(dd.Id))"><i class="bi bi-archive" style="color:#475569"></i><span class="dm-tx"><span>Archivar</span><span class="dm-s">Wizard TRD · RF16</span></span></button> }
                                                 @if (_canEdit) { <button class="dm-item" @onclick="@(() => OpenCompartir(dd.Id, dd.Nombre))"><i class="bi bi-share" style="color:#475569"></i><span class="dm-tx"><span>Compartir…</span><span class="dm-s">Con usuarios o roles</span></span></button> }
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => OpenCorreo(dd.Id, dd.Nombre))"><i class="bi bi-envelope" style="color:#475569"></i><span class="dm-tx"><span>Enviar por correo</span></span></button> }
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => Imprimir(dd.Id))"><i class="bi bi-printer" style="color:#475569"></i><span class="dm-tx"><span>Imprimir</span><span class="dm-s">Copia con estampa</span></span></button> }
-                                                @if (_canDelete)
+                                                @if (_canDelete && dd.Estado != EstadoDocumento.Terminado)
                                                 {
                                                     <div class="dm-sep"></div>
                                                     <button class="dm-item danger" @onclick="@(() => EliminarClose(dd))"><i class="bi bi-x-lg" style="color:#DC2626"></i><span class="dm-tx"><span>Eliminar documento</span><span class="dm-s">Eliminación permanente (borrador)</span></span></button>
@@ -706,6 +719,16 @@
     {
         CloseMenu();
         await JS.InvokeVoidAsync("open", $"/visor/print?doc={id}", "_blank");
+    }
+
+    // ---- Terminar (ADR-003): borrador con binario -> Terminado (listo para firmar) ----
+    private async Task TerminarDoc(long id)
+    {
+        CloseMenu();
+        _pageError = null; _pageOk = null;
+        var res = await Svc.TerminarBorradorAsync(id, Actor);
+        if (res.IsOk) { _pageOk = "Documento marcado como Terminado. Ya puedes firmarlo."; await Reload(); }
+        else { _pageError = res.Error ?? "No se pudo terminar el documento."; }
     }
 
     // ---- Ver (visor) / descargar ----

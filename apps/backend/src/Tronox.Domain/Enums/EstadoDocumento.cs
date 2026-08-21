@@ -14,5 +14,11 @@ public enum EstadoDocumento
     Archivado = 1,
 
     /// <summary>Anulado con justificacion. No se elimina; se excluye de las bandejas.</summary>
-    Anulado = 2
+    Anulado = 2,
+
+    /// <summary>
+    /// Borrador con PDF final marcado como Terminado (ADR-003): listo para firmar antes de archivar.
+    /// Sigue en la bandeja "Mis Borradores" (no es Archivado). Se persiste como string, sin migracion.
+    /// </summary>
+    Terminado = 3
 }

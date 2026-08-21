@@ -56,8 +56,10 @@ public sealed class DocumentoService : IDocumentoService
     public async Task<IReadOnlyList<BorradorItemDto>> ListarBorradoresAsync(
         long actorUserId, string? texto = null, CancellationToken cancellationToken = default)
     {
+        // "Mis Borradores" incluye Borrador y Terminado (ambos son pre-archivo, calca CargarBorradores).
         var query = _db.Documentos.AsNoTracking()
-            .Where(d => d.Estado == EstadoDocumento.Borrador && d.CreatedBy == actorUserId);
+            .Where(d => (d.Estado == EstadoDocumento.Borrador || d.Estado == EstadoDocumento.Terminado)
+                        && d.CreatedBy == actorUserId);
         if (!string.IsNullOrWhiteSpace(texto))
         {
             var t = texto.Trim().ToLower();
@@ -65,7 +67,7 @@ public sealed class DocumentoService : IDocumentoService
         }
         return await query.OrderByDescending(d => d.CreatedAt)
             .Select(d => new BorradorItemDto(
-                d.Id, d.Nombre, d.Formato, d.Soporte, d.CreatedAt, d.Folios, d.TamanoBytes, d.EstadoFirma, d.TieneBinario))
+                d.Id, d.Nombre, d.Formato, d.Soporte, d.CreatedAt, d.Folios, d.TamanoBytes, d.EstadoFirma, d.TieneBinario, d.Estado))
             .ToListAsync(cancellationToken);
     }
 
@@ -658,7 +660,8 @@ public sealed class DocumentoService : IDocumentoService
         long actorUserId, CancellationToken cancellationToken = default)
     {
         var borradores = await _db.Documentos.AsNoTracking()
-            .CountAsync(d => d.Estado == EstadoDocumento.Borrador && d.CreatedBy == actorUserId, cancellationToken);
+            .CountAsync(d => (d.Estado == EstadoDocumento.Borrador || d.Estado == EstadoDocumento.Terminado)
+                             && d.CreatedBy == actorUserId, cancellationToken);
         var archivados = await _db.Documentos.AsNoTracking()
             .CountAsync(d => d.Estado == EstadoDocumento.Archivado && d.CreatedBy == actorUserId, cancellationToken);
         var compartidos = await _db.DocumentosCompartidos.AsNoTracking()
@@ -701,6 +704,25 @@ public sealed class DocumentoService : IDocumentoService
                 tenantId: _tenantContext.TenantId!.Value);
             await _db.SaveChangesAsync(cancellationToken);
         }
+        return DocumentoResult<bool>.Ok(true);
+    }
+
+    public async Task<DocumentoResult<bool>> TerminarBorradorAsync(
+        long docId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        // Calca TerminarDocumento: solo un borrador PROPIO con binario pasa a Terminado (listo para firmar).
+        var doc = await _db.Documentos.FirstOrDefaultAsync(
+            d => d.Id == docId && d.Estado == EstadoDocumento.Borrador && d.CreatedBy == actorUserId, cancellationToken);
+        if (doc is null) { return DocumentoResult<bool>.NotFound("No se pudo terminar: debe ser un borrador tuyo."); }
+        if (!doc.TieneBinario)
+        {
+            return DocumentoResult<bool>.Invalid("Solo se puede terminar un borrador con archivo (PDF final).");
+        }
+        doc.Estado = EstadoDocumento.Terminado;
+        _audit.Write(actorUserId, "documento.terminar", nameof(Documento), doc,
+            previousValue: new { Estado = EstadoDocumento.Borrador }, newValue: new { doc.Estado },
+            tenantId: _tenantContext.TenantId!.Value);
+        await _db.SaveChangesAsync(cancellationToken);
         return DocumentoResult<bool>.Ok(true);
     }
 

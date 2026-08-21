@@ -46,6 +46,9 @@ public interface IDocumentoService
     /// <summary>Elimina un borrador (unico borrado FISICO del sistema): solo Borrador del creador.</summary>
     Task<DocumentoResult<bool>> EliminarBorradorAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>Marca un borrador (con binario, propio) como Terminado (ADR-003): listo para firmar antes de archivar.</summary>
+    Task<DocumentoResult<bool>> TerminarBorradorAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
+
     // ---- Editor de texto interno (RF08) ----
 
     /// <summary>Reabre un borrador en el editor: devuelve nombre + cuerpo HTML. Solo Borrador del creador.</summary>

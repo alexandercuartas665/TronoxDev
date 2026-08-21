@@ -23,7 +23,8 @@ public sealed record BorradorItemDto(
     int? Folios,
     long? TamanoBytes,
     EstadoFirmaDocumento EstadoFirma,
-    bool TieneBinario);
+    bool TieneBinario,
+    EstadoDocumento Estado);
 
 /// <summary>Fila de "Archivados por mi".</summary>
 public sealed record ArchivadoItemDto(
