@@ -864,3 +864,29 @@ ConfiguracionMenu.razor. Migracion MenuNodeOrigenMigracion. Verificado: guarda y
   permisos, compartido por y acciones.
 - Diferido/pendiente de Mis Documentos: Enviar por correo, Imprimir (copia con estampa), Busqueda
   avanzada (RF14). Firma (Mis Firmas) es modulo aparte (grande), ya investigado a fondo.
+
+---
+
+## 27. Acciones de Mis Documentos: Correo, Imprimir, Terminar, busqueda full-text (2026-08-21)
+
+Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 verticales:
+
+- **Enviar por correo (RF05, cob*)** [c17281d]: IEmailSender.SendWithAttachmentAsync (varios
+  destinatarios + adjunto); DocumentoService.EnviarPorCorreoAsync (valida acceso+binario, descarga,
+  adjunta, audita documento.enviar_correo); EnviarCorreoModal (exp-modal-*). Verificado (cadena
+  completa; sin SMTP local da error controlado).
+- **Imprimir - copia con estampa (RF05, doc_visor print=1)** [7a333f2, ADR-016]: IPdfPrintStamper +
+  PdfSharpPrintStamper (PdfSharpCore cross-platform, reemplaza PdfSharp/System.Drawing del legacy;
+  Puppeteer/QuestPDF no sirven para superponer sobre un PDF existente). Sello "COPIA NO CONTROLADA -
+  Impreso por: <nombre> - Fecha: ... - TRONOX" al pie; endpoint /visor/print; audita documento.imprimir.
+  Verificado (PDF re-guardado con fuente embebida => sello dibujado). Pendiente: estampar imagenes.
+- **Terminar (ADR-003)** [be77ff6]: enum EstadoDocumento + Terminado (string, sin migracion);
+  ListarBorradores/Contar incluyen Terminado; TerminarBorradorAsync (borrador propio con binario ->
+  Terminado). UI: badge dinamico, menu Terminar->Firmar, oculta Editar/Eliminar en Terminado.
+  Verificado e2e.
+- **Busqueda rapida full-text (RF14 parcial)** [b5ad8bd]: nombre + archivo + tipologia + expediente +
+  OCR_TEXTO + CONTENIDO_HTML. Verificado (busca en contenido). Pendiente: panel AVANZADO (10 filtros +
+  grid cross-estado + fail-closed).
+
+Pendiente del modulo: busqueda avanzada RF14 (panel completo), Solicitar Revision/Aprobacion/Tramite
+(RF11/RF12 sobre DocumentoValidacion), paginacion de bandejas, y Firmar (stepper RQ05, modulo aparte).
