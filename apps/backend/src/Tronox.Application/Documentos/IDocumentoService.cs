@@ -80,6 +80,12 @@ public interface IDocumentoService
     /// <summary>Contadores de las 3 bandejas (para los tabs): borradores, archivados por mi, compartidos conmigo.</summary>
     Task<(int Borradores, int Archivados, int Compartidos)> ContarBandejasAsync(long actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>Busqueda avanzada RF14: cross-estado, fail-closed por nivel de acceso, TOP 200. Calca DocumentosBusquedaRepository.</summary>
+    Task<IReadOnlyList<ResultadoBusquedaDto>> BuscarAvanzadoAsync(BuscarAvanzadoRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Catalogo de tipologias activas para el filtro de la busqueda avanzada.</summary>
+    Task<IReadOnlyList<TipologiaFiltroDto>> GetTipologiasFiltroAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Envia el documento como adjunto por correo (RF05 cob*): valida acceso+binario, descarga y adjunta.</summary>
     Task<DocumentoResult<bool>> EnviarPorCorreoAsync(long docId, string para, string asunto, string? mensaje, long actorUserId, CancellationToken cancellationToken = default);
 

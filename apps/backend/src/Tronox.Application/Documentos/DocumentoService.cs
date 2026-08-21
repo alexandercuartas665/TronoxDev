@@ -764,6 +764,120 @@ public sealed class DocumentoService : IDocumentoService
         return DocumentoResult<DocumentoDescargaDto>.Ok(new DocumentoDescargaDto(contenido, d.NombreArchivo, d.ContentType));
     }
 
+    public async Task<IReadOnlyList<TipologiaFiltroDto>> GetTipologiasFiltroAsync(CancellationToken cancellationToken = default)
+        => await _db.TrdTipologias.AsNoTracking()
+            .Where(t => !t.IsArchived)
+            .OrderBy(t => t.Nombre)
+            .Select(t => new TipologiaFiltroDto(t.Id, t.Nombre))
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ResultadoBusquedaDto>> BuscarAvanzadoAsync(
+        BuscarAvanzadoRequest r, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var nivelMax = await ResolveNivelMaxOrdenAsync(actorUserId, cancellationToken);
+
+        var query = _db.Documentos.AsNoTracking()
+            .Include(d => d.TrdTipologia)
+            .Include(d => d.Expediente)
+            .Where(d => !d.EsVersionHistorica);
+
+        // Fail-closed: la clasificacion EFECTIVA del doc (propia o del expediente, def. Publico=orden 0)
+        // no puede superar el nivel de acceso maximo del usuario (invariante 10). Calca el CASE del legacy.
+        query = query.Where(d =>
+            (d.NivelClasificacion != null
+                ? d.NivelClasificacion.NivelOrden
+                : (d.Expediente != null && d.Expediente.NivelClasificacion != null ? d.Expediente.NivelClasificacion.NivelOrden : 0))
+            <= nivelMax);
+
+        // Los estados privados (Borrador/Terminado) de OTROS no se ven (calca d.ESTADO<>'Borrador' OR CREATED_BY=usuario).
+        query = query.Where(d =>
+            (d.Estado != EstadoDocumento.Borrador && d.Estado != EstadoDocumento.Terminado) || d.CreatedBy == actorUserId);
+
+        // Anulado se excluye salvo que el filtro de estado lo pida explicitamente.
+        var estados = ParseEstados(r.Estados);
+        if (estados.Count > 0) { query = query.Where(d => estados.Contains(d.Estado)); }
+        else { query = query.Where(d => d.Estado != EstadoDocumento.Anulado); }
+
+        if (r.TipologiaIds is { Count: > 0 })
+        {
+            var tips = r.TipologiaIds.ToList();
+            query = query.Where(d => d.TrdTipologiaId != null && tips.Contains(d.TrdTipologiaId.Value));
+        }
+        if (r.FechaDocDesde is DateOnly fdd) { query = query.Where(d => d.FechaDocumento >= fdd); }
+        if (r.FechaDocHasta is DateOnly fdh) { query = query.Where(d => d.FechaDocumento <= fdh); }
+        if (r.FechaIncDesde is DateTimeOffset fid) { query = query.Where(d => d.FechaIncorporacion >= fid); }
+        if (r.FechaIncHasta is DateTimeOffset fih) { query = query.Where(d => d.FechaIncorporacion <= fih); }
+
+        if (!string.IsNullOrWhiteSpace(r.Soporte) && Enum.TryParse<SoporteDocumento>(r.Soporte, out var sop))
+        {
+            query = query.Where(d => d.Soporte == sop);
+        }
+
+        if (r.Clasificaciones is { Count: > 0 })
+        {
+            var cls = r.Clasificaciones.ToList();
+            query = query.Where(d => cls.Contains(
+                d.NivelClasificacion != null ? d.NivelClasificacion.Nombre
+                    : (d.Expediente != null && d.Expediente.NivelClasificacion != null ? d.Expediente.NivelClasificacion.Nombre : "Publico")));
+        }
+
+        if (!string.IsNullOrWhiteSpace(r.Usuario))
+        {
+            var u = r.Usuario.Trim().ToLower();
+            var ids = await _db.PlatformUsers.AsNoTracking()
+                .Where(p => (p.DisplayName != null && p.DisplayName.ToLower().Contains(u)) || p.Email.ToLower().Contains(u))
+                .Select(p => p.Id).ToListAsync(cancellationToken);
+            query = query.Where(d => d.CreatedBy != null && ids.Contains(d.CreatedBy.Value));
+        }
+
+        var texto = r.Texto;
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            var t = texto.Trim().ToLower();
+            query = query.Where(d => d.Nombre.ToLower().Contains(t)
+                || (d.NombreArchivoOriginal != null && d.NombreArchivoOriginal.ToLower().Contains(t))
+                || (d.TrdTipologia != null && d.TrdTipologia.Nombre.ToLower().Contains(t))
+                || (d.Expediente != null && (d.Expediente.Nombre.ToLower().Contains(t) || d.Expediente.Codigo.ToLower().Contains(t)))
+                || (d.OcrTexto != null && d.OcrTexto.ToLower().Contains(t))
+                || (d.ContenidoHtml != null && d.ContenidoHtml.ToLower().Contains(t)));
+        }
+
+        var rows = await query
+            .OrderByDescending(d => d.FechaIncorporacion).ThenByDescending(d => d.CreatedAt)
+            .Take(200)
+            .Select(d => new
+            {
+                d.Id, d.Nombre, d.Formato, d.TieneBinario, d.CreatedBy,
+                Tipologia = d.TrdTipologia != null ? d.TrdTipologia.Nombre : null,
+                ExpCodigo = d.Expediente != null ? d.Expediente.Codigo : null,
+                ExpNombre = d.Expediente != null ? d.Expediente.Nombre : null,
+                d.FechaDocumento, d.FechaIncorporacion, d.Soporte, d.Estado
+            })
+            .ToListAsync(cancellationToken);
+
+        var creadores = rows.Where(x => x.CreatedBy != null).Select(x => x.CreatedBy!.Value).Distinct().ToList();
+        var nombres = await _db.PlatformUsers.AsNoTracking()
+            .Where(p => creadores.Contains(p.Id))
+            .Select(p => new { p.Id, Nombre = p.DisplayName ?? p.Email }).ToListAsync(cancellationToken);
+        var nm = nombres.ToDictionary(n => n.Id, n => n.Nombre);
+
+        return rows.Select(x => new ResultadoBusquedaDto(
+            x.Id, x.Nombre, x.Formato, x.TieneBinario, x.Tipologia, x.ExpCodigo, x.ExpNombre,
+            x.FechaDocumento, x.FechaIncorporacion, x.Soporte.ToString(), x.Estado.ToString(),
+            x.CreatedBy is long cb && nm.TryGetValue(cb, out var o) ? o : "(sistema)")).ToList();
+    }
+
+    private static List<EstadoDocumento> ParseEstados(IReadOnlyList<string>? estados)
+    {
+        var list = new List<EstadoDocumento>();
+        if (estados is null) { return list; }
+        foreach (var e in estados)
+        {
+            if (Enum.TryParse<EstadoDocumento>(e, out var v)) { list.Add(v); }
+        }
+        return list;
+    }
+
     /// <summary>Campana (Notification) + correo best-effort para cada beneficiario, calca shrNotificar.</summary>
     private async Task NotificarCompartidoAsync(
         long docId, string nombreDoc, IReadOnlyCollection<long> beneficiariosPlatformUserId, long actorUserId,

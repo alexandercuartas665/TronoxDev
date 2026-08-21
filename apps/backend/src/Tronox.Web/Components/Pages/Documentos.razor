@@ -49,6 +49,20 @@
     .doc-accion:hover { background:#F8FAFC; color:#2563EB; border-color:#BFDBFE; }
     .doc-vacio { padding:56px 20px; text-align:center; color:#94A3B8; }
     .doc-vacio i { font-size:40px; opacity:.4; display:block; margin-bottom:10px; }
+    /* Panel de busqueda avanzada (RF14) */
+    .ba-panel { border-top:1px solid #E2E8F0; margin-top:14px; padding-top:14px; }
+    .ba-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
+    .ba-field { display:flex; flex-direction:column; gap:5px; }
+    .ba-field.ba-col2 { grid-column:1 / -1; }
+    .ba-field > label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#94A3B8; }
+    .ba-input { padding:9px 11px; border:1px solid #E2E8F0; border-radius:9px; font-size:13px; background:#fff; outline:none; box-sizing:border-box; }
+    .ba-input:focus { border-color:#2563EB; }
+    .ba-chips { display:flex; flex-wrap:wrap; gap:7px; }
+    .ba-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border:1px solid #E2E8F0; border-radius:999px; font-size:12.5px; color:#475569; cursor:pointer; user-select:none; background:#fff; }
+    .ba-chip:hover { background:#F8FAFC; }
+    .ba-chip.on { background:#EFF6FF; border-color:#BFDBFE; color:#1D4ED8; font-weight:600; }
+    .ba-chip input { accent-color:#2563EB; }
+    .ba-actions { display:flex; align-items:center; gap:10px; margin-top:14px; flex-wrap:wrap; }
 </style>
 
 <div class="doc-wrap tx-mod">
@@ -67,7 +81,7 @@
     @if (_pageInfo is not null) { <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>@_pageInfo</span></div> }
     @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
 
-    @* Busqueda (RF14 avanzada diferida) *@
+    @* Busqueda rapida + acceso a la busqueda avanzada (RF14, calca doc_bandeja aspx:210-300) *@
     <div class="doc-card" style="margin-bottom:14px;padding:14px 16px">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <div style="position:relative;flex:1;min-width:260px">
@@ -76,10 +90,124 @@
                        style="width:100%;padding:10px 12px 10px 38px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;outline:none;font-size:13.5px;box-sizing:border-box" />
             </div>
             <button class="exp-btn" @onclick="Reload"><i class="bi bi-search"></i>&nbsp; Buscar</button>
-            <button class="exp-btn" @onclick='() => Soon("Búsqueda avanzada (RF14)")'><i class="bi bi-sliders"></i>&nbsp; Búsqueda avanzada</button>
+            <button class="exp-btn @(_showAvanzada ? "exp-btn-primary" : "")" @onclick="ToggleAvanzada"><i class="bi bi-sliders"></i>&nbsp; Búsqueda avanzada</button>
         </div>
+
+        @if (_showAvanzada)
+        {
+            <div class="ba-panel">
+                <div class="ba-grid">
+                    <div class="ba-field ba-col2">
+                        <label>Texto en nombre / contenido (OCR) / metadatos</label>
+                        <input class="ba-input" placeholder="Palabra clave…" @bind="_baTexto" />
+                    </div>
+                    <div class="ba-field ba-col2">
+                        <label>Tipo documental</label>
+                        <div class="ba-chips">
+                            @if (_baTipos.Count == 0) { <span class="tx-ent-hint">No hay tipologías activas.</span> }
+                            @foreach (var t in _baTipos)
+                            {
+                                var tt = t;
+                                <label class="ba-chip @(_baTipoSel.Contains(tt.Id) ? "on" : "")">
+                                    <input type="checkbox" checked="@_baTipoSel.Contains(tt.Id)" @onchange="@(() => ToggleTipo(tt.Id))" /> @tt.Nombre
+                                </label>
+                            }
+                        </div>
+                    </div>
+                    <div class="ba-field"><label>Fecha del documento (desde)</label><input type="date" class="ba-input" @bind="_baFDocDesde" /></div>
+                    <div class="ba-field"><label>Fecha del documento (hasta)</label><input type="date" class="ba-input" @bind="_baFDocHasta" /></div>
+                    <div class="ba-field"><label>Fecha de incorporación (desde)</label><input type="date" class="ba-input" @bind="_baFIncDesde" /></div>
+                    <div class="ba-field"><label>Fecha de incorporación (hasta)</label><input type="date" class="ba-input" @bind="_baFIncHasta" /></div>
+                    <div class="ba-field"><label>Creado por (usuario)</label><input class="ba-input" placeholder="Nombre o correo…" @bind="_baUsuario" /></div>
+                    <div class="ba-field">
+                        <label>Soporte</label>
+                        <select class="ba-input" @bind="_baSoporte">
+                            <option value="">— Cualquiera —</option>
+                            <option value="Electronico">Electrónico</option>
+                            <option value="Fisico">Físico</option>
+                        </select>
+                    </div>
+                    <div class="ba-field ba-col2">
+                        <label>Nivel de clasificación</label>
+                        <div class="ba-chips">
+                            @foreach (var n in _baNiveles)
+                            {
+                                var nn = n;
+                                <label class="ba-chip @(_baClasifSel.Contains(nn) ? "on" : "")">
+                                    <input type="checkbox" checked="@_baClasifSel.Contains(nn)" @onchange="@(() => ToggleClasif(nn))" /> @nn
+                                </label>
+                            }
+                        </div>
+                    </div>
+                    <div class="ba-field ba-col2">
+                        <label>Estado</label>
+                        <div class="ba-chips">
+                            @foreach (var es in _baEstados)
+                            {
+                                var ee = es;
+                                <label class="ba-chip @(_baEstadoSel.Contains(ee) ? "on" : "")">
+                                    <input type="checkbox" checked="@_baEstadoSel.Contains(ee)" @onchange="@(() => ToggleEstado(ee))" /> @ee
+                                </label>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="ba-actions">
+                    <span class="tx-ent-hint" style="margin-right:auto">Dependencia y Serie/Subserie: próximamente. Resultados fail-closed por nivel de acceso, máx. 200.</span>
+                    <button class="exp-btn" @onclick="LimpiarAvanzada" disabled="@_baBusy">Limpiar</button>
+                    <button class="exp-btn exp-btn-primary" @onclick="AplicarAvanzada" disabled="@_baBusy"><i class="bi bi-funnel"></i>&nbsp; Aplicar filtros</button>
+                </div>
+            </div>
+        }
     </div>
 
+    @if (_bsqResultados is not null)
+    {
+        @* Resultados de la busqueda avanzada (cross-estado), calca pnlBsqResultados aspx:305-345 *@
+        <div class="doc-card">
+            <div class="doc-tabs" style="justify-content:space-between;align-items:center">
+                <span style="padding:9px 6px;font-size:13px;font-weight:700;color:#0F172A"><i class="bi bi-funnel" style="color:#2563EB"></i> Resultados de búsqueda <span class="cnt">@_bsqResultados.Count</span></span>
+                <button class="exp-btn" style="margin:4px 8px" @onclick="CerrarBusqueda"><i class="bi bi-arrow-left"></i>&nbsp; Volver a la bandeja</button>
+            </div>
+            <div style="overflow-x:auto">
+                <table class="doc-grid">
+                    <thead><tr><th>NOMBRE</th><th>TIPO DOCUMENTAL</th><th>EXPEDIENTE</th><th>FECHA DOC.</th><th>INCORPORACIÓN</th><th>SOPORTE</th><th>ESTADO</th><th>CREADO POR</th><th class="right">ACCIONES</th></tr></thead>
+                    <tbody>
+                        @if (_bsqResultados.Count == 0) { <tr><td colspan="9" class="tx-ent-hint" style="text-align:center;padding:28px">Sin resultados para los filtros aplicados.</td></tr> }
+                        else
+                        {
+                            @foreach (var r in _bsqResultados)
+                            {
+                                var rr = r;
+                                <tr>
+                                    <td>
+                                        @if (rr.TieneBinario) { <a href="javascript:void(0)" class="doc-nom" @onclick="@(() => VerDoc(rr.DocId))">@rr.Nombre</a> }
+                                        else { <span>@rr.Nombre</span> }
+                                    </td>
+                                    <td>@(string.IsNullOrWhiteSpace(rr.TipologiaNombre) ? "—" : rr.TipologiaNombre)</td>
+                                    <td>
+                                        @if (string.IsNullOrWhiteSpace(rr.ExpedienteCodigo)) { <span class="tx-ent-hint">— sin archivar —</span> }
+                                        else { <span class="mono">@rr.ExpedienteCodigo</span> <span style="color:var(--kt-text-gray-600);font-size:11.5px">@rr.ExpedienteNombre</span> }
+                                    </td>
+                                    <td>@(rr.FechaDocumento?.ToString("yyyy-MM-dd") ?? "—")</td>
+                                    <td>@(rr.FechaIncorporacion?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                                    <td>@rr.Soporte</td>
+                                    <td>@EstadoBadge(rr.Estado)</td>
+                                    <td>@rr.CreadoPor</td>
+                                    <td class="right" style="white-space:nowrap">
+                                        @if (rr.TieneBinario) { <button class="doc-accion" title="Ver documento" @onclick="@(() => VerDoc(rr.DocId))"><i class="bi bi-eye"></i></button> }
+                                        else { <span class="tx-ent-hint">Físico</span> }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else
+    {
     <div class="doc-card">
         <div class="doc-tabs">
             @foreach (var b in new[] { BandejaDocumento.MisBorradores, BandejaDocumento.ArchivadosPorMi, BandejaDocumento.CompartidosConmigo })
@@ -256,6 +384,7 @@
         </div>
     }
     </div>@* doc-card *@
+    }@* /else busqueda *@
 </div>@* doc-wrap *@
 
 @* ============ Modal SELECTOR (¿Cómo deseas incorporar?) — calcado de ctrlIncorporarDoc (MisDocumentos) ============ *@
@@ -570,6 +699,17 @@
     private long _delId;
     private string _delNombre = "";
 
+    // ---- Busqueda avanzada (RF14) ----
+    private bool _showAvanzada, _baBusy;
+    private string _baTexto = "", _baUsuario = "", _baSoporte = "";
+    private DateTime? _baFDocDesde, _baFDocHasta, _baFIncDesde, _baFIncHasta;
+    private readonly HashSet<long> _baTipoSel = [];
+    private readonly HashSet<string> _baClasifSel = [], _baEstadoSel = [];
+    private IReadOnlyList<TipologiaFiltroDto> _baTipos = [];
+    private static readonly string[] _baNiveles = ["Publico", "Interno", "Reservado", "Clasificado"];
+    private static readonly string[] _baEstados = ["Borrador", "Terminado", "Archivado", "Anulado"];
+    private IReadOnlyList<ResultadoBusquedaDto>? _bsqResultados;
+
     protected override async Task OnInitializedAsync()
     {
         var eff = await Perms.GetAsync();
@@ -578,6 +718,58 @@
         _canDelete = eff.Can(ModuleKey, PermissionAction.Delete);
         await Reload();
     }
+
+    private async Task ToggleAvanzada()
+    {
+        _showAvanzada = !_showAvanzada;
+        if (_showAvanzada && _baTipos.Count == 0) { _baTipos = await Svc.GetTipologiasFiltroAsync(); }
+    }
+
+    private void ToggleTipo(long id) { if (!_baTipoSel.Add(id)) { _baTipoSel.Remove(id); } }
+    private void ToggleClasif(string n) { if (!_baClasifSel.Add(n)) { _baClasifSel.Remove(n); } }
+    private void ToggleEstado(string e) { if (!_baEstadoSel.Add(e)) { _baEstadoSel.Remove(e); } }
+
+    private void LimpiarAvanzada()
+    {
+        _baTexto = ""; _baUsuario = ""; _baSoporte = "";
+        _baFDocDesde = _baFDocHasta = _baFIncDesde = _baFIncHasta = null;
+        _baTipoSel.Clear(); _baClasifSel.Clear(); _baEstadoSel.Clear();
+    }
+
+    private async Task AplicarAvanzada()
+    {
+        _baBusy = true; _pageError = null; _pageOk = null; _pageInfo = null;
+        try
+        {
+            var req = new BuscarAvanzadoRequest(
+                string.IsNullOrWhiteSpace(_baTexto) ? null : _baTexto,
+                _baTipoSel.Count > 0 ? _baTipoSel.ToList() : null,
+                _baFDocDesde is DateTime d1 ? DateOnly.FromDateTime(d1) : null,
+                _baFDocHasta is DateTime d2 ? DateOnly.FromDateTime(d2) : null,
+                _baFIncDesde is DateTime d3 ? new DateTimeOffset(d3, TimeSpan.Zero) : null,
+                _baFIncHasta is DateTime d4 ? new DateTimeOffset(d4.AddDays(1).AddSeconds(-1), TimeSpan.Zero) : null,
+                string.IsNullOrWhiteSpace(_baUsuario) ? null : _baUsuario,
+                string.IsNullOrWhiteSpace(_baSoporte) ? null : _baSoporte,
+                _baClasifSel.Count > 0 ? _baClasifSel.ToList() : null,
+                _baEstadoSel.Count > 0 ? _baEstadoSel.ToList() : null);
+            _bsqResultados = await Svc.BuscarAvanzadoAsync(req, Actor);
+        }
+        finally { _baBusy = false; }
+    }
+
+    private void CerrarBusqueda() { _bsqResultados = null; }
+
+    private static RenderFragment EstadoBadge(string estado) => __builder =>
+    {
+        var (cls, style) = estado switch
+        {
+            "Archivado" => ("doc-badge doc-badge-archivado", ""),
+            "Terminado" => ("doc-badge", "background:#EFF6FF;color:#1D4ED8"),
+            "Anulado" => ("doc-badge", "background:#FEE2E2;color:#B91C1C"),
+            _ => ("doc-badge doc-badge-borrador", "")
+        };
+        <span class="@cls" style="@style">@estado</span>
+    };
 
     private static string BandejaLabel(BandejaDocumento b) => b switch
     {
