@@ -91,6 +91,7 @@ public static class DependencyInjection
         // Gestion integral de documentos (RQ04): Mis Borradores (binario en object storage, ADR-009),
         // archivar en expediente (RF16). La logica pura (extension/tamano/hash) vive en DocumentoRules.
         services.AddScoped<Documentos.IDocumentoService, Documentos.DocumentoService>();
+        services.AddScoped<Firmas.IFirmaService, Firmas.FirmaService>();
         // Tareas de validacion (RQ04 - RF11/RF12): solicitar revision/aprobacion + bandeja Mis Tareas.
         // La logica pura (comentario obligatorio, dias restantes) vive en ValidacionRules.
         services.AddScoped<Validaciones.IValidacionService, Validaciones.ValidacionService>();

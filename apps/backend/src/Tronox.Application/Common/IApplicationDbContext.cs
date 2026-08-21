@@ -93,6 +93,9 @@ public interface IApplicationDbContext
     // Tareas de validacion (RQ04 - RF11/RF12): revision/aprobacion. Flujo de metadatos paralelo que NO
     // cambia el estado del documento.
     DbSet<DocumentoValidacion> DocumentoValidaciones { get; }
+    // Firmas electronicas (RQ05 - RF05): dimension de firma independiente del archivado. Slice 1: firma
+    // directa (auto-firma). Solicitud a otro + stepper OTP quedan para el modulo RQ05 completo.
+    DbSet<Firma> Firmas { get; }
     // Plantillas documentales (RQ04 - RF09): documento parametrizado con variables, asociado N:N a
     // tipologias. Configuracion que se consume al crear documentos (RF10).
     DbSet<Plantilla> Plantillas { get; }

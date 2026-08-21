@@ -888,5 +888,25 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   OCR_TEXTO + CONTENIDO_HTML. Verificado (busca en contenido). Pendiente: panel AVANZADO (10 filtros +
   grid cross-estado + fail-closed).
 
-Pendiente del modulo: busqueda avanzada RF14 (panel completo), Solicitar Revision/Aprobacion/Tramite
-(RF11/RF12 sobre DocumentoValidacion), paginacion de bandejas, y Firmar (stepper RQ05, modulo aparte).
+- **Busqueda avanzada RF14 (panel completo)** [e06cff4]: BusquedaAvanzadaDtos + DocumentoService.
+  BuscarAvanzadoAsync/GetTipologiasFiltroAsync. Filtros: texto full-text, tipo documental multi, fechas
+  doc/incorporacion, creado por, soporte, nivel multi, estado multi. Fail-closed por nivel de acceso
+  efectivo (doc o expediente); excluye Borrador/Terminado ajenos y Anulado salvo filtro; TOP 200. UI:
+  panel .ba-* + grid cross-estado .doc-grid con "Volver a la bandeja". Verificado e2e (62 archivados;
+  texto "resolucion" -> 1). Diferido: Dependencia y Serie/Subserie (cadena de asignacion TRD).
+- **Paginacion de bandejas (doc-pager)** [8d3621f]: port de docPaginarTabla (12/pagina). Pager
+  "<N> documentos  < Pagina X de Y >" en las 3 bandejas + grid de busqueda; en memoria (Blazor), se
+  reinicia al recargar/filtrar. Verificado e2e (62 -> 6 paginas, navega pagina 2).
+- **Firma electronica RQ05 - slice 1: firma directa** [ADR-017]: entidad Firma (tabla firmas, calca
+  FIR_FIRMAS) + enums TipoFirma/EstadoFirma; IFirmaService con el CONTRATO ESTABLE (invariante 5):
+  SolicitarFirma/ConsultarEstadoFirma/CancelarFirma + FirmarDirectoAsync. Firma directa (calca
+  FirmaDirectaHelper: sin stepper, sin OTP): sella el PDF (IPdfSignatureStamper/PdfSharpCore: cajita
+  visual + hash SHA-256), lo deja como version oficial en sitio (sin versionar), marca el documento
+  Firmado y registra la fila. UI: FirmarModal (identidad + consentimiento RF08) desde el menu del
+  documento Terminado. Verificado e2e (doc 106 -> Firmado; fila firmas con hash coincidente; PDF
+  sellado servido 200 en el visor). Diferido (modulo RQ05 completo): stepper OTP de 5 pasos +
+  solicitud-cumplimiento (mis_firmas), PDF/A, QR, sellado XMP, hora legal NTP, certificado, masiva,
+  plantillas, cargo/dependencia del snapshot.
+
+Pendiente del modulo: Solicitar Revision/Aprobacion/Tramite (RF11/RF12 sobre DocumentoValidacion, ya
+existe la entidad), deploy del lote acumulado a prod, y el modulo RQ05 completo (stepper OTP + mis_firmas).

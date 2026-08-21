@@ -100,6 +100,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<DocumentoMetadato> DocumentoMetadatos => Set<DocumentoMetadato>();
     public DbSet<DocumentoCompartido> DocumentosCompartidos => Set<DocumentoCompartido>();
     public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
+    public DbSet<Firma> Firmas => Set<Firma>();
     public DbSet<Plantilla> Plantillas => Set<Plantilla>();
     public DbSet<PlantillaTipo> PlantillaTipos => Set<PlantillaTipo>();
     public DbSet<FormDefinition> FormDefinitions => Set<FormDefinition>();
@@ -1152,6 +1153,25 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasOne(x => x.UsuarioAsignado).WithMany()
                 .HasForeignKey(x => x.UsuarioAsignadoId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TenantId, x.UsuarioAsignadoId, x.Estado });
+            b.HasIndex(x => x.DocumentoId);
+        });
+
+        // Firmas electronicas (RQ05 - RF05). Cuelga del documento (Cascade: si el borrador se borra
+        // fisicamente, sus firmas se van con el). Enums como string (sin migracion al agregar valores).
+        // Indices: firmas del firmante por estado (bandeja de solicitudes) y firmas de un documento.
+        modelBuilder.Entity<Firma>(b =>
+        {
+            b.Property(x => x.NombreFirmante).HasMaxLength(200).IsRequired();
+            b.Property(x => x.CargoFirmante).HasMaxLength(200);
+            b.Property(x => x.DependenciaFirmante).HasMaxLength(200);
+            b.Property(x => x.HashDocumento).HasMaxLength(64);
+            b.Property(x => x.IpFirma).HasMaxLength(64);
+            b.Property(x => x.SesionId).HasMaxLength(100);
+            b.Property(x => x.TipoFirma).HasMaxLength(30).HasConversion<string>();
+            b.Property(x => x.Estado).HasMaxLength(20).HasConversion<string>();
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.FirmanteUserId, x.Estado });
             b.HasIndex(x => x.DocumentoId);
         });
 

@@ -280,9 +280,13 @@
                                                 {
                                                     <button class="dm-item" @onclick="@(() => TerminarDoc(dd.Id))"><i class="bi bi-check-circle" style="color:#2563EB"></i><span class="dm-tx"><span>Terminar</span><span class="dm-s">Marca el PDF como final (listo para firmar)</span></span></button>
                                                 }
-                                                @if (dd.Estado == EstadoDocumento.Terminado)
+                                                @if (dd.Estado == EstadoDocumento.Terminado && dd.EstadoFirma != EstadoFirmaDocumento.Firmado)
                                                 {
-                                                    <button class="dm-item" @onclick='() => Soon("Firmar electrónicamente")'><i class="bi bi-patch-check" style="color:#7C3AED"></i><span class="dm-tx"><span>Firmar electrónicamente</span><span class="dm-s">Stepper de firma (RQ05)</span></span></button>
+                                                    <button class="dm-item" @onclick="@(() => OpenFirmar(dd.Id, dd.Nombre))"><i class="bi bi-patch-check" style="color:#7C3AED"></i><span class="dm-tx"><span>Firmar electrónicamente</span><span class="dm-s">Firma directa · sella el PDF (RQ05)</span></span></button>
+                                                }
+                                                @if (dd.EstadoFirma == EstadoFirmaDocumento.Firmado)
+                                                {
+                                                    <div class="dm-item" style="cursor:default"><i class="bi bi-patch-check-fill" style="color:#1D4ED8"></i><span class="dm-tx"><span>Firmado electrónicamente</span><span class="dm-s">Sellado con tu identidad y hash</span></span></div>
                                                 }
                                                 <div class="dm-sep"></div>
                                                 <div class="dm-sec">Otras</div>
@@ -459,6 +463,12 @@
 @if (_showCorreo)
 {
     <EnviarCorreoModal DocId="_correoDocId" NombreDoc="@_correoNombre" OnCerrar="CloseCorreo" />
+}
+
+@* Firmar electronicamente (RQ05 - firma directa, slice 1) *@
+@if (_showFirmar)
+{
+    <FirmarModal DocId="_firmarDocId" NombreDoc="@_firmarNombre" OnCerrar="CloseFirmar" />
 }
 
 @* ============ Modal EDITAR (metadatos) ============ *@
@@ -677,6 +687,11 @@
     private bool _showCorreo;
     private long _correoDocId;
     private string _correoNombre = "";
+
+    // Firmar electronicamente (RQ05 - firma directa)
+    private bool _showFirmar;
+    private long _firmarDocId;
+    private string _firmarNombre = "";
 
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
@@ -937,6 +952,22 @@
     {
         _showCorreo = false;
         if (ok is not null) { _pageOk = ok; }
+    }
+
+    // ---- Firmar electronicamente (RQ05 - firma directa) ----
+
+    private void OpenFirmar(long id, string nombre)
+    {
+        CloseMenu();
+        _firmarDocId = id;
+        _firmarNombre = nombre;
+        _showFirmar = true;
+    }
+
+    private async Task CloseFirmar(string? ok)
+    {
+        _showFirmar = false;
+        if (ok is not null) { _pageOk = ok; await Reload(); }
     }
 
     // ---- Imprimir (RF05): copia con estampa "COPIA NO CONTROLADA", se abre en pestana nueva ----
