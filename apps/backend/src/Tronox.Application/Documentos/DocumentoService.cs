@@ -63,7 +63,13 @@ public sealed class DocumentoService : IDocumentoService
         if (!string.IsNullOrWhiteSpace(texto))
         {
             var t = texto.Trim().ToLower();
-            query = query.Where(d => d.Nombre.ToLower().Contains(t));
+            // Full-text (calca la busqueda rapida legacy): nombre, archivo, tipologia, expediente, OCR, contenido editor.
+            query = query.Where(d => d.Nombre.ToLower().Contains(t)
+                || (d.NombreArchivoOriginal != null && d.NombreArchivoOriginal.ToLower().Contains(t))
+                || (d.TrdTipologia != null && d.TrdTipologia.Nombre.ToLower().Contains(t))
+                || (d.Expediente != null && (d.Expediente.Nombre.ToLower().Contains(t) || d.Expediente.Codigo.ToLower().Contains(t)))
+                || (d.OcrTexto != null && d.OcrTexto.ToLower().Contains(t))
+                || (d.ContenidoHtml != null && d.ContenidoHtml.ToLower().Contains(t)));
         }
         return await query.OrderByDescending(d => d.CreatedAt)
             .Select(d => new BorradorItemDto(
@@ -82,7 +88,13 @@ public sealed class DocumentoService : IDocumentoService
         if (!string.IsNullOrWhiteSpace(texto))
         {
             var t = texto.Trim().ToLower();
-            query = query.Where(d => d.Nombre.ToLower().Contains(t));
+            // Full-text (calca la busqueda rapida legacy): nombre, archivo, tipologia, expediente, OCR, contenido editor.
+            query = query.Where(d => d.Nombre.ToLower().Contains(t)
+                || (d.NombreArchivoOriginal != null && d.NombreArchivoOriginal.ToLower().Contains(t))
+                || (d.TrdTipologia != null && d.TrdTipologia.Nombre.ToLower().Contains(t))
+                || (d.Expediente != null && (d.Expediente.Nombre.ToLower().Contains(t) || d.Expediente.Codigo.ToLower().Contains(t)))
+                || (d.OcrTexto != null && d.OcrTexto.ToLower().Contains(t))
+                || (d.ContenidoHtml != null && d.ContenidoHtml.ToLower().Contains(t)));
         }
         return await query.OrderByDescending(d => d.FechaIncorporacion)
             .Select(d => new ArchivadoItemDto(
