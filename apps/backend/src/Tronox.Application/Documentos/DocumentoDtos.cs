@@ -10,7 +10,9 @@ public enum BandejaDocumento
     /// <summary>Documentos archivados por el usuario en algun expediente.</summary>
     ArchivadosPorMi = 1,
     /// <summary>Compartidos con el usuario (RF07). Diferido: por ahora vacia.</summary>
-    CompartidosConmigo = 2
+    CompartidosConmigo = 2,
+    /// <summary>Tareas de validacion (Revision/Aprobacion) asignadas al usuario (RF12).</summary>
+    MisTareas = 3
 }
 
 /// <summary>Fila de "Mis Borradores".</summary>

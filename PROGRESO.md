@@ -908,5 +908,19 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   solicitud-cumplimiento (mis_firmas), PDF/A, QR, sellado XMP, hora legal NTP, certificado, masiva,
   plantillas, cargo/dependencia del snapshot.
 
-Pendiente del modulo: Solicitar Revision/Aprobacion/Tramite (RF11/RF12 sobre DocumentoValidacion, ya
-existe la entidad), deploy del lote acumulado a prod, y el modulo RQ05 completo (stepper OTP + mis_firmas).
+- **Solicitar Revision/Aprobacion (RF11) + Mis tareas (RF12)**: UI sobre el ValidacionService ya
+  portado (que estaba sin UI). RF11: modal SolicitarValidacionModal (asignado + prioridad + fecha limite
+  + instrucciones) desde el menu del documento; wire de "Solicitar Revision/Aprobacion". RF12: 4a bandeja
+  "Mis tareas" en Documentos (reusa permiso modulo/documentos; sin plumbing de menu) con grid de
+  pendientes + ResponderValidacionModal (Aprobar/Devolver/Rechazar; comentario obligatorio al
+  devolver/rechazar). La validacion NO cambia el estado del documento (traza paralela, RF11 CA-1).
+  FIX de identidad: UsuarioAsignadoId es FK a tenant_users.id, pero las bandejas comparaban contra el
+  PlatformUserId del actor (coincidian solo por casualidad en tenant 2); se agrego ResolveActorTenantUserId
+  (PlatformUserId -> TenantUser.Id del tenant) en ListarPendientes/Historial/Contadores/Detalle/Responder
+  para que sea correcto cross-tenant (fail-closed). Verificado e2e: solicitud admin2->Rita (row Pendiente);
+  responder admin2 (Aprobado); contador del tab correcto. "Solicitar Tramite" queda en RQ15 (Radicacion),
+  no es validacion; "Solicitar Firma" es RQ08 (placeholder).
+
+Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el modulo RQ05 completo
+(stepper OTP de 5 pasos + bandeja mis_firmas). Detalles menores diferidos (estampa en imagenes,
+full-text en compartidos, marcas de agua en visor).

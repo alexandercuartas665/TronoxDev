@@ -71,9 +71,10 @@ public sealed class ValidacionService : IValidacionService
     public async Task<IReadOnlyList<TareaItemDto>> ListarPendientesAsync(
         long actorUserId, TipoValidacion? tipo = null, CancellationToken cancellationToken = default)
     {
+        var actorTid = await ResolveActorTenantUserIdAsync(actorUserId, cancellationToken);
         var query = _db.DocumentoValidaciones.AsNoTracking()
             .Include(v => v.Documento!).ThenInclude(d => d.Expediente)
-            .Where(v => v.UsuarioAsignadoId == actorUserId && v.Estado == EstadoValidacion.Pendiente);
+            .Where(v => v.UsuarioAsignadoId == actorTid && v.Estado == EstadoValidacion.Pendiente);
         if (tipo is TipoValidacion tp) { query = query.Where(v => v.Tipo == tp); }
 
         var rows = await query.OrderBy(v => v.Prioridad == PrioridadTarea.Urgente ? 0 : 1).ThenBy(v => v.FechaLimite)
@@ -92,9 +93,10 @@ public sealed class ValidacionService : IValidacionService
 
     public async Task<IReadOnlyList<TareaHistorialDto>> ListarHistorialAsync(long actorUserId, CancellationToken cancellationToken = default)
     {
+        var actorTid = await ResolveActorTenantUserIdAsync(actorUserId, cancellationToken);
         var rows = await _db.DocumentoValidaciones.AsNoTracking()
             .Include(v => v.Documento!).ThenInclude(d => d.Expediente)
-            .Where(v => v.UsuarioAsignadoId == actorUserId && v.Estado != EstadoValidacion.Pendiente)
+            .Where(v => v.UsuarioAsignadoId == actorTid && v.Estado != EstadoValidacion.Pendiente)
             .OrderByDescending(v => v.FechaRespuesta)
             .ToListAsync(cancellationToken);
         var solicitantes = await ResolverNombresAsync(rows.Select(v => v.CreatedBy), cancellationToken);
@@ -107,8 +109,9 @@ public sealed class ValidacionService : IValidacionService
 
     public async Task<TareaContadoresDto> GetContadoresAsync(long actorUserId, CancellationToken cancellationToken = default)
     {
+        var actorTid = await ResolveActorTenantUserIdAsync(actorUserId, cancellationToken);
         var porTipo = await _db.DocumentoValidaciones.AsNoTracking()
-            .Where(v => v.UsuarioAsignadoId == actorUserId && v.Estado == EstadoValidacion.Pendiente)
+            .Where(v => v.UsuarioAsignadoId == actorTid && v.Estado == EstadoValidacion.Pendiente)
             .GroupBy(v => v.Tipo)
             .Select(g => new { Tipo = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
@@ -122,7 +125,8 @@ public sealed class ValidacionService : IValidacionService
         var v = await _db.DocumentoValidaciones.AsNoTracking()
             .Include(x => x.Documento!).ThenInclude(d => d.Expediente)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (v is null || (v.UsuarioAsignadoId != actorUserId && v.CreatedBy != actorUserId))
+        var actorTid = await ResolveActorTenantUserIdAsync(actorUserId, cancellationToken);
+        if (v is null || (v.UsuarioAsignadoId != actorTid && v.CreatedBy != actorUserId))
         {
             return ValidacionResult<TareaItemDto>.NotFound("La tarea no existe.");
         }
@@ -144,7 +148,8 @@ public sealed class ValidacionService : IValidacionService
 
         var v = await _db.DocumentoValidaciones.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (v is null) { return ValidacionResult<bool>.NotFound("La tarea no existe."); }
-        if (v.UsuarioAsignadoId != actorUserId) { return ValidacionResult<bool>.Forbidden("Esta tarea no te esta asignada."); }
+        var actorTid = await ResolveActorTenantUserIdAsync(actorUserId, cancellationToken);
+        if (v.UsuarioAsignadoId != actorTid) { return ValidacionResult<bool>.Forbidden("Esta tarea no te esta asignada."); }
         if (v.Estado != EstadoValidacion.Pendiente) { return ValidacionResult<bool>.Conflict("La tarea ya fue respondida."); }
 
         v.Estado = nuevoEstado;
@@ -204,6 +209,17 @@ public sealed class ValidacionService : IValidacionService
             .ToListAsync(cancellationToken);
         return ordenes.Count == 0 ? 0 : ordenes.Max(o => o ?? 0);
     }
+
+    /// <summary>
+    /// Traduce el PlatformUserId del actor (ITenantContext.UserId) al TenantUser.Id del tenant actual, que
+    /// es la identidad con la que se asigna la tarea (UsuarioAsignadoId es FK a tenant_users). El filtro
+    /// global por tenant garantiza que resuelve al usuario del tenant en contexto. 0 si no existe (fail-closed).
+    /// </summary>
+    private async Task<long> ResolveActorTenantUserIdAsync(long platformUserId, CancellationToken cancellationToken)
+        => await _db.TenantUsers.AsNoTracking()
+            .Where(u => u.PlatformUserId == platformUserId)
+            .Select(u => u.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
     private async Task<Dictionary<long, string>> ResolverNombresAsync(IEnumerable<long?> userIds, CancellationToken cancellationToken)
     {

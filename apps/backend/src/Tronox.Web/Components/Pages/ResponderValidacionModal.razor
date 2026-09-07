@@ -1,0 +1,104 @@
+@* Responder una tarea de validacion (RQ04 - RF12). Solo el asignado; Devolver/Rechazar exigen
+   comentario (RF11 CA-3). La respuesta es traza inmutable y NO cambia el estado del documento. *@
+@using Tronox.Application.Validaciones
+@using Tronox.Domain.Enums
+@inject IValidacionService Svc
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<div class="exp-modal-overlay open">
+    <div class="exp-modal-shell" style="max-width:540px">
+        <div class="exp-modal-header">
+            <h4 class="exp-modal-title"><i class="bi bi-clipboard-check" style="color:#2563EB"></i>&nbsp; Responder @(Tarea.Tipo == TipoValidacion.Aprobacion ? "Aprobación" : "Revisión")</h4>
+            <button class="exp-modal-close" @onclick="Cerrar"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="exp-modal-body">
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:12.5px;color:#475569">
+                <div><i class="bi bi-file-earmark-text" style="color:#94A3B8"></i>&nbsp; <strong>@Tarea.DocumentoNombre</strong></div>
+                @if (!string.IsNullOrWhiteSpace(Tarea.ExpedienteCodigo)) { <div style="margin-top:3px;color:#94A3B8">Expediente: @Tarea.ExpedienteCodigo</div> }
+                <div style="margin-top:3px;color:#94A3B8">Solicitado por: @(Tarea.SolicitanteNombre ?? "—")</div>
+                @if (!string.IsNullOrWhiteSpace(Tarea.Instrucciones))
+                {
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #E2E8F0"><strong>Instrucciones:</strong> @Tarea.Instrucciones</div>
+                }
+            </div>
+
+            @if (_err is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_err</div> }
+
+            <label class="det-label">Respuesta <span class="req">*</span></label>
+            <div class="rv-opts">
+                <button type="button" class="rv-opt @(_estado == EstadoValidacion.Aprobado ? "on ok" : "")" @onclick="@(() => _estado = EstadoValidacion.Aprobado)">
+                    <i class="bi bi-check-circle"></i> Aprobar
+                </button>
+                <button type="button" class="rv-opt @(_estado == EstadoValidacion.Devuelto ? "on warn" : "")" @onclick="@(() => _estado = EstadoValidacion.Devuelto)">
+                    <i class="bi bi-arrow-return-left"></i> Devolver
+                </button>
+                <button type="button" class="rv-opt @(_estado == EstadoValidacion.Rechazado ? "on danger" : "")" @onclick="@(() => _estado = EstadoValidacion.Rechazado)">
+                    <i class="bi bi-x-circle"></i> Rechazar
+                </button>
+            </div>
+
+            <label class="det-label" style="margin-top:14px">
+                Comentario @if (_estado is EstadoValidacion.Devuelto or EstadoValidacion.Rechazado) { <span class="req">*</span> }
+            </label>
+            <textarea class="det-input" rows="3" maxlength="2000" placeholder="@(_estado is EstadoValidacion.Devuelto or EstadoValidacion.Rechazado ? "Obligatorio al devolver o rechazar" : "Opcional al aprobar")" @bind="_comentario"></textarea>
+        </div>
+        <div class="exp-modal-footer">
+            <button class="exp-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <button class="exp-btn exp-btn-primary" @onclick="Enviar" disabled="@(_busy || _estado is null)">
+                <i class="bi bi-send"></i>&nbsp; @(_busy ? "Enviando…" : "Enviar respuesta")
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .exp-modal-overlay { position:fixed; inset:0; z-index:1000008; background:rgba(15,23,42,.45); display:flex; align-items:flex-start; justify-content:center; padding:90px 20px 30px; }
+    .exp-modal-shell { background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.18); width:100%; max-height:calc(100vh - 120px); overflow-y:auto; }
+    .exp-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #E2E8F0; }
+    .exp-modal-title { font-size:16px; font-weight:800; color:#0F172A; margin:0; }
+    .exp-modal-close { width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; color:#475569; display:inline-flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; }
+    .exp-modal-close:hover { background:#F8FAFC; color:#DC2626; }
+    .exp-modal-body { padding:18px 20px; }
+    .exp-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid #E2E8F0; }
+    .det-label { display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:5px; }
+    .det-label .req { color:#DC2626; margin-left:2px; }
+    .det-input { width:100%; padding:9px 12px; border:1px solid #E2E8F0; border-radius:10px; font-size:13px; color:#0F172A; background:#fff; box-sizing:border-box; }
+    .det-input:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+    .rv-opts { display:flex; gap:8px; }
+    .rv-opt { flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 8px; border:1px solid #E2E8F0; border-radius:10px; background:#fff; color:#475569; font-size:13px; font-weight:600; cursor:pointer; }
+    .rv-opt:hover { background:#F8FAFC; }
+    .rv-opt.on.ok { background:#F0FDF4; border-color:#86EFAC; color:#16A34A; }
+    .rv-opt.on.warn { background:#FFFBEB; border-color:#FDE68A; color:#B45309; }
+    .rv-opt.on.danger { background:#FEF2F2; border-color:#FECACA; color:#DC2626; }
+</style>
+
+@code {
+    [Parameter] public TareaItemDto Tarea { get; set; } = default!;
+    [Parameter] public EventCallback<string?> OnCerrar { get; set; }
+
+    private EstadoValidacion? _estado;
+    private string _comentario = "";
+    private bool _busy;
+    private string? _err;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    private async Task Enviar()
+    {
+        if (_estado is not EstadoValidacion est) { return; }
+        _err = null; _busy = true;
+        try
+        {
+            var res = await Svc.ResponderAsync(Tarea.Id, est, _comentario, Actor);
+            if (res.IsOk)
+            {
+                var etiqueta = est switch { EstadoValidacion.Aprobado => "aprobada", EstadoValidacion.Devuelto => "devuelta", _ => "rechazada" };
+                await OnCerrar.InvokeAsync($"Tarea {etiqueta}.");
+            }
+            else { _err = res.Error ?? "No se pudo responder la tarea."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync(null);
+}

@@ -9,9 +9,11 @@
    Enviar correo, Imprimir) se muestran como el legacy pero marcadas "proximamente". *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Tronox.Application.Documentos
+@using Tronox.Application.Validaciones
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
 @inject IDocumentoService Svc
+@inject IValidacionService Val
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
 @inject IJSRuntime JS
@@ -218,7 +220,7 @@
     {
     <div class="doc-card">
         <div class="doc-tabs">
-            @foreach (var b in new[] { BandejaDocumento.MisBorradores, BandejaDocumento.ArchivadosPorMi, BandejaDocumento.CompartidosConmigo })
+            @foreach (var b in new[] { BandejaDocumento.MisBorradores, BandejaDocumento.ArchivadosPorMi, BandejaDocumento.CompartidosConmigo, BandejaDocumento.MisTareas })
             {
                 var bb = b;
                 <button class="doc-tab @(_bandeja == bb ? "active" : "")" @onclick="@(() => SwitchBandeja(bb))">
@@ -270,8 +272,8 @@
                                             <div class="dm-backdrop" @onclick="CloseMenu"></div>
                                             <div class="dm-panel">
                                                 <div class="dm-sec">Asignar tarea sobre el documento</div>
-                                                <button class="dm-item" @onclick='() => Soon("Solicitar Revisión")'><i class="bi bi-eye" style="color:#2563EB"></i><span class="dm-tx"><span>Solicitar Revisión</span><span class="dm-s">Asigna a un revisor · no bloquea</span></span></button>
-                                                <button class="dm-item" @onclick='() => Soon("Solicitar Aprobación")'><i class="bi bi-check-lg" style="color:#16A34A"></i><span class="dm-tx"><span>Solicitar Aprobación</span><span class="dm-s">Asigna a un aprobador · no bloquea</span></span></button>
+                                                <button class="dm-item" @onclick="@(() => OpenSolicitar(dd.Id, dd.Nombre, TipoValidacion.Revision))"><i class="bi bi-eye" style="color:#2563EB"></i><span class="dm-tx"><span>Solicitar Revisión</span><span class="dm-s">Asigna a un revisor · no bloquea</span></span></button>
+                                                <button class="dm-item" @onclick="@(() => OpenSolicitar(dd.Id, dd.Nombre, TipoValidacion.Aprobacion))"><i class="bi bi-check-lg" style="color:#16A34A"></i><span class="dm-tx"><span>Solicitar Aprobación</span><span class="dm-s">Asigna a un aprobador · no bloquea</span></span></button>
                                                 <button class="dm-item" @onclick='() => Soon("Solicitar Trámite")'><i class="bi bi-gear" style="color:#D97706"></i><span class="dm-tx"><span>Solicitar Trámite</span><span class="dm-s">Asigna un responsable del trámite</span></span></button>
                                                 <button class="dm-item" @onclick='() => Soon("Solicitar Firma")'><i class="bi bi-pencil-square" style="color:#7C3AED"></i><span class="dm-tx"><span>Solicitar Firma</span><span class="dm-s">Placeholder RQ08</span></span></button>
                                                 <div class="dm-sep"></div>
@@ -362,7 +364,7 @@
             @if (_archivados is not null) { @DocPager(_archivados.Count, _pgA, p => _pgA = p) }
         </div>
     }
-    else
+    else if (_bandeja == BandejaDocumento.CompartidosConmigo)
     {
         @* Compartidos conmigo (RF07): calca rpCompartidos. Acciones: Ver (si binario) + Descargar (si permiso). *@
         <div style="overflow-x:auto">
@@ -396,6 +398,46 @@
                 </tbody>
             </table>
             @if (_compartidos is not null) { @DocPager(_compartidos.Count, _pgC, p => _pgC = p) }
+        </div>
+    }
+    else
+    {
+        @* Mis tareas (RF12): tareas de validacion (Revision/Aprobacion) asignadas a mi. Responder no cambia
+           el estado del documento (traza paralela). Fail-closed: solo el asignado ve y responde. *@
+        <div style="overflow-x:auto">
+            <table class="doc-grid">
+                <thead><tr><th>DOCUMENTO</th><th>EXPEDIENTE</th><th>TIPO</th><th>PRIORIDAD</th><th>SOLICITADO POR</th><th>LIMITE</th><th class="right">ACCIONES</th></tr></thead>
+                <tbody>
+                    @if (_tareas is null) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (_tareas.Count == 0) { <tr><td colspan="7" class="tx-ent-hint" style="text-align:center;padding:18px">No tienes tareas de validación pendientes.</td></tr> }
+                    else
+                    {
+                        @foreach (var t in PageOf(_tareas, _pgT))
+                        {
+                            var tt = t;
+                            <tr>
+                                <td>
+                                    @if (tt.DocumentoId > 0) { <a href="javascript:void(0)" class="doc-nom" @onclick="@(() => VerDoc(tt.DocumentoId))">@tt.DocumentoNombre</a> }
+                                    else { <span>@tt.DocumentoNombre</span> }
+                                    @if (!string.IsNullOrWhiteSpace(tt.Instrucciones)) { <div style="font-size:11.5px;color:#94A3B8;margin-top:2px">@tt.Instrucciones</div> }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(tt.ExpedienteCodigo) ? "—" : tt.ExpedienteCodigo)</td>
+                                <td>
+                                    @if (tt.Tipo == TipoValidacion.Aprobacion) { <span class="doc-badge" style="background:#F0FDF4;color:#16A34A">Aprobación</span> }
+                                    else { <span class="doc-badge" style="background:#EFF6FF;color:#2563EB">Revisión</span> }
+                                </td>
+                                <td>@PrioridadBadge(tt.Prioridad)</td>
+                                <td>@(tt.SolicitanteNombre ?? "—")</td>
+                                <td>@LimiteTexto(tt.FechaLimite, tt.DiasRestantes)</td>
+                                <td class="right" style="white-space:nowrap">
+                                    <button class="exp-btn exp-btn-primary" style="padding:6px 12px" @onclick="@(() => OpenResponder(tt))"><i class="bi bi-clipboard-check"></i>&nbsp; Responder</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (_tareas is not null) { @DocPager(_tareas.Count, _pgT, p => _pgT = p) }
         </div>
     }
     </div>@* doc-card *@
@@ -469,6 +511,18 @@
 @if (_showFirmar)
 {
     <FirmarModal DocId="_firmarDocId" NombreDoc="@_firmarNombre" OnCerrar="CloseFirmar" />
+}
+
+@* Solicitar Revision/Aprobacion (RF11) *@
+@if (_showSolicitar)
+{
+    <SolicitarValidacionModal DocId="_solDocId" NombreDoc="@_solNombre" Tipo="_solTipo" OnCerrar="CloseSolicitar" />
+}
+
+@* Responder tarea de validacion (RF12) *@
+@if (_showResponder && _respTarea is not null)
+{
+    <ResponderValidacionModal Tarea="_respTarea" OnCerrar="CloseResponder" />
 }
 
 @* ============ Modal EDITAR (metadatos) ============ *@
@@ -693,6 +747,16 @@
     private long _firmarDocId;
     private string _firmarNombre = "";
 
+    // Mis tareas de validacion (RF12) + solicitar (RF11)
+    private IReadOnlyList<TareaItemDto>? _tareas;
+    private int _cntT, _pgT = 1;
+    private bool _showSolicitar;
+    private long _solDocId;
+    private string _solNombre = "";
+    private TipoValidacion _solTipo;
+    private bool _showResponder;
+    private TareaItemDto? _respTarea;
+
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
     private string? _editError;
@@ -823,6 +887,7 @@
         BandejaDocumento.MisBorradores => "Mis Borradores",
         BandejaDocumento.ArchivadosPorMi => "Archivados por mí",
         BandejaDocumento.CompartidosConmigo => "Compartidos conmigo",
+        BandejaDocumento.MisTareas => "Mis tareas",
         _ => b.ToString()
     };
 
@@ -831,6 +896,7 @@
         BandejaDocumento.MisBorradores => "bi-pencil-square",
         BandejaDocumento.ArchivadosPorMi => "bi-archive",
         BandejaDocumento.CompartidosConmigo => "bi-share",
+        BandejaDocumento.MisTareas => "bi-clipboard-check",
         _ => "bi-folder"
     };
 
@@ -840,13 +906,16 @@
     {
         BandejaDocumento.MisBorradores => _cntB,
         BandejaDocumento.ArchivadosPorMi => _cntA,
-        _ => _cntC
+        BandejaDocumento.CompartidosConmigo => _cntC,
+        _ => _cntT
     };
 
     private async Task RecargarContadores()
     {
         var c = await Svc.ContarBandejasAsync(Actor);
         _cntB = c.Borradores; _cntA = c.Archivados; _cntC = c.Compartidos;
+        var t = await Val.GetContadoresAsync(Actor);
+        _cntT = t.Total;
     }
 
     private static string FirmaTexto(EstadoFirmaDocumento f) => f switch
@@ -876,11 +945,12 @@
     private async Task Reload()
     {
         CloseMenu();
-        _pgB = _pgA = _pgC = 1;
+        _pgB = _pgA = _pgC = _pgT = 1;
         var t = string.IsNullOrWhiteSpace(_texto) ? null : _texto;
         if (_bandeja == BandejaDocumento.MisBorradores) { _borradores = await Svc.ListarBorradoresAsync(Actor, t); }
         else if (_bandeja == BandejaDocumento.ArchivadosPorMi) { _archivados = await Svc.ListarArchivadosPorMiAsync(Actor, t); }
         else if (_bandeja == BandejaDocumento.CompartidosConmigo) { _compartidos = await Svc.ListarCompartidosConmigoAsync(Actor, t); }
+        else if (_bandeja == BandejaDocumento.MisTareas) { _tareas = await Val.ListarPendientesAsync(Actor); }
         await RecargarContadores();
     }
 
@@ -968,6 +1038,53 @@
     {
         _showFirmar = false;
         if (ok is not null) { _pageOk = ok; await Reload(); }
+    }
+
+    // ---- Solicitar Revision/Aprobacion (RF11) ----
+
+    private void OpenSolicitar(long id, string nombre, TipoValidacion tipo)
+    {
+        CloseMenu();
+        _solDocId = id; _solNombre = nombre; _solTipo = tipo;
+        _showSolicitar = true;
+    }
+
+    private async Task CloseSolicitar(string? ok)
+    {
+        _showSolicitar = false;
+        if (ok is not null) { _pageOk = ok; await RecargarContadores(); }
+    }
+
+    // ---- Responder tarea (RF12) ----
+
+    private void OpenResponder(TareaItemDto t) { _respTarea = t; _showResponder = true; }
+
+    private async Task CloseResponder(string? ok)
+    {
+        _showResponder = false; _respTarea = null;
+        if (ok is not null) { _pageOk = ok; await Reload(); }
+    }
+
+    private static RenderFragment PrioridadBadge(PrioridadTarea p) => __builder =>
+    {
+        var (txt, style) = p switch
+        {
+            PrioridadTarea.Urgente => ("Urgente", "background:#FEE2E2;color:#B91C1C"),
+            PrioridadTarea.Alta => ("Alta", "background:#FEF3C7;color:#B45309"),
+            PrioridadTarea.Baja => ("Baja", "background:#F1F5F9;color:#64748B"),
+            _ => ("Media", "background:#EFF6FF;color:#2563EB")
+        };
+        <span class="doc-badge" style="@style">@txt</span>
+    };
+
+    private static string LimiteTexto(DateOnly? fecha, int? dias)
+    {
+        if (fecha is not DateOnly f) { return "—"; }
+        var d = f.ToString("yyyy-MM-dd");
+        if (dias is not int n) { return d; }
+        if (n < 0) { return $"{d} (vencida)"; }
+        if (n == 0) { return $"{d} (hoy)"; }
+        return $"{d} ({n} d)";
     }
 
     // ---- Imprimir (RF05): copia con estampa "COPIA NO CONTROLADA", se abre en pestana nueva ----
