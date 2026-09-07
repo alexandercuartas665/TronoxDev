@@ -16,11 +16,28 @@ public interface IFirmaService
     /// <summary>solicitarFirma: registra una solicitud de firma a un firmante (Pendiente). Devuelve el id.</summary>
     Task<DocumentoResult<long>> SolicitarFirmaAsync(SolicitarFirmaRequest request, long actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>Usuarios del tenant asignables como firmantes (RF06), por PlatformUserId. Excluye al actor.</summary>
+    Task<IReadOnlyList<FirmanteOpcionDto>> GetFirmantesAsignablesAsync(long actorUserId, CancellationToken cancellationToken = default);
+
     /// <summary>consultarEstadoFirma: dimension de firma del documento + sus firmas registradas.</summary>
     Task<DocumentoResult<FirmaEstadoDto>> ConsultarEstadoFirmaAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>cancelarFirma: cancela una solicitud pendiente (solicitante o firmante). No borra (invariante 8).</summary>
     Task<DocumentoResult<bool>> CancelarFirmaAsync(long firmaId, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Bandeja "Mis Firmas" (RF10) ----
+
+    /// <summary>Lista una vista de la bandeja del usuario (Pendientes/Enviadas/Completadas/Rechazadas). Fail-closed.</summary>
+    Task<IReadOnlyList<FirmaBandejaItemDto>> ListarBandejaAsync(BandejaFirma tab, long actorUserId, string? texto = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Conteos de las 4 tarjetas KPI de la bandeja.</summary>
+    Task<FirmaResumenDto> ContarResumenAsync(long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>RF10: el firmante rechaza una solicitud pendiente (comentario obligatorio) -> Rechazado.</summary>
+    Task<DocumentoResult<bool>> RechazarSolicitudAsync(long firmaId, string comentario, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>RF08 (sin stepper por ahora): cumple una solicitud pendiente propia. Sella el PDF y marca Firmado.</summary>
+    Task<DocumentoResult<FirmaEjecutadaDto>> FirmarSolicitadaAsync(long firmaId, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default);
 
     // ---- Firma directa (slice 1, calca FirmaDirectaHelper: sin stepper, sin OTP) ----
 

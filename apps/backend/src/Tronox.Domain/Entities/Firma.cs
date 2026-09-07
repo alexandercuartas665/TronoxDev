@@ -47,4 +47,21 @@ public class Firma : TenantEntity
 
     /// <summary>Quien solicito la firma (PlatformUserId). En firma directa = el propio firmante.</summary>
     public long SolicitadoPor { get; set; }
+
+    // ---- Contexto de la solicitud para la bandeja "Mis Firmas" (RF10). Calca FIR_FIRMAS. ----
+
+    /// <summary>Prioridad de la solicitud (semaforo de la bandeja). Default Media.</summary>
+    public PrioridadTarea Prioridad { get; set; } = PrioridadTarea.Media;
+
+    /// <summary>Fecha limite opcional de la solicitud (informativa; alimenta el badge de urgencia).</summary>
+    public DateOnly? FechaLimite { get; set; }
+
+    /// <summary>Instrucciones del solicitante para el firmante (opcional).</summary>
+    public string? Instrucciones { get; set; }
+
+    /// <summary>Etiqueta libre opcional (agrupacion en la bandeja).</summary>
+    public string? Tag { get; set; }
+
+    /// <summary>Comentario del firmante al rechazar (OBLIGATORIO si Rechazado).</summary>
+    public string? ComentarioRechazo { get; set; }
 }

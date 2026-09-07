@@ -1,0 +1,368 @@
+@page "/modulo/firmas-mis"
+@attribute [Authorize(Policy = "Perm:modulo/firmas-mis:View")]
+@* Bandeja "Mis Firmas" (RQ05 - RF10), port de mis_firmas.aspx (diseno mf-*). Slice 2: firmas
+   individuales (Pendientes/Enviadas/Completadas/Rechazadas) + KPIs. Circuitos (RF07), firma masiva
+   (RF09), stepper OTP (RF08) y pista de auditoria quedan para slices posteriores (ver ADR-018). *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Firmas
+@using Tronox.Domain.Enums
+@inject IFirmaService Firmas
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject IJSRuntime JS
+
+<PageTitle>Mis Firmas - TRONOX SGDEA</PageTitle>
+
+<style>
+    .mf-wrap { padding: 8px 0 40px; }
+    .mf-header { margin-bottom: 18px; }
+    .mf-title { font-size: 20px; font-weight: 800; color: #0F172A; margin: 0; display: flex; align-items: center; gap: 10px; }
+    .mf-subtitle { font-size: 12.5px; color: #94A3B8; margin-top: 3px; }
+    .mf-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+    .mf-kpi { background: #fff; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; }
+    .mf-kpi-ico { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+    .mf-kpi-n { font-size: 22px; font-weight: 800; color: #0F172A; line-height: 1; }
+    .mf-kpi-l { font-size: 12px; color: #94A3B8; margin-top: 3px; }
+    .mf-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 18px 20px; }
+    .mf-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+    .mf-fsearch { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #E2E8F0; border-radius: 10px; padding: 8px 12px; background: #fff; min-width: 280px; }
+    .mf-fsearch i { color: #94A3B8; font-size: 13px; }
+    .mf-fsearch input { border: 0; outline: none; font-size: 13px; width: 100%; color: #334155; background: transparent; }
+    .mf-tabs { display: flex; gap: 6px; border-bottom: 2px solid #E2E8F0; margin-bottom: 14px; flex-wrap: wrap; }
+    .mf-tab { padding: 9px 16px; font-size: 13px; font-weight: 700; color: #64748B; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .mf-tab:hover { color: #2563EB; }
+    .mf-tab.active { color: #2563EB; border-bottom-color: #2563EB; }
+    .mf-tab .mf-badge { display: inline-block; background: #EF4444; color: #fff; border-radius: 20px; font-size: 10px; font-weight: 800; padding: 1px 7px; }
+    .mf-table { width: 100%; border-collapse: collapse; }
+    .mf-table th { text-align: left; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: .04em; padding: 10px 12px; border-bottom: 1px solid #E2E8F0; }
+    .mf-table td { padding: 12px; font-size: 13px; color: #334155; border-bottom: 1px solid #EEF2F7; vertical-align: middle; }
+    .mf-doc { font-weight: 700; color: #0F172A; text-decoration: none; cursor: pointer; }
+    .mf-doc:hover { color: #2563EB; text-decoration: underline; }
+    .mf-tipo { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+    .mf-tipo .mf-tdot { width: 6px; height: 6px; border-radius: 50%; }
+    .mf-tipo-el { background: rgba(37,99,235,.10); color: #2563EB; } .mf-tipo-el .mf-tdot { background: #2563EB; }
+    .mf-tipo-dc { background: rgba(124,58,237,.12); color: #7C3AED; } .mf-tipo-dc .mf-tdot { background: #7C3AED; }
+    .mf-party { display: inline-flex; align-items: center; gap: 9px; }
+    .mf-av { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: #EDE9FE; color: #6D28D9; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+    .mf-u-rojo { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 10.5px; font-weight: 700; background: rgba(239,68,68,.12); color: #DC2626; }
+    .mf-u-naranja { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 10.5px; font-weight: 700; background: rgba(245,158,11,.14); color: #B45309; }
+    .mf-u-normal { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 10.5px; font-weight: 700; background: #F1F5F9; color: #64748B; }
+    .mf-est { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; }
+    .mf-est .d { width: 7px; height: 7px; border-radius: 50%; }
+    .mf-est-ok { color: #16A34A; } .mf-est-ok .d { background: #16A34A; }
+    .mf-est-rej { color: #DC2626; } .mf-est-rej .d { background: #DC2626; }
+    .mf-est-wait { color: #B45309; } .mf-est-wait .d { background: #D97706; }
+    .mf-act { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; border: none; cursor: pointer; text-decoration: none; margin-left: 4px; }
+    .mf-act-firmar { background: #7C3AED; color: #fff; }
+    .mf-act-firmar:hover { background: #6D28D9; }
+    .mf-act-rechazar { background: #FEF2F2; color: #DC2626; }
+    .mf-act-rechazar:hover { background: #FEE2E2; }
+    .mf-act-ver { background: #F1F5F9; color: #475569; }
+    .mf-act-ver:hover { background: #E2E8F0; color: #2563EB; }
+    .mf-empty { text-align: center; color: #94A3B8; padding: 44px 0; font-size: 13.5px; }
+    .mf-motivo { font-size: 12px; color: #64748B; }
+    .mf-instr { font-size: 11.5px; color: #94A3B8; margin-top: 2px; }
+</style>
+
+<div class="mf-wrap tx-mod">
+    <div class="mf-header">
+        <h2 class="mf-title"><i class="bi bi-pen" style="color:#7C3AED"></i> Mis Firmas</h2>
+        <div class="mf-subtitle">Gestión unificada de su actividad de firma: documentos por firmar, solicitudes enviadas e historial.</div>
+    </div>
+
+    @if (_ok is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_ok</span></div> }
+    @if (_error is not null) { <div class="tx-ent-fielderr">@_error</div> }
+
+    <div class="mf-kpis">
+        <div class="mf-kpi"><span class="mf-kpi-ico" style="background:rgba(245,158,11,.14);color:#B45309"><i class="bi bi-hourglass-split"></i></span><div><div class="mf-kpi-n">@(_resumen?.Pendientes ?? 0)</div><div class="mf-kpi-l">Pendientes</div></div></div>
+        <div class="mf-kpi"><span class="mf-kpi-ico" style="background:rgba(37,99,235,.10);color:#2563EB"><i class="bi bi-diagram-3"></i></span><div><div class="mf-kpi-n">@(_resumen?.EnProgreso ?? 0)</div><div class="mf-kpi-l">En progreso</div></div></div>
+        <div class="mf-kpi"><span class="mf-kpi-ico" style="background:rgba(22,163,74,.12);color:#16A34A"><i class="bi bi-patch-check"></i></span><div><div class="mf-kpi-n">@(_resumen?.Firmados ?? 0)</div><div class="mf-kpi-l">Firmados</div></div></div>
+        <div class="mf-kpi"><span class="mf-kpi-ico" style="background:rgba(239,68,68,.12);color:#DC2626"><i class="bi bi-x-octagon"></i></span><div><div class="mf-kpi-n">@(_resumen?.Rechazadas ?? 0)</div><div class="mf-kpi-l">Rechazadas</div></div></div>
+    </div>
+
+    <div class="mf-card">
+        <div class="mf-toolbar">
+            <div class="mf-tabs">
+                @foreach (var tb in new[] { BandejaFirma.Pendientes, BandejaFirma.Enviadas, BandejaFirma.Completadas, BandejaFirma.Rechazadas })
+                {
+                    var t = tb;
+                    <button class="mf-tab @(_tab == t ? "active" : "")" @onclick="@(() => SwitchTab(t))">
+                        @TabLabel(t)
+                        @if (t == BandejaFirma.Pendientes && (_resumen?.Pendientes ?? 0) > 0) { <span class="mf-badge">@_resumen!.Pendientes</span> }
+                    </button>
+                }
+            </div>
+            <div class="mf-fsearch">
+                <i class="bi bi-search"></i>
+                <input placeholder="Buscar por documento…" @bind="_texto" @bind:event="oninput" @onkeyup="OnSearchKey" />
+            </div>
+        </div>
+
+        <div style="overflow-x:auto">
+            <table class="mf-table">
+                <thead><tr>
+                    <th>DOCUMENTO</th>
+                    <th>TIPO</th>
+                    <th>@(_tab == BandejaFirma.Enviadas ? "FIRMANTE" : "SOLICITANTE")</th>
+                    @if (_tab == BandejaFirma.Pendientes) { <th>PRIORIDAD</th> }
+                    @if (_tab == BandejaFirma.Completadas) { <th>FIRMADO</th> }
+                    @if (_tab == BandejaFirma.Enviadas) { <th>ESTADO</th> }
+                    @if (_tab == BandejaFirma.Rechazadas) { <th>MOTIVO</th> }
+                    <th class="right">ACCIONES</th>
+                </tr></thead>
+                <tbody>
+                    @if (_items is null) { <tr><td colspan="6" class="mf-empty">Cargando...</td></tr> }
+                    else if (_items.Count == 0) { <tr><td colspan="6" class="mf-empty">@VacioTexto()</td></tr> }
+                    else
+                    {
+                        @foreach (var it in _items)
+                        {
+                            var f = it;
+                            <tr>
+                                <td>
+                                    @if (f.TieneBinario) { <a class="mf-doc" @onclick="@(() => VerDoc(f.DocumentoId))">@f.DocumentoNombre</a> }
+                                    else { <span>@f.DocumentoNombre</span> }
+                                    @if (!string.IsNullOrWhiteSpace(f.ExpedienteCodigo)) { <div class="mf-instr">@f.ExpedienteCodigo</div> }
+                                    @if (_tab == BandejaFirma.Pendientes && !string.IsNullOrWhiteSpace(f.Instrucciones)) { <div class="mf-instr">@f.Instrucciones</div> }
+                                </td>
+                                <td>@TipoChip(f.TipoFirma)</td>
+                                <td>
+                                    <span class="mf-party"><span class="mf-av">@Iniciales(_tab == BandejaFirma.Enviadas ? f.FirmanteNombre : (f.SolicitanteNombre ?? f.FirmanteNombre))</span>
+                                    <span>@(_tab == BandejaFirma.Enviadas ? f.FirmanteNombre : (f.SolicitanteNombre ?? "—"))</span></span>
+                                </td>
+                                @if (_tab == BandejaFirma.Pendientes) { <td>@UrgenciaBadge(f)</td> }
+                                @if (_tab == BandejaFirma.Completadas) { <td>@(f.TimestampFirma?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</td> }
+                                @if (_tab == BandejaFirma.Enviadas) { <td>@EstadoChip(f.Estado)</td> }
+                                @if (_tab == BandejaFirma.Rechazadas) { <td><span class="mf-motivo">@(f.ComentarioRechazo ?? "—")</span></td> }
+                                <td class="right" style="white-space:nowrap">
+                                    @if (_tab == BandejaFirma.Pendientes)
+                                    {
+                                        <button class="mf-act mf-act-firmar" @onclick="@(() => OpenFirmar(f))"><i class="bi bi-patch-check"></i> Firmar</button>
+                                        <button class="mf-act mf-act-rechazar" @onclick="@(() => OpenRechazar(f))"><i class="bi bi-x-lg"></i> Rechazar</button>
+                                    }
+                                    @if (f.TieneBinario) { <button class="mf-act mf-act-ver" @onclick="@(() => VerDoc(f.DocumentoId))"><i class="bi bi-eye"></i> Ver</button> }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@* Confirmar firma de una solicitud (RF08 sin stepper: consentimiento + sellado) *@
+@if (_showFirmar && _sel is not null)
+{
+    <div class="exp-modal-overlay open">
+        <div class="exp-modal-shell" style="max-width:480px">
+            <div class="exp-modal-header">
+                <h4 class="exp-modal-title"><i class="bi bi-patch-check" style="color:#7C3AED"></i>&nbsp; Firmar documento</h4>
+                <button class="exp-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="exp-modal-body">
+                <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#475569">
+                    <i class="bi bi-file-earmark-pdf" style="color:#94A3B8"></i>&nbsp; <strong>@_sel.DocumentoNombre</strong>
+                    <div style="margin-top:3px;color:#94A3B8">Solicitado por: @(_sel.SolicitanteNombre ?? "—")</div>
+                </div>
+                @if (_modalErr is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_modalErr</div> }
+                <label class="mf-consent-line"><input type="checkbox" @bind="_consent" /> <span>Declaro que firmo electrónicamente este documento y acepto que quede sellado con mi identidad y la fecha y hora de la firma.</span></label>
+            </div>
+            <div class="exp-modal-footer">
+                <button class="exp-btn" @onclick="CloseModal" disabled="@_busy">Cancelar</button>
+                <button class="exp-btn exp-btn-primary" style="background:#7C3AED;border-color:#7C3AED" @onclick="ConfirmarFirmar" disabled="@(_busy || !_consent)"><i class="bi bi-patch-check"></i>&nbsp; @(_busy ? "Firmando…" : "Firmar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Rechazar solicitud (comentario obligatorio) *@
+@if (_showRechazar && _sel is not null)
+{
+    <div class="exp-modal-overlay open">
+        <div class="exp-modal-shell" style="max-width:480px">
+            <div class="exp-modal-header">
+                <h4 class="exp-modal-title"><i class="bi bi-x-octagon" style="color:#DC2626"></i>&nbsp; Rechazar firma</h4>
+                <button class="exp-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="exp-modal-body">
+                <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#475569">
+                    <i class="bi bi-file-earmark-pdf" style="color:#94A3B8"></i>&nbsp; <strong>@_sel.DocumentoNombre</strong>
+                </div>
+                @if (_modalErr is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_modalErr</div> }
+                <label class="det-label">Motivo del rechazo <span class="req">*</span></label>
+                <textarea class="det-input" rows="3" maxlength="2000" placeholder="Explica por qué rechazas la firma" @bind="_comentario"></textarea>
+            </div>
+            <div class="exp-modal-footer">
+                <button class="exp-btn" @onclick="CloseModal" disabled="@_busy">Cancelar</button>
+                <button class="exp-btn" style="background:#DC2626;border-color:#DC2626;color:#fff" @onclick="ConfirmarRechazar" disabled="@(_busy || string.IsNullOrWhiteSpace(_comentario))"><i class="bi bi-x-lg"></i>&nbsp; @(_busy ? "Enviando…" : "Rechazar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+<div id="vzOverlay" class="vz-ov" style="display:none">
+    <iframe id="vzFrame" class="vz-ov-frame" src="about:blank" title="Visor documental"></iframe>
+</div>
+
+<style>
+    .exp-modal-overlay { position:fixed; inset:0; z-index:1000008; background:rgba(15,23,42,.45); display:flex; align-items:flex-start; justify-content:center; padding:90px 20px 30px; }
+    .exp-modal-shell { background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.18); width:100%; max-height:calc(100vh - 120px); overflow-y:auto; }
+    .exp-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #E2E8F0; }
+    .exp-modal-title { font-size:16px; font-weight:800; color:#0F172A; margin:0; }
+    .exp-modal-close { width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; color:#475569; display:inline-flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; }
+    .exp-modal-body { padding:18px 20px; }
+    .exp-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid #E2E8F0; }
+    .det-label { display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:5px; }
+    .det-label .req { color:#DC2626; }
+    .det-input { width:100%; padding:9px 12px; border:1px solid #E2E8F0; border-radius:10px; font-size:13px; color:#0F172A; background:#fff; box-sizing:border-box; }
+    .mf-consent-line { display:flex; gap:9px; align-items:flex-start; font-size:12.5px; color:#334155; line-height:1.45; cursor:pointer; }
+    .mf-consent-line input { margin-top:2px; accent-color:#7C3AED; flex-shrink:0; }
+    .vz-ov { position:fixed; inset:0; z-index:2000; background:rgba(15,23,42,.75); display:flex; }
+    .vz-ov-frame { width:100%; height:100%; border:none; background:#0f172a; }
+</style>
+
+<script>
+    window.vzAbrirVisor = function (url) {
+        const ov = document.getElementById('vzOverlay'); const fr = document.getElementById('vzFrame');
+        if (!ov || !fr) return; fr.src = url; ov.style.display = 'flex'; document.body.style.overflow = 'hidden';
+    };
+    window.vzCerrarVisor = function () {
+        const ov = document.getElementById('vzOverlay'); const fr = document.getElementById('vzFrame');
+        if (!ov) return; ov.style.display = 'none'; if (fr) fr.src = 'about:blank'; document.body.style.overflow = '';
+    };
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && window.vzCerrarVisor) window.vzCerrarVisor(); });
+</script>
+
+@code {
+    private BandejaFirma _tab = BandejaFirma.Pendientes;
+    private string _texto = "";
+    private IReadOnlyList<FirmaBandejaItemDto>? _items;
+    private FirmaResumenDto? _resumen;
+    private string? _ok, _error;
+
+    private bool _showFirmar, _showRechazar, _busy, _consent;
+    private FirmaBandejaItemDto? _sel;
+    private string _comentario = "";
+    private string? _modalErr;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _resumen = await Firmas.ContarResumenAsync(Actor);
+        var t = string.IsNullOrWhiteSpace(_texto) ? null : _texto;
+        _items = await Firmas.ListarBandejaAsync(_tab, Actor, t);
+    }
+
+    private async Task SwitchTab(BandejaFirma t) { _tab = t; _items = null; await Reload(); }
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { await Reload(); } }
+
+    private static string TabLabel(BandejaFirma t) => t switch
+    {
+        BandejaFirma.Pendientes => "Pendientes",
+        BandejaFirma.Enviadas => "Enviadas",
+        BandejaFirma.Completadas => "Completadas",
+        _ => "Rechazadas"
+    };
+
+    private string VacioTexto() => _tab switch
+    {
+        BandejaFirma.Pendientes => "No tienes documentos por firmar.",
+        BandejaFirma.Enviadas => "No has enviado solicitudes de firma.",
+        BandejaFirma.Completadas => "Aún no has firmado documentos.",
+        _ => "No hay firmas rechazadas."
+    };
+
+    private async Task VerDoc(long docId) => await JS.InvokeVoidAsync("vzAbrirVisor", $"/modulo/documento-visor?doc={docId}");
+
+    private void OpenFirmar(FirmaBandejaItemDto f) { _sel = f; _consent = false; _modalErr = null; _showFirmar = true; }
+    private void OpenRechazar(FirmaBandejaItemDto f) { _sel = f; _comentario = ""; _modalErr = null; _showRechazar = true; }
+    private void CloseModal() { _showFirmar = false; _showRechazar = false; _sel = null; }
+
+    private async Task ConfirmarFirmar()
+    {
+        if (_sel is null) { return; }
+        _busy = true; _modalErr = null;
+        try
+        {
+            var res = await Firmas.FirmarSolicitadaAsync(_sel.FirmaId, Actor, null, null);
+            if (res.IsOk) { _showFirmar = false; _sel = null; _ok = "Documento firmado electrónicamente."; _error = null; await Reload(); }
+            else { _modalErr = res.Error ?? "No se pudo firmar."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ConfirmarRechazar()
+    {
+        if (_sel is null) { return; }
+        _busy = true; _modalErr = null;
+        try
+        {
+            var res = await Firmas.RechazarSolicitudAsync(_sel.FirmaId, _comentario, Actor);
+            if (res.IsOk) { _showRechazar = false; _sel = null; _ok = "Solicitud de firma rechazada."; _error = null; await Reload(); }
+            else { _modalErr = res.Error ?? "No se pudo rechazar."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private static RenderFragment TipoChip(TipoFirma t) => __builder =>
+    {
+        if (t == TipoFirma.DigitalCertificada)
+        {
+            <span class="mf-tipo mf-tipo-dc"><span class="mf-tdot"></span> Digital</span>
+        }
+        else
+        {
+            <span class="mf-tipo mf-tipo-el"><span class="mf-tdot"></span> Electrónica</span>
+        }
+    };
+
+    private static RenderFragment EstadoChip(EstadoFirma e) => __builder =>
+    {
+        switch (e)
+        {
+            case EstadoFirma.Firmado:
+                <span class="mf-est mf-est-ok"><span class="d"></span> Firmado</span>
+                break;
+            case EstadoFirma.Rechazado:
+                <span class="mf-est mf-est-rej"><span class="d"></span> Rechazado</span>
+                break;
+            case EstadoFirma.Cancelado:
+                <span class="mf-est mf-est-rej"><span class="d"></span> Cancelado</span>
+                break;
+            default:
+                <span class="mf-est mf-est-wait"><span class="d"></span> Pendiente</span>
+                break;
+        }
+    };
+
+    private static RenderFragment UrgenciaBadge(FirmaBandejaItemDto f) => __builder =>
+    {
+        if (f.DiasRestantes is int d)
+        {
+            if (d < 0) { <span class="mf-u-rojo">Vencida</span> }
+            else if (d == 0) { <span class="mf-u-rojo">Hoy</span> }
+            else if (d <= 2) { <span class="mf-u-naranja">@d d</span> }
+            else { <span class="mf-u-normal">@d d</span> }
+        }
+        else
+        {
+            var (txt, cls) = f.Prioridad switch
+            {
+                PrioridadTarea.Urgente => ("Urgente", "mf-u-rojo"),
+                PrioridadTarea.Alta => ("Alta", "mf-u-naranja"),
+                _ => (f.Prioridad.ToString(), "mf-u-normal")
+            };
+            <span class="@cls">@txt</span>
+        }
+    };
+
+    private static string Iniciales(string nombre)
+    {
+        var parts = nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) { return "?"; }
+        return parts.Length == 1 ? parts[0][..1].ToUpper() : (parts[0][..1] + parts[^1][..1]).ToUpper();
+    }
+}

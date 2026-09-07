@@ -1169,9 +1169,14 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.SesionId).HasMaxLength(100);
             b.Property(x => x.TipoFirma).HasMaxLength(30).HasConversion<string>();
             b.Property(x => x.Estado).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.Prioridad).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.Instrucciones).HasMaxLength(2000);
+            b.Property(x => x.Tag).HasMaxLength(60);
+            b.Property(x => x.ComentarioRechazo).HasMaxLength(2000);
             b.HasOne(x => x.Documento).WithMany()
                 .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.FirmanteUserId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.SolicitadoPor, x.Estado });
             b.HasIndex(x => x.DocumentoId);
         });
 

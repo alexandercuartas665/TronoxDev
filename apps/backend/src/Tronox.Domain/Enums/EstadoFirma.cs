@@ -10,5 +10,7 @@ public enum EstadoFirma
 {
     Pendiente = 0,
     Firmado = 1,
-    Cancelado = 2
+    Cancelado = 2,
+    /// <summary>El firmante rechazo la solicitud (RF10, con comentario obligatorio). Distinto de Cancelado (lo cancela el solicitante).</summary>
+    Rechazado = 3
 }

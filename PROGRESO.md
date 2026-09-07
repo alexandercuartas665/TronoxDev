@@ -921,6 +921,19 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   responder admin2 (Aprobado); contador del tab correcto. "Solicitar Tramite" queda en RQ15 (Radicacion),
   no es validacion; "Solicitar Firma" es RQ08 (placeholder).
 
-Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el modulo RQ05 completo
-(stepper OTP de 5 pasos + bandeja mis_firmas). Detalles menores diferidos (estampa en imagenes,
-full-text en compartidos, marcas de agua en visor).
+- **Bandeja "Mis Firmas" (RQ05 - RF10, slice 2)** [ADR-018]: port de mis_firmas.aspx +
+  FirmaBandejaRepository sobre firmas individuales. Datos: +columnas en `firmas` (Prioridad,
+  FechaLimite, Instrucciones, Tag, ComentarioRechazo; backfill Prioridad='Media') y valor Rechazado
+  en EstadoFirma. Backend (IFirmaService): ListarBandejaAsync (4 vistas fail-closed), ContarResumenAsync
+  (4 KPIs; EnProgreso=0 reservado a circuitos), RechazarSolicitudAsync (comentario obligatorio),
+  FirmarSolicitadaAsync (cumple pendiente propia: sella + Firmado, mismo motor que firma directa),
+  GetFirmantesAsignablesAsync (por PlatformUserId). UI: MisFirmas.razor en /modulo/firmas-mis
+  (nodo de menu ya sembrado), diseno mf-* calcado (KPIs + tabs + grid + Firmar/Rechazar/Ver);
+  SolicitarFirmaModal cableado en "Solicitar Firma" del menu del documento (RF06). Verificado e2e:
+  solicitar admin2->Rita (Enviadas); firmar solicitud (doc 107 sellado, Firmado); rechazar con motivo;
+  KPIs y tabs correctos; blob faltante manejado sin crash. Diferido: stepper OTP (RF08), circuitos
+  (RF07), firma masiva (RF09), pista de auditoria.
+
+Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el resto de RQ05 (stepper OTP
+de 5 pasos, circuitos multi-firmante, firma masiva, pista de auditoria). Detalles menores diferidos
+(estampa en imagenes, full-text en compartidos, marcas de agua en visor).

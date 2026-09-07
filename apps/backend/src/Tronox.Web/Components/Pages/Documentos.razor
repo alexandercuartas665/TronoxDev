@@ -275,7 +275,7 @@
                                                 <button class="dm-item" @onclick="@(() => OpenSolicitar(dd.Id, dd.Nombre, TipoValidacion.Revision))"><i class="bi bi-eye" style="color:#2563EB"></i><span class="dm-tx"><span>Solicitar Revisión</span><span class="dm-s">Asigna a un revisor · no bloquea</span></span></button>
                                                 <button class="dm-item" @onclick="@(() => OpenSolicitar(dd.Id, dd.Nombre, TipoValidacion.Aprobacion))"><i class="bi bi-check-lg" style="color:#16A34A"></i><span class="dm-tx"><span>Solicitar Aprobación</span><span class="dm-s">Asigna a un aprobador · no bloquea</span></span></button>
                                                 <button class="dm-item" @onclick='() => Soon("Solicitar Trámite")'><i class="bi bi-gear" style="color:#D97706"></i><span class="dm-tx"><span>Solicitar Trámite</span><span class="dm-s">Asigna un responsable del trámite</span></span></button>
-                                                <button class="dm-item" @onclick='() => Soon("Solicitar Firma")'><i class="bi bi-pencil-square" style="color:#7C3AED"></i><span class="dm-tx"><span>Solicitar Firma</span><span class="dm-s">Placeholder RQ08</span></span></button>
+                                                @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => OpenSolicitarFirma(dd.Id, dd.Nombre))"><i class="bi bi-pen" style="color:#7C3AED"></i><span class="dm-tx"><span>Solicitar Firma</span><span class="dm-s">Pide la firma a otro usuario (RF06)</span></span></button> }
                                                 <div class="dm-sep"></div>
                                                 <div class="dm-sec">Firma</div>
                                                 @if (dd.Estado == EstadoDocumento.Borrador && dd.TieneBinario)
@@ -519,6 +519,12 @@
     <SolicitarValidacionModal DocId="_solDocId" NombreDoc="@_solNombre" Tipo="_solTipo" OnCerrar="CloseSolicitar" />
 }
 
+@* Solicitar Firma a otro usuario (RQ05 - RF06) *@
+@if (_showSolFirma)
+{
+    <SolicitarFirmaModal DocId="_solFirmaDocId" NombreDoc="@_solFirmaNombre" OnCerrar="CloseSolicitarFirma" />
+}
+
 @* Responder tarea de validacion (RF12) *@
 @if (_showResponder && _respTarea is not null)
 {
@@ -756,6 +762,11 @@
     private TipoValidacion _solTipo;
     private bool _showResponder;
     private TareaItemDto? _respTarea;
+
+    // Solicitar firma (RF06)
+    private bool _showSolFirma;
+    private long _solFirmaDocId;
+    private string _solFirmaNombre = "";
 
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
@@ -1053,6 +1064,21 @@
     {
         _showSolicitar = false;
         if (ok is not null) { _pageOk = ok; await RecargarContadores(); }
+    }
+
+    // ---- Solicitar firma (RF06) ----
+
+    private void OpenSolicitarFirma(long id, string nombre)
+    {
+        CloseMenu();
+        _solFirmaDocId = id; _solFirmaNombre = nombre;
+        _showSolFirma = true;
+    }
+
+    private void CloseSolicitarFirma(string? ok)
+    {
+        _showSolFirma = false;
+        if (ok is not null) { _pageOk = ok; }
     }
 
     // ---- Responder tarea (RF12) ----
