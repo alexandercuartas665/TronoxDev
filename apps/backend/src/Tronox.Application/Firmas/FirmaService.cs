@@ -20,12 +20,14 @@ public sealed class FirmaService : IFirmaService
     private readonly IAuditWriter _audit;
     private readonly IPdfSignatureStamper _stamper;
     private readonly IEmailSender _email;
+    private readonly Notifications.INotificationService _notif;
 
     private const int OtpVigenciaMinutos = 5;
 
     public FirmaService(
         IApplicationDbContext db, ITenantContext tenant, IObjectStorage storage,
-        IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email)
+        IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email,
+        Notifications.INotificationService notif)
     {
         _db = db;
         _tenant = tenant;
@@ -33,6 +35,37 @@ public sealed class FirmaService : IFirmaService
         _audit = audit;
         _stamper = stamper;
         _email = email;
+        _notif = notif;
+    }
+
+    /// <summary>
+    /// Notifica un evento de firma a un usuario (RF11): campana in-app (INotificationService) + correo
+    /// (IEmailSender). Ambos best-effort: un fallo no frena el flujo de firma. Calca FirmaNotificador.
+    /// </summary>
+    private async Task NotificarFirmaAsync(
+        long destinoPlatformUserId, Domain.Enums.NotificationKind kind, string titulo, string cuerpo,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tuId = await _notif.ResolveTenantUserIdAsync(destinoPlatformUserId, cancellationToken);
+            if (tuId is long tid)
+            {
+                await _notif.CreateAsync(tid, kind, titulo, cuerpo, linkRoute: "modulo/firmas-mis", cancellationToken: cancellationToken);
+            }
+        }
+        catch { /* best-effort: la campana no frena la firma */ }
+
+        try
+        {
+            var correo = await _db.PlatformUsers.AsNoTracking()
+                .Where(p => p.Id == destinoPlatformUserId).Select(p => p.Email).FirstOrDefaultAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(correo))
+            {
+                await _email.SendAsync(correo, $"{titulo} - TRONOX", $"<p><strong>{titulo}</strong></p><p>{cuerpo}</p>", cancellationToken);
+            }
+        }
+        catch { /* best-effort */ }
     }
 
     // ---- Contrato estable RQ05 ----
@@ -80,6 +113,12 @@ public sealed class FirmaService : IFirmaService
             previousValue: null, newValue: new { firma.FirmanteUserId, firma.TipoFirma, firma.OtpRequerido },
             tenantId: _tenant.TenantId!.Value);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // RF11: avisa al firmante que tiene una solicitud pendiente.
+        var solicitante = await ResolverSnapshotAsync(actorUserId, cancellationToken);
+        await NotificarFirmaAsync(r.FirmanteUserId, Domain.Enums.NotificationKind.TaskAssigned,
+            "Solicitud de firma",
+            $"{solicitante?.Nombre ?? "Un usuario"} te solicito firmar el documento \"{doc.Nombre}\".", cancellationToken);
         return DocumentoResult<long>.Ok(firma.Id);
     }
 
@@ -275,6 +314,7 @@ public sealed class FirmaService : IFirmaService
         await _db.SaveChangesAsync(cancellationToken);
 
         var orden = 0;
+        var activados = new List<long>();
         foreach (var fin in r.Firmantes)
         {
             orden++;
@@ -312,6 +352,7 @@ public sealed class FirmaService : IFirmaService
                 _db.Firmas.Add(firma);
                 await _db.SaveChangesAsync(cancellationToken);
                 cff.FirmaId = firma.Id;
+                activados.Add(fin.PlatformUserId);
             }
         }
 
@@ -319,6 +360,14 @@ public sealed class FirmaService : IFirmaService
         _audit.Write(actorUserId, "documento.circuito_crear", nameof(FirmaCircuito), circ,
             previousValue: null, newValue: new { circ.Modo, circ.TotalFirmantes }, tenantId: tenantId);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // RF11: avisa a los firmantes que quedaron activos (secuencial: el 1o; paralelo: todos).
+        foreach (var puid in activados)
+        {
+            await NotificarFirmaAsync(puid, Domain.Enums.NotificationKind.TaskAssigned,
+                "Solicitud de firma (circuito)",
+                $"{solicitanteNombre ?? "Un usuario"} inicio un circuito de firma sobre \"{doc.Nombre}\". Es tu turno de firmar.", cancellationToken);
+        }
         return DocumentoResult<long>.Ok(circ.Id);
     }
 
@@ -442,6 +491,12 @@ public sealed class FirmaService : IFirmaService
             previousValue: new { Estado = EstadoFirma.Pendiente }, newValue: new { f.Estado, f.ComentarioRechazo },
             tenantId: _tenant.TenantId!.Value);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // RF11: avisa al solicitante del rechazo (con el motivo).
+        var docNom = doc?.Nombre ?? "documento";
+        await NotificarFirmaAsync(f.SolicitadoPor, Domain.Enums.NotificationKind.General,
+            "Firma rechazada",
+            $"{f.NombreFirmante} rechazo la firma de \"{docNom}\". Motivo: {comentario.Trim()}", cancellationToken);
         return DocumentoResult<bool>.Ok(true);
     }
 
@@ -616,6 +671,7 @@ public sealed class FirmaService : IFirmaService
 
             // Avance del circuito. El documento solo queda Firmado cuando el circuito se completa.
             var completo = true;
+            long? notifTurnoSiguiente = null; // firmante activado (secuencial)
             if (circ is not null)
             {
                 if (cf is not null) { cf.Estado = EstadoCircuitoFirmante.Firmado; cf.TimestampFirma = sello.Value.Ts; }
@@ -639,6 +695,7 @@ public sealed class FirmaService : IFirmaService
                             await _db.SaveChangesAsync(cancellationToken); // obtener Id
                             siguiente.Estado = EstadoCircuitoFirmante.Pendiente;
                             siguiente.FirmaId = nueva.Id;
+                            notifTurnoSiguiente = siguiente.FirmantePlatformUserId;
                         }
                     }
                 }
@@ -651,6 +708,24 @@ public sealed class FirmaService : IFirmaService
             await _db.SaveChangesAsync(cancellationToken);
 
             await BorrarKeyAnteriorAsync(keyAnterior, sello.Value.NuevaKey, cancellationToken);
+
+            // RF11: notificaciones post-firma (best-effort).
+            var docNom = doc.Nombre;
+            if (notifTurnoSiguiente is long sigUid)
+            {
+                await NotificarFirmaAsync(sigUid, Domain.Enums.NotificationKind.TaskAssigned,
+                    "Es tu turno de firmar", $"{snap.Nombre} firmo \"{docNom}\". Ahora es tu turno en el circuito.", cancellationToken);
+            }
+            if (circ is not null && completo)
+            {
+                await NotificarFirmaAsync(circ.SolicitantePlatformUserId, Domain.Enums.NotificationKind.General,
+                    "Circuito de firma completado", $"Todos los firmantes completaron \"{docNom}\". El documento quedo Firmado.", cancellationToken);
+            }
+            else if (circ is null && f.SolicitadoPor != actorUserId)
+            {
+                await NotificarFirmaAsync(f.SolicitadoPor, Domain.Enums.NotificationKind.General,
+                    "Documento firmado", $"{snap.Nombre} firmo \"{docNom}\" que le solicitaste.", cancellationToken);
+            }
             return DocumentoResult<FirmaEjecutadaDto>.Ok(new FirmaEjecutadaDto(f.Id, sello.Value.Hash, sello.Value.Ts));
         }
         catch

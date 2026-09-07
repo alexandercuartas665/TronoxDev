@@ -1012,7 +1012,15 @@ OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de audit
   cajita por `firma_texto_default`/`firma_mostrar_nombre`. Defaults cambiados a ACTIVO (modulo+masiva) con
   migracion de normalizacion `FirmaConfigActivoPorDefecto` (pone en true las filas existentes, no
   intencionales). Verificado e2e: modo=siempre -> firma nace otp_requerido=true; masiva=off -> sin barra.
-  PROD requiere la migracion en el proximo deploy. Pendiente Fase A.2: notificaciones de firma (RF11).
+  PROD requiere la migracion en el proximo deploy.
+- **Fase A.2 - Notificaciones de firma (RF11)**: helper NotificarFirmaAsync (campana in-app via
+  INotificationService.CreateAsync sobre TenantUserId resuelto + correo via IEmailSender, ambos
+  best-effort), calcado de FirmaNotificador. Emision: SolicitarFirma -> al firmante; CrearCircuito -> a
+  los firmantes activados (secuencial el 1o, paralelo todos); CumplirFirma -> turno siguiente
+  (secuencial) + circuito completado (al solicitante) + firmado individual (al solicitante);
+  RechazarSolicitud -> al solicitante con el motivo. Sin migracion (usa la infra Notification existente).
+  Verificado e2e: solicitar admin2->Rita crea notif TaskAssigned para Rita; rechazo de Rita crea notif
+  General "Firma rechazada" para admin2. **Fase A COMPLETA** (config + notificaciones).
 
 Pendiente: deploy a prod del slice 6 (image swap, sin migracion). Detalles menores diferidos (estampa
 en imagenes, full-text en compartidos, marcas de agua en visor), OCR/Reprocesar.
