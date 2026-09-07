@@ -62,6 +62,11 @@ public interface IFirmaService
     /// <summary>RF09: firma el lote secuencialmente (valida el OTP del lote si aplica). Los que fallan quedan Pendientes.</summary>
     Task<DocumentoResult<FirmaLoteResumenDto>> FirmarLoteAsync(IReadOnlyList<long> firmaIds, string? loteId, string? codigo, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default);
 
+    // ---- Pista de auditoria de firma (RF12) ----
+
+    /// <summary>RF12: eventos recientes de firma del tenant, del ledger append-only (mas recientes primero).</summary>
+    Task<IReadOnlyList<PistaAuditoriaDto>> ListarPistaAuditoriaAsync(long actorUserId, int tope = 100, CancellationToken cancellationToken = default);
+
     // ---- Firma directa (slice 1, calca FirmaDirectaHelper: sin stepper, sin OTP) ----
 
     /// <summary>Identidad del firmante (snapshot) para la pantalla de confirmacion de la firma directa.</summary>

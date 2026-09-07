@@ -87,14 +87,28 @@
     .lote-res-ok { color: #16A34A; } .lote-res-err { color: #DC2626; }
     .lote-res-line { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #334155; padding: 5px 0; border-bottom: 1px solid #EEF2F7; }
     .lote-res-msg { color: #94A3B8; font-size: 11.5px; margin-left: auto; }
+    /* Pista de auditoria (RF12) */
+    .mf-header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .mf-pista-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #E2E8F0; border-radius: 10px; background: #fff; color: #334155; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .mf-pista-btn:hover { border-color: #CBD5E1; background: #F8FAFC; }
+    .mf-ev { display: flex; gap: 16px; padding: 11px 13px; border: 1px solid #EEF2F7; border-radius: 12px; margin-bottom: 9px; }
+    .mf-ev-ts { font-family: monospace; font-size: 11.5px; color: #94A3B8; white-space: nowrap; padding-top: 2px; flex: 0 0 auto; }
+    .mf-ev-main { font-size: 13px; color: #334155; }
+    .mf-ev-badge { display: inline-block; padding: 1px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; background: rgba(37,99,235,.10); color: #2563EB; }
+    .mf-ev-actor { font-weight: 800; color: #2563EB; }
+    .mf-ev-det { font-family: monospace; font-size: 11px; color: #94A3B8; margin-top: 4px; word-break: break-all; }
+    .mf-ev-ip { font-family: monospace; font-size: 11px; color: #94A3B8; margin-top: 2px; }
     .mf-motivo { font-size: 12px; color: #64748B; }
     .mf-instr { font-size: 11.5px; color: #94A3B8; margin-top: 2px; }
 </style>
 
 <div class="mf-wrap tx-mod">
-    <div class="mf-header">
-        <h2 class="mf-title"><i class="bi bi-pen" style="color:#7C3AED"></i> Mis Firmas</h2>
-        <div class="mf-subtitle">Gestión unificada de su actividad de firma: documentos por firmar, solicitudes enviadas e historial.</div>
+    <div class="mf-header mf-header-row">
+        <div>
+            <h2 class="mf-title"><i class="bi bi-pen" style="color:#7C3AED"></i> Mis Firmas</h2>
+            <div class="mf-subtitle">Gestión unificada de su actividad de firma: documentos por firmar, solicitudes enviadas e historial.</div>
+        </div>
+        <button class="mf-pista-btn" @onclick="OpenPista"><i class="bi bi-clock-history"></i> Pista de auditoría</button>
     </div>
 
     @if (_ok is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_ok</span></div> }
@@ -312,6 +326,41 @@
     </div>
 }
 
+@* Pista de auditoria de firma (RF12): ledger append-only, solo lectura *@
+@if (_showPista)
+{
+    <div class="exp-modal-overlay open">
+        <div class="exp-modal-shell" style="max-width:720px">
+            <div class="exp-modal-header">
+                <h4 class="exp-modal-title"><i class="bi bi-clock-history" style="color:#2563EB"></i>&nbsp; Pista de auditoría</h4>
+                <button class="exp-modal-close" @onclick="@(() => _showPista = false)"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="exp-modal-body">
+                <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">Registro inmutable (append-only) de la actividad de firma. Últimos @( _pista?.Count ?? 0) eventos.</div>
+                @if (_pista is null) { <div class="tx-ent-hint">Cargando…</div> }
+                else if (_pista.Count == 0) { <div class="mf-empty">Aún no hay eventos de firma registrados.</div> }
+                else
+                {
+                    @foreach (var ev in _pista)
+                    {
+                        <div class="mf-ev">
+                            <div class="mf-ev-ts">@ev.Fecha.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
+                            <div class="mf-ev-main">
+                                <span class="mf-ev-badge">@ev.Evento</span> por <span class="mf-ev-actor">@ev.Actor</span>
+                                @if (!string.IsNullOrWhiteSpace(ev.Detalle)) { <div class="mf-ev-det">@ev.Detalle</div> }
+                                @if (!string.IsNullOrWhiteSpace(ev.Ip)) { <div class="mf-ev-ip">IP @ev.Ip</div> }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="exp-modal-footer">
+                <button class="exp-btn" @onclick="@(() => _showPista = false)">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 <div id="vzOverlay" class="vz-ov" style="display:none">
     <iframe id="vzFrame" class="vz-ov-frame" src="about:blank" title="Visor documental"></iframe>
 </div>
@@ -366,6 +415,10 @@
     private string _loteCodigo = "", _loteEmail = "";
     private string? _loteId, _loteDemo, _loteErr;
     private FirmaLoteResumenDto? _loteResumen;
+
+    // Pista de auditoria (RF12)
+    private bool _showPista;
+    private IReadOnlyList<PistaAuditoriaDto>? _pista;
 
     private long Actor => Tenant.UserId ?? 0;
 
@@ -445,6 +498,13 @@
     }
 
     private void CloseLote() { _showLote = false; _loteResumen = null; }
+
+    // ---- Pista de auditoria (RF12) ----
+    private async Task OpenPista()
+    {
+        _showPista = true; _pista = null;
+        _pista = await Firmas.ListarPistaAuditoriaAsync(Actor);
+    }
 
     private async Task ConfirmarRechazar()
     {

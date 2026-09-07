@@ -139,3 +139,14 @@ public sealed record FirmaLoteItemDto(long FirmaId, string DocumentoNombre, bool
 
 /// <summary>Resumen de un lote de firma masiva (N firmados / N con error).</summary>
 public sealed record FirmaLoteResumenDto(int Total, int Exitosos, int Fallidos, IReadOnlyList<FirmaLoteItemDto> Items);
+
+// ---- Pista de auditoria de firma (RF12) ----
+
+/// <summary>Un evento de la pista de auditoria de firma (RF12), leido del ledger append-only.</summary>
+public sealed record PistaAuditoriaDto(
+    long Id,
+    DateTimeOffset Fecha,
+    string Actor,
+    string Evento,
+    string? Detalle,
+    string? Ip);

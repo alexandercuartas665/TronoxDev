@@ -992,8 +992,20 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   previo `tronox_prod_20260907_164233_pre_rf09.sql.gz`; verificado /login 200, /dev/login 404, 42
   migraciones, columna lote_id, postgres-prod no recreado, 29 contenedores.
 
-Pendiente del modulo: el resto de RQ05 (pista de auditoria de firma). Detalles menores diferidos
-(estampa en imagenes, full-text en compartidos, marcas de agua).
+- **Pista de auditoria de firma (RQ05 - RF12, slice 6, CIERRE RQ05)** [ADR-022]: port de
+  FirmaAuditoriaRepository. NO duplica ledger: sirve la pista desde super_admin_audit_logs (ledger
+  append-only de plataforma, RNF-04) filtrando las acciones de firma. Se agrego la auditoria unica del
+  lote (documento.firmar_lote). Backend: ListarPistaAuditoriaAsync (resuelve actor + etiqueta amigable
+  por evento, mas recientes primero). UI: boton "Pista de auditoria" en el header de Mis Firmas + modal
+  timeline (fecha/evento/actor/detalle/IP). Verificado e2e: 12 eventos (firma directa/ejecutada,
+  rechazada, circuito creado, lote) correctos. Sin migracion (solo lectura). Diferido: eventos de grano
+  fino (Documento_Abierto/Scroll/OTP_*), filtros de la pista, nombre de documento por asiento, hora NTP.
+
+**RQ05 (Firma) CERRADO**: firma directa (RF05), bandeja Mis Firmas (RF10) + solicitar (RF06), stepper
+OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de auditoria (RF12).
+
+Pendiente: deploy a prod del slice 6 (image swap, sin migracion). Detalles menores diferidos (estampa
+en imagenes, full-text en compartidos, marcas de agua en visor), OCR/Reprocesar.
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
