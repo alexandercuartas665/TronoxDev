@@ -19,16 +19,20 @@ public sealed class FirmaService : IFirmaService
     private readonly IObjectStorage _storage;
     private readonly IAuditWriter _audit;
     private readonly IPdfSignatureStamper _stamper;
+    private readonly IEmailSender _email;
+
+    private const int OtpVigenciaMinutos = 5;
 
     public FirmaService(
         IApplicationDbContext db, ITenantContext tenant, IObjectStorage storage,
-        IAuditWriter audit, IPdfSignatureStamper stamper)
+        IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email)
     {
         _db = db;
         _tenant = tenant;
         _storage = storage;
         _audit = audit;
         _stamper = stamper;
+        _email = email;
     }
 
     // ---- Contrato estable RQ05 ----
@@ -257,7 +261,7 @@ public sealed class FirmaService : IFirmaService
 
         return rows.Select(f => new FirmaBandejaItemDto(
             f.Id, f.DocumentoId, f.Documento?.Nombre ?? "", f.Documento?.Expediente?.Codigo,
-            f.Documento?.TieneBinario ?? false, f.TipoFirma, f.Estado, f.NombreFirmante,
+            f.Documento?.TieneBinario ?? false, f.TipoFirma, f.Estado, f.OtpRequerido, f.NombreFirmante,
             nm.TryGetValue(f.SolicitadoPor, out var sn) ? sn : null,
             f.Prioridad, f.FechaLimite,
             f.FechaLimite is DateOnly fl ? fl.DayNumber - hoy.DayNumber : (int?)null,
@@ -307,6 +311,73 @@ public sealed class FirmaService : IFirmaService
         if (f.FirmanteUserId != actorUserId) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("Esta solicitud no te esta asignada."); }
         if (f.Estado != EstadoFirma.Pendiente) { return DocumentoResult<FirmaEjecutadaDto>.Conflict("La solicitud ya fue resuelta."); }
 
+        return await CumplirFirmaAsync(f, actorUserId, ip, sesionId, cancellationToken);
+    }
+
+    public async Task<DocumentoResult<OtpEnvioDto>> GenerarOtpAsync(
+        long firmaId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var f = await _db.Firmas.AsNoTracking().FirstOrDefaultAsync(x => x.Id == firmaId, cancellationToken);
+        if (f is null) { return DocumentoResult<OtpEnvioDto>.NotFound("La solicitud de firma no existe."); }
+        if (f.FirmanteUserId != actorUserId) { return DocumentoResult<OtpEnvioDto>.Invalid("Esta solicitud no te esta asignada."); }
+        if (f.Estado != EstadoFirma.Pendiente) { return DocumentoResult<OtpEnvioDto>.Conflict("La solicitud ya fue resuelta."); }
+
+        var correo = await _db.PlatformUsers.AsNoTracking()
+            .Where(p => p.Id == actorUserId).Select(p => p.Email).FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(correo)) { return DocumentoResult<OtpEnvioDto>.Invalid("El firmante no tiene correo para el OTP."); }
+
+        // Invalida los OTP vigentes previos de esta firma (solo el ultimo cuenta).
+        var previos = await _db.FirmaOtps
+            .Where(o => o.FirmaId == firmaId && o.VerificadoAt == null && o.ExpiraAt > DateTimeOffset.UtcNow)
+            .ToListAsync(cancellationToken);
+        foreach (var p in previos) { p.ExpiraAt = DateTimeOffset.UtcNow; }
+
+        var codigo = GenerarCodigo6();
+        var otp = new FirmaOtp
+        {
+            TenantId = _tenant.TenantId!.Value,
+            FirmaId = firmaId,
+            Usuario = actorUserId,
+            CodigoHash = Sha256Hex(codigo),
+            Canal = "correo",
+            ExpiraAt = DateTimeOffset.UtcNow.AddMinutes(OtpVigenciaMinutos),
+            Intentos = 0
+        };
+        _db.FirmaOtps.Add(otp);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        // Envio best-effort. Si no hay SMTP configurado, se revela el codigo en pantalla (modo demo).
+        string? demo = null;
+        try
+        {
+            await _email.SendAsync(correo, "Codigo de verificacion de firma - TRONOX",
+                $"<p>Su codigo de firma es <strong>{codigo}</strong>. Vigencia: {OtpVigenciaMinutos} minutos.</p>", cancellationToken);
+        }
+        catch { demo = codigo; }
+
+        return DocumentoResult<OtpEnvioDto>.Ok(new OtpEnvioDto(Enmascarar(correo), OtpVigenciaMinutos, demo));
+    }
+
+    public async Task<DocumentoResult<FirmaEjecutadaDto>> FirmarConOtpAsync(
+        long firmaId, string codigo, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default)
+    {
+        var f = await _db.Firmas.FirstOrDefaultAsync(x => x.Id == firmaId, cancellationToken);
+        if (f is null) { return DocumentoResult<FirmaEjecutadaDto>.NotFound("La solicitud de firma no existe."); }
+        if (f.FirmanteUserId != actorUserId) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("Esta solicitud no te esta asignada."); }
+        if (f.Estado != EstadoFirma.Pendiente) { return DocumentoResult<FirmaEjecutadaDto>.Conflict("La solicitud ya fue resuelta."); }
+
+        var okOtp = await ValidarOtpAsync(firmaId, codigo, cancellationToken);
+        if (!okOtp) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("Codigo invalido o expirado."); }
+
+        return await CumplirFirmaAsync(f, actorUserId, ip, sesionId, cancellationToken);
+    }
+
+    // ---- Helpers ----
+
+    /// <summary>Sella el PDF y pasa la firma pendiente (ya validada) a Firmado. Compartido por firmar con/sin OTP.</summary>
+    private async Task<DocumentoResult<FirmaEjecutadaDto>> CumplirFirmaAsync(
+        Firma f, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken)
+    {
         var doc = await _db.Documentos.FirstOrDefaultAsync(d => d.Id == f.DocumentoId && !d.EsVersionHistorica, cancellationToken);
         if (doc is null) { return DocumentoResult<FirmaEjecutadaDto>.NotFound("El documento no existe."); }
         var errPdf = ValidarFirmablePdf(doc);
@@ -350,7 +421,49 @@ public sealed class FirmaService : IFirmaService
         }
     }
 
-    // ---- Helpers ----
+    /// <summary>Valida el codigo contra el OTP vigente de la firma (incrementa intentos; marca verificado si OK).</summary>
+    private async Task<bool> ValidarOtpAsync(long firmaId, string codigo, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(codigo)) { return false; }
+        var otp = await _db.FirmaOtps
+            .Where(o => o.FirmaId == firmaId && o.VerificadoAt == null)
+            .OrderByDescending(o => o.Id).FirstOrDefaultAsync(cancellationToken);
+        if (otp is null) { return false; }
+
+        otp.Intentos += 1;
+        if (DateTimeOffset.UtcNow > otp.ExpiraAt) { await _db.SaveChangesAsync(cancellationToken); return false; }
+        if (!string.Equals(otp.CodigoHash, Sha256Hex(codigo.Trim()), StringComparison.OrdinalIgnoreCase))
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return false;
+        }
+        otp.VerificadoAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>Codigo de 6 digitos con RNG criptografico (000000-999999).</summary>
+    private static string GenerarCodigo6()
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        var val = (int)(BitConverter.ToUInt32(bytes) & 0x7FFFFFFF);
+        return (val % 1000000).ToString("D6");
+    }
+
+    private static string Sha256Hex(string texto)
+    {
+        var data = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(texto));
+        return Convert.ToHexString(data).ToLowerInvariant();
+    }
+
+    /// <summary>Enmascara un correo para mostrarlo (ej. j***@dominio.com).</summary>
+    private static string Enmascarar(string correo)
+    {
+        var at = correo.IndexOf('@');
+        if (at <= 1) { return correo; }
+        return correo[0] + new string('*', Math.Min(3, at - 1)) + correo[at..];
+    }
 
     /// <summary>Valida que el documento sea firmable: con binario PDF y no firmado aun.</summary>
     private static string? ValidarFirmablePdf(Documento doc)

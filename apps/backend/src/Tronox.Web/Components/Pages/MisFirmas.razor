@@ -150,29 +150,10 @@
     </div>
 </div>
 
-@* Confirmar firma de una solicitud (RF08 sin stepper: consentimiento + sellado) *@
-@if (_showFirmar && _sel is not null)
+@* Experiencia del firmante: stepper de 5 pasos (RF08) *@
+@if (_showStepper && _sel is not null)
 {
-    <div class="exp-modal-overlay open">
-        <div class="exp-modal-shell" style="max-width:480px">
-            <div class="exp-modal-header">
-                <h4 class="exp-modal-title"><i class="bi bi-patch-check" style="color:#7C3AED"></i>&nbsp; Firmar documento</h4>
-                <button class="exp-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="exp-modal-body">
-                <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#475569">
-                    <i class="bi bi-file-earmark-pdf" style="color:#94A3B8"></i>&nbsp; <strong>@_sel.DocumentoNombre</strong>
-                    <div style="margin-top:3px;color:#94A3B8">Solicitado por: @(_sel.SolicitanteNombre ?? "—")</div>
-                </div>
-                @if (_modalErr is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_modalErr</div> }
-                <label class="mf-consent-line"><input type="checkbox" @bind="_consent" /> <span>Declaro que firmo electrónicamente este documento y acepto que quede sellado con mi identidad y la fecha y hora de la firma.</span></label>
-            </div>
-            <div class="exp-modal-footer">
-                <button class="exp-btn" @onclick="CloseModal" disabled="@_busy">Cancelar</button>
-                <button class="exp-btn exp-btn-primary" style="background:#7C3AED;border-color:#7C3AED" @onclick="ConfirmarFirmar" disabled="@(_busy || !_consent)"><i class="bi bi-patch-check"></i>&nbsp; @(_busy ? "Firmando…" : "Firmar")</button>
-            </div>
-        </div>
-    </div>
+    <FirmaStepperModal Item="_sel" OnCerrar="CloseStepper" />
 }
 
 @* Rechazar solicitud (comentario obligatorio) *@
@@ -231,6 +212,8 @@
         if (!ov) return; ov.style.display = 'none'; if (fr) fr.src = 'about:blank'; document.body.style.overflow = '';
     };
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && window.vzCerrarVisor) window.vzCerrarVisor(); });
+    // Lee el valor exacto del campo OTP al enviar (evita depender del round-trip del binding oninput).
+    window.fstReadOtp = function () { var el = document.querySelector('.fst-otp-single'); return el ? (el.value || '') : ''; };
 </script>
 
 @code {
@@ -240,7 +223,7 @@
     private FirmaResumenDto? _resumen;
     private string? _ok, _error;
 
-    private bool _showFirmar, _showRechazar, _busy, _consent;
+    private bool _showStepper, _showRechazar, _busy;
     private FirmaBandejaItemDto? _sel;
     private string _comentario = "";
     private string? _modalErr;
@@ -277,21 +260,14 @@
 
     private async Task VerDoc(long docId) => await JS.InvokeVoidAsync("vzAbrirVisor", $"/modulo/documento-visor?doc={docId}");
 
-    private void OpenFirmar(FirmaBandejaItemDto f) { _sel = f; _consent = false; _modalErr = null; _showFirmar = true; }
+    private void OpenFirmar(FirmaBandejaItemDto f) { _sel = f; _showStepper = true; }
     private void OpenRechazar(FirmaBandejaItemDto f) { _sel = f; _comentario = ""; _modalErr = null; _showRechazar = true; }
-    private void CloseModal() { _showFirmar = false; _showRechazar = false; _sel = null; }
+    private void CloseModal() { _showRechazar = false; _sel = null; }
 
-    private async Task ConfirmarFirmar()
+    private async Task CloseStepper(string? ok)
     {
-        if (_sel is null) { return; }
-        _busy = true; _modalErr = null;
-        try
-        {
-            var res = await Firmas.FirmarSolicitadaAsync(_sel.FirmaId, Actor, null, null);
-            if (res.IsOk) { _showFirmar = false; _sel = null; _ok = "Documento firmado electrónicamente."; _error = null; await Reload(); }
-            else { _modalErr = res.Error ?? "No se pudo firmar."; }
-        }
-        finally { _busy = false; }
+        _showStepper = false; _sel = null;
+        if (ok is not null) { _ok = ok; _error = null; await Reload(); }
     }
 
     private async Task ConfirmarRechazar()

@@ -36,8 +36,14 @@ public interface IFirmaService
     /// <summary>RF10: el firmante rechaza una solicitud pendiente (comentario obligatorio) -> Rechazado.</summary>
     Task<DocumentoResult<bool>> RechazarSolicitudAsync(long firmaId, string comentario, long actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>RF08 (sin stepper por ahora): cumple una solicitud pendiente propia. Sella el PDF y marca Firmado.</summary>
+    /// <summary>RF08 (stepper): cumple una solicitud pendiente propia SIN OTP. Sella el PDF y marca Firmado.</summary>
     Task<DocumentoResult<FirmaEjecutadaDto>> FirmarSolicitadaAsync(long firmaId, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default);
+
+    /// <summary>RF08 (stepper, paso OTP): genera y envia un codigo de 6 digitos al firmante. Devuelve el correo enmascarado y la vigencia.</summary>
+    Task<DocumentoResult<OtpEnvioDto>> GenerarOtpAsync(long firmaId, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>RF08 (stepper, firmar con OTP): valida el codigo y, si es correcto, sella el PDF y marca Firmado.</summary>
+    Task<DocumentoResult<FirmaEjecutadaDto>> FirmarConOtpAsync(long firmaId, string codigo, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default);
 
     // ---- Firma directa (slice 1, calca FirmaDirectaHelper: sin stepper, sin OTP) ----
 

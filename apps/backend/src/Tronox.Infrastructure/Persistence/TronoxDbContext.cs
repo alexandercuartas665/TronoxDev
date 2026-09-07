@@ -101,6 +101,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<DocumentoCompartido> DocumentosCompartidos => Set<DocumentoCompartido>();
     public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
     public DbSet<Firma> Firmas => Set<Firma>();
+    public DbSet<FirmaOtp> FirmaOtps => Set<FirmaOtp>();
     public DbSet<Plantilla> Plantillas => Set<Plantilla>();
     public DbSet<PlantillaTipo> PlantillaTipos => Set<PlantillaTipo>();
     public DbSet<FormDefinition> FormDefinitions => Set<FormDefinition>();
@@ -1178,6 +1179,16 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasIndex(x => new { x.TenantId, x.FirmanteUserId, x.Estado });
             b.HasIndex(x => new { x.TenantId, x.SolicitadoPor, x.Estado });
             b.HasIndex(x => x.DocumentoId);
+        });
+
+        // OTP de firma (RQ05 - RF08). Cuelga de la firma (Cascade). Solo se guarda el hash del codigo.
+        modelBuilder.Entity<FirmaOtp>(b =>
+        {
+            b.Property(x => x.CodigoHash).HasMaxLength(64).IsRequired();
+            b.Property(x => x.Canal).HasMaxLength(20);
+            b.HasOne(x => x.Firma).WithMany()
+                .HasForeignKey(x => x.FirmaId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.FirmaId, x.VerificadoAt });
         });
 
         // Plantillas documentales (RQ04 - RF09). La tipologia representante es RESTRICT (no se borra por

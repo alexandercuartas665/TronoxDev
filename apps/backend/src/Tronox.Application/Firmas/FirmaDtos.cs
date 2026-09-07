@@ -35,6 +35,7 @@ public sealed record FirmaBandejaItemDto(
     bool TieneBinario,
     TipoFirma TipoFirma,
     EstadoFirma Estado,
+    bool OtpRequerido,
     string FirmanteNombre,
     string? SolicitanteNombre,
     PrioridadTarea Prioridad,
@@ -82,3 +83,10 @@ public sealed record FirmanteSnapshotDto(
 
 /// <summary>Opcion del selector de firmante (RF06). Id = PlatformUserId (espacio que usa Firma).</summary>
 public sealed record FirmanteOpcionDto(long PlatformUserId, string Nombre);
+
+/// <summary>
+/// Resultado de generar un OTP (RF08). El codigo viaja por correo; <see cref="CodigoDemo"/> solo se
+/// rellena cuando el envio no fue posible (SMTP no configurado), para poder completar la firma en
+/// entornos sin correo. En produccion con correo configurado llega null (no se revela el codigo).
+/// </summary>
+public sealed record OtpEnvioDto(string EmailEnmascarado, int MinutosVigencia, string? CodigoDemo);

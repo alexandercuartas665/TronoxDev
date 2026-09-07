@@ -934,6 +934,18 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   KPIs y tabs correctos; blob faltante manejado sin crash. Diferido: stepper OTP (RF08), circuitos
   (RF07), firma masiva (RF09), pista de auditoria.
 
-Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el resto de RQ05 (stepper OTP
-de 5 pasos, circuitos multi-firmante, firma masiva, pista de auditoria). Detalles menores diferidos
-(estampa en imagenes, full-text en compartidos, marcas de agua en visor).
+- **Stepper de firma con OTP (RQ05 - RF08, slice 3)** [ADR-019]: port de ctrlFirmaStepper +
+  FirmaOtpHelper. Entidad FirmaOtp (tabla firma_otps; solo hash SHA-256 del codigo, vigencia 5 min,
+  invalida previos, cuenta intentos, un solo uso). Backend: GenerarOtpAsync (RNG cripto, envio correo
+  best-effort, revela codigo solo si no hay SMTP), FirmarConOtpAsync (valida OTP -> sella -> Firmado,
+  mismo motor que la firma directa), FirmarSolicitadaAsync sin OTP se conserva. UI: FirmaStepperModal
+  de 5 pasos (Lectura con visor / Identidad / Consentimiento Decreto 2364 / OTP / Resultado con
+  certificado) + sub-paso Rechazo, diseno fst-* calcado; reemplaza el consentimiento simple del slice 2
+  en la accion Firmar de la bandeja. El codigo se lee del campo por JS al enviar (robusto). Verificado
+  e2e con codigo real (revelado en modo sin-correo): OTP correcto -> Firmado + certificado (doc 109
+  sellado); OTP incorrecto -> rechazado (intentos++), sigue Pendiente. Diferido: gating por paginas,
+  autofirma/ubicacion, grafo, QR, certificado PDF, circuitos (RF07), masiva (RF09), pista auditoria.
+
+Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el resto de RQ05 (circuitos
+multi-firmante RF07, firma masiva RF09, pista de auditoria). Detalles menores diferidos (estampa en
+imagenes, full-text en compartidos, marcas de agua en visor).
