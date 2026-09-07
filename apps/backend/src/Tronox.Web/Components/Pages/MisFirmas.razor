@@ -7,6 +7,7 @@
 @using Tronox.Application.Firmas
 @using Tronox.Domain.Enums
 @inject IFirmaService Firmas
+@inject Tronox.Application.Archivistica.IEntidadConfigExtraService CfgSvc
 @inject Tronox.Application.Common.ITenantContext Tenant
 @inject IJSRuntime JS
 
@@ -173,7 +174,7 @@
                 }
             </div>
         }
-        @if (_tab == BandejaFirma.Pendientes && _items is { Count: > 0 })
+        @if (_tab == BandejaFirma.Pendientes && _items is { Count: > 0 } && _masivaActiva)
         {
             <div class="mf-lotebar">
                 <input type="checkbox" class="mf-cb" checked="@(_selIds.Count > 0 && _selIds.Count == _items.Count)" @onchange="ToggleTodos" />
@@ -188,7 +189,7 @@
         <div style="overflow-x:auto">
             <table class="mf-table">
                 <thead><tr>
-                    @if (_tab == BandejaFirma.Pendientes) { <th style="width:32px"></th> }
+                    @if (_tab == BandejaFirma.Pendientes && _masivaActiva) { <th style="width:32px"></th> }
                     <th>DOCUMENTO</th>
                     <th>TIPO</th>
                     <th>@(_tab == BandejaFirma.Enviadas ? "FIRMANTE" : "SOLICITANTE")</th>
@@ -207,7 +208,7 @@
                         {
                             var f = it;
                             <tr>
-                                @if (_tab == BandejaFirma.Pendientes)
+                                @if (_tab == BandejaFirma.Pendientes && _masivaActiva)
                                 {
                                     <td><input type="checkbox" class="mf-cb" checked="@_selIds.Contains(f.FirmaId)" @onchange="@(() => ToggleSel(f.FirmaId))" /></td>
                                 }
@@ -420,9 +421,16 @@
     private bool _showPista;
     private IReadOnlyList<PistaAuditoriaDto>? _pista;
 
+    // Config (RF01): controla si la firma masiva esta habilitada
+    private bool _masivaActiva;
+
     private long Actor => Tenant.UserId ?? 0;
 
-    protected override async Task OnInitializedAsync() => await Reload();
+    protected override async Task OnInitializedAsync()
+    {
+        _masivaActiva = (await CfgSvc.GetFirmaAsync()).FirmaMasivaActiva;
+        await Reload();
+    }
 
     private async Task Reload()
     {

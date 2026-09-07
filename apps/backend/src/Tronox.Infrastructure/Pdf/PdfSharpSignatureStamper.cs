@@ -47,9 +47,13 @@ public sealed class PdfSharpSignatureStamper : IPdfSignatureStamper
             var fNombre = new XFont("Arial", 9, XFontStyle.Bold);
             var fLinea = new XFont("Arial", 7, XFontStyle.Regular);
 
+            // Titulo configurable (FirmaTextoDefault) o el default.
+            var titulo = string.IsNullOrWhiteSpace(d.TextoConfig) ? "FIRMADO ELECTRONICAMENTE - TRONOX" : d.TextoConfig!;
             double px = x + 12, py = y + 8;
-            gfx.DrawString("FIRMADO ELECTRONICAMENTE - TRONOX", fTitulo, azul, new XPoint(px, py + 6));
-            gfx.DrawString(Trunc(d.Nombre, 42), fNombre, gris, new XPoint(px, py + 22));
+            gfx.DrawString(Trunc(titulo, 40), fTitulo, azul, new XPoint(px, py + 6));
+            // El nombre puede ocultarse por configuracion (FirmaMostrarNombre).
+            var nombre = d.MostrarNombre ? d.Nombre : "Firma electronica";
+            gfx.DrawString(Trunc(nombre, 42), fNombre, gris, new XPoint(px, py + 22));
             var cargoDep = string.Join(" - ", new[] { d.Cargo, d.Dependencia }.Where(s => !string.IsNullOrWhiteSpace(s)));
             if (!string.IsNullOrWhiteSpace(cargoDep))
             {

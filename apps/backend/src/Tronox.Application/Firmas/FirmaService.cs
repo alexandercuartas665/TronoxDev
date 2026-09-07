@@ -47,6 +47,9 @@ public sealed class FirmaService : IFirmaService
         if (!doc.TieneBinario) { return DocumentoResult<long>.Invalid("Solo se puede solicitar firma de un documento con archivo."); }
         if (doc.EstadoFirma == EstadoFirmaDocumento.Firmado) { return DocumentoResult<long>.Conflict("El documento ya esta firmado."); }
 
+        var cfg = await GetFirmaConfigAsync(cancellationToken);
+        if (!cfg.ModuloFirmaActivo) { return DocumentoResult<long>.Invalid("El modulo de firma esta desactivado en la configuracion."); }
+
         var yaPendiente = await _db.Firmas.AnyAsync(
             f => f.DocumentoId == r.DocId && f.FirmanteUserId == r.FirmanteUserId && f.Estado == EstadoFirma.Pendiente, cancellationToken);
         if (yaPendiente) { return DocumentoResult<long>.Conflict("Ya hay una solicitud de firma pendiente para ese firmante."); }
@@ -64,7 +67,7 @@ public sealed class FirmaService : IFirmaService
             DependenciaFirmante = snap.Dependencia,
             TipoFirma = r.TipoFirma,
             Estado = EstadoFirma.Pendiente,
-            OtpRequerido = r.OtpRequerido,
+            OtpRequerido = OtpAplica(r.OtpRequerido, cfg),
             SolicitadoPor = actorUserId,
             Prioridad = r.Prioridad,
             FechaLimite = r.FechaLimite,
@@ -158,6 +161,8 @@ public sealed class FirmaService : IFirmaService
         var esPdf = string.Equals(doc.Formato, "PDF", StringComparison.OrdinalIgnoreCase)
                     || (doc.NombreArchivoOriginal?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ?? false);
         if (!esPdf) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("La firma electronica del slice 1 solo aplica a PDF."); }
+        var cfgD = await GetFirmaConfigAsync(cancellationToken);
+        if (!cfgD.ModuloFirmaActivo) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("El modulo de firma esta desactivado en la configuracion."); }
 
         var snap = await ResolverSnapshotAsync(actorUserId, cancellationToken);
         if (snap is null) { return DocumentoResult<FirmaEjecutadaDto>.NotFound("El firmante no existe."); }
@@ -229,6 +234,8 @@ public sealed class FirmaService : IFirmaService
         if (doc.CreatedBy != actorUserId) { return DocumentoResult<long>.Invalid("Solo el creador puede iniciar el circuito."); }
         if (doc.EstadoFirma == EstadoFirmaDocumento.Firmado) { return DocumentoResult<long>.Conflict("El documento ya esta firmado."); }
         if (!doc.TieneBinario) { return DocumentoResult<long>.Invalid("Solo se puede armar un circuito sobre un documento con archivo."); }
+        var cfg = await GetFirmaConfigAsync(cancellationToken);
+        if (!cfg.ModuloFirmaActivo) { return DocumentoResult<long>.Invalid("El modulo de firma esta desactivado en la configuracion."); }
         if (await _db.FirmaCircuitos.AnyAsync(c => c.DocumentoId == r.DocId && c.Estado == EstadoCircuito.Activo, cancellationToken))
         {
             return DocumentoResult<long>.Conflict("El documento ya tiene un circuito de firma activo.");
@@ -249,6 +256,7 @@ public sealed class FirmaService : IFirmaService
         var solicitanteNombre = await _db.PlatformUsers.AsNoTracking()
             .Where(p => p.Id == actorUserId).Select(p => p.DisplayName ?? p.Email).FirstOrDefaultAsync(cancellationToken);
         var tenantId = _tenant.TenantId!.Value;
+        var otpEfectivo = OtpAplica(r.OtpRequerido, cfg);
 
         var circ = new FirmaCircuito
         {
@@ -259,7 +267,7 @@ public sealed class FirmaService : IFirmaService
             TotalFirmantes = r.Firmantes.Count,
             FirmantesCompletados = 0,
             TipoFirmaMixto = r.Firmantes.Select(x => x.TipoFirma).Distinct().Count() > 1,
-            OtpRequerido = r.OtpRequerido,
+            OtpRequerido = otpEfectivo,
             SolicitantePlatformUserId = actorUserId,
             SolicitanteNombre = solicitanteNombre
         };
@@ -294,7 +302,7 @@ public sealed class FirmaService : IFirmaService
                     NombreFirmante = nm[fin.PlatformUserId],
                     TipoFirma = fin.TipoFirma,
                     Estado = EstadoFirma.Pendiente,
-                    OtpRequerido = r.OtpRequerido,
+                    OtpRequerido = otpEfectivo,
                     SolicitadoPor = actorUserId,
                     CircuitoId = circ.Id,
                     Prioridad = Domain.Enums.PrioridadTarea.Media,
@@ -460,6 +468,9 @@ public sealed class FirmaService : IFirmaService
             .Where(p => p.Id == actorUserId).Select(p => p.Email).FirstOrDefaultAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(correo)) { return DocumentoResult<OtpEnvioDto>.Invalid("El firmante no tiene correo para el OTP."); }
 
+        var cfg = await GetFirmaConfigAsync(cancellationToken);
+        var mins = OtpMinutos(cfg);
+
         // Invalida los OTP vigentes previos de esta firma (solo el ultimo cuenta).
         var previos = await _db.FirmaOtps
             .Where(o => o.FirmaId == firmaId && o.VerificadoAt == null && o.ExpiraAt > DateTimeOffset.UtcNow)
@@ -474,7 +485,7 @@ public sealed class FirmaService : IFirmaService
             Usuario = actorUserId,
             CodigoHash = Sha256Hex(codigo),
             Canal = "correo",
-            ExpiraAt = DateTimeOffset.UtcNow.AddMinutes(OtpVigenciaMinutos),
+            ExpiraAt = DateTimeOffset.UtcNow.AddMinutes(mins),
             Intentos = 0
         };
         _db.FirmaOtps.Add(otp);
@@ -485,11 +496,11 @@ public sealed class FirmaService : IFirmaService
         try
         {
             await _email.SendAsync(correo, "Codigo de verificacion de firma - TRONOX",
-                $"<p>Su codigo de firma es <strong>{codigo}</strong>. Vigencia: {OtpVigenciaMinutos} minutos.</p>", cancellationToken);
+                $"<p>Su codigo de firma es <strong>{codigo}</strong>. Vigencia: {mins} minutos.</p>", cancellationToken);
         }
         catch { demo = codigo; }
 
-        return DocumentoResult<OtpEnvioDto>.Ok(new OtpEnvioDto(Enmascarar(correo), OtpVigenciaMinutos, demo));
+        return DocumentoResult<OtpEnvioDto>.Ok(new OtpEnvioDto(Enmascarar(correo), mins, demo));
     }
 
     public async Task<DocumentoResult<FirmaEjecutadaDto>> FirmarConOtpAsync(
@@ -686,6 +697,7 @@ public sealed class FirmaService : IFirmaService
             .Where(p => p.Id == actorUserId).Select(p => p.Email).FirstOrDefaultAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(correo)) { return DocumentoResult<OtpLoteEnvioDto>.Invalid("El firmante no tiene correo para el OTP."); }
 
+        var mins = OtpMinutos(await GetFirmaConfigAsync(cancellationToken));
         var loteId = "LOTE-" + Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
         var codigo = GenerarCodigo6();
         var otp = new FirmaOtp
@@ -696,7 +708,7 @@ public sealed class FirmaService : IFirmaService
             LoteId = loteId,
             CodigoHash = Sha256Hex(codigo),
             Canal = "correo",
-            ExpiraAt = DateTimeOffset.UtcNow.AddMinutes(OtpVigenciaMinutos),
+            ExpiraAt = DateTimeOffset.UtcNow.AddMinutes(mins),
             Intentos = 0
         };
         _db.FirmaOtps.Add(otp);
@@ -706,17 +718,21 @@ public sealed class FirmaService : IFirmaService
         try
         {
             await _email.SendAsync(correo, "Codigo de firma masiva - TRONOX",
-                $"<p>Su codigo para firmar el lote de {firmas.Count} documento(s) es <strong>{codigo}</strong>. Vigencia: {OtpVigenciaMinutos} minutos.</p>", cancellationToken);
+                $"<p>Su codigo para firmar el lote de {firmas.Count} documento(s) es <strong>{codigo}</strong>. Vigencia: {mins} minutos.</p>", cancellationToken);
         }
         catch { demo = codigo; }
 
-        return DocumentoResult<OtpLoteEnvioDto>.Ok(new OtpLoteEnvioDto(loteId, Enmascarar(correo), OtpVigenciaMinutos, demo));
+        return DocumentoResult<OtpLoteEnvioDto>.Ok(new OtpLoteEnvioDto(loteId, Enmascarar(correo), mins, demo));
     }
 
     public async Task<DocumentoResult<FirmaLoteResumenDto>> FirmarLoteAsync(
         IReadOnlyList<long> firmaIds, string? loteId, string? codigo, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default)
     {
         if (firmaIds is null || firmaIds.Count == 0) { return DocumentoResult<FirmaLoteResumenDto>.Invalid("No hay documentos seleccionados."); }
+        if (!(await GetFirmaConfigAsync(cancellationToken)).FirmaMasivaActiva)
+        {
+            return DocumentoResult<FirmaLoteResumenDto>.Invalid("La firma masiva esta desactivada en la configuracion.");
+        }
 
         if (await LoteRequiereOtpAsync(firmaIds, actorUserId, cancellationToken))
         {
@@ -800,6 +816,23 @@ public sealed class FirmaService : IFirmaService
         return true;
     }
 
+    // ---- Configuracion del modulo (RQ05 - RF01, firma_configs / Datos de la Entidad) ----
+
+    /// <summary>Config de firma del tenant. Si no existe, devuelve una con los defaults de la entidad.</summary>
+    private async Task<FirmaConfig> GetFirmaConfigAsync(CancellationToken cancellationToken)
+        => await _db.FirmaConfigs.AsNoTracking().FirstOrDefaultAsync(cancellationToken)
+           ?? new FirmaConfig { TenantId = _tenant.TenantId ?? 0 };
+
+    /// <summary>OTP efectivo segun la config: 'siempre'/'nunca' mandan; 'opcional' respeta la solicitud o el global.</summary>
+    private static bool OtpAplica(bool otpSolicitud, FirmaConfig cfg) => cfg.OtpModo switch
+    {
+        "siempre" => true,
+        "nunca" => false,
+        _ => otpSolicitud || cfg.OtpRequeridoGlobal
+    };
+
+    private static int OtpMinutos(FirmaConfig cfg) => cfg.OtpExpiracionMinutos > 0 ? cfg.OtpExpiracionMinutos : OtpVigenciaMinutos;
+
     /// <summary>Codigo de 6 digitos con RNG criptografico (000000-999999).</summary>
     private static string GenerarCodigo6()
     {
@@ -850,8 +883,10 @@ public sealed class FirmaService : IFirmaService
             original = ms.ToArray();
         }
         var ahora = DateTimeOffset.UtcNow;
+        var cfg = await GetFirmaConfigAsync(cancellationToken);
         var cajita = new CajitaFirma(snap.Nombre, snap.Cargo, snap.Dependencia,
-            ahora.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), $"verificar.tronox.co/v/{doc.Id}", indiceCajita);
+            ahora.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), $"verificar.tronox.co/v/{doc.Id}", indiceCajita,
+            TextoConfig: cfg.FirmaTextoDefault, MostrarNombre: cfg.FirmaMostrarNombre);
         var sellado = _stamper.EstamparCajita(original, cajita);
         var hash = DocumentoRules.HashSha256(sellado);
         var nuevaKey = $"{_tenant.TenantId!.Value}/{Guid.NewGuid():N}.pdf";

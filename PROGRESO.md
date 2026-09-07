@@ -1004,6 +1004,16 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
 **RQ05 (Firma) CERRADO**: firma directa (RF05), bandeja Mis Firmas (RF10) + solicitar (RF06), stepper
 OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de auditoria (RF12).
 
+- **Fase A.1 - Consumo de la config de firma (RF01)**: la UI de config ya existia (embebida en Datos de
+  la Entidad + EntidadConfigExtraService); faltaba que FirmaService la LEYERA. Ahora: OTP efectivo por
+  `otp_modo` (siempre/opcional/nunca) + `otp_requerido_global` (resuelto al crear la firma/circuito),
+  expiracion por `otp_expiracion_minutos`, gate de firma masiva por `firma_masiva_activa` (backend +
+  oculta barra/checkboxes en la bandeja), guard `modulo_firma_activo` en solicitar/circuito/directa, y
+  cajita por `firma_texto_default`/`firma_mostrar_nombre`. Defaults cambiados a ACTIVO (modulo+masiva) con
+  migracion de normalizacion `FirmaConfigActivoPorDefecto` (pone en true las filas existentes, no
+  intencionales). Verificado e2e: modo=siempre -> firma nace otp_requerido=true; masiva=off -> sin barra.
+  PROD requiere la migracion en el proximo deploy. Pendiente Fase A.2: notificaciones de firma (RF11).
+
 Pendiente: deploy a prod del slice 6 (image swap, sin migracion). Detalles menores diferidos (estampa
 en imagenes, full-text en compartidos, marcas de agua en visor), OCR/Reprocesar.
 
