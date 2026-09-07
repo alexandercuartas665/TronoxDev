@@ -162,7 +162,7 @@ public sealed class FirmaService : IFirmaService
         var snap = await ResolverSnapshotAsync(actorUserId, cancellationToken);
         if (snap is null) { return DocumentoResult<FirmaEjecutadaDto>.NotFound("El firmante no existe."); }
 
-        var sello = await SellarPdfEnSitioAsync(doc, snap, cancellationToken);
+        var sello = await SellarPdfEnSitioAsync(doc, snap, 0, cancellationToken);
         if (sello is null) { return DocumentoResult<FirmaEjecutadaDto>.NotFound("El binario no esta disponible."); }
         var keyAnterior = doc.RutaAlmacenamiento;
         try
@@ -217,6 +217,125 @@ public sealed class FirmaService : IFirmaService
                 string.IsNullOrWhiteSpace(u.Nombres) && string.IsNullOrWhiteSpace(u.Apellidos)
                     ? u.Email : (u.Nombres + " " + u.Apellidos).Trim()))
             .ToListAsync(cancellationToken);
+
+    // ---- Circuitos multi-firmante (RF07) ----
+
+    public async Task<DocumentoResult<long>> CrearCircuitoAsync(
+        CrearCircuitoRequest r, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (r.Firmantes is null || r.Firmantes.Count == 0) { return DocumentoResult<long>.Invalid("Agrega al menos un firmante."); }
+        var doc = await _db.Documentos.FirstOrDefaultAsync(d => d.Id == r.DocId && !d.EsVersionHistorica, cancellationToken);
+        if (doc is null) { return DocumentoResult<long>.NotFound("El documento no existe."); }
+        if (doc.CreatedBy != actorUserId) { return DocumentoResult<long>.Invalid("Solo el creador puede iniciar el circuito."); }
+        if (doc.EstadoFirma == EstadoFirmaDocumento.Firmado) { return DocumentoResult<long>.Conflict("El documento ya esta firmado."); }
+        if (!doc.TieneBinario) { return DocumentoResult<long>.Invalid("Solo se puede armar un circuito sobre un documento con archivo."); }
+        if (await _db.FirmaCircuitos.AnyAsync(c => c.DocumentoId == r.DocId && c.Estado == EstadoCircuito.Activo, cancellationToken))
+        {
+            return DocumentoResult<long>.Conflict("El documento ya tiene un circuito de firma activo.");
+        }
+        if (r.Firmantes.Any(x => x.PlatformUserId == actorUserId))
+        {
+            return DocumentoResult<long>.Invalid("No puedes incluirte como firmante del circuito que solicitas.");
+        }
+
+        var ids = r.Firmantes.Select(x => x.PlatformUserId).Distinct().ToList();
+        if (ids.Count != r.Firmantes.Count) { return DocumentoResult<long>.Invalid("Hay firmantes repetidos."); }
+        var users = await _db.PlatformUsers.AsNoTracking()
+            .Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, Nombre = p.DisplayName ?? p.Email }).ToListAsync(cancellationToken);
+        var nm = users.ToDictionary(x => x.Id, x => x.Nombre);
+        if (nm.Count != ids.Count) { return DocumentoResult<long>.NotFound("Algun firmante no existe."); }
+
+        var solicitanteNombre = await _db.PlatformUsers.AsNoTracking()
+            .Where(p => p.Id == actorUserId).Select(p => p.DisplayName ?? p.Email).FirstOrDefaultAsync(cancellationToken);
+        var tenantId = _tenant.TenantId!.Value;
+
+        var circ = new FirmaCircuito
+        {
+            TenantId = tenantId,
+            DocumentoId = doc.Id,
+            Modo = r.Modo,
+            Estado = EstadoCircuito.Activo,
+            TotalFirmantes = r.Firmantes.Count,
+            FirmantesCompletados = 0,
+            TipoFirmaMixto = r.Firmantes.Select(x => x.TipoFirma).Distinct().Count() > 1,
+            OtpRequerido = r.OtpRequerido,
+            SolicitantePlatformUserId = actorUserId,
+            SolicitanteNombre = solicitanteNombre
+        };
+        _db.FirmaCircuitos.Add(circ);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var orden = 0;
+        foreach (var fin in r.Firmantes)
+        {
+            orden++;
+            var activo = r.Modo == ModoCircuito.Paralelo || orden == 1;
+            var cff = new FirmaCircuitoFirmante
+            {
+                TenantId = tenantId,
+                CircuitoId = circ.Id,
+                Orden = orden,
+                FirmantePlatformUserId = fin.PlatformUserId,
+                NombreFirmante = nm[fin.PlatformUserId],
+                TipoFirma = fin.TipoFirma,
+                Estado = activo ? EstadoCircuitoFirmante.Pendiente : EstadoCircuitoFirmante.EnEspera
+            };
+            _db.FirmaCircuitoFirmantes.Add(cff);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            if (activo)
+            {
+                var firma = new Firma
+                {
+                    TenantId = tenantId,
+                    DocumentoId = doc.Id,
+                    FirmanteUserId = fin.PlatformUserId,
+                    NombreFirmante = nm[fin.PlatformUserId],
+                    TipoFirma = fin.TipoFirma,
+                    Estado = EstadoFirma.Pendiente,
+                    OtpRequerido = r.OtpRequerido,
+                    SolicitadoPor = actorUserId,
+                    CircuitoId = circ.Id,
+                    Prioridad = Domain.Enums.PrioridadTarea.Media,
+                    FechaLimite = r.FechaLimite,
+                    Instrucciones = string.IsNullOrWhiteSpace(r.Instrucciones) ? null : r.Instrucciones.Trim()
+                };
+                _db.Firmas.Add(firma);
+                await _db.SaveChangesAsync(cancellationToken);
+                cff.FirmaId = firma.Id;
+            }
+        }
+
+        doc.EstadoFirma = EstadoFirmaDocumento.Pendiente;
+        _audit.Write(actorUserId, "documento.circuito_crear", nameof(FirmaCircuito), circ,
+            previousValue: null, newValue: new { circ.Modo, circ.TotalFirmantes }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return DocumentoResult<long>.Ok(circ.Id);
+    }
+
+    public async Task<IReadOnlyList<CircuitoEnviadoDto>> ListarCircuitosEnviadosAsync(
+        long actorUserId, string? texto = null, CancellationToken cancellationToken = default)
+    {
+        var q = _db.FirmaCircuitos.AsNoTracking()
+            .Include(c => c.Firmantes)
+            .Include(c => c.Documento!).ThenInclude(d => d.Expediente)
+            .Where(c => c.SolicitantePlatformUserId == actorUserId);
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            var t = texto.Trim().ToLower();
+            q = q.Where(c => c.Documento != null && c.Documento.Nombre.ToLower().Contains(t));
+        }
+        var rows = await q.OrderByDescending(c => c.Id).Take(100).ToListAsync(cancellationToken);
+
+        return rows.Select(c => new CircuitoEnviadoDto(
+            c.Id, c.DocumentoId, c.Documento?.Nombre ?? "", c.Documento?.Expediente?.Codigo,
+            c.Documento?.TieneBinario ?? false, c.Modo, c.Estado, c.TotalFirmantes, c.FirmantesCompletados,
+            c.CreatedAt, c.MotivoCancelacion,
+            c.Firmantes.OrderBy(x => x.Orden).Select(x => new CircuitoFirmanteDto(
+                x.Orden, x.NombreFirmante, x.CargoFirmante, x.TipoFirma, x.Estado, x.TimestampFirma)).ToList()))
+            .ToList();
+    }
 
     // ---- Bandeja "Mis Firmas" (RF10) ----
 
@@ -273,8 +392,9 @@ public sealed class FirmaService : IFirmaService
         var pend = await _db.Firmas.AsNoTracking().CountAsync(f => f.FirmanteUserId == actorUserId && f.Estado == EstadoFirma.Pendiente, cancellationToken);
         var firm = await _db.Firmas.AsNoTracking().CountAsync(f => f.FirmanteUserId == actorUserId && f.Estado == EstadoFirma.Firmado, cancellationToken);
         var rech = await _db.Firmas.AsNoTracking().CountAsync(f => f.Estado == EstadoFirma.Rechazado && (f.FirmanteUserId == actorUserId || f.SolicitadoPor == actorUserId), cancellationToken);
-        // EnProgreso = circuitos activos (RF07): diferido, 0 por ahora.
-        return new FirmaResumenDto(pend, 0, firm, rech);
+        // EnProgreso = circuitos activos iniciados por el usuario (RF07).
+        var prog = await _db.FirmaCircuitos.AsNoTracking().CountAsync(c => c.SolicitantePlatformUserId == actorUserId && c.Estado == EstadoCircuito.Activo, cancellationToken);
+        return new FirmaResumenDto(pend, prog, firm, rech);
     }
 
     public async Task<DocumentoResult<bool>> RechazarSolicitudAsync(
@@ -288,11 +408,25 @@ public sealed class FirmaService : IFirmaService
 
         f.Estado = EstadoFirma.Rechazado;
         f.ComentarioRechazo = comentario.Trim();
-
-        // Si no quedan mas firmas pendientes del documento, su dimension vuelve a "sin firma".
         var doc = await _db.Documentos.FirstOrDefaultAsync(d => d.Id == f.DocumentoId, cancellationToken);
-        if (doc is not null && doc.EstadoFirma == EstadoFirmaDocumento.Pendiente)
+
+        if (f.CircuitoId is long cid)
         {
+            // RF07 §3.7.3: un rechazo cancela TODO el circuito; las firmas previas quedan invalidadas.
+            var circ = await _db.FirmaCircuitos.FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+            if (circ is not null) { circ.Estado = EstadoCircuito.Cancelado; circ.MotivoCancelacion = comentario.Trim(); }
+            var cf = await _db.FirmaCircuitoFirmantes.FirstOrDefaultAsync(x => x.CircuitoId == cid && x.FirmaId == f.Id, cancellationToken);
+            if (cf is not null) { cf.Estado = EstadoCircuitoFirmante.Rechazado; }
+            // Cancela las solicitudes aun pendientes del circuito.
+            var pendientes = await _db.Firmas
+                .Where(x => x.CircuitoId == cid && x.Id != firmaId && x.Estado == EstadoFirma.Pendiente)
+                .ToListAsync(cancellationToken);
+            foreach (var p in pendientes) { p.Estado = EstadoFirma.Rechazado; p.ComentarioRechazo = comentario.Trim(); }
+            if (doc is not null) { doc.EstadoFirma = EstadoFirmaDocumento.SinFirma; }
+        }
+        else if (doc is not null && doc.EstadoFirma == EstadoFirmaDocumento.Pendiente)
+        {
+            // Firma individual: si no quedan mas pendientes del documento, vuelve a "sin firma".
             var quedan = await _db.Firmas.AnyAsync(x => x.DocumentoId == f.DocumentoId && x.Id != firmaId && x.Estado == EstadoFirma.Pendiente, cancellationToken);
             if (!quedan) { doc.EstadoFirma = EstadoFirmaDocumento.SinFirma; }
         }
@@ -386,7 +520,18 @@ public sealed class FirmaService : IFirmaService
         var snap = await ResolverSnapshotAsync(actorUserId, cancellationToken);
         if (snap is null) { return DocumentoResult<FirmaEjecutadaDto>.NotFound("El firmante no existe."); }
 
-        var sello = await SellarPdfEnSitioAsync(doc, snap, cancellationToken);
+        // Contexto de circuito (RF07): si la firma pertenece a un circuito, se avanza al completar.
+        FirmaCircuito? circ = null;
+        FirmaCircuitoFirmante? cf = null;
+        var indiceCajita = 0;
+        if (f.CircuitoId is long cid)
+        {
+            circ = await _db.FirmaCircuitos.FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+            cf = await _db.FirmaCircuitoFirmantes.FirstOrDefaultAsync(x => x.CircuitoId == cid && x.FirmaId == f.Id, cancellationToken);
+            indiceCajita = circ?.FirmantesCompletados ?? 0; // apila la cajita sobre las ya firmadas
+        }
+
+        var sello = await SellarPdfEnSitioAsync(doc, snap, indiceCajita, cancellationToken);
         if (sello is null) { return DocumentoResult<FirmaEjecutadaDto>.NotFound("El binario no esta disponible."); }
         var keyAnterior = doc.RutaAlmacenamiento;
         try
@@ -394,7 +539,6 @@ public sealed class FirmaService : IFirmaService
             doc.RutaAlmacenamiento = sello.Value.NuevaKey;
             doc.HashSha256 = sello.Value.Hash;
             doc.TamanoBytes = sello.Value.Size;
-            doc.EstadoFirma = EstadoFirmaDocumento.Firmado;
 
             // Cumplir la solicitud pendiente (no se duplica fila): pasa a Firmado con el resultado.
             f.Estado = EstadoFirma.Firmado;
@@ -406,9 +550,40 @@ public sealed class FirmaService : IFirmaService
             f.IpFirma = ip;
             f.SesionId = sesionId;
 
+            // Avance del circuito. El documento solo queda Firmado cuando el circuito se completa.
+            var completo = true;
+            if (circ is not null)
+            {
+                if (cf is not null) { cf.Estado = EstadoCircuitoFirmante.Firmado; cf.TimestampFirma = sello.Value.Ts; }
+                circ.FirmantesCompletados += 1;
+                if (circ.FirmantesCompletados >= circ.TotalFirmantes)
+                {
+                    circ.Estado = EstadoCircuito.Completado;
+                }
+                else
+                {
+                    completo = false;
+                    if (circ.Modo == ModoCircuito.Secuencial)
+                    {
+                        var siguiente = await _db.FirmaCircuitoFirmantes
+                            .Where(x => x.CircuitoId == circ.Id && x.Estado == EstadoCircuitoFirmante.EnEspera)
+                            .OrderBy(x => x.Orden).FirstOrDefaultAsync(cancellationToken);
+                        if (siguiente is not null)
+                        {
+                            var nueva = NuevaFirmaDeCircuito(circ, siguiente);
+                            _db.Firmas.Add(nueva);
+                            await _db.SaveChangesAsync(cancellationToken); // obtener Id
+                            siguiente.Estado = EstadoCircuitoFirmante.Pendiente;
+                            siguiente.FirmaId = nueva.Id;
+                        }
+                    }
+                }
+            }
+            doc.EstadoFirma = completo ? EstadoFirmaDocumento.Firmado : EstadoFirmaDocumento.Pendiente;
+
             _audit.Write(actorUserId, "documento.firmar_solicitada", nameof(Firma), f,
                 previousValue: new { Estado = EstadoFirma.Pendiente },
-                newValue: new { f.Estado, Hash = sello.Value.Hash }, tenantId: _tenant.TenantId!.Value);
+                newValue: new { f.Estado, Hash = sello.Value.Hash, CircuitoCompleto = completo }, tenantId: _tenant.TenantId!.Value);
             await _db.SaveChangesAsync(cancellationToken);
 
             await BorrarKeyAnteriorAsync(keyAnterior, sello.Value.NuevaKey, cancellationToken);
@@ -420,6 +595,21 @@ public sealed class FirmaService : IFirmaService
             throw;
         }
     }
+
+    /// <summary>Crea la solicitud (Firma) Pendiente del siguiente firmante del circuito.</summary>
+    private Firma NuevaFirmaDeCircuito(FirmaCircuito circ, FirmaCircuitoFirmante f) => new()
+    {
+        TenantId = _tenant.TenantId!.Value,
+        DocumentoId = circ.DocumentoId,
+        FirmanteUserId = f.FirmantePlatformUserId,
+        NombreFirmante = f.NombreFirmante,
+        CargoFirmante = f.CargoFirmante,
+        TipoFirma = f.TipoFirma,
+        Estado = EstadoFirma.Pendiente,
+        OtpRequerido = circ.OtpRequerido,
+        SolicitadoPor = circ.SolicitantePlatformUserId,
+        CircuitoId = circ.Id
+    };
 
     /// <summary>Valida el codigo contra el OTP vigente de la firma (incrementa intentos; marca verificado si OK).</summary>
     private async Task<bool> ValidarOtpAsync(long firmaId, string codigo, CancellationToken cancellationToken)
@@ -480,7 +670,7 @@ public sealed class FirmaService : IFirmaService
     /// anterior (el caller confirma en base y luego borra la vieja). Devuelve null si no hay binario.
     /// </summary>
     private async Task<(long Size, string Hash, DateTimeOffset Ts, string NuevaKey)?> SellarPdfEnSitioAsync(
-        Documento doc, FirmanteSnapshotDto snap, CancellationToken cancellationToken)
+        Documento doc, FirmanteSnapshotDto snap, int indiceCajita, CancellationToken cancellationToken)
     {
         var stream = await _storage.GetAsync(doc.RutaAlmacenamiento!, cancellationToken);
         if (stream is null) { return null; }
@@ -493,7 +683,7 @@ public sealed class FirmaService : IFirmaService
         }
         var ahora = DateTimeOffset.UtcNow;
         var cajita = new CajitaFirma(snap.Nombre, snap.Cargo, snap.Dependencia,
-            ahora.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), $"verificar.tronox.co/v/{doc.Id}");
+            ahora.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), $"verificar.tronox.co/v/{doc.Id}", indiceCajita);
         var sellado = _stamper.EstamparCajita(original, cajita);
         var hash = DocumentoRules.HashSha256(sellado);
         var nuevaKey = $"{_tenant.TenantId!.Value}/{Guid.NewGuid():N}.pdf";

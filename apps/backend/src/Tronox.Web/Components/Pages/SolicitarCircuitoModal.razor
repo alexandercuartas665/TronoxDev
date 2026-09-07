@@ -1,0 +1,164 @@
+@* Circuito de firma multi-firmante (RQ05 - RF07). Varios firmantes sobre el mismo documento en modo
+   Secuencial (uno tras otro) o Paralelo (todos a la vez). exp-modal-* del modulo. *@
+@using Tronox.Application.Firmas
+@using Tronox.Domain.Enums
+@inject IFirmaService Firmas
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<div class="exp-modal-overlay open">
+    <div class="exp-modal-shell" style="max-width:560px">
+        <div class="exp-modal-header">
+            <h4 class="exp-modal-title"><i class="bi bi-diagram-3" style="color:#7C3AED"></i>&nbsp; Circuito de firma</h4>
+            <button class="exp-modal-close" @onclick="Cerrar"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="exp-modal-body">
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#475569">
+                <i class="bi bi-file-earmark-pdf" style="color:#94A3B8"></i>&nbsp; Documento: <strong>@NombreDoc</strong>
+            </div>
+
+            @if (_err is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_err</div> }
+
+            <label class="det-label">Modo del circuito</label>
+            <div class="cir-modos">
+                <label class="cir-modo @(_modo == ModoCircuito.Secuencial ? "on" : "")">
+                    <input type="radio" name="modo" checked="@(_modo == ModoCircuito.Secuencial)" @onchange="@(() => _modo = ModoCircuito.Secuencial)" />
+                    <span><strong>Secuencial</strong><br /><span class="cir-modo-d">Uno tras otro, por orden</span></span>
+                </label>
+                <label class="cir-modo @(_modo == ModoCircuito.Paralelo ? "on" : "")">
+                    <input type="radio" name="modo" checked="@(_modo == ModoCircuito.Paralelo)" @onchange="@(() => _modo = ModoCircuito.Paralelo)" />
+                    <span><strong>Paralelo</strong><br /><span class="cir-modo-d">Todos a la vez</span></span>
+                </label>
+            </div>
+
+            <label class="det-label" style="margin-top:14px">Firmantes @(_modo == ModoCircuito.Secuencial ? "(en orden)" : "")</label>
+            @if (_seleccionados.Count == 0) { <div style="font-size:12px;color:#94A3B8;margin-bottom:8px">Aún no has agregado firmantes.</div> }
+            <div class="cir-lista">
+                @for (var i = 0; i < _seleccionados.Count; i++)
+                {
+                    var idx = i; var s = _seleccionados[idx];
+                    <div class="cir-row">
+                        <span class="cir-num">@(idx + 1)</span>
+                        <span class="cir-nom">@s.Nombre</span>
+                        <select class="cir-tipo" @onchange="@(e => s.Tipo = e.Value?.ToString() == "DigitalCertificada" ? TipoFirma.DigitalCertificada : TipoFirma.Electronica)">
+                            <option value="Electronica" selected="@(s.Tipo == TipoFirma.Electronica)">Electrónica</option>
+                            <option value="DigitalCertificada" selected="@(s.Tipo == TipoFirma.DigitalCertificada)">Digital</option>
+                        </select>
+                        @if (_modo == ModoCircuito.Secuencial)
+                        {
+                            <button class="cir-mini" title="Subir" disabled="@(idx == 0)" @onclick="@(() => Mover(idx, -1))"><i class="bi bi-arrow-up"></i></button>
+                            <button class="cir-mini" title="Bajar" disabled="@(idx == _seleccionados.Count - 1)" @onclick="@(() => Mover(idx, 1))"><i class="bi bi-arrow-down"></i></button>
+                        }
+                        <button class="cir-mini danger" title="Quitar" @onclick="@(() => _seleccionados.RemoveAt(idx))"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                }
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <select class="det-input" @bind="_agregarId" style="flex:1">
+                    <option value="0">— Agregar firmante —</option>
+                    @foreach (var u in Disponibles()) { <option value="@u.PlatformUserId">@u.Nombre</option> }
+                </select>
+                <button class="exp-btn" @onclick="Agregar" disabled="@(_agregarId <= 0)"><i class="bi bi-plus-lg"></i> Agregar</button>
+            </div>
+
+            <div style="display:flex;gap:12px;margin-top:14px">
+                <div style="flex:1"><label class="det-label">Fecha límite</label><input type="date" class="det-input" @bind="_fechaLimite" /></div>
+                <div style="flex:1;display:flex;align-items:flex-end"><label class="cir-otp"><input type="checkbox" @bind="_otp" /> <span>Exigir OTP al firmar</span></label></div>
+            </div>
+
+            <label class="det-label" style="margin-top:12px">Instrucciones</label>
+            <textarea class="det-input" rows="2" maxlength="2000" placeholder="Contexto para los firmantes (opcional)" @bind="_instrucciones"></textarea>
+        </div>
+        <div class="exp-modal-footer">
+            <button class="exp-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <button class="exp-btn exp-btn-primary" style="background:#7C3AED;border-color:#7C3AED" @onclick="Enviar" disabled="@(_busy || _seleccionados.Count == 0)">
+                <i class="bi bi-diagram-3"></i>&nbsp; @(_busy ? "Creando…" : "Iniciar circuito")
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .exp-modal-overlay { position:fixed; inset:0; z-index:1000008; background:rgba(15,23,42,.45); display:flex; align-items:flex-start; justify-content:center; padding:70px 20px 30px; }
+    .exp-modal-shell { background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.18); width:100%; max-height:calc(100vh - 100px); overflow-y:auto; }
+    .exp-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #E2E8F0; }
+    .exp-modal-title { font-size:16px; font-weight:800; color:#0F172A; margin:0; }
+    .exp-modal-close { width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; color:#475569; display:inline-flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; }
+    .exp-modal-body { padding:18px 20px; }
+    .exp-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid #E2E8F0; }
+    .det-label { display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:5px; }
+    .det-input { width:100%; padding:9px 12px; border:1px solid #E2E8F0; border-radius:10px; font-size:13px; color:#0F172A; background:#fff; box-sizing:border-box; }
+    .cir-modos { display:flex; gap:10px; }
+    .cir-modo { flex:1; display:flex; align-items:flex-start; gap:8px; border:1.5px solid #E5E7EB; border-radius:10px; padding:10px 12px; cursor:pointer; font-size:13px; }
+    .cir-modo.on { border-color:#C7D2FE; background:#EFF2FF; }
+    .cir-modo-d { font-size:11px; color:#94A3B8; }
+    .cir-lista { display:flex; flex-direction:column; gap:6px; }
+    .cir-row { display:flex; align-items:center; gap:8px; border:1px solid #E2E8F0; border-radius:9px; padding:6px 10px; }
+    .cir-num { width:22px; height:22px; flex:0 0 auto; border-radius:50%; background:#EDE9FE; color:#6D28D9; font-size:11px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; }
+    .cir-nom { flex:1; font-size:13px; color:#0F172A; }
+    .cir-tipo { border:1px solid #E2E8F0; border-radius:7px; font-size:11.5px; padding:3px 6px; }
+    .cir-mini { width:26px; height:26px; border:1px solid #E2E8F0; background:#fff; border-radius:7px; color:#475569; cursor:pointer; font-size:11px; }
+    .cir-mini.danger { color:#DC2626; border-color:#FCA5A5; }
+    .cir-mini:disabled { opacity:.4; cursor:not-allowed; }
+    .cir-otp { display:flex; gap:8px; align-items:center; font-size:12.5px; color:#475569; cursor:pointer; }
+</style>
+
+@code {
+    [Parameter] public long DocId { get; set; }
+    [Parameter] public string NombreDoc { get; set; } = "";
+    [Parameter] public EventCallback<string?> OnCerrar { get; set; }
+
+    private sealed class Sel { public long PlatformUserId { get; set; } public string Nombre { get; set; } = ""; public TipoFirma Tipo { get; set; } = TipoFirma.Electronica; }
+
+    private IReadOnlyList<FirmanteOpcionDto> _firmantes = [];
+    private readonly List<Sel> _seleccionados = [];
+    private long _agregarId;
+    private ModoCircuito _modo = ModoCircuito.Secuencial;
+    private bool _otp;
+    private DateTime? _fechaLimite;
+    private string _instrucciones = "";
+    private bool _busy;
+    private string? _err;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync()
+        => _firmantes = await Firmas.GetFirmantesAsignablesAsync(Actor);
+
+    private IEnumerable<FirmanteOpcionDto> Disponibles()
+        => _firmantes.Where(u => !_seleccionados.Any(s => s.PlatformUserId == u.PlatformUserId));
+
+    private void Agregar()
+    {
+        var u = _firmantes.FirstOrDefault(x => x.PlatformUserId == _agregarId);
+        if (u is not null && !_seleccionados.Any(s => s.PlatformUserId == u.PlatformUserId))
+        {
+            _seleccionados.Add(new Sel { PlatformUserId = u.PlatformUserId, Nombre = u.Nombre });
+        }
+        _agregarId = 0;
+    }
+
+    private void Mover(int idx, int delta)
+    {
+        var j = idx + delta;
+        if (j < 0 || j >= _seleccionados.Count) { return; }
+        (_seleccionados[idx], _seleccionados[j]) = (_seleccionados[j], _seleccionados[idx]);
+    }
+
+    private async Task Enviar()
+    {
+        _err = null; _busy = true;
+        try
+        {
+            var firmantes = _seleccionados.Select(s => new CircuitoFirmanteInput(s.PlatformUserId, s.Tipo)).ToList();
+            var fl = _fechaLimite is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+            var req = new CrearCircuitoRequest(DocId, _modo, _otp, firmantes, fl,
+                string.IsNullOrWhiteSpace(_instrucciones) ? null : _instrucciones);
+            var res = await Firmas.CrearCircuitoAsync(req, Actor);
+            if (res.IsOk) { await OnCerrar.InvokeAsync($"Circuito de firma iniciado ({_seleccionados.Count} firmantes)."); }
+            else { _err = res.Error ?? "No se pudo crear el circuito."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync(null);
+}

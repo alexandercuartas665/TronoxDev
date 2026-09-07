@@ -48,6 +48,9 @@ public class Firma : TenantEntity
     /// <summary>Quien solicito la firma (PlatformUserId). En firma directa = el propio firmante.</summary>
     public long SolicitadoPor { get; set; }
 
+    /// <summary>Circuito multi-firmante (RF07) al que pertenece esta firma. Null = firma individual.</summary>
+    public long? CircuitoId { get; set; }
+
     // ---- Contexto de la solicitud para la bandeja "Mis Firmas" (RF10). Calca FIR_FIRMAS. ----
 
     /// <summary>Prioridad de la solicitud (semaforo de la bandeja). Default Media.</summary>

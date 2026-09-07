@@ -102,6 +102,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
     public DbSet<Firma> Firmas => Set<Firma>();
     public DbSet<FirmaOtp> FirmaOtps => Set<FirmaOtp>();
+    public DbSet<FirmaCircuito> FirmaCircuitos => Set<FirmaCircuito>();
+    public DbSet<FirmaCircuitoFirmante> FirmaCircuitoFirmantes => Set<FirmaCircuitoFirmante>();
     public DbSet<Plantilla> Plantillas => Set<Plantilla>();
     public DbSet<PlantillaTipo> PlantillaTipos => Set<PlantillaTipo>();
     public DbSet<FormDefinition> FormDefinitions => Set<FormDefinition>();
@@ -1189,6 +1191,30 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasOne(x => x.Firma).WithMany()
                 .HasForeignKey(x => x.FirmaId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.FirmaId, x.VerificadoAt });
+        });
+
+        // Circuitos de firma (RQ05 - RF07). Cuelgan del documento (Cascade). Enums como string.
+        modelBuilder.Entity<FirmaCircuito>(b =>
+        {
+            b.Property(x => x.Modo).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.Estado).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.SolicitanteNombre).HasMaxLength(200);
+            b.Property(x => x.MotivoCancelacion).HasMaxLength(2000);
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.SolicitantePlatformUserId, x.Estado });
+            b.HasIndex(x => x.DocumentoId);
+        });
+        modelBuilder.Entity<FirmaCircuitoFirmante>(b =>
+        {
+            b.Property(x => x.NombreFirmante).HasMaxLength(200).IsRequired();
+            b.Property(x => x.CargoFirmante).HasMaxLength(200);
+            b.Property(x => x.TipoFirma).HasMaxLength(30).HasConversion<string>();
+            b.Property(x => x.Estado).HasMaxLength(20).HasConversion<string>();
+            b.HasOne(x => x.Circuito).WithMany(c => c.Firmantes)
+                .HasForeignKey(x => x.CircuitoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.CircuitoId, x.Orden });
+            b.HasIndex(x => new { x.TenantId, x.FirmantePlatformUserId, x.Estado });
         });
 
         // Plantillas documentales (RQ04 - RF09). La tipologia representante es RESTRICT (no se borra por

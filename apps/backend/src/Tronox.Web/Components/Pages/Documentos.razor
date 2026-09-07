@@ -276,6 +276,7 @@
                                                 <button class="dm-item" @onclick="@(() => OpenSolicitar(dd.Id, dd.Nombre, TipoValidacion.Aprobacion))"><i class="bi bi-check-lg" style="color:#16A34A"></i><span class="dm-tx"><span>Solicitar Aprobación</span><span class="dm-s">Asigna a un aprobador · no bloquea</span></span></button>
                                                 <button class="dm-item" @onclick='() => Soon("Solicitar Trámite")'><i class="bi bi-gear" style="color:#D97706"></i><span class="dm-tx"><span>Solicitar Trámite</span><span class="dm-s">Asigna un responsable del trámite</span></span></button>
                                                 @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => OpenSolicitarFirma(dd.Id, dd.Nombre))"><i class="bi bi-pen" style="color:#7C3AED"></i><span class="dm-tx"><span>Solicitar Firma</span><span class="dm-s">Pide la firma a otro usuario (RF06)</span></span></button> }
+                                                @if (dd.TieneBinario) { <button class="dm-item" @onclick="@(() => OpenCircuito(dd.Id, dd.Nombre))"><i class="bi bi-diagram-3" style="color:#7C3AED"></i><span class="dm-tx"><span>Circuito de firma</span><span class="dm-s">Varios firmantes (secuencial/paralelo) · RF07</span></span></button> }
                                                 <div class="dm-sep"></div>
                                                 <div class="dm-sec">Firma</div>
                                                 @if (dd.Estado == EstadoDocumento.Borrador && dd.TieneBinario)
@@ -525,6 +526,12 @@
     <SolicitarFirmaModal DocId="_solFirmaDocId" NombreDoc="@_solFirmaNombre" OnCerrar="CloseSolicitarFirma" />
 }
 
+@* Circuito de firma multi-firmante (RQ05 - RF07) *@
+@if (_showCircuito)
+{
+    <SolicitarCircuitoModal DocId="_circuitoDocId" NombreDoc="@_circuitoNombre" OnCerrar="CloseCircuito" />
+}
+
 @* Responder tarea de validacion (RF12) *@
 @if (_showResponder && _respTarea is not null)
 {
@@ -767,6 +774,11 @@
     private bool _showSolFirma;
     private long _solFirmaDocId;
     private string _solFirmaNombre = "";
+
+    // Circuito de firma (RF07)
+    private bool _showCircuito;
+    private long _circuitoDocId;
+    private string _circuitoNombre = "";
 
     // Editar metadatos (calcado de exp_visor_data.ashx)
     private bool _showEditar, _editBusy;
@@ -1078,6 +1090,19 @@
     private void CloseSolicitarFirma(string? ok)
     {
         _showSolFirma = false;
+        if (ok is not null) { _pageOk = ok; }
+    }
+
+    private void OpenCircuito(long id, string nombre)
+    {
+        CloseMenu();
+        _circuitoDocId = id; _circuitoNombre = nombre;
+        _showCircuito = true;
+    }
+
+    private void CloseCircuito(string? ok)
+    {
+        _showCircuito = false;
         if (ok is not null) { _pageOk = ok; }
     }
 

@@ -19,6 +19,12 @@ public interface IFirmaService
     /// <summary>Usuarios del tenant asignables como firmantes (RF06), por PlatformUserId. Excluye al actor.</summary>
     Task<IReadOnlyList<FirmanteOpcionDto>> GetFirmantesAsignablesAsync(long actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>RF07: crea un circuito multi-firmante (secuencial/paralelo) y activa a los firmantes que corresponda.</summary>
+    Task<DocumentoResult<long>> CrearCircuitoAsync(CrearCircuitoRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>RF07: circuitos iniciados por el usuario, con su progreso (bandeja Enviadas).</summary>
+    Task<IReadOnlyList<CircuitoEnviadoDto>> ListarCircuitosEnviadosAsync(long actorUserId, string? texto = null, CancellationToken cancellationToken = default);
+
     /// <summary>consultarEstadoFirma: dimension de firma del documento + sus firmas registradas.</summary>
     Task<DocumentoResult<FirmaEstadoDto>> ConsultarEstadoFirmaAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
 

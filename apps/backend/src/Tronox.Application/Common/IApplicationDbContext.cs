@@ -98,6 +98,9 @@ public interface IApplicationDbContext
     DbSet<Firma> Firmas { get; }
     // Codigos OTP de un solo uso para la verificacion de identidad al firmar (RQ05 - RF08).
     DbSet<FirmaOtp> FirmaOtps { get; }
+    // Circuitos de firma multi-firmante (RQ05 - RF07): cabecera + firmantes ordenados.
+    DbSet<FirmaCircuito> FirmaCircuitos { get; }
+    DbSet<FirmaCircuitoFirmante> FirmaCircuitoFirmantes { get; }
     // Plantillas documentales (RQ04 - RF09): documento parametrizado con variables, asociado N:N a
     // tipologias. Configuracion que se consume al crear documentos (RF10).
     DbSet<Plantilla> Plantillas { get; }

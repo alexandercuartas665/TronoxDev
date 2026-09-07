@@ -946,6 +946,21 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   sellado); OTP incorrecto -> rechazado (intentos++), sigue Pendiente. Diferido: gating por paginas,
   autofirma/ubicacion, grafo, QR, certificado PDF, circuitos (RF07), masiva (RF09), pista auditoria.
 
-Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el resto de RQ05 (circuitos
-multi-firmante RF07, firma masiva RF09, pista de auditoria). Detalles menores diferidos (estampa en
-imagenes, full-text en compartidos, marcas de agua en visor).
+- **Circuitos de firma multi-firmante (RQ05 - RF07, slice 4)** [ADR-020]: port de CircuitoRepository.
+  Entidades FirmaCircuito + FirmaCircuitoFirmante (+ Firma.CircuitoId). Backend (IFirmaService):
+  CrearCircuitoAsync (secuencial activa orden 1, paralelo activa todos; crea la Firma Pendiente de cada
+  activo), avance en CumplirFirmaAsync (marca firmante, incrementa, secuencial activa siguiente; doc
+  solo Firmado al completar; cajitas apiladas por indice), rechazo en RechazarSolicitudAsync cancela
+  TODO el circuito (Cancelado+motivo, firmas Rechazadas, doc SinFirma), ListarCircuitosEnviadosAsync +
+  KPI En progreso. UI: SolicitarCircuitoModal (modo, firmantes ordenados, OTP, limite) en el menu del
+  documento; tarjetas de progreso .mf-circ en la bandeja Enviadas. Verificado e2e con 3 usuarios de
+  prueba (Rita, Carlos): secuencial [Rita->Carlos] completa -> doc Firmado con 2 cajitas; paralelo con
+  rechazo -> circuito Cancelado, firmas Rechazadas, doc SinFirma. Diferido: cajita por coordenadas,
+  recrear circuito, notificar a los que ya firmaron.
+
+Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el resto de RQ05 (firma masiva
+RF09, pista de auditoria). Detalles menores diferidos (estampa en imagenes, full-text en compartidos,
+marcas de agua en visor).
+
+Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
+Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.

@@ -84,6 +84,44 @@ public sealed record FirmanteSnapshotDto(
 /// <summary>Opcion del selector de firmante (RF06). Id = PlatformUserId (espacio que usa Firma).</summary>
 public sealed record FirmanteOpcionDto(long PlatformUserId, string Nombre);
 
+// ---- Circuitos multi-firmante (RF07) ----
+
+/// <summary>Un firmante del circuito a crear (en orden para Secuencial).</summary>
+public sealed record CircuitoFirmanteInput(long PlatformUserId, TipoFirma TipoFirma);
+
+/// <summary>Solicitud de creacion de un circuito de firma (RF07).</summary>
+public sealed record CrearCircuitoRequest(
+    long DocId,
+    ModoCircuito Modo,
+    bool OtpRequerido,
+    IReadOnlyList<CircuitoFirmanteInput> Firmantes,
+    DateOnly? FechaLimite = null,
+    string? Instrucciones = null);
+
+/// <summary>Un firmante en la tarjeta de progreso del circuito (bandeja Enviadas).</summary>
+public sealed record CircuitoFirmanteDto(
+    int Orden,
+    string Nombre,
+    string? Cargo,
+    TipoFirma TipoFirma,
+    EstadoCircuitoFirmante Estado,
+    DateTimeOffset? TimestampFirma);
+
+/// <summary>Tarjeta de progreso de un circuito iniciado por el usuario (RF07, bandeja Enviadas).</summary>
+public sealed record CircuitoEnviadoDto(
+    long CircuitoId,
+    long DocumentoId,
+    string DocumentoNombre,
+    string? ExpedienteCodigo,
+    bool TieneBinario,
+    ModoCircuito Modo,
+    EstadoCircuito Estado,
+    int Total,
+    int Completados,
+    DateTimeOffset FechaCreacion,
+    string? MotivoCancelacion,
+    IReadOnlyList<CircuitoFirmanteDto> Firmantes);
+
 /// <summary>
 /// Resultado de generar un OTP (RF08). El codigo viaja por correo; <see cref="CodigoDemo"/> solo se
 /// rellena cuando el envio no fue posible (SMTP no configurado), para poder completar la firma en

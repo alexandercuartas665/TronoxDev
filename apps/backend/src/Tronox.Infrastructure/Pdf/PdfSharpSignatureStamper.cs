@@ -29,9 +29,11 @@ public sealed class PdfSharpSignatureStamper : IPdfSignatureStamper
             var page = doc.Pages[doc.Pages.Count - 1];
             using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
 
-            const double w = 220, h = 74, margin = 24;
+            const double w = 220, h = 74, margin = 24, gap = 8;
             var x = page.Width.Point - w - margin;
-            var y = page.Height.Point - h - margin;
+            // Indice apila las cajitas hacia arriba (circuito multi-firmante) para que no se solapen.
+            var y = page.Height.Point - h - margin - (d.Indice * (h + gap));
+            if (y < margin) { y = margin; }
             var rect = new XRect(x, y, w, h);
 
             var fondo = new XSolidBrush(XColor.FromArgb(245, 248, 250, 252));

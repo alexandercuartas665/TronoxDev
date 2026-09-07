@@ -6,7 +6,8 @@ public sealed record CajitaFirma(
     string? Cargo,
     string? Dependencia,
     string Fecha,
-    string VerificarUrl);
+    string VerificarUrl,
+    int Indice = 0);
 
 /// <summary>
 /// Estampa la cajita visual de firma en un PDF (RQ05 - RF03-B). En el primer slice es una cajita de

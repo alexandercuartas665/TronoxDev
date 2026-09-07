@@ -59,6 +59,26 @@
     .mf-act-ver { background: #F1F5F9; color: #475569; }
     .mf-act-ver:hover { background: #E2E8F0; color: #2563EB; }
     .mf-empty { text-align: center; color: #94A3B8; padding: 44px 0; font-size: 13.5px; }
+    /* Tarjetas de progreso de circuito (RF07) */
+    .mf-circs { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+    .mf-circ { border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; background: #fff; }
+    .mf-circ-tit { font-weight: 700; font-size: 13.5px; color: #0F172A; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .mf-circ-modo { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px; background: #F1F5F9; color: #64748B; }
+    .mf-circ-est { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px; margin-left: auto; }
+    .mf-circ-est.prog { background: rgba(37,99,235,.10); color: #2563EB; }
+    .mf-circ-est.ok { background: rgba(22,163,74,.12); color: #16A34A; }
+    .mf-circ-est.rej { background: rgba(239,68,68,.12); color: #DC2626; }
+    .mf-firmrow { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 4px 0; }
+    .mf-fbadge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 800; flex: 0 0 auto; }
+    .mf-fb-ok { background: rgba(22,163,74,.14); color: #16A34A; }
+    .mf-fb-now { background: rgba(245,158,11,.16); color: #B45309; }
+    .mf-fb-wait { background: #F1F5F9; color: #94A3B8; }
+    .mf-fb-rej { background: rgba(239,68,68,.14); color: #DC2626; }
+    .mf-fname { font-weight: 600; color: #334155; }
+    .mf-fmeta { font-family: monospace; font-size: 11px; color: #94A3B8; margin-left: auto; }
+    .mf-prog { height: 8px; background: #EEF2F7; border-radius: 20px; overflow: hidden; margin-top: 12px; }
+    .mf-prog-fill { height: 100%; background: #7C3AED; border-radius: 20px; }
+    .mf-prog-txt { font-size: 11.5px; color: #64748B; margin-top: 5px; }
     .mf-motivo { font-size: 12px; color: #64748B; }
     .mf-instr { font-size: 11.5px; color: #94A3B8; margin-top: 2px; }
 </style>
@@ -97,6 +117,40 @@
             </div>
         </div>
 
+        @if (_tab == BandejaFirma.Enviadas && _circuitos is { Count: > 0 })
+        {
+            <div class="mf-circs">
+                @foreach (var c in _circuitos)
+                {
+                    <div class="mf-circ">
+                        <div class="mf-circ-tit">
+                            <i class="bi bi-diagram-3" style="color:#7C3AED"></i>
+                            <span>@c.DocumentoNombre</span>
+                            <span class="mf-circ-modo">@(c.Modo == ModoCircuito.Paralelo ? "Paralelo" : "Secuencial")</span>
+                            @{ var (etxt, ecls) = c.Estado switch { EstadoCircuito.Completado => ("Completado", "ok"), EstadoCircuito.Cancelado => ("Cancelado", "rej"), _ => ("Activo", "prog") }; }
+                            <span class="mf-circ-est @ecls">@etxt</span>
+                        </div>
+                        @foreach (var s in c.Firmantes)
+                        {
+                            var (badge, ic) = s.Estado switch
+                            {
+                                EstadoCircuitoFirmante.Firmado => ("ok", "bi-check-lg"),
+                                EstadoCircuitoFirmante.Pendiente => ("now", "bi-hourglass-split"),
+                                EstadoCircuitoFirmante.Rechazado => ("rej", "bi-x-lg"),
+                                _ => ("wait", "bi-clock")
+                            };
+                            <div class="mf-firmrow">
+                                <span class="mf-fbadge mf-fb-@badge"><i class="bi @ic"></i></span>
+                                <span class="mf-fname">@s.Orden. @s.Nombre</span>
+                                <span class="mf-fmeta">@(s.TimestampFirma?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? (s.Estado == EstadoCircuitoFirmante.Pendiente ? "en turno" : ""))</span>
+                            </div>
+                        }
+                        <div class="mf-prog"><div class="mf-prog-fill" style="width:@(c.Total == 0 ? 0 : c.Completados * 100 / c.Total)%"></div></div>
+                        <div class="mf-prog-txt">@c.Completados de @c.Total firmado(s)@(string.IsNullOrWhiteSpace(c.MotivoCancelacion) ? "" : $" · Cancelado: {c.MotivoCancelacion}")</div>
+                    </div>
+                }
+            </div>
+        }
         <div style="overflow-x:auto">
             <table class="mf-table">
                 <thead><tr>
@@ -220,6 +274,7 @@
     private BandejaFirma _tab = BandejaFirma.Pendientes;
     private string _texto = "";
     private IReadOnlyList<FirmaBandejaItemDto>? _items;
+    private IReadOnlyList<CircuitoEnviadoDto>? _circuitos;
     private FirmaResumenDto? _resumen;
     private string? _ok, _error;
 
@@ -237,6 +292,7 @@
         _resumen = await Firmas.ContarResumenAsync(Actor);
         var t = string.IsNullOrWhiteSpace(_texto) ? null : _texto;
         _items = await Firmas.ListarBandejaAsync(_tab, Actor, t);
+        _circuitos = _tab == BandejaFirma.Enviadas ? await Firmas.ListarCircuitosEnviadosAsync(Actor, t) : null;
     }
 
     private async Task SwitchTab(BandejaFirma t) { _tab = t; _items = null; await Reload(); }
