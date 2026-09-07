@@ -987,11 +987,13 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   checkboxes + seleccionar-todo en la barra de lote de Pendientes + modal "Firmar en lote"
   (consentimiento agregado + OTP unico si aplica + resumen por documento). Verificado e2e: lote de 4 ->
   2 firmados + 2 con error "binario no disponible" (quedaron Pendientes); resumen y estados correctos.
-  Diferido: auditoria unica del lote (LOTE_ID) y procesamiento en background. PROD requiere aplicar la
-  migracion FirmaOtpLote en el proximo deploy.
+  Diferido: auditoria unica del lote (LOTE_ID) y procesamiento en background.
+  **DESPLEGADO a prod (2026-09-07, commit 96b797a)**: migracion FirmaOtpLote (prod 41 -> 42), backup
+  previo `tronox_prod_20260907_164233_pre_rf09.sql.gz`; verificado /login 200, /dev/login 404, 42
+  migraciones, columna lote_id, postgres-prod no recreado, 29 contenedores.
 
-Pendiente del modulo: deploy de FirmaOtpLote (RF09) a prod, y el resto de RQ05 (pista de auditoria de
-firma). Detalles menores diferidos (estampa en imagenes, full-text en compartidos, marcas de agua).
+Pendiente del modulo: el resto de RQ05 (pista de auditoria de firma). Detalles menores diferidos
+(estampa en imagenes, full-text en compartidos, marcas de agua).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
