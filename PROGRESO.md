@@ -643,6 +643,28 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 21. Deploy a prod del lote RQ04 validacion + RQ05 firma (2026-09-07)
+
+Desplegado a prod (host 10.0.0.3, commit `14e71b7`) el lote acumulado en `desarrollo`:
+UI de validacion RF11/RF12, y RQ05 firma completo hasta slice 4 (firma directa, bandeja Mis Firmas +
+solicitar RF06, stepper OTP RF08, circuitos multi-firmante RF07), ademas del editor RF08 texto,
+compartir RF07-doc, correo, imprimir, terminar, busqueda avanzada RF14 y paginacion (pendientes de
+deploys previos).
+
+- **7 migraciones nuevas** (prod 34 -> 41): DocumentoContenidoHtml, MenuNodeOrigenMigracion,
+  DocumentoCompartido, FirmaElectronica, FirmaBandejaCampos, FirmaOtp, FirmaCircuitos. Todas aditivas;
+  la app las auto-aplica al arrancar (TRONOX_RUN_MIGRATIONS=true). Backup previo
+  `tronox_prod_20260907_162213_pre_firma.sql.gz` (/opt/tronox/backups).
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  blazor.web.js + custom.css 200, 41 migraciones limpias, imagen SIN appsettings.Development.local.json)
+  -> save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404, blazor.web.js 200; migraciones 41 (ultima
+  FirmaCircuitos); tablas firmas/firma_otps/firma_circuitos/firma_circuito_firmantes creadas;
+  **postgres-prod NO recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos);
+  azurite-prod intacto; **29 contenedores** (vecinos sin bajar).
+
+---
+
 ## 17. Deploy a prod del lote de detalle de Expedientes (2026-08-18)
 
 Desplegado a prod (host 10.0.0.3) el lote acumulado en `desarrollo` (commit `75e223d`):
