@@ -611,6 +611,115 @@ public sealed class FirmaService : IFirmaService
         CircuitoId = circ.Id
     };
 
+    // ---- Firma masiva por lote (RF09) ----
+
+    public async Task<bool> LoteRequiereOtpAsync(IReadOnlyList<long> firmaIds, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (firmaIds is null || firmaIds.Count == 0) { return false; }
+        return await _db.Firmas.AsNoTracking().AnyAsync(
+            f => firmaIds.Contains(f.Id) && f.FirmanteUserId == actorUserId && f.Estado == EstadoFirma.Pendiente && f.OtpRequerido, cancellationToken);
+    }
+
+    public async Task<DocumentoResult<OtpLoteEnvioDto>> GenerarOtpLoteAsync(
+        IReadOnlyList<long> firmaIds, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (firmaIds is null || firmaIds.Count == 0) { return DocumentoResult<OtpLoteEnvioDto>.Invalid("No hay documentos seleccionados."); }
+        var firmas = await _db.Firmas.AsNoTracking()
+            .Where(f => firmaIds.Contains(f.Id) && f.FirmanteUserId == actorUserId && f.Estado == EstadoFirma.Pendiente)
+            .Select(f => f.Id).ToListAsync(cancellationToken);
+        if (firmas.Count == 0) { return DocumentoResult<OtpLoteEnvioDto>.NotFound("No hay solicitudes pendientes tuyas en la seleccion."); }
+
+        var correo = await _db.PlatformUsers.AsNoTracking()
+            .Where(p => p.Id == actorUserId).Select(p => p.Email).FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(correo)) { return DocumentoResult<OtpLoteEnvioDto>.Invalid("El firmante no tiene correo para el OTP."); }
+
+        var loteId = "LOTE-" + Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
+        var codigo = GenerarCodigo6();
+        var otp = new FirmaOtp
+        {
+            TenantId = _tenant.TenantId!.Value,
+            FirmaId = firmas[0],
+            Usuario = actorUserId,
+            LoteId = loteId,
+            CodigoHash = Sha256Hex(codigo),
+            Canal = "correo",
+            ExpiraAt = DateTimeOffset.UtcNow.AddMinutes(OtpVigenciaMinutos),
+            Intentos = 0
+        };
+        _db.FirmaOtps.Add(otp);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        string? demo = null;
+        try
+        {
+            await _email.SendAsync(correo, "Codigo de firma masiva - TRONOX",
+                $"<p>Su codigo para firmar el lote de {firmas.Count} documento(s) es <strong>{codigo}</strong>. Vigencia: {OtpVigenciaMinutos} minutos.</p>", cancellationToken);
+        }
+        catch { demo = codigo; }
+
+        return DocumentoResult<OtpLoteEnvioDto>.Ok(new OtpLoteEnvioDto(loteId, Enmascarar(correo), OtpVigenciaMinutos, demo));
+    }
+
+    public async Task<DocumentoResult<FirmaLoteResumenDto>> FirmarLoteAsync(
+        IReadOnlyList<long> firmaIds, string? loteId, string? codigo, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default)
+    {
+        if (firmaIds is null || firmaIds.Count == 0) { return DocumentoResult<FirmaLoteResumenDto>.Invalid("No hay documentos seleccionados."); }
+
+        if (await LoteRequiereOtpAsync(firmaIds, actorUserId, cancellationToken))
+        {
+            if (string.IsNullOrWhiteSpace(loteId) || string.IsNullOrWhiteSpace(codigo))
+            {
+                return DocumentoResult<FirmaLoteResumenDto>.Invalid("El lote requiere verificacion OTP.");
+            }
+            if (!await ValidarOtpLoteAsync(loteId, codigo, cancellationToken))
+            {
+                return DocumentoResult<FirmaLoteResumenDto>.Invalid("Codigo invalido o expirado.");
+            }
+        }
+
+        var items = new List<FirmaLoteItemDto>();
+        foreach (var id in firmaIds.Distinct())
+        {
+            var f = await _db.Firmas.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+            var nombre = f is null ? "" : (await _db.Documentos.AsNoTracking()
+                .Where(d => d.Id == f.DocumentoId).Select(d => d.Nombre).FirstOrDefaultAsync(cancellationToken) ?? "");
+            if (f is null) { items.Add(new FirmaLoteItemDto(id, "", false, "La solicitud no existe.")); continue; }
+            if (f.FirmanteUserId != actorUserId) { items.Add(new FirmaLoteItemDto(id, nombre, false, "No te esta asignada.")); continue; }
+            if (f.Estado != EstadoFirma.Pendiente) { items.Add(new FirmaLoteItemDto(id, nombre, false, "Ya fue resuelta.")); continue; }
+            try
+            {
+                var res = await CumplirFirmaAsync(f, actorUserId, ip, sesionId, cancellationToken);
+                items.Add(new FirmaLoteItemDto(id, nombre, res.IsOk, res.IsOk ? null : res.Error));
+            }
+            catch (Exception ex)
+            {
+                items.Add(new FirmaLoteItemDto(id, nombre, false, ex.Message));
+            }
+        }
+
+        var ok = items.Count(i => i.Ok);
+        return DocumentoResult<FirmaLoteResumenDto>.Ok(new FirmaLoteResumenDto(items.Count, ok, items.Count - ok, items));
+    }
+
+    private async Task<bool> ValidarOtpLoteAsync(string loteId, string codigo, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(codigo)) { return false; }
+        var otp = await _db.FirmaOtps
+            .Where(o => o.LoteId == loteId && o.VerificadoAt == null)
+            .OrderByDescending(o => o.Id).FirstOrDefaultAsync(cancellationToken);
+        if (otp is null) { return false; }
+        otp.Intentos += 1;
+        if (DateTimeOffset.UtcNow > otp.ExpiraAt) { await _db.SaveChangesAsync(cancellationToken); return false; }
+        if (!string.Equals(otp.CodigoHash, Sha256Hex(codigo.Trim()), StringComparison.OrdinalIgnoreCase))
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return false;
+        }
+        otp.VerificadoAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     /// <summary>Valida el codigo contra el OTP vigente de la firma (incrementa intentos; marca verificado si OK).</summary>
     private async Task<bool> ValidarOtpAsync(long firmaId, string codigo, CancellationToken cancellationToken)
     {

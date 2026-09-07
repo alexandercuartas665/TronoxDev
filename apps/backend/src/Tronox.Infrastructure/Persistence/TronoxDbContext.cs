@@ -1188,9 +1188,11 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         {
             b.Property(x => x.CodigoHash).HasMaxLength(64).IsRequired();
             b.Property(x => x.Canal).HasMaxLength(20);
+            b.Property(x => x.LoteId).HasMaxLength(40);
             b.HasOne(x => x.Firma).WithMany()
                 .HasForeignKey(x => x.FirmaId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.FirmaId, x.VerificadoAt });
+            b.HasIndex(x => new { x.LoteId, x.VerificadoAt });
         });
 
         // Circuitos de firma (RQ05 - RF07). Cuelgan del documento (Cascade). Enums como string.

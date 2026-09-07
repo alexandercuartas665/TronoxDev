@@ -980,9 +980,18 @@ Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 vertical
   rechazo -> circuito Cancelado, firmas Rechazadas, doc SinFirma. Diferido: cajita por coordenadas,
   recrear circuito, notificar a los que ya firmaron.
 
-Pendiente del modulo: deploy del lote acumulado a prod (con backup), y el resto de RQ05 (firma masiva
-RF09, pista de auditoria). Detalles menores diferidos (estampa en imagenes, full-text en compartidos,
-marcas de agua en visor).
+- **Firma masiva por lote (RQ05 - RF09, slice 5)** [ADR-021]: port de FirmaMasivaProcesador. Columna
+  FirmaOtp.LoteId (un OTP cubre el lote). Backend (IFirmaService): LoteRequiereOtpAsync,
+  GenerarOtpLoteAsync (un codigo para todo el lote), FirmarLoteAsync (valida OTP del lote una vez y
+  firma secuencialmente via CumplirFirmaAsync; los que fallan quedan Pendientes; devuelve resumen). UI:
+  checkboxes + seleccionar-todo en la barra de lote de Pendientes + modal "Firmar en lote"
+  (consentimiento agregado + OTP unico si aplica + resumen por documento). Verificado e2e: lote de 4 ->
+  2 firmados + 2 con error "binario no disponible" (quedaron Pendientes); resumen y estados correctos.
+  Diferido: auditoria unica del lote (LOTE_ID) y procesamiento en background. PROD requiere aplicar la
+  migracion FirmaOtpLote en el proximo deploy.
+
+Pendiente del modulo: deploy de FirmaOtpLote (RF09) a prod, y el resto de RQ05 (pista de auditoria de
+firma). Detalles menores diferidos (estampa en imagenes, full-text en compartidos, marcas de agua).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.

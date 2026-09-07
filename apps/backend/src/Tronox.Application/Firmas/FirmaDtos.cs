@@ -128,3 +128,14 @@ public sealed record CircuitoEnviadoDto(
 /// entornos sin correo. En produccion con correo configurado llega null (no se revela el codigo).
 /// </summary>
 public sealed record OtpEnvioDto(string EmailEnmascarado, int MinutosVigencia, string? CodigoDemo);
+
+// ---- Firma masiva por lote (RF09) ----
+
+/// <summary>OTP de un lote de firma masiva (RF09): un solo codigo cubre todo el lote.</summary>
+public sealed record OtpLoteEnvioDto(string LoteId, string EmailEnmascarado, int MinutosVigencia, string? CodigoDemo);
+
+/// <summary>Resultado por documento de un lote de firma masiva.</summary>
+public sealed record FirmaLoteItemDto(long FirmaId, string DocumentoNombre, bool Ok, string? Mensaje);
+
+/// <summary>Resumen de un lote de firma masiva (N firmados / N con error).</summary>
+public sealed record FirmaLoteResumenDto(int Total, int Exitosos, int Fallidos, IReadOnlyList<FirmaLoteItemDto> Items);

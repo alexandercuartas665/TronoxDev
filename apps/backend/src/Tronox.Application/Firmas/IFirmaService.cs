@@ -51,6 +51,17 @@ public interface IFirmaService
     /// <summary>RF08 (stepper, firmar con OTP): valida el codigo y, si es correcto, sella el PDF y marca Firmado.</summary>
     Task<DocumentoResult<FirmaEjecutadaDto>> FirmarConOtpAsync(long firmaId, string codigo, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default);
 
+    // ---- Firma masiva por lote (RF09) ----
+
+    /// <summary>RF09: indica si alguna de las firmas seleccionadas exige OTP (para decidir el paso OTP del lote).</summary>
+    Task<bool> LoteRequiereOtpAsync(IReadOnlyList<long> firmaIds, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>RF09: genera y envia UN codigo OTP para todo el lote. Devuelve el LoteId + correo enmascarado.</summary>
+    Task<DocumentoResult<OtpLoteEnvioDto>> GenerarOtpLoteAsync(IReadOnlyList<long> firmaIds, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>RF09: firma el lote secuencialmente (valida el OTP del lote si aplica). Los que fallan quedan Pendientes.</summary>
+    Task<DocumentoResult<FirmaLoteResumenDto>> FirmarLoteAsync(IReadOnlyList<long> firmaIds, string? loteId, string? codigo, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default);
+
     // ---- Firma directa (slice 1, calca FirmaDirectaHelper: sin stepper, sin OTP) ----
 
     /// <summary>Identidad del firmante (snapshot) para la pantalla de confirmacion de la firma directa.</summary>

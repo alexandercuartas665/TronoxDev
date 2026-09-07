@@ -17,6 +17,9 @@ public class FirmaOtp : TenantEntity
     /// <summary>Firmante al que se envio el codigo (PlatformUserId).</summary>
     public long Usuario { get; set; }
 
+    /// <summary>Identificador del lote (RF09): un solo OTP cubre todo el lote. Null en OTP de firma individual.</summary>
+    public string? LoteId { get; set; }
+
     /// <summary>Hash SHA-256 del codigo de 6 digitos (hex). Nunca se guarda el codigo en claro.</summary>
     public string CodigoHash { get; set; } = string.Empty;
 
