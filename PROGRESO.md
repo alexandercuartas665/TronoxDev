@@ -643,6 +643,23 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 23. Deploy a prod de Fase B.1 (firma manuscrita / grafo RF03) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `b2a97a5`) el grafo de firma (Fase B.1, ADR-023): pagina "Mi
+Firma" + pintado del grafo del firmante en la cajita de sellado.
+
+- **1 migracion nueva** (prod 43 -> 44): `FirmaGrafo` (CREATE TABLE `firma_grafos`, aditiva, sin tocar
+  datos existentes). La app la auto-aplica al arrancar (TRONOX_RUN_MIGRATIONS=true). Backup previo
+  `tronox_prod_20260908_064351_pre_faseB1.sql.gz` (/opt/tronox/backups, prod estaba en 43 migraciones).
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  44 migraciones con ultima FirmaGrafo, tabla firma_grafos creada, imagen SIN appsettings.*.local.json)
+  -> save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 44 (ultima FirmaGrafo); tabla firma_grafos
+  creada; **postgres-prod NO recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos);
+  **29 contenedores** (vecinos sin bajar); imagen de app renovada.
+
+---
+
 ## 22. Deploy a prod de Fase A (config de firma RF01 + notificaciones RF11) (2026-09-08)
 
 Desplegado a prod (host 10.0.0.3, commit `27e4808`) el lote acumulado en `desarrollo` desde el deploy
@@ -1059,9 +1076,9 @@ OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de audit
   muestra el grafo en la cajita (rasterizado a PNG con PDFium), y sin grafo la caja compacta original
   (sin regresion). Diferido: grafo en la hoja "Certificacion de firmas" (Fase C).
 
-Pendiente: deploy a prod de Fase B.1 (migracion FirmaGrafo, 43->44). Detalles menores diferidos (estampa
-en imagenes, full-text en compartidos, marcas de agua en visor). Sigue Fase B: rotulacion RF17 (3.1),
-alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
+Fase B.1 **desplegada a prod** (2026-09-08, migraciones 44, ver seccion 23). Detalles menores diferidos
+(estampa en imagenes, full-text en compartidos, marcas de agua en visor). Sigue Fase B: rotulacion RF17
+(3.1, en curso), alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
