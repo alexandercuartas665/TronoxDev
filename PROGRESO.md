@@ -643,6 +643,19 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 25. Deploy a prod del fix OCR del visor (RF04) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `f3e7ac7`) el fix del chip OCR/Reprocesar del visor (el visor
+pasaba el estado de firma en vez del estado OCR). Con esto el OCR/Reprocesar (RF04) queda operativo en
+prod (config de Azure Computer Vision en Datos de la Entidad + Reprocesar en el visor).
+
+- **Pure image swap, 0 migraciones nuevas**: prod sigue en 44. Backup previo
+  `tronox_prod_20260908_143009_pre_ocrfix.sql.gz`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 44 (sin cambio); **postgres-prod NO
+  recreado** (restarts=0); **29 contenedores** (vecinos sin bajar).
+
+---
+
 ## 24. Deploy a prod de Fase B.2 (rotulacion de expedientes RF17) (2026-09-08)
 
 Desplegado a prod (host 10.0.0.3, commit `2eecdf6`) la rotulacion de expedientes (Fase B.2, ADR-024):
