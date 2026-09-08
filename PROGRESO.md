@@ -1136,7 +1136,22 @@ agua en visor).
   Error por binario ausente en Azurite, path correcto). Sin migracion. Diferido: auto-OCR asincrono al
   incorporar (hoy es manual desde el visor; la columna ocr_texto ya la indexa la busqueda avanzada).
 
-Sigue Fase B: alertas RF11 Inc.2 (2.3, depende de Calendario Habil).
+- **Fase B.4 - Alertas de firma pendiente (RQ05 - RF11 Inc.2)** [ADR-025]: cierra RF11. Validado que el
+  **Calendario Habil YA existe** (ICalendarioHabilService: EsHabil/ProximoHabil/SumarDiasHabiles + config
+  dias/jornada + festivos Colombia, configurado en Datos de la Entidad via CalendarioHabilPanel + pagina
+  /modulo/calendario-habil; ya lo usa el SLA de radicacion) -> no habia que construirlo, solo consumirlo.
+  Como los circuitos crean fila `firmas` por firmante activado, se escanea una sola fuente: `firmas`
+  Pendientes. `IFirmaAlertaService.EscanearYAlertarAsync` (tenant-scoped): vencimiento con dias HABILES
+  (SumarDiasHabiles(fechaSolicitud, FirmaDias)); re-alerta respetando FirmaFrecuenciaDias; emite campana
+  + correo al firmante (best-effort). Nueva columna `firmas.ultima_alerta_at` (migracion FirmaUltimaAlerta,
+  44->45, aditiva) para marcar lo alertado. Hospedaje: `FirmaAlertasHostedService` (BackgroundService en
+  la APP, no en Workers que no se despliega), retraso 3 min + cada 12 h, itera tenants con pendientes
+  fijando el tenant ambient. Verificado e2e local: firma vencida -> campana "Firma pendiente" + correo +
+  ultima_alerta_at marcada, log "Alertas de firma emitidas (tenant 2): 1". **Fase B COMPLETA.**
+
+Fase B COMPLETA (grafo RF03, rotulacion RF17, OCR RF04, alertas RF11 Inc.2). Pendiente: deploy de la
+Fase B.4 (migracion FirmaUltimaAlerta 44->45). Sigue Fase C (fidelidad de sellado PDF/A+XMP+QR+NTP,
+certificado, portal verificador) cuando el usuario lo priorice.
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.

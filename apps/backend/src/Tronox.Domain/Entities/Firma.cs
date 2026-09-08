@@ -67,4 +67,10 @@ public class Firma : TenantEntity
 
     /// <summary>Comentario del firmante al rechazar (OBLIGATORIO si Rechazado).</summary>
     public string? ComentarioRechazo { get; set; }
+
+    /// <summary>
+    /// Ultima vez que se alerto al firmante de esta solicitud pendiente (RF11 Inc.2). Null = nunca.
+    /// Controla la frecuencia de re-alerta (FirmaConfig.FirmaFrecuenciaDias) para no repetir a diario.
+    /// </summary>
+    public DateTimeOffset? UltimaAlertaAt { get; set; }
 }

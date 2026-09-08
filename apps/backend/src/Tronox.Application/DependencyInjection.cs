@@ -92,6 +92,7 @@ public static class DependencyInjection
         // archivar en expediente (RF16). La logica pura (extension/tamano/hash) vive en DocumentoRules.
         services.AddScoped<Documentos.IDocumentoService, Documentos.DocumentoService>();
         services.AddScoped<Firmas.IFirmaService, Firmas.FirmaService>();
+        services.AddScoped<Firmas.IFirmaAlertaService, Firmas.FirmaAlertaService>();
         // Tareas de validacion (RQ04 - RF11/RF12): solicitar revision/aprobacion + bandeja Mis Tareas.
         // La logica pura (comentario obligatorio, dias restantes) vive en ValidacionRules.
         services.AddScoped<Validaciones.IValidacionService, Validaciones.ValidacionService>();

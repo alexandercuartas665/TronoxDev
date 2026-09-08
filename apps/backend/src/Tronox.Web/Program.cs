@@ -159,6 +159,8 @@ builder.Services.AddScoped<ITenantContext, Tronox.Web.Auth.AmbientTenantContext>
 builder.Services.AddSignalR();
 builder.Services.AddScoped<Tronox.Application.Notifications.INotificationBroadcaster, Tronox.Web.RealTime.SignalRNotificationBroadcaster>();
 builder.Services.AddScoped<Tronox.Web.Services.CircuitFormGate>();
+// Alertas de firma pendiente (RF11 Inc.2): escaneo periodico cross-tenant con dias habiles.
+builder.Services.AddHostedService<Tronox.Web.Services.FirmaAlertasHostedService>();
 
 var app = builder.Build();
 
