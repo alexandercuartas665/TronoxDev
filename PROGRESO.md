@@ -1107,7 +1107,23 @@ OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de audit
 
 Fase B.1 (grafo) y B.2 (rotulacion RF17) **desplegadas a prod** (2026-09-08, migraciones 44, ver
 secciones 23 y 24). Detalles menores diferidos (estampa en imagenes, full-text en compartidos, marcas de
-agua en visor). Sigue Fase B: alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
+agua en visor).
+
+- **Fase B.3 - OCR / Reprocesar (RQ04 - RF04)**: al auditar, el OCR ya estaba **construido** (no era un
+  pendiente real; el plan estaba desactualizado): `OcrService` llama a Azure Computer Vision Read API
+  v3.2 (analyze + polling + extraccion), la cuenta (endpoint + API key cifrada AES-256) se configura en
+  **Datos de la Entidad** (`EntidadConfigExtraService.GetOcrAsync/GuardarOcrAsync`, seccion "OCR /
+  Reconocimiento de texto"), el visor expone `op=ocr`/`op=reocr` y el JS pinta el chip de estado + el
+  enlace "Reprocesar" (visible en Pendiente/Error). Sin config activa, Reprocesar avisa "no configurado".
+  **Bug corregido**: el visor pasaba `data-ocr="@_d.EstadoFirma"` (estado de FIRMA) al JS en vez del
+  estado OCR, asi que el chip/Reprocesar nunca aparecian bien. Se agrego `OcrEstado` a
+  `DocumentoDetalleDto` (+ mapeo) y el visor ahora pasa `data-ocr="@_d.OcrEstado"`. Verificado e2e: doc
+  Pendiente muestra "OCR pendiente + Reprocesar"; Reprocesar ejecuta el flujo (config activa -> valida
+  doc/formato -> Procesando -> intenta binario/Azure) y refleja el resultado en vivo (en local cayo a
+  Error por binario ausente en Azurite, path correcto). Sin migracion. Diferido: auto-OCR asincrono al
+  incorporar (hoy es manual desde el visor; la columna ocr_texto ya la indexa la busqueda avanzada).
+
+Sigue Fase B: alertas RF11 Inc.2 (2.3, depende de Calendario Habil).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.

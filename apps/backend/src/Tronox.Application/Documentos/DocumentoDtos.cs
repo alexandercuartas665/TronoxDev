@@ -51,6 +51,7 @@ public sealed record DocumentoDetalleDto(
     EstadoDocumento Estado,
     SoporteDocumento Soporte,
     EstadoFirmaDocumento EstadoFirma,
+    OcrEstadoDocumento OcrEstado,
     string? Formato,
     long? TamanoBytes,
     int? Folios,

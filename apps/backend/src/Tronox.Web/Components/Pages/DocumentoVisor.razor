@@ -25,7 +25,7 @@ else
 {
     <div id="vzShell" class="vz-shell"
          data-doc="@Doc" data-exp="0" data-re="t@(_tenant)" data-t="@_tenant"
-         data-bin="/visor/bin?doc=@Doc" data-formato="@_formato" data-ocr="@_d.EstadoFirma" data-tipo="@(_d.TipologiaNombre is null ? 0 : 1)"
+         data-bin="/visor/bin?doc=@Doc" data-formato="@_formato" data-ocr="@_d.OcrEstado" data-tipo="@(_d.TipologiaNombre is null ? 0 : 1)"
          data-nombre="@_d.Nombre" data-fecha="@(_d.FechaDocumento?.ToString("yyyy-MM-dd"))"
          data-scroll="0"
          data-pdfjs="/visor/pdf.js"

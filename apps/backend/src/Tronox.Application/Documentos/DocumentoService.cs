@@ -1299,7 +1299,7 @@ public sealed class DocumentoService : IDocumentoService
         }
 
         return new DocumentoDetalleDto(
-            d.Id, d.Nombre, d.NombreArchivoOriginal, d.Estado, d.Soporte, d.EstadoFirma,
+            d.Id, d.Nombre, d.NombreArchivoOriginal, d.Estado, d.Soporte, d.EstadoFirma, d.OcrEstado,
             d.Formato, d.TamanoBytes, d.Folios, d.HashSha256, d.TieneBinario,
             d.FechaDocumento, d.FechaIncorporacion,
             exp?.Codigo, exp?.Nombre, tipNombre, nivelNombre, metas);
