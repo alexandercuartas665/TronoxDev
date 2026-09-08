@@ -643,6 +643,22 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 24. Deploy a prod de Fase B.2 (rotulacion de expedientes RF17) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `2eecdf6`) la rotulacion de expedientes (Fase B.2, ADR-024):
+modal de rotulos en la bandeja + generador PDF (QuestPDF + Code 128).
+
+- **Pure image swap, 0 migraciones nuevas**: el rotulo se arma en runtime (no persiste); prod sigue en 44
+  migraciones. Backup previo `tronox_prod_20260908_140737_pre_faseB2.sql.gz` (/opt/tronox/backups).
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  44 migraciones sin cambio con ultima FirmaGrafo, imagen SIN appsettings.*.local.json) ->
+  save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 44 (sin cambio); **postgres-prod NO
+  recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos); **29 contenedores** (vecinos sin
+  bajar); app recreada con la imagen nueva.
+
+---
+
 ## 23. Deploy a prod de Fase B.1 (firma manuscrita / grafo RF03) (2026-09-08)
 
 Desplegado a prod (host 10.0.0.3, commit `b2a97a5`) el grafo de firma (Fase B.1, ADR-023): pagina "Mi
@@ -1089,9 +1105,9 @@ OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de audit
   posicion) + e2e UI (seleccion 3 expedientes -> modal -> generar -> "Rotulos generados", sin errores).
   Diferido: desglose caja/carpeta de topografia; gate por permiso de imprimir especifico.
 
-Fase B.1 **desplegada a prod** (2026-09-08, migraciones 44, ver seccion 23). Detalles menores diferidos
-(estampa en imagenes, full-text en compartidos, marcas de agua en visor). Sigue Fase B: RF17 HECHA (sin
-deploy aun), alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
+Fase B.1 (grafo) y B.2 (rotulacion RF17) **desplegadas a prod** (2026-09-08, migraciones 44, ver
+secciones 23 y 24). Detalles menores diferidos (estampa en imagenes, full-text en compartidos, marcas de
+agua en visor). Sigue Fase B: alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
