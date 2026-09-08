@@ -78,4 +78,12 @@ public interface IFirmaService
     /// la firma. Requiere consentimiento explicito del firmante (RF08 - consentimiento).
     /// </summary>
     Task<DocumentoResult<FirmaEjecutadaDto>> FirmarDirectoAsync(long docId, long actorUserId, string? ip, string? sesionId, CancellationToken cancellationToken = default);
+
+    // ---- Mi Firma: grafo / firma manuscrita (RF03 3.3.3) ----
+
+    /// <summary>Grafo (firma manuscrita) vigente del usuario como data URI para mostrar, o null si no tiene.</summary>
+    Task<string?> GetMiGrafoAsync(long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Guarda (upsert) el grafo del usuario a partir de un data URI o base64 PNG. Se pinta en la cajita al sellar.</summary>
+    Task<DocumentoResult<bool>> GuardarMiGrafoAsync(string imagenDataUri, long actorUserId, CancellationToken cancellationToken = default);
 }

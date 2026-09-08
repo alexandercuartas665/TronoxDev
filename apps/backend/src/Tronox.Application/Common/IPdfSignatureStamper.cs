@@ -9,7 +9,8 @@ public sealed record CajitaFirma(
     string VerificarUrl,
     int Indice = 0,
     string? TextoConfig = null,
-    bool MostrarNombre = true);
+    bool MostrarNombre = true,
+    string? GrafoBase64 = null);
 
 /// <summary>
 /// Estampa la cajita visual de firma en un PDF (RQ05 - RF03-B). En el primer slice es una cajita de

@@ -941,6 +941,60 @@ public sealed class FirmaService : IFirmaService
         return esPdf ? null : "La firma electronica del slice 1 solo aplica a PDF.";
     }
 
+    // ---- Mi Firma: grafo / firma manuscrita (RF03 3.3.3) ----
+
+    public async Task<string?> GetMiGrafoAsync(long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var b64 = await _db.FirmaGrafos.AsNoTracking()
+            .Where(g => g.PlatformUserId == actorUserId && g.Activo)
+            .Select(g => g.ImagenBase64).FirstOrDefaultAsync(cancellationToken);
+        return string.IsNullOrWhiteSpace(b64) ? null : $"data:image/png;base64,{b64}";
+    }
+
+    public async Task<DocumentoResult<bool>> GuardarMiGrafoAsync(
+        string imagenDataUri, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (_tenant.TenantId is null) { return DocumentoResult<bool>.Forbidden("Sin tenant."); }
+        var b64 = LimpiarBase64Grafo(imagenDataUri);
+        if (string.IsNullOrWhiteSpace(b64)) { return DocumentoResult<bool>.Invalid("Debe dibujar su firma primero."); }
+        // Validar que sea base64 decodificable y de tamano razonable (el pad genera PNG pequeno).
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(b64); }
+        catch { return DocumentoResult<bool>.Invalid("La imagen de la firma no es valida."); }
+        if (bytes.Length == 0) { return DocumentoResult<bool>.Invalid("La imagen de la firma esta vacia."); }
+        if (bytes.Length > 1_000_000) { return DocumentoResult<bool>.Invalid("La imagen de la firma es demasiado grande."); }
+
+        var grafo = await _db.FirmaGrafos
+            .FirstOrDefaultAsync(g => g.PlatformUserId == actorUserId, cancellationToken);
+        if (grafo is null)
+        {
+            _db.FirmaGrafos.Add(new FirmaGrafo
+            {
+                TenantId = _tenant.TenantId.Value,
+                PlatformUserId = actorUserId,
+                ImagenBase64 = b64,
+                ContentType = "image/png",
+                Activo = true
+            });
+        }
+        else
+        {
+            grafo.ImagenBase64 = b64;
+            grafo.ContentType = "image/png";
+            grafo.Activo = true;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+        return DocumentoResult<bool>.Ok(true);
+    }
+
+    /// <summary>Quita el prefijo data-URI si viene incluido ("data:image/png;base64,XXXX"). Calca el legacy.</summary>
+    private static string LimpiarBase64Grafo(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) { return string.Empty; }
+        var idx = s.IndexOf("base64,", StringComparison.OrdinalIgnoreCase);
+        return idx >= 0 ? s[(idx + 7)..].Trim() : s.Trim();
+    }
+
     /// <summary>
     /// Descarga el PDF vivo, estampa la cajita (best-effort) y sube el sellado a una key nueva SIN pisar la
     /// anterior (el caller confirma en base y luego borra la vieja). Devuelve null si no hay binario.
@@ -959,9 +1013,13 @@ public sealed class FirmaService : IFirmaService
         }
         var ahora = DateTimeOffset.UtcNow;
         var cfg = await GetFirmaConfigAsync(cancellationToken);
+        // Grafo (firma manuscrita) del firmante para pintarlo en la cajita (RF03 3.3.3). null si no registro.
+        var grafo = await _db.FirmaGrafos.AsNoTracking()
+            .Where(g => g.PlatformUserId == snap.UserId && g.Activo)
+            .Select(g => g.ImagenBase64).FirstOrDefaultAsync(cancellationToken);
         var cajita = new CajitaFirma(snap.Nombre, snap.Cargo, snap.Dependencia,
             ahora.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), $"verificar.tronox.co/v/{doc.Id}", indiceCajita,
-            TextoConfig: cfg.FirmaTextoDefault, MostrarNombre: cfg.FirmaMostrarNombre);
+            TextoConfig: cfg.FirmaTextoDefault, MostrarNombre: cfg.FirmaMostrarNombre, GrafoBase64: grafo);
         var sellado = _stamper.EstamparCajita(original, cajita);
         var hash = DocumentoRules.HashSha256(sellado);
         var nuevaKey = $"{_tenant.TenantId!.Value}/{Guid.NewGuid():N}.pdf";

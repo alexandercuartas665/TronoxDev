@@ -151,6 +151,7 @@ public interface IApplicationDbContext
     DbSet<RadPortalConfig> RadPortalConfigs { get; }
     DbSet<ParametrosSeguridad> ParametrosSeguridad { get; }
     DbSet<FirmaConfig> FirmaConfigs { get; }
+    DbSet<FirmaGrafo> FirmaGrafos { get; }
     DbSet<AlmacenamientoConfig> AlmacenamientosConfig { get; }
     DbSet<OcrConfig> OcrConfigs { get; }
 

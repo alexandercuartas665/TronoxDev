@@ -153,6 +153,7 @@ public static class MenuCatalogo
             new("Firma Electronica y Digital", "req005", "bi-pen", "RQ05",
             [
                 new("Mis Firmas", "modulo/firmas-mis", "bi-inbox", "RF10"),
+                new("Mi Firma", "modulo/firmas-mifirma", "bi-pencil", "RF03"),
                 new("Configuracion del Modulo de Firma", "modulo/firmas-config", "bi-gear", "RF01"),
                 new("Proveedores ECD", "modulo/firmas-proveedores", "bi-shield-lock", "RF14"),
                 new("Vigencia de Certificados", "modulo/firmas-vigencia", "bi-patch-check", "RF19"),

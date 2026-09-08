@@ -109,7 +109,10 @@
             <h2 class="mf-title"><i class="bi bi-pen" style="color:#7C3AED"></i> Mis Firmas</h2>
             <div class="mf-subtitle">Gestión unificada de su actividad de firma: documentos por firmar, solicitudes enviadas e historial.</div>
         </div>
-        <button class="mf-pista-btn" @onclick="OpenPista"><i class="bi bi-clock-history"></i> Pista de auditoría</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a class="mf-pista-btn" href="/modulo/firmas-mifirma"><i class="bi bi-pencil"></i> Mi Firma</a>
+            <button class="mf-pista-btn" @onclick="OpenPista"><i class="bi bi-clock-history"></i> Pista de auditoría</button>
+        </div>
     </div>
 
     @if (_ok is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_ok</span></div> }

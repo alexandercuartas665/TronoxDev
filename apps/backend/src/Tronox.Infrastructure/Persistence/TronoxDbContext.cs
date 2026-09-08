@@ -141,6 +141,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<RadPortalConfig> RadPortalConfigs => Set<RadPortalConfig>();
     public DbSet<ParametrosSeguridad> ParametrosSeguridad => Set<ParametrosSeguridad>();
     public DbSet<FirmaConfig> FirmaConfigs => Set<FirmaConfig>();
+    public DbSet<FirmaGrafo> FirmaGrafos => Set<FirmaGrafo>();
     public DbSet<AlmacenamientoConfig> AlmacenamientosConfig => Set<AlmacenamientoConfig>();
     public DbSet<OcrConfig> OcrConfigs => Set<OcrConfig>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
@@ -1592,6 +1593,14 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.OtpModo).HasMaxLength(20).IsRequired();
             b.Property(x => x.OtpCanal).HasMaxLength(20).IsRequired();
             b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        // Firma manuscrita (grafo) del usuario (RF03 §3.3.3, legacy FIR_FIRMA_GRAFO). Una vigente por (tenant, usuario).
+        modelBuilder.Entity<FirmaGrafo>(b =>
+        {
+            b.Property(x => x.ImagenBase64).IsRequired();
+            b.Property(x => x.ContentType).HasMaxLength(30).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.PlatformUserId }).IsUnique();
         });
 
         // Almacenamiento Azure Blob por entidad (ADR-012). La cadena de conexion se guarda CIFRADA.

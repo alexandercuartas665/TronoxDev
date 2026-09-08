@@ -1045,8 +1045,23 @@ OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de audit
   Verificado e2e: solicitar admin2->Rita crea notif TaskAssigned para Rita; rechazo de Rita crea notif
   General "Firma rechazada" para admin2. **Fase A COMPLETA** (config + notificaciones).
 
-Pendiente: deploy a prod del slice 6 (image swap, sin migracion). Detalles menores diferidos (estampa
-en imagenes, full-text en compartidos, marcas de agua en visor), OCR/Reprocesar.
+- **Fase B.1 - Firma manuscrita / grafo (RF03 3.3.3)** [ADR-023]: port de ctrlMiFirma.ascx +
+  FirmaGrafoRepository + el pintado de FirmaCajitaHelper. Nueva entidad `FirmaGrafo` (tabla
+  `firma_grafos`, una vigente por tenant+PlatformUserId, PNG base64) + migracion aditiva `FirmaGrafo`.
+  IFirmaService gana `GetMiGrafoAsync`/`GuardarMiGrafoAsync` (upsert, valida base64 y tamano <=1MB).
+  SellarPdfEnSitioAsync busca el grafo del firmante y lo pasa a la cajita -> aparece en TODAS las vias
+  (directa/solicitada/OTP/circuito/lote) al reusar el mismo motor. Stamper: `CajitaFirma.GrafoBase64`;
+  con grafo la caja crece a 120pt y pinta la firma escalada/centrada en franja superior + separador
+  (XImage.FromFile via ImageSharp, best-effort); sin grafo, caja de texto de 74pt como antes. UI: pagina
+  "Mi Firma" (/modulo/firmas-mifirma, gateada por permiso firmas-mis, boton en Mis Firmas) con pad de
+  captura canvas + pointer events puro (js/firma-grafo.js, sin CDN, resolucion interna fija 1200x400).
+  Verificado e2e: dibujo + guardado (fila en firma_grafos) + previsualizacion; sellado de PDF de prueba
+  muestra el grafo en la cajita (rasterizado a PNG con PDFium), y sin grafo la caja compacta original
+  (sin regresion). Diferido: grafo en la hoja "Certificacion de firmas" (Fase C).
+
+Pendiente: deploy a prod de Fase B.1 (migracion FirmaGrafo, 43->44). Detalles menores diferidos (estampa
+en imagenes, full-text en compartidos, marcas de agua en visor). Sigue Fase B: rotulacion RF17 (3.1),
+alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
