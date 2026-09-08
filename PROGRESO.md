@@ -643,6 +643,22 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 26. Deploy a prod de Fase B.4 (alertas de firma pendiente RF11 Inc.2) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `a409d7b`) las alertas de firma pendiente (Fase B.4, ADR-025):
+BackgroundService en la app que avisa a los firmantes de firmas vencidas por dias habiles.
+
+- **1 migracion nueva** (prod 44 -> 45): `FirmaUltimaAlerta` (agrega `firmas.ultima_alerta_at`, aditiva).
+  Backup previo `tronox_prod_20260908_145100_pre_faseB4.sql.gz`.
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  45 migraciones con ultima FirmaUltimaAlerta, columna ultima_alerta_at creada, sin appsettings local) ->
+  save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 45; columna presente; **postgres-prod NO
+  recreado** (restarts=0); **29 contenedores**. El worker (FirmaAlertasHostedService) arranca ~3 min tras
+  el inicio y luego corre cada 12 h; el primer ciclo alerta las firmas ya vencidas (una vez c/u).
+
+---
+
 ## 25. Deploy a prod del fix OCR del visor (RF04) (2026-09-08)
 
 Desplegado a prod (host 10.0.0.3, commit `f3e7ac7`) el fix del chip OCR/Reprocesar del visor (el visor
