@@ -643,6 +643,29 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 22. Deploy a prod de Fase A (config de firma RF01 + notificaciones RF11) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `27e4808`) el lote acumulado en `desarrollo` desde el deploy
+previo (seccion 21): cierre de RQ05 nucleo (pista de auditoria RF12, slice 6) + **Fase A** del plan de
+pendientes: FirmaService consume la config del modulo (RF01, Fase A.1) y notificaciones de firma
+(campana in-app + correo, RF11, Fase A.2).
+
+- **1 migracion nueva** (prod 42 -> 43): `FirmaConfigActivoPorDefecto`, normalizacion una sola vez que
+  pone `modulo_firma_activo` y `firma_masiva_activa` en true para no bloquear firma al empezar a
+  consumir la config. Aditiva, sin DDL (solo UPDATE); prod tenia **0 filas** en `firma_configs` -> el
+  UPDATE fue no-op y firma sigue activa por el default sintetizado de `GetFirmaConfigAsync`. La app la
+  auto-aplica al arrancar (TRONOX_RUN_MIGRATIONS=true). Backup previo
+  `tronox_prod_20260908_051134_pre_faseA.sql.gz` (/opt/tronox/backups, prod estaba en 42 migraciones).
+- Runbook: build `tronox-web:prod` (596MB) -> verificado vs postgres desechable (/login 200,
+  /dev/login 404, 43 migraciones limpias con ultima FirmaConfigActivoPorDefecto, imagen SIN
+  appsettings.Development.local.json) -> save|gzip|ssh docker load ->
+  `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 43 (ultima FirmaConfigActivoPorDefecto);
+  **postgres-prod NO recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos);
+  **29 contenedores** (vecinos sin bajar).
+
+---
+
 ## 21. Deploy a prod del lote RQ04 validacion + RQ05 firma (2026-09-07)
 
 Desplegado a prod (host 10.0.0.3, commit `14e71b7`) el lote acumulado en `desarrollo`:
