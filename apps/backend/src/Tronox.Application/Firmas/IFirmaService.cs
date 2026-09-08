@@ -86,4 +86,9 @@ public interface IFirmaService
 
     /// <summary>Guarda (upsert) el grafo del usuario a partir de un data URI o base64 PNG. Se pinta en la cajita al sellar.</summary>
     Task<DocumentoResult<bool>> GuardarMiGrafoAsync(string imagenDataUri, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Certificado / acta de firma (RF04) ----
+
+    /// <summary>Genera el PDF del acta de firma (informe de auditoria) de un documento, leyendo el ledger. Fail-closed por acceso al documento.</summary>
+    Task<DocumentoResult<byte[]>> GenerarActaAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
 }

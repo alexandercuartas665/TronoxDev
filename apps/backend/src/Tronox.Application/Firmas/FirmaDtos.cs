@@ -143,6 +143,26 @@ public sealed record FirmaLoteResumenDto(int Total, int Exitosos, int Fallidos, 
 // ---- Pista de auditoria de firma (RF12) ----
 
 /// <summary>Un evento de la pista de auditoria de firma (RF12), leido del ledger append-only.</summary>
+/// <summary>Un evento del historial del acta de firma (RF04), del ledger append-only.</summary>
+public sealed record ActaEventoDto(DateTimeOffset Fecha, string Evento, string Actor, string? Ip, string? Detalle);
+
+/// <summary>
+/// Acta / certificado de firma de un documento (RF04, legacy fir_certificado). Resumen probatorio +
+/// historial de eventos. La hora de firma se rotula con su origen (NTP o servidor).
+/// </summary>
+public sealed record ActaFirmaDto(
+    long DocumentoId,
+    string DocumentoNombre,
+    string EstadoFirma,
+    bool Completado,
+    string? HashSha256,
+    string IdTransaccion,
+    DateTimeOffset FechaGeneracion,
+    string CreadoPor,
+    DateTimeOffset FechaCreacion,
+    string VerificarUrl,
+    IReadOnlyList<ActaEventoDto> Eventos);
+
 public sealed record PistaAuditoriaDto(
     long Id,
     DateTimeOffset Fecha,

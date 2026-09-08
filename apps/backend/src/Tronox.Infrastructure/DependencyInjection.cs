@@ -86,6 +86,7 @@ public static class DependencyInjection
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<Application.Common.IReceiptPdfRenderer, Pdf.QuestPdfReceiptRenderer>();
         services.AddScoped<Application.Common.IRotuloExportador, Pdf.QuestPdfRotuloExportador>();
+        services.AddScoped<Application.Common.IActaFirmaRenderer, Pdf.QuestPdfActaRenderer>();
 
         // HTML -> PDF con Chromium headless (PuppeteerSharp) para el editor de texto interno (RF08).
         // Reemplaza a SelectPdf (comercial, solo Windows) por un motor cross-platform (contenedor Linux).

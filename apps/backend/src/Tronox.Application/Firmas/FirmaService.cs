@@ -21,13 +21,14 @@ public sealed class FirmaService : IFirmaService
     private readonly IPdfSignatureStamper _stamper;
     private readonly IEmailSender _email;
     private readonly Notifications.INotificationService _notif;
+    private readonly IActaFirmaRenderer _acta;
 
     private const int OtpVigenciaMinutos = 5;
 
     public FirmaService(
         IApplicationDbContext db, ITenantContext tenant, IObjectStorage storage,
         IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email,
-        Notifications.INotificationService notif)
+        Notifications.INotificationService notif, IActaFirmaRenderer acta)
     {
         _db = db;
         _tenant = tenant;
@@ -36,6 +37,7 @@ public sealed class FirmaService : IFirmaService
         _stamper = stamper;
         _email = email;
         _notif = notif;
+        _acta = acta;
     }
 
     /// <summary>
@@ -985,6 +987,63 @@ public sealed class FirmaService : IFirmaService
         }
         await _db.SaveChangesAsync(cancellationToken);
         return DocumentoResult<bool>.Ok(true);
+    }
+
+    // ---- Certificado / acta de firma (RF04) ----
+
+    public async Task<DocumentoResult<byte[]>> GenerarActaAsync(
+        long docId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var doc = await _db.Documentos.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == docId && !d.EsVersionHistorica, cancellationToken);
+        if (doc is null) { return DocumentoResult<byte[]>.NotFound("El documento no existe."); }
+        var tenantId = _tenant.TenantId ?? 0;
+
+        // Eventos de firma del documento, del ledger append-only (mismas acciones que la pista RF12).
+        var rows = await _db.SuperAdminAuditLogs.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.EntityId == docId && _accionesFirma.Contains(a.ActionName))
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.CreatedAt, a.ActorUserId, a.ActionName, a.NewValue, a.IpAddress })
+            .ToListAsync(cancellationToken);
+
+        var actorIds = rows.Select(r => r.ActorUserId).Append(doc.CreatedBy ?? 0).Distinct().ToList();
+        var nombres = await _db.PlatformUsers.AsNoTracking()
+            .Where(p => actorIds.Contains(p.Id))
+            .Select(p => new { p.Id, Nombre = p.DisplayName ?? p.Email }).ToListAsync(cancellationToken);
+        var nm = nombres.ToDictionary(x => x.Id, x => x.Nombre);
+
+        var eventos = rows.Select(r => new ActaEventoDto(
+            r.CreatedAt,
+            EventoLabel(r.ActionName),
+            r.ActorUserId != 0 && nm.TryGetValue(r.ActorUserId, out var n) ? n : "(sistema)",
+            r.IpAddress,
+            Resumir(r.NewValue))).ToList();
+
+        var creadoPor = doc.CreatedBy is long cb && nm.TryGetValue(cb, out var cn) ? cn : "(sistema)";
+        var acta = new ActaFirmaDto(
+            DocumentoId: doc.Id,
+            DocumentoNombre: doc.Nombre,
+            EstadoFirma: doc.EstadoFirma.ToString(),
+            Completado: doc.EstadoFirma == EstadoFirmaDocumento.Firmado,
+            HashSha256: doc.HashSha256,
+            IdTransaccion: GenerarIdTransaccion(tenantId, doc.Id, doc.CreatedAt),
+            FechaGeneracion: DateTimeOffset.UtcNow,
+            CreadoPor: creadoPor,
+            FechaCreacion: doc.CreatedAt,
+            VerificarUrl: $"verificar.tronox.co/v/{doc.Id}",
+            Eventos: eventos);
+
+        return DocumentoResult<byte[]>.Ok(_acta.Render(acta));
+    }
+
+    /// <summary>ID de transaccion determinista estilo Adobe: TRX + base64 sin simbolos de SHA256(tenant|doc|creado), 30 chars.</summary>
+    private static string GenerarIdTransaccion(long tenantId, long docId, DateTimeOffset creado)
+    {
+        var semilla = $"{tenantId}|{docId}|{creado.UtcDateTime:yyyyMMddHHmmss}";
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(semilla));
+        var b64 = Convert.ToBase64String(hash);
+        var limpio = new string(b64.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        return "TRX" + (limpio.Length <= 30 ? limpio : limpio[..30]);
     }
 
     /// <summary>Quita el prefijo data-URI si viene incluido ("data:image/png;base64,XXXX"). Calca el legacy.</summary>

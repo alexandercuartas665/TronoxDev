@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Tronox.Application.Common;
 using Tronox.Application.Documentos;
+using Tronox.Application.Firmas;
 
 namespace Tronox.Web.Visor;
 
@@ -43,6 +44,15 @@ public static class VisorEndpoints
             if (!res.IsOk || res.Value is null) { return Results.NotFound(); }
             // Inline: el navegador lo muestra y el usuario imprime (Ctrl+P), como el legacy con print=1.
             return Results.File(res.Value.Contenido, res.Value.ContentType);
+        });
+
+        // ---- Certificado / acta de firma (fir_certificado.aspx): PDF inline generado server-side ----
+        g.MapGet("/certificado", async (HttpContext http, long doc, IFirmaService firmas) =>
+        {
+            var actor = ActorId(http);
+            var res = await firmas.GenerarActaAsync(doc, actor);
+            if (!res.IsOk || res.Value is null) { return Results.NotFound(); }
+            return Results.File(res.Value, "application/pdf");
         });
 
         // ---- Datos (exp_visor_data.ashx) GET ----

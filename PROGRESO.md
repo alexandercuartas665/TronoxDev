@@ -1165,9 +1165,23 @@ agua en visor).
   fijando el tenant ambient. Verificado e2e local: firma vencida -> campana "Firma pendiente" + correo +
   ultima_alerta_at marcada, log "Alertas de firma emitidas (tenant 2): 1". **Fase B COMPLETA.**
 
-Fase B COMPLETA (grafo RF03, rotulacion RF17, OCR RF04, alertas RF11 Inc.2). Pendiente: deploy de la
-Fase B.4 (migracion FirmaUltimaAlerta 44->45). Sigue Fase C (fidelidad de sellado PDF/A+XMP+QR+NTP,
-certificado, portal verificador) cuando el usuario lo priorice.
+Fase B COMPLETA y DESPLEGADA (grafo RF03, rotulacion RF17, OCR RF04, alertas RF11 Inc.2; prod en
+migraciones 45, ver secciones 23-26).
+
+- **Fase C.1 - Certificado / acta de firma en PDF (RQ05 - RF04)** [ADR-026]: port de fir_certificado.aspx.
+  El legacy imprimia HTML desde el navegador; en TRONOX se genera **server-side con QuestPDF** (sin
+  browser). `IFirmaService.GenerarActaAsync` lee el documento + los eventos de firma del ledger
+  `super_admin_audit_logs` (EntityId==docId + acciones de firma), resuelve actores y arma el acta:
+  resumen (Estado, **ID de transaccion** determinista estilo Adobe = TRX+base64(SHA256(tenant|doc|creado))
+  30 mayus, Hash SHA-256, Creado por, Fecha, URL de verificacion) + historial de eventos con fecha GMT /
+  actor / IP / detalle + "Documento completado". Renderer `QuestPdfActaRenderer`. Endpoint
+  `GET /visor/certificado?doc=N` (inline) + boton "Certificado" (fa-certificate) en la barra del visor.
+  Sin migracion ni infra. Verificado: harness de render (layout fiel) + e2e endpoint (doc 106 -> 200 PDF,
+  sin errores).
+
+Sigue Fase C: (C.2) NTP hora legal (FirmaConfig.NtpActivo/NtpServidor ya existen; portable, fallback
+seguro); y con cambio de infra: PDF/A+XMP+byte-range (LibreOffice/soffice en la imagen) y portal
+verificador publico (Caddy). Detalles del legacy en la memoria fase-c-sellado-fidelidad-hallazgos.
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
