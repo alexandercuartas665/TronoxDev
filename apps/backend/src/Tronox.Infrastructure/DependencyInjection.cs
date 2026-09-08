@@ -85,6 +85,7 @@ public static class DependencyInjection
         // Comprobantes PDF (QuestPDF). Licencia Community: gratis para empresas con ingresos < USD 1M/ano.
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<Application.Common.IReceiptPdfRenderer, Pdf.QuestPdfReceiptRenderer>();
+        services.AddScoped<Application.Common.IRotuloExportador, Pdf.QuestPdfRotuloExportador>();
 
         // HTML -> PDF con Chromium headless (PuppeteerSharp) para el editor de texto interno (RF08).
         // Reemplaza a SelectPdf (comercial, solo Windows) por un motor cross-platform (contenedor Linux).

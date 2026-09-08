@@ -80,4 +80,15 @@ public interface IExpedienteService
     // ---- Trazabilidad (RF09) ----
 
     Task<IReadOnlyList<TrazaItemDto>> GetTrazabilidadAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Rotulacion (RF17) ----
+
+    /// <summary>
+    /// Genera el PDF de rotulos de los expedientes indicados (RF17). Fail-closed por clasificacion (solo
+    /// los que el usuario puede ver) y con tope de 50. Arma fondo/seccion/serie/subserie/codigo/nombre/
+    /// fechas/folios/ubicacion por expediente y delega el dibujo a IRotuloExportador.
+    /// </summary>
+    Task<ExpedienteResult<byte[]>> GenerarRotulosAsync(
+        IReadOnlyList<long> ids, RotuloTamano tamano, int porHoja, int posicionInicio,
+        long actorUserId, CancellationToken cancellationToken = default);
 }

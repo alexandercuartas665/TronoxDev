@@ -1076,9 +1076,22 @@ OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de audit
   muestra el grafo en la cajita (rasterizado a PNG con PDFium), y sin grafo la caja compacta original
   (sin regresion). Diferido: grafo en la hoja "Certificacion de firmas" (Fase C).
 
+- **Fase B.2 - Rotulacion de expedientes (RQ03 - RF17)** [ADR-024]: port del modal de rotulos de
+  `exp_bandeja.aspx` + `RotuloExportador.vb`. Backend: `IExpedienteService.GenerarRotulosAsync` (fail-
+  closed por clasificacion reusando ResolveNivelMaxOrdenAsync, tope 50) arma por expediente fondo/
+  seccion/serie/subserie (arbol SerieDocumental por ParentId)/codigo/nombre/fechas/folios (SUM
+  Documento.Folios)/ubicacion (ultimo ExpedienteUbicacion). Exportador `QuestPdfRotuloExportador`
+  (QuestPDF + Code 128 via ZXing.Net rasterizado con SkiaSharp; sin QR, fiel al legacy): encabezado azul
+  "ARCHIVO DE GESTION" + 5 secciones, 3 tamanos (Caja/Carpeta/Sticker), N por hoja (1/2/4) + posicion de
+  inicio con huecos tenues. UI: el boton "Rotulos" de la barra de seleccion masiva abre el modal y
+  descarga el PDF (window.tronoxDownload). Sin migracion (se arma en runtime). Nuevos paquetes ZXing.Net
+  + SkiaSharp. Verificado: exportador con datos de muestra (rejilla 2x2, barcode, subserie "-", hueco de
+  posicion) + e2e UI (seleccion 3 expedientes -> modal -> generar -> "Rotulos generados", sin errores).
+  Diferido: desglose caja/carpeta de topografia; gate por permiso de imprimir especifico.
+
 Fase B.1 **desplegada a prod** (2026-09-08, migraciones 44, ver seccion 23). Detalles menores diferidos
-(estampa en imagenes, full-text en compartidos, marcas de agua en visor). Sigue Fase B: rotulacion RF17
-(3.1, en curso), alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
+(estampa en imagenes, full-text en compartidos, marcas de agua en visor). Sigue Fase B: RF17 HECHA (sin
+deploy aun), alertas RF11 Inc.2 (2.3, depende de Calendario Habil), OCR/Reprocesar (3.4).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.

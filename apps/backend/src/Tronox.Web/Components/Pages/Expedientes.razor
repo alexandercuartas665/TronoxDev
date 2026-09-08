@@ -13,6 +13,7 @@
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Mis Expedientes - TRONOX SGDEA</PageTitle>
 
@@ -153,7 +154,7 @@
             <span><strong>@_selected.Count</strong> seleccionado(s)</span>
             <button class="exp-link" @onclick="@(() => { _selected.Clear(); })">Cancelar selección</button>
             <div class="exp-selbar-actions">
-                <button class="exp-btn sm" @onclick='() => Toast("Rótulos de expediente: fase posterior de RQ03.")'><i class="bi bi-tag"></i> Rótulos</button>
+                <button class="exp-btn sm" @onclick="AbrirRotulos"><i class="bi bi-tag"></i> Rótulos</button>
                 <button class="exp-btn sm" @onclick="@(() => _showFuid = true)"><i class="bi bi-table"></i> FUID</button>
                 <button class="exp-btn sm" @onclick='() => Toast("Exportadores XLSX/XML/PDF: fase posterior de RQ03.")'><i class="bi bi-file-earmark-excel"></i> Exportar</button>
             </div>
@@ -490,6 +491,49 @@
     </div>
 }
 
+@* ---- Modal de Rotulos (RF17) ---- *@
+@if (_showRotulos)
+{
+    <div class="modal-overlay" @onclick="@(() => _showRotulos = false)">
+        <div class="modal-dialog" style="max-width:460px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3><i class="bi bi-tag"></i> Generar Rótulos</h3><button class="modal-close" @onclick="@(() => _showRotulos = false)">&times;</button></div>
+            <div class="modal-body">
+                <p class="exp-hint">Se generará un PDF con los rótulos de los <strong>@_selected.Count</strong> expediente(s) seleccionado(s) (máx. 50).</p>
+                @if (_rotError is not null) { <div class="exp-fielderr" style="color:#DC2626;font-size:12.5px;margin-bottom:10px;">@_rotError</div> }
+                <label style="font-size:12px;font-weight:700;color:#334155;display:block;margin-bottom:6px;">Tamaño del rótulo</label>
+                <div class="exp-fuid-cards" style="margin-bottom:14px;">
+                    <div class="exp-fuid-card @(_rotTam == RotuloTamano.Caja ? "sel green" : "")" @onclick="@(() => _rotTam = RotuloTamano.Caja)"><i class="bi bi-archive"></i><div>Caja<br /><small style="color:#94A3B8;">21 × 10 cm</small></div></div>
+                    <div class="exp-fuid-card @(_rotTam == RotuloTamano.Carpeta ? "sel red" : "")" @onclick="@(() => _rotTam = RotuloTamano.Carpeta)"><i class="bi bi-folder"></i><div>Carpeta<br /><small style="color:#94A3B8;">18 × 6 cm</small></div></div>
+                    <div class="exp-fuid-card @(_rotTam == RotuloTamano.Sticker ? "sel blue" : "")" @onclick="@(() => _rotTam = RotuloTamano.Sticker)"><i class="bi bi-sticky"></i><div>Sticker<br /><small style="color:#94A3B8;">10 × 5 cm</small></div></div>
+                </div>
+                <div class="exp-grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div>
+                        <label style="font-size:12px;font-weight:700;color:#334155;display:block;margin-bottom:4px;">Rótulos por hoja</label>
+                        <select class="exp-sel full" value="@_rotPorHoja" @onchange="OnPorHojaChanged">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="4">4</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;font-weight:700;color:#334155;display:block;margin-bottom:4px;">Posición de inicio <span style="font-weight:400;color:#94A3B8;">(hoja parcial)</span></label>
+                        <select class="exp-sel full" value="@_rotPosicion" @onchange="@((ChangeEventArgs e) => _rotPosicion = int.TryParse(e.Value?.ToString(), out var v) ? v : 1)">
+                            @for (var i = 1; i <= _rotPorHoja; i++)
+                            {
+                                <option value="@i">@i</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="exp-btn" @onclick="@(() => _showRotulos = false)">Cancelar</button>
+                <button class="exp-btn exp-btn-primary" disabled="@_rotBusy" @onclick="GenerarRotulos"><i class="bi bi-download"></i> Generar PDF</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_toast is not null)
 {
     <div class="exp-toast" @onclick="@(() => _toast = null)"><i class="bi bi-info-circle"></i> @_toast</div>
@@ -615,6 +659,18 @@
     @@media (max-width:760px){ .exp-stats { grid-template-columns:repeat(2,1fr); } .exp-grid2, .exp-cols-grid, .exp-fuid-cards { grid-template-columns:1fr; } }
 </style>
 
+<script>
+    // Descarga un archivo desde base64 (rotulos PDF, RF17). Igual patron que Documentos/ExpedienteDetalle.
+    window.tronoxDownload = function (fileName, contentType, base64) {
+        var a = document.createElement('a');
+        a.href = 'data:' + contentType + ';base64,' + base64;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
+</script>
+
 @code {
     private const string ModuleKey = "modulo/expedientes-mios";
 
@@ -660,6 +716,55 @@
     // Modales de estado
     private bool _showColumnas, _showAlertas, _showFuid;
     private string _fuidFmt = "xlsx";
+
+    // Rotulos (RF17)
+    private bool _showRotulos, _rotBusy;
+    private RotuloTamano _rotTam = RotuloTamano.Caja;
+    private int _rotPorHoja = 4, _rotPosicion = 1;
+    private string? _rotError;
+
+    private void AbrirRotulos()
+    {
+        _rotError = null;
+        _rotTam = RotuloTamano.Caja;
+        _rotPorHoja = 4;
+        _rotPosicion = 1;
+        _showRotulos = true;
+    }
+
+    private void OnPorHojaChanged(ChangeEventArgs e)
+    {
+        _rotPorHoja = int.TryParse(e.Value?.ToString(), out var v) ? v : 4;
+        if (_rotPosicion > _rotPorHoja) { _rotPosicion = 1; }
+    }
+
+    private async Task GenerarRotulos()
+    {
+        if (_rotBusy) { return; }
+        _rotError = null;
+        var ids = _selected.ToList();
+        if (ids.Count == 0) { _rotError = "Seleccione al menos un expediente."; return; }
+        _rotBusy = true;
+        try
+        {
+            var res = await Svc.GenerarRotulosAsync(ids, _rotTam, _rotPorHoja, _rotPosicion, Actor);
+            if (res.IsOk && res.Value is not null)
+            {
+                var nombre = $"Rotulos_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+                await JS.InvokeVoidAsync("tronoxDownload", nombre, "application/pdf", Convert.ToBase64String(res.Value));
+                _showRotulos = false;
+                Toast("Rótulos generados.");
+            }
+            else
+            {
+                _rotError = res.Error ?? "No se pudieron generar los rótulos.";
+            }
+        }
+        finally
+        {
+            _rotBusy = false;
+        }
+    }
 
     // Crear
     private bool _showCrear, _crearBusy;

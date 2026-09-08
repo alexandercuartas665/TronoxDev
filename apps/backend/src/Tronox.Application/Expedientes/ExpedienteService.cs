@@ -20,14 +20,17 @@ public sealed class ExpedienteService : IExpedienteService
     private readonly ITenantContext _tenantContext;
     private readonly ISequenceService _sequences;
     private readonly IAuditWriter _audit;
+    private readonly IRotuloExportador _rotulos;
 
     public ExpedienteService(
-        IApplicationDbContext db, ITenantContext tenantContext, ISequenceService sequences, IAuditWriter audit)
+        IApplicationDbContext db, ITenantContext tenantContext, ISequenceService sequences, IAuditWriter audit,
+        IRotuloExportador rotulos)
     {
         _db = db;
         _tenantContext = tenantContext;
         _sequences = sequences;
         _audit = audit;
+        _rotulos = rotulos;
     }
 
     // ---- Bandeja ----
@@ -381,6 +384,75 @@ public sealed class ExpedienteService : IExpedienteService
     }
 
     // ---- Helpers ----
+
+    // ---- Rotulacion (RF17) ----
+
+    public async Task<ExpedienteResult<byte[]>> GenerarRotulosAsync(
+        IReadOnlyList<long> ids, RotuloTamano tamano, int porHoja, int posicionInicio,
+        long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (ids is null || ids.Count == 0) { return ExpedienteResult<byte[]>.Invalid("Seleccione al menos un expediente."); }
+        if (ids.Count > 50) { return ExpedienteResult<byte[]>.Invalid("Maximo 50 rotulos por generacion."); }
+
+        var nivelMax = await ResolveNivelMaxOrdenAsync(actorUserId, cancellationToken);
+        var distintos = ids.Distinct().ToList();
+
+        // Fail-closed por clasificacion (RF10): solo los expedientes que el usuario puede ver.
+        var exps = await _db.Expedientes.AsNoTracking()
+            .Include(e => e.TrdAsignacion!).ThenInclude(a => a.Serie!).ThenInclude(s => s.Parent)
+            .Include(e => e.TrdAsignacion!).ThenInclude(a => a.Dependencia!).ThenInclude(d => d.Fondo)
+            .Include(e => e.NivelClasificacion)
+            .Where(e => !e.Eliminado && distintos.Contains(e.Id))
+            .Where(e => e.NivelClasificacion!.NivelOrden <= nivelMax)
+            .ToListAsync(cancellationToken);
+        if (exps.Count == 0) { return ExpedienteResult<byte[]>.NotFound("No hay expedientes visibles para rotular."); }
+
+        var expIds = exps.Select(e => e.Id).ToList();
+
+        // Folios = suma de folios de los documentos vigentes del expediente.
+        var folios = await _db.Documentos.AsNoTracking()
+            .Where(d => d.ExpedienteId != null && expIds.Contains(d.ExpedienteId!.Value) && !d.EsVersionHistorica)
+            .GroupBy(d => d.ExpedienteId!.Value)
+            .Select(g => new { ExpId = g.Key, Folios = g.Sum(x => x.Folios ?? 0) })
+            .ToDictionaryAsync(x => x.ExpId, x => x.Folios, cancellationToken);
+
+        // Ubicacion actual = ultima asignacion de ubicacion fisica por expediente.
+        var ubic = await _db.ExpedienteUbicaciones.AsNoTracking()
+            .Include(u => u.TopografiaElemento)
+            .Where(u => expIds.Contains(u.ExpedienteId))
+            .OrderByDescending(u => u.Id)
+            .ToListAsync(cancellationToken);
+        var ubicPorExp = ubic.GroupBy(u => u.ExpedienteId).ToDictionary(g => g.Key, g => g.First());
+
+        // Respetar el orden de seleccion del usuario.
+        var porId = exps.ToDictionary(e => e.Id);
+        var rotulos = new List<RotuloDatoDto>();
+        foreach (var id in distintos)
+        {
+            if (!porId.TryGetValue(id, out var e)) { continue; }
+            var nodo = e.TrdAsignacion?.Serie;
+            var esSub = nodo?.ParentId != null;
+            var serie = esSub ? nodo!.Parent : nodo;
+            var subserie = esSub ? nodo : null;
+            var ubicLabel = ubicPorExp.TryGetValue(e.Id, out var u) && u.TopografiaElemento is not null
+                ? $"{u.TopografiaElemento.Sigla} - {u.TopografiaElemento.Nombre}".Trim(' ', '-')
+                : "";
+            rotulos.Add(new RotuloDatoDto(
+                Fondo: e.TrdAsignacion?.Dependencia?.Fondo?.NombreFondo ?? "",
+                Seccion: e.TrdAsignacion?.Dependencia?.Name ?? "",
+                Serie: serie is null ? "" : $"{serie.Codigo} {serie.Nombre}".Trim(),
+                Subserie: subserie is null ? "" : $"{subserie.Codigo} {subserie.Nombre}".Trim(),
+                CodigoExp: e.Codigo,
+                NombreExp: e.Nombre,
+                FechaInicial: e.FechaApertura.ToString("dd/MM/yyyy"),
+                FechaFinal: e.FechaCierre?.ToString("dd/MM/yyyy") ?? "",
+                Folios: (folios.TryGetValue(e.Id, out var f) ? f : 0).ToString(),
+                Ubicacion: ubicLabel));
+        }
+
+        var pdf = _rotulos.Generar(rotulos, tamano, porHoja, posicionInicio);
+        return ExpedienteResult<byte[]>.Ok(pdf);
+    }
 
     /// <summary>
     /// Nivel de clasificacion maximo (NivelOrden) del usuario, a partir de sus roles vigentes. Union
