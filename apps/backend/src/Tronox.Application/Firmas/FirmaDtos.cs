@@ -170,3 +170,32 @@ public sealed record PistaAuditoriaDto(
     string Evento,
     string? Detalle,
     string? Ip);
+
+/// <summary>Filtros de la pantalla de auditoria de firma (RF12), calca fir_auditoria.ListarConFiltros.</summary>
+public sealed record FiltroPistaFirma(
+    string? Evento = null,
+    long? ActorUserId = null,
+    long? DocId = null,
+    DateOnly? Desde = null,
+    DateOnly? Hasta = null,
+    int Pagina = 1,
+    int TamPagina = 25);
+
+/// <summary>Pagina de la auditoria filtrada: eventos + total (para la paginacion).</summary>
+public sealed record PistaPaginaDto(IReadOnlyList<PistaAuditoriaDto> Items, int Total, int Pagina, int TamPagina);
+
+/// <summary>Una opcion de evento para el filtro (accion tecnica + etiqueta amigable).</summary>
+public sealed record EventoOpcionDto(string Accion, string Etiqueta);
+
+/// <summary>Consumo y metricas de firma (RF20, pantalla firmas-metricas).</summary>
+public sealed record FirmaMetricasDto(
+    int Total,
+    int Firmadas,
+    int Pendientes,
+    int Canceladas,
+    int Circuitos,
+    double SlaPromedioHoras,
+    IReadOnlyList<MetricaMesDto> PorMes);
+
+/// <summary>Firmas ejecutadas en un mes (para la barra de volumen).</summary>
+public sealed record MetricaMesDto(string Etiqueta, int Firmadas);

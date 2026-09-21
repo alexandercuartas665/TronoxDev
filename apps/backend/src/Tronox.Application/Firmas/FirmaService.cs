@@ -615,6 +615,84 @@ public sealed class FirmaService : IFirmaService
             r.IpAddress)).ToList();
     }
 
+    public async Task<PistaPaginaDto> ListarPistaFiltradaAsync(
+        FiltroPistaFirma f, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var tenantId = _tenant.TenantId!.Value;
+        var q = _db.SuperAdminAuditLogs.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && _accionesFirma.Contains(a.ActionName));
+
+        if (!string.IsNullOrWhiteSpace(f.Evento)) { q = q.Where(a => a.ActionName == f.Evento); }
+        if (f.ActorUserId is long au) { q = q.Where(a => a.ActorUserId == au); }
+        if (f.DocId is long doc) { q = q.Where(a => a.EntityId == doc); }
+        if (f.Desde is DateOnly ds)
+        {
+            var desde = new DateTimeOffset(ds.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            q = q.Where(a => a.CreatedAt >= desde);
+        }
+        if (f.Hasta is DateOnly hs)
+        {
+            var hasta = new DateTimeOffset(hs.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
+            q = q.Where(a => a.CreatedAt <= hasta);
+        }
+
+        var total = await q.CountAsync(cancellationToken);
+        var pagina = Math.Max(1, f.Pagina);
+        var tam = Math.Clamp(f.TamPagina, 1, 100);
+        var rows = await q.OrderByDescending(a => a.Id)
+            .Skip((pagina - 1) * tam).Take(tam)
+            .Select(a => new { a.Id, a.CreatedAt, a.ActorUserId, a.ActionName, a.NewValue, a.IpAddress })
+            .ToListAsync(cancellationToken);
+
+        var actores = rows.Select(r => r.ActorUserId).Distinct().ToList();
+        var nombres = await _db.PlatformUsers.AsNoTracking()
+            .Where(p => actores.Contains(p.Id))
+            .Select(p => new { p.Id, Nombre = p.DisplayName ?? p.Email }).ToListAsync(cancellationToken);
+        var nm = nombres.ToDictionary(x => x.Id, x => x.Nombre);
+
+        var items = rows.Select(r => new PistaAuditoriaDto(
+            r.Id, r.CreatedAt,
+            nm.TryGetValue(r.ActorUserId, out var n) ? n : "(sistema)",
+            EventoLabel(r.ActionName), Resumir(r.NewValue), r.IpAddress)).ToList();
+        return new PistaPaginaDto(items, total, pagina, tam);
+    }
+
+    public IReadOnlyList<EventoOpcionDto> GetEventosAuditoria()
+        => _accionesFirma.Select(a => new EventoOpcionDto(a, EventoLabel(a))).ToList();
+
+    public async Task<FirmaMetricasDto> GetMetricasAsync(long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var firmas = _db.Firmas.AsNoTracking();
+        var total = await firmas.CountAsync(cancellationToken);
+        var firmadas = await firmas.CountAsync(f => f.Estado == EstadoFirma.Firmado, cancellationToken);
+        var pendientes = await firmas.CountAsync(f => f.Estado == EstadoFirma.Pendiente, cancellationToken);
+        var canceladas = await firmas.CountAsync(f => f.Estado == EstadoFirma.Cancelado, cancellationToken);
+        var circuitos = await _db.FirmaCircuitos.AsNoTracking().CountAsync(cancellationToken);
+
+        // Pares (solicitud, firma) de las firmadas con timestamp, para SLA y volumen por mes.
+        var ejec = await firmas
+            .Where(f => f.Estado == EstadoFirma.Firmado && f.TimestampFirma != null)
+            .Select(f => new { f.CreatedAt, Ts = f.TimestampFirma!.Value })
+            .ToListAsync(cancellationToken);
+
+        var sla = ejec.Count == 0 ? 0.0
+            : Math.Round(ejec.Average(x => (x.Ts - x.CreatedAt).TotalHours), 1);
+
+        // Ultimos 6 meses (incluye el actual), volumen de firmas ejecutadas por mes.
+        var hoy = DateTimeOffset.UtcNow;
+        var meses = new List<MetricaMesDto>();
+        var cultura = System.Globalization.CultureInfo.GetCultureInfo("es-CO");
+        for (var i = 5; i >= 0; i--)
+        {
+            var m = new DateTimeOffset(hoy.Year, hoy.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(-i);
+            var fin = m.AddMonths(1);
+            var count = ejec.Count(x => x.Ts >= m && x.Ts < fin);
+            meses.Add(new MetricaMesDto(m.ToString("MMM yy", cultura), count));
+        }
+
+        return new FirmaMetricasDto(total, firmadas, pendientes, canceladas, circuitos, sla, meses);
+    }
+
     private static string EventoLabel(string accion) => accion switch
     {
         "documento.firmar" => "Firma directa",

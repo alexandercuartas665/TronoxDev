@@ -67,6 +67,15 @@ public interface IFirmaService
     /// <summary>RF12: eventos recientes de firma del tenant, del ledger append-only (mas recientes primero).</summary>
     Task<IReadOnlyList<PistaAuditoriaDto>> ListarPistaAuditoriaAsync(long actorUserId, int tope = 100, CancellationToken cancellationToken = default);
 
+    /// <summary>RF12: auditoria de firma con filtros (evento/usuario/documento/fechas) y paginacion, para la pantalla firmas-auditoria.</summary>
+    Task<PistaPaginaDto> ListarPistaFiltradaAsync(FiltroPistaFirma filtro, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Opciones de evento para el filtro de la auditoria (accion + etiqueta amigable).</summary>
+    IReadOnlyList<EventoOpcionDto> GetEventosAuditoria();
+
+    /// <summary>RF20: consumo y metricas de firma del tenant (KPIs + volumen por mes).</summary>
+    Task<FirmaMetricasDto> GetMetricasAsync(long actorUserId, CancellationToken cancellationToken = default);
+
     // ---- Firma directa (slice 1, calca FirmaDirectaHelper: sin stepper, sin OTP) ----
 
     /// <summary>Identidad del firmante (snapshot) para la pantalla de confirmacion de la firma directa.</summary>

@@ -1,0 +1,78 @@
+@page "/modulo/firmas-metricas"
+@attribute [Authorize(Policy = "Perm:modulo/firmas-metricas:View")]
+@* Consumo y metricas de firma (RQ05 - RF20). KPIs + volumen mensual de firmas ejecutadas, sobre firmas/
+   firma_circuitos del tenant. Solo lectura. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Firmas
+@inject IFirmaService Firmas
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<PageTitle>Consumo y Metricas de Firma - TRONOX SGDEA</PageTitle>
+
+<style>
+    .fmet-wrap { padding: 8px 0 40px; }
+    .fmet-title { font-size: 20px; font-weight: 800; color: #0F172A; margin: 0; display: flex; align-items: center; gap: 10px; }
+    .fmet-sub { font-size: 12.5px; color: #94A3B8; margin: 3px 0 18px; }
+    .fmet-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
+    .fmet-kpi { background: #fff; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px 18px; }
+    .fmet-kn { font-size: 24px; font-weight: 800; color: #0F172A; line-height: 1; }
+    .fmet-kl { font-size: 12px; color: #94A3B8; margin-top: 6px; }
+    .fmet-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px 22px; }
+    .fmet-card h3 { font-size: 14px; font-weight: 800; color: #0F172A; margin: 0 0 16px; }
+    .fmet-bars { display: flex; align-items: flex-end; gap: 18px; height: 180px; padding-top: 10px; }
+    .fmet-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+    .fmet-bar { width: 46px; max-width: 70%; background: linear-gradient(180deg,#7C3AED,#a78bfa); border-radius: 8px 8px 0 0; min-height: 3px; transition: height .3s; }
+    .fmet-bar-n { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 6px; }
+    .fmet-bar-l { font-size: 11px; color: #94A3B8; margin-top: 8px; text-transform: capitalize; }
+    @@media (max-width: 1100px) { .fmet-kpis { grid-template-columns: repeat(3, 1fr); } }
+</style>
+
+<div class="fmet-wrap tx-mod">
+    <h2 class="fmet-title"><i class="bi bi-graph-up" style="color:#7C3AED"></i> Consumo y Métricas de Firma</h2>
+    <div class="fmet-sub">Indicadores de actividad de firma de la entidad. Registro append-only, solo lectura.</div>
+
+    @if (_m is null)
+    {
+        <div class="fmet-card">Cargando métricas…</div>
+    }
+    else
+    {
+        <div class="fmet-kpis">
+            <div class="fmet-kpi"><div class="fmet-kn">@_m.Total</div><div class="fmet-kl">Firmas totales</div></div>
+            <div class="fmet-kpi"><div class="fmet-kn" style="color:#16A34A">@_m.Firmadas</div><div class="fmet-kl">Firmadas</div></div>
+            <div class="fmet-kpi"><div class="fmet-kn" style="color:#B45309">@_m.Pendientes</div><div class="fmet-kl">Pendientes</div></div>
+            <div class="fmet-kpi"><div class="fmet-kn" style="color:#DC2626">@_m.Canceladas</div><div class="fmet-kl">Canceladas / rechazadas</div></div>
+            <div class="fmet-kpi"><div class="fmet-kn" style="color:#7C3AED">@_m.Circuitos</div><div class="fmet-kl">Circuitos</div></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+            <div class="fmet-card">
+                <h3>Firmas ejecutadas por mes (últimos 6 meses)</h3>
+                <div class="fmet-bars">
+                    @{ var max = _m.PorMes.Count == 0 ? 1 : Math.Max(1, _m.PorMes.Max(x => x.Firmadas)); }
+                    @foreach (var mes in _m.PorMes)
+                    {
+                        var h = (int)Math.Round(100.0 * mes.Firmadas / max);
+                        <div class="fmet-bar-col">
+                            <div class="fmet-bar-n">@mes.Firmadas</div>
+                            <div class="fmet-bar" style="height:@(h)%"></div>
+                            <div class="fmet-bar-l">@mes.Etiqueta</div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="fmet-card">
+                <h3>SLA de firma</h3>
+                <div style="font-size:38px;font-weight:800;color:#0F172A;line-height:1;">@_m.SlaPromedioHoras.ToString("0.0")<span style="font-size:16px;color:#94A3B8;font-weight:600;"> h</span></div>
+                <div style="font-size:12.5px;color:#94A3B8;margin-top:8px;">Tiempo promedio desde la solicitud hasta la firma ejecutada.</div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private FirmaMetricasDto? _m;
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync() => _m = await Firmas.GetMetricasAsync(Actor);
+}
