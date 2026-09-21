@@ -161,6 +161,8 @@ builder.Services.AddScoped<Tronox.Application.Notifications.INotificationBroadca
 builder.Services.AddScoped<Tronox.Web.Services.CircuitFormGate>();
 // Alertas de firma pendiente (RF11 Inc.2): escaneo periodico cross-tenant con dias habiles.
 builder.Services.AddHostedService<Tronox.Web.Services.FirmaAlertasHostedService>();
+// OCR automatico al incorporar (RQ04 - RF04): procesa los documentos Pendiente por tenant configurado.
+builder.Services.AddHostedService<Tronox.Web.Services.OcrAutoHostedService>();
 
 var app = builder.Build();
 

@@ -89,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<Application.Common.IActaFirmaRenderer, Pdf.QuestPdfActaRenderer>();
         services.AddSingleton<Application.Common.IPdfAConverter, Pdf.LibreOfficePdfAConverter>();
         services.AddSingleton<Application.Common.INtpTimeProvider, Time.NtpTimeProvider>();
+        services.AddScoped<Application.Documentos.IFuenteExternaService, Integraciones.SftpFuenteExternaService>();
         services.AddSingleton<Application.Common.IPdfXmpSealer, Pdf.PdfXmpSealer>();
 
         // HTML -> PDF con Chromium headless (PuppeteerSharp) para el editor de texto interno (RF08).

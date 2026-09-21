@@ -1,0 +1,130 @@
+@* Importar desde fuente externa (RQ04 - RF20/RF21). Primera fuente: SFTP. Los proveedores cloud
+   (OneDrive/Google Drive/SharePoint) requieren OAuth y quedan como proximamente. *@
+@using Tronox.Application.Documentos
+@inject IFuenteExternaService Fuente
+@inject IDocumentoService DocSvc
+
+<div class="modal-overlay" @onclick="Cerrar">
+    <div class="modal-dialog" style="max-width:680px;width:96%" @onclick:stopPropagation="true">
+        <div class="modal-head"><h3><i class="bi bi-cloud"></i> Importar desde fuente externa</h3><button class="modal-close" @onclick="Cerrar">&times;</button></div>
+        <div class="modal-body">
+            <div class="fx-tabs">
+                <button class="fx-tab on">SFTP</button>
+                <button class="fx-tab" disabled title="Requiere configuración OAuth">OneDrive</button>
+                <button class="fx-tab" disabled title="Requiere configuración OAuth">Google Drive</button>
+                <button class="fx-tab" disabled title="Requiere configuración OAuth">SharePoint</button>
+            </div>
+            <div style="font-size:12px;color:#94A3B8;margin:8px 0 14px">Los proveedores cloud requieren registro OAuth de la entidad (próximamente). La clave SFTP es de un solo uso: no se guarda.</div>
+
+            @if (_error is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_error</div> }
+            @if (_msg is not null) { <div class="tx-ent-alert ok" style="margin-bottom:12px"><i class="bi bi-check-circle"></i><span>@_msg</span></div> }
+
+            <div class="fx-grid">
+                <div style="grid-column:span 2"><label class="det-label">Host</label><input class="det-input" @bind="_host" placeholder="sftp.entidad.gov.co" /></div>
+                <div><label class="det-label">Puerto</label><input class="det-input" type="number" @bind="_puerto" /></div>
+                <div><label class="det-label">Usuario</label><input class="det-input" @bind="_usuario" /></div>
+                <div><label class="det-label">Clave</label><input class="det-input" type="password" @bind="_password" /></div>
+                <div><label class="det-label">Ruta</label><input class="det-input" @bind="_ruta" placeholder="/documentos" /></div>
+            </div>
+            <button class="ca-btn primary" style="margin-top:12px" @onclick="Listar" disabled="@_busy"><i class="bi bi-search"></i> @(_busy ? "Conectando…" : "Conectar y listar")</button>
+
+            @if (_archivos is not null)
+            {
+                @if (_archivos.Count == 0) { <div style="font-size:13px;color:#94A3B8;margin-top:14px">No hay archivos en esa ruta.</div> }
+                else
+                {
+                    <div class="fx-lista">
+                        @foreach (var a in _archivos)
+                        {
+                            <label class="fx-file">
+                                <input type="checkbox" checked="@_sel.Contains(a.Ruta)" @onchange="@(e => Toggle(a.Ruta, (bool)e.Value!))" />
+                                <i class="bi bi-file-earmark"></i>
+                                <span class="fx-fn">@a.Nombre</span>
+                                <span class="fx-fs">@Tam(a.Tamano)</span>
+                            </label>
+                        }
+                    </div>
+                }
+            }
+        </div>
+        <div class="modal-foot">
+            <button class="ca-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <button class="ca-btn primary" @onclick="Importar" disabled="@(_busy || _sel.Count == 0)"><i class="bi bi-download"></i> Importar @_sel.Count</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .fx-tabs { display:flex; gap:6px; border-bottom:2px solid #E2E8F0; }
+    .fx-tab { padding:8px 14px; font-size:13px; font-weight:700; color:#64748B; border:none; background:none; border-bottom:2px solid transparent; margin-bottom:-2px; cursor:pointer; }
+    .fx-tab.on { color:#2563EB; border-bottom-color:#2563EB; }
+    .fx-tab:disabled { color:#CBD5E1; cursor:not-allowed; }
+    .fx-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+    .det-label { display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:5px; }
+    .det-input { width:100%; padding:9px 12px; border:1px solid #E2E8F0; border-radius:10px; font-size:13px; box-sizing:border-box; }
+    .fx-lista { display:flex; flex-direction:column; gap:4px; margin-top:14px; max-height:240px; overflow-y:auto; }
+    .fx-file { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #EEF2F7; border-radius:9px; font-size:13px; cursor:pointer; }
+    .fx-file i { color:#94A3B8; }
+    .fx-fn { flex:1; color:#0F172A; }
+    .fx-fs { font-family:ui-monospace,Consolas,monospace; font-size:11px; color:#94A3B8; }
+</style>
+
+@code {
+    [Parameter] public long Actor { get; set; }
+    [Parameter] public EventCallback OnGuardados { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private string _host = "", _usuario = "", _password = "", _ruta = "";
+    private int _puerto = 22;
+    private IReadOnlyList<ArchivoExternoDto>? _archivos;
+    private readonly HashSet<string> _sel = [];
+    private bool _busy;
+    private string? _error, _msg;
+
+    private SftpConexion Conn() => new(_host, _puerto, _usuario, _password, _ruta);
+
+    private void Toggle(string ruta, bool on) { if (on) { _sel.Add(ruta); } else { _sel.Remove(ruta); } }
+
+    private async Task Listar()
+    {
+        _error = _msg = null; _busy = true; _archivos = null; _sel.Clear();
+        try
+        {
+            var res = await Fuente.ListarSftpAsync(Conn());
+            if (res.IsOk) { _archivos = res.Value; }
+            else { _error = res.Error; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Importar()
+    {
+        _error = _msg = null; _busy = true;
+        try
+        {
+            var conn = Conn();
+            var hoy = DateOnly.FromDateTime(DateTime.Now);
+            var ok = 0;
+            foreach (var ruta in _sel.ToList())
+            {
+                var arch = _archivos?.FirstOrDefault(a => a.Ruta == ruta);
+                var dl = await Fuente.DescargarSftpAsync(conn, ruta);
+                if (!dl.IsOk || dl.Value is null) { _error = dl.Error ?? "No se pudo descargar."; continue; }
+                var nombre = System.IO.Path.GetFileNameWithoutExtension(arch?.Nombre ?? ruta);
+                var res = await DocSvc.CrearBorradorBinarioAsync(nombre, hoy, dl.Value, arch?.Nombre ?? "archivo", Actor);
+                if (res.IsOk) { ok++; }
+                else { _error = res.Error; }
+            }
+            if (ok > 0)
+            {
+                _msg = $"Se importaron {ok} documento(s).";
+                await OnGuardados.InvokeAsync();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private static string Tam(long b) => b < 1024 ? $"{b} B" : b < 1024 * 1024 ? $"{b / 1024.0:0.0} KB" : $"{b / (1024.0 * 1024):0.0} MB";
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync();
+}

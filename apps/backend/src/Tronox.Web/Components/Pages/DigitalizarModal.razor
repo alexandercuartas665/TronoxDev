@@ -1,0 +1,104 @@
+@* Digitalizar por camara (RQ04 - RF18). Captura fotos con getUserMedia y las incorpora como borrador
+   (mismo flujo de binario que Carga de Archivos). El escaner TWAIN local queda fuera del alcance web. *@
+@using Tronox.Application.Documentos
+@inject IDocumentoService DocSvc
+@inject IJSRuntime JS
+
+<div class="modal-overlay" @onclick="Cerrar">
+    <div class="modal-dialog" style="max-width:640px;width:96%" @onclick:stopPropagation="true">
+        <div class="modal-head"><h3><i class="bi bi-camera"></i> Digitalizar por cámara</h3><button class="modal-close" @onclick="Cerrar">&times;</button></div>
+        <div class="modal-body">
+            @if (_error is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_error</div> }
+            <div style="font-size:12.5px;color:#64748B;margin-bottom:10px">Cada captura se guarda como un documento <strong>Borrador</strong> (imagen JPG). Usa la cámara trasera en el móvil.</div>
+
+            <video id="digiVideo" playsinline style="width:100%;max-height:340px;background:#0F172A;border-radius:12px;object-fit:contain"></video>
+
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                <button class="ca-btn primary" @onclick="Capturar" disabled="@(!_camaraOk || _busy)"><i class="bi bi-camera-fill"></i> Capturar</button>
+                <span style="font-size:12.5px;color:#94A3B8;align-self:center">@_capturas.Count captura(s)</span>
+            </div>
+
+            @if (_capturas.Count > 0)
+            {
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                    @for (var i = 0; i < _capturas.Count; i++)
+                    {
+                        var idx = i;
+                        <div style="position:relative">
+                            <img src="@_capturas[idx]" style="width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0" />
+                            <button @onclick="@(() => _capturas.RemoveAt(idx))" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#DC2626;color:#fff;font-size:11px;cursor:pointer">&times;</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <div class="modal-foot">
+            <button class="ca-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <button class="ca-btn primary" @onclick="Guardar" disabled="@(_busy || _capturas.Count == 0)">
+                <i class="bi bi-save"></i> @(_busy ? "Guardando…" : $"Guardar {_capturas.Count} documento(s)")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public long Actor { get; set; }
+    [Parameter] public EventCallback OnGuardados { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private readonly List<string> _capturas = [];
+    private bool _camaraOk, _busy;
+    private string? _error;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var r = await JS.InvokeAsync<string>("tronoxCamara.start", "digiVideo");
+            _camaraOk = r == "ok";
+            if (!_camaraOk)
+            {
+                _error = r == "no-support"
+                    ? "Este navegador no permite acceso a la cámara."
+                    : "No se pudo acceder a la cámara. Concede el permiso e inténtalo de nuevo.";
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task Capturar()
+    {
+        var data = await JS.InvokeAsync<string>("tronoxCamara.capture", "digiVideo");
+        if (!string.IsNullOrEmpty(data)) { _capturas.Add(data); }
+    }
+
+    private async Task Guardar()
+    {
+        _error = null; _busy = true;
+        try
+        {
+            var hoy = DateOnly.FromDateTime(DateTime.Now);
+            var n = 0;
+            foreach (var data in _capturas)
+            {
+                n++;
+                var b64 = data.Contains("base64,", StringComparison.OrdinalIgnoreCase)
+                    ? data[(data.IndexOf("base64,", StringComparison.OrdinalIgnoreCase) + 7)..] : data;
+                byte[] bytes;
+                try { bytes = Convert.FromBase64String(b64); } catch { continue; }
+                var nombre = $"Digitalizacion {hoy:yyyy-MM-dd} ({n})";
+                var res = await DocSvc.CrearBorradorBinarioAsync(nombre, hoy, bytes, $"captura_{n}.jpg", Actor);
+                if (!res.IsOk) { _error = res.Error ?? "No se pudo guardar una captura."; }
+            }
+            await JS.InvokeVoidAsync("tronoxCamara.stop");
+            await OnGuardados.InvokeAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar()
+    {
+        try { await JS.InvokeVoidAsync("tronoxCamara.stop"); } catch { }
+        await OnCerrar.InvokeAsync();
+    }
+}

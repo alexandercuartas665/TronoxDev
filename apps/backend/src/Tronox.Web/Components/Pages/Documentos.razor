@@ -460,21 +460,20 @@
                         <div class="nd-card-t">Carga de Archivos <span class="nd-rfsm">RF01 · RF02</span></div>
                         <div class="nd-card-d">Sube uno o varios archivos (PDF, imagen, ofimática) y clasifícalos uno a uno.</div>
                     </div>
-                    <div class="nd-card" @onclick='() => Soon("Digitalizar (RF18)")'>
+                    <div class="nd-card" @onclick="AbrirDigitalizar">
                         <i class="bi bi-camera"></i>
                         <div class="nd-card-t">Digitalizar <span class="nd-rfsm">RF18</span></div>
-                        <div class="nd-card-d">Escáner local (agente TWAIN) o cámara del dispositivo móvil.</div>
+                        <div class="nd-card-d">Cámara del dispositivo (móvil o webcam). El escáner TWAIN local queda fuera del alcance web.</div>
                     </div>
                     <div class="nd-card" @onclick="AbrirEditorNuevo">
                         <i class="bi bi-pencil-square"></i>
                         <div class="nd-card-t">Desde Plantilla / Editor <span class="nd-rfsm">RF09</span></div>
                         <div class="nd-card-d">Crea un documento en el procesador de texto interno.</div>
                     </div>
-                    <div class="nd-card disabled">
-                        <span class="nd-soon">Próximamente</span>
+                    <div class="nd-card" @onclick="AbrirFuenteExterna">
                         <i class="bi bi-cloud"></i>
                         <div class="nd-card-t">Fuente externa <span class="nd-rfsm">RF20 · RF21</span></div>
-                        <div class="nd-card-d">OneDrive, Google Drive, SharePoint, FTP/SFTP.</div>
+                        <div class="nd-card-d">Importa por SFTP/FTP. OneDrive, Google Drive y SharePoint requieren configuración OAuth (próximamente).</div>
                     </div>
                 </div>
             </div>
@@ -487,6 +486,18 @@
 {
     <CargaArchivosModal ModoBorrador="true" Actor="Actor"
                         OnGuardados="OnCargaGuardados" OnCerrar="@(() => _showCarga = false)" />
+}
+
+@* Digitalizar por camara (RF18) *@
+@if (_showDigitalizar)
+{
+    <DigitalizarModal Actor="Actor" OnGuardados="OnCargaGuardados" OnCerrar="@(() => _showDigitalizar = false)" />
+}
+
+@* Fuente externa: SFTP (RF20/RF21) *@
+@if (_showFuenteExt)
+{
+    <FuenteExternaModal Actor="Actor" OnGuardados="OnCargaGuardados" OnCerrar="@(() => _showFuenteExt = false)" />
 }
 
 @* Editor de texto interno (RF08) *@
@@ -737,7 +748,7 @@
     private long _menuOpenId;
 
     // Cargar Documento: selector (¿Cómo deseas incorporar?) + carga multi-archivo en modo borrador
-    private bool _showSelector, _showCarga;
+    private bool _showSelector, _showCarga, _showDigitalizar, _showFuenteExt;
 
     // Editor de texto interno (RF08): docId 0 = nuevo en blanco
     private bool _showEditor;
@@ -980,6 +991,8 @@
     // ---- Cargar Documento (selector + carga en modo borrador) ----
 
     private void AbrirCargaBorrador() { _showSelector = false; _showCarga = true; }
+    private void AbrirDigitalizar() { _showSelector = false; _showDigitalizar = true; }
+    private void AbrirFuenteExterna() { _showSelector = false; _showFuenteExt = true; }
 
     private async Task OnCargaGuardados()
     {
