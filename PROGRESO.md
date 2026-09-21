@@ -1239,10 +1239,18 @@ migraciones 45, ver secciones 23-26).
   nuevo QRCoder. Verificado: SNTP contra pool.ntp.org, sellado XMP sobre PDF/A real (neutral, hash
   sellado==recalc, reabre), verificador e2e sin login (/v/107 -> Firma verificada). **Ola 1 COMPLETA.**
 
-Sigue por olas: Ola 2 (consola de firma: auditoria con filtros, metricas, plantillas, presets), Ola 3
-(incorporacion RQ04: digitalizar, fuente externa, auto-OCR), Ola 4 (ECD + deuda). veraPDF estricto y el
-DNS/Caddy de verificar.tronox.co quedan diferidos. Plan por olas en el vault (PLAN DE TRABAJO,
-ACTUALIZACION 2026-09-21).
+- **Ola 2 - Consola de firma (RQ05)** [ADR-029]: (1) **Auditoria con filtros** (RF12):
+  ListarPistaFiltradaAsync (evento/usuario/documento/fechas + paginacion) + pagina /modulo/firmas-auditoria.
+  (2) **Consumo y metricas** (RF20): GetMetricasAsync (KPIs + SLA + volumen por mes) + pagina
+  /modulo/firmas-metricas. (3) **Plantillas de firmante** (TRON-20): entidad FirmaPlantilla + migracion
+  (45->46) + Guardar/Usar plantilla en el modal de circuito. (4) **Presets de circuito** (RF13):
+  FirmaPlantillaParser (tokens {{firma}}) + ResolverPresetAsync (lee ContenidoHtml, resuelve por
+  correo/nombre) + precarga en el modal. Verificado e2e (metricas, filtro de auditoria, preset precarga 2
+  firmantes, guardar/usar plantilla). **Ola 2 COMPLETA.** Diferido: resolucion por cargo/grupo.
+
+Sigue por olas: Ola 3 (incorporacion RQ04: digitalizar RF18, fuente externa RF20/21, auto-OCR), Ola 4
+(ECD + deuda). veraPDF estricto y el DNS/Caddy de verificar.tronox.co quedan diferidos. Plan por olas en
+el vault (PLAN DE TRABAJO, ACTUALIZACION 2026-09-21).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
