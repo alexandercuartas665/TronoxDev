@@ -643,6 +643,18 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 30. Deploy a prod de Ola 3 (incorporacion: digitalizar + fuente externa SFTP + auto-OCR) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `dd9ac23`) la Ola 3 completa (ADR-030).
+
+- **Pure image swap, 0 migraciones** (prod sigue en 46). Backup previo `tronox_prod_20260921_121954_pre_ola3.sql.gz`.
+- Nuevo paquete SSH.NET (SFTP). Verificado vs postgres desechable (/login 200, /v/1 200, 46 migraciones).
+- Verificacion prod: /login 200, /v/1 200; migraciones 46; **postgres-prod NO recreado** (restarts=0);
+  **29 contenedores**. Ahora en prod: Digitalizar por camara (RF18), Fuente externa SFTP (RF20/21) y el
+  worker de auto-OCR (RF04) que procesa los documentos Pendiente cada 5 min.
+
+---
+
 ## 29. Deploy a prod de Ola 2 (consola de firma: auditoria + metricas + plantillas + presets) (2026-09-21)
 
 Desplegado a prod (host 10.0.0.3, commit `3742492`) la Ola 2 completa (ADR-029).
