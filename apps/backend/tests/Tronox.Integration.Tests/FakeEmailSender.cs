@@ -8,6 +8,12 @@ public sealed class NoOpEmailSender : IEmailSender
 {
     public Task<EmailSendResult> SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
         => Task.FromResult(new EmailSendResult(false, "correo deshabilitado en pruebas"));
+
+    public Task<EmailSendResult> SendWithAttachmentAsync(
+        IReadOnlyList<string> toEmails, string subject, string htmlBody,
+        byte[] attachmentBytes, string attachmentFileName, string attachmentContentType,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new EmailSendResult(false, "correo deshabilitado en pruebas"));
 }
 
 /// <summary>IEmailSender que registra los envios, para verificar la entrega por email (#4a).</summary>
@@ -18,6 +24,15 @@ public sealed class RecordingEmailSender : IEmailSender
     public Task<EmailSendResult> SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
     {
         Sent.Enqueue((toEmail, subject, htmlBody));
+        return Task.FromResult(new EmailSendResult(true, null));
+    }
+
+    public Task<EmailSendResult> SendWithAttachmentAsync(
+        IReadOnlyList<string> toEmails, string subject, string htmlBody,
+        byte[] attachmentBytes, string attachmentFileName, string attachmentContentType,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var to in toEmails) { Sent.Enqueue((to, subject, htmlBody)); }
         return Task.FromResult(new EmailSendResult(true, null));
     }
 }

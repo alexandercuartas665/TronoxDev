@@ -26,10 +26,14 @@ public static class VisorEndpoints
         g.MapGet("/bin", async (HttpContext http, long doc, IDocumentoService svc) =>
         {
             var actor = ActorId(http);
-            var res = await svc.DescargarAsync(doc, actor);
+            var descargar = http.Request.Query["dl"] == "1";
+            // Descarga (dl=1): binario limpio (el control es el permiso PuedeDescargar). Visualizacion inline:
+            // se hornea la marca de agua de seguridad si es Reservado/Clasificado (calca doc_visor.ashx).
+            var res = descargar
+                ? await svc.DescargarAsync(doc, actor)
+                : await svc.GetVisorBinarioAsync(doc, actor, http.Connection.RemoteIpAddress?.ToString());
             if (!res.IsOk || res.Value is null) { return Results.NotFound(); }
             var d = res.Value;
-            var descargar = http.Request.Query["dl"] == "1";
             // Inline para pdf.js; con nombre de archivo solo cuando se pide descargar.
             return descargar
                 ? Results.File(d.Contenido, d.ContentType, d.NombreArchivo)

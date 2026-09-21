@@ -91,6 +91,7 @@ public static class DependencyInjection
         services.AddSingleton<Application.Common.INtpTimeProvider, Time.NtpTimeProvider>();
         services.AddScoped<Application.Documentos.IFuenteExternaService, Integraciones.SftpFuenteExternaService>();
         services.AddSingleton<Application.Common.IPdfXmpSealer, Pdf.PdfXmpSealer>();
+        services.AddSingleton<Application.Common.IImageSignatureStamper, Pdf.SkiaImageSignatureStamper>();
 
         // HTML -> PDF con Chromium headless (PuppeteerSharp) para el editor de texto interno (RF08).
         // Reemplaza a SelectPdf (comercial, solo Windows) por un motor cross-platform (contenedor Linux).
@@ -101,6 +102,9 @@ public static class DependencyInjection
 
         // Cajita visual de firma (RQ05 - RF03-B) con PdfSharpCore (ver ADR-017).
         services.AddSingleton<Application.Common.IPdfSignatureStamper, Pdf.PdfSharpSignatureStamper>();
+
+        // Marca de agua de seguridad del visor (RQ04 RF04) para Reservado/Clasificado: PDF + imagen.
+        services.AddSingleton<Application.Common.ISecurityWatermarker, Pdf.SecurityWatermarker>();
 
         return services;
     }

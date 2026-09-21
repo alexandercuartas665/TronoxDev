@@ -43,6 +43,10 @@ public interface IDocumentoService
     /// <summary>Descarga el binario del documento (respeta propiedad/clasificacion).</summary>
     Task<DocumentoResult<DocumentoDescargaDto>> DescargarAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 
+    /// <summary>Binario para VISUALIZAR: como DescargarAsync pero hornea la marca de agua de seguridad (RF04)
+    /// si el documento es Reservado/Clasificado.</summary>
+    Task<DocumentoResult<DocumentoDescargaDto>> GetVisorBinarioAsync(long id, long actorUserId, string? ip = null, CancellationToken cancellationToken = default);
+
     /// <summary>Elimina un borrador (unico borrado FISICO del sistema): solo Borrador del creador.</summary>
     Task<DocumentoResult<bool>> EliminarBorradorAsync(long id, long actorUserId, CancellationToken cancellationToken = default);
 

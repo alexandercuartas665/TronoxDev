@@ -1287,9 +1287,23 @@ migraciones 45, ver secciones 23-26).
   CrearBorradorBinarioAsync. Sin migracion; paquete SSH.NET. Verificado e2e (SFTP test.rebex.net, modal
   Digitalizar con fallback sin camara, auto-OCR Pendiente 7->5). **Ola 3 COMPLETA.**
 
-Sigue Ola 4 (ECD + estampa en imagenes + deuda de visor). ECD requiere definir el proveedor con el
-cliente. veraPDF estricto, cloud OAuth y el DNS/Caddy de verificar.tronox.co quedan diferidos. Plan por
-olas en el vault (PLAN DE TRABAJO, ACTUALIZACION 2026-09-21).
+- **Ola 4 - Estampa de firma en imagenes y deuda de visor (RQ04/RQ05)** [ADR-031]: (1) **ECD DIFERIDA**:
+  el legacy la tiene solo como placeholder (columnas ECD_* nunca escritas, sin proveedor/tablas/integracion);
+  no hay nada que portar, requiere definir el proveedor + credenciales con el cliente. (2) **Estampa en
+  imagenes** (RF03-B): IImageSignatureStamper/SkiaImageSignatureStamper dibuja la cajita de firma en una
+  banda al pie de imagenes (jpg/png/tif/bmp/gif) con grafo; FirmaService ramifica por formato (imagen ->
+  Skia+SHA-256; PDF -> PDF/A+XMP) y los gates PDF-only ahora aceptan imagenes. (3) **Marca de agua de
+  seguridad** (RF04): ISecurityWatermarker/SecurityWatermarker hornea mosaico diagonal Usuario/Fecha/IP
+  (gris azulado) al VISUALIZAR documentos Reservado/Clasificado (PDF con PdfSharpCore, imagen con
+  SkiaSharp); DocumentoService.GetVisorBinarioAsync + /visor/bin inline (la descarga dl=1 queda limpia).
+  (4) **Full-text en Compartidos conmigo**: ListarCompartidosConmigoAsync ahora busca en query EF por
+  nombre/archivo/tipologia/OcrTexto/ContenidoHtml (antes solo nombre en memoria). Sin migracion; sin
+  paquetes nuevos. Verificado: 578 tests (17 nuevos) + e2e (visor Reservado con mosaico Usuario/Fecha/IP
+  inline 37KB vs descarga limpia 15KB; busqueda "zafiro_tronox" solo-contenido filtra Compartidos).
+  **Ola 4 COMPLETA** (ECD diferida por diseno).
+
+veraPDF estricto, cloud OAuth, el DNS/Caddy de verificar.tronox.co y la ECD (proveedor por definir con el
+cliente) quedan diferidos. Plan por olas en el vault (PLAN DE TRABAJO, ACTUALIZACION 2026-09-21).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.

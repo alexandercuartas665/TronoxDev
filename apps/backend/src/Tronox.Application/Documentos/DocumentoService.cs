@@ -21,11 +21,12 @@ public sealed class DocumentoService : IDocumentoService
     private readonly Notifications.INotificationService _notifications;
     private readonly IEmailSender _email;
     private readonly IPdfPrintStamper _printStamper;
+    private readonly ISecurityWatermarker _watermarker;
 
     public DocumentoService(
         IApplicationDbContext db, ITenantContext tenantContext, IObjectStorage storage, IAuditWriter audit,
         IHtmlToPdfConverter htmlToPdf, Notifications.INotificationService notifications, IEmailSender email,
-        IPdfPrintStamper printStamper)
+        IPdfPrintStamper printStamper, ISecurityWatermarker watermarker)
     {
         _db = db;
         _tenantContext = tenantContext;
@@ -35,6 +36,7 @@ public sealed class DocumentoService : IDocumentoService
         _notifications = notifications;
         _email = email;
         _printStamper = printStamper;
+        _watermarker = watermarker;
     }
 
     // ---- Bandejas ----
@@ -632,9 +634,20 @@ public sealed class DocumentoService : IDocumentoService
     public async Task<IReadOnlyList<CompartidoConmigoDto>> ListarCompartidosConmigoAsync(
         long actorUserId, string? texto = null, CancellationToken cancellationToken = default)
     {
-        var rows = await _db.DocumentosCompartidos.AsNoTracking()
+        var query = _db.DocumentosCompartidos.AsNoTracking()
             .Where(c => c.BeneficiarioPlatformUserId == actorUserId && c.Activo
-                        && c.Documento!.Estado != EstadoDocumento.Anulado)
+                        && c.Documento!.Estado != EstadoDocumento.Anulado);
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            var t = texto.Trim().ToLower();
+            // Full-text (calca la busqueda rapida de las otras bandejas): nombre, archivo, tipologia, OCR, contenido editor.
+            query = query.Where(c => c.Documento!.Nombre.ToLower().Contains(t)
+                || (c.Documento.NombreArchivoOriginal != null && c.Documento.NombreArchivoOriginal.ToLower().Contains(t))
+                || (c.Documento.TrdTipologia != null && c.Documento.TrdTipologia.Nombre.ToLower().Contains(t))
+                || (c.Documento.OcrTexto != null && c.Documento.OcrTexto.ToLower().Contains(t))
+                || (c.Documento.ContenidoHtml != null && c.Documento.ContenidoHtml.ToLower().Contains(t)));
+        }
+        var rows = await query
             .OrderByDescending(c => c.CreatedAt)
             .Select(c => new
             {
@@ -643,12 +656,6 @@ public sealed class DocumentoService : IDocumentoService
                 Tipologia = c.Documento.TrdTipologia != null ? c.Documento.TrdTipologia.Nombre : null
             })
             .ToListAsync(cancellationToken);
-
-        var q = (texto ?? "").Trim();
-        if (q.Length > 0)
-        {
-            rows = rows.Where(r => r.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
 
         var otorgantes = rows.Where(r => r.CreatedBy is not null).Select(r => r.CreatedBy!.Value).Distinct().ToList();
         var nombres = await _db.PlatformUsers.AsNoTracking()
@@ -937,6 +944,34 @@ public sealed class DocumentoService : IDocumentoService
         var nombreArchivo = d.NombreArchivoOriginal ?? $"{d.Nombre}.{(d.Formato ?? "bin").ToLowerInvariant()}";
         var contentType = DocumentoRules.ContentType(nombreArchivo);
         return DocumentoResult<DocumentoDescargaDto>.Ok(new DocumentoDescargaDto(ms.ToArray(), nombreArchivo, contentType));
+    }
+
+    /// <summary>
+    /// Binario para VISUALIZAR en el visor (RF04). Igual que DescargarAsync pero, si el documento es
+    /// Reservado o Clasificado, hornea la marca de agua de seguridad (usuario/fecha/IP), calcando
+    /// doc_visor.ashx cuando esDescarga=false. La descarga real (dl=1) no lleva marca.
+    /// </summary>
+    public async Task<DocumentoResult<DocumentoDescargaDto>> GetVisorBinarioAsync(
+        long id, long actorUserId, string? ip = null, CancellationToken cancellationToken = default)
+    {
+        var desc = await DescargarAsync(id, actorUserId, cancellationToken);
+        if (!desc.IsOk || desc.Value is null) { return desc; }
+        var d = desc.Value;
+
+        var nivel = await _db.Documentos.AsNoTracking()
+            .Where(x => x.Id == id)
+            .Select(x => x.NivelClasificacion != null ? x.NivelClasificacion.Nombre : null)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (nivel is not ("Reservado" or "Clasificado")) { return desc; }
+
+        var nombreUsuario = await _db.PlatformUsers.AsNoTracking()
+            .Where(u => u.Id == actorUserId).Select(u => u.DisplayName ?? u.Email)
+            .FirstOrDefaultAsync(cancellationToken) ?? "Usuario";
+        var texto = $"Usuario: {nombreUsuario} - Fecha: {DateTime.Now:dd/MM/yyyy HH:mm:ss}"
+                    + (string.IsNullOrWhiteSpace(ip) ? "" : $" - IP: {ip}");
+
+        var contenido = _watermarker.Aplicar(d.Contenido, d.ContentType, d.NombreArchivo, texto);
+        return DocumentoResult<DocumentoDescargaDto>.Ok(new DocumentoDescargaDto(contenido, d.NombreArchivo, d.ContentType));
     }
 
     // ---- Eliminar borrador (unico borrado fisico) ----

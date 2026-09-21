@@ -25,6 +25,7 @@ public sealed class FirmaService : IFirmaService
     private readonly IPdfAConverter _pdfa;
     private readonly INtpTimeProvider _ntp;
     private readonly IPdfXmpSealer _xmp;
+    private readonly IImageSignatureStamper _imgStamper;
 
     private const int OtpVigenciaMinutos = 5;
 
@@ -32,8 +33,9 @@ public sealed class FirmaService : IFirmaService
         IApplicationDbContext db, ITenantContext tenant, IObjectStorage storage,
         IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email,
         Notifications.INotificationService notif, IActaFirmaRenderer acta, IPdfAConverter pdfa,
-        INtpTimeProvider ntp, IPdfXmpSealer xmp)
+        INtpTimeProvider ntp, IPdfXmpSealer xmp, IImageSignatureStamper imgStamper)
     {
+        _imgStamper = imgStamper;
         _db = db;
         _tenant = tenant;
         _storage = storage;
@@ -208,7 +210,9 @@ public sealed class FirmaService : IFirmaService
         }
         var esPdf = string.Equals(doc.Formato, "PDF", StringComparison.OrdinalIgnoreCase)
                     || (doc.NombreArchivoOriginal?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ?? false);
-        if (!esPdf) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("La firma electronica del slice 1 solo aplica a PDF."); }
+        var esImagen = _imgStamper.Soporta(doc.Formato)
+                       || _imgStamper.Soporta(ExtensionDe(doc.NombreArchivoOriginal));
+        if (!esPdf && !esImagen) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("La firma electronica aplica a PDF o imagenes (jpg/png/tif/bmp/gif)."); }
         var cfgD = await GetFirmaConfigAsync(cancellationToken);
         if (!cfgD.ModuloFirmaActivo) { return DocumentoResult<FirmaEjecutadaDto>.Invalid("El modulo de firma esta desactivado en la configuracion."); }
 
@@ -478,7 +482,7 @@ public sealed class FirmaService : IFirmaService
 
         if (f.CircuitoId is long cid)
         {
-            // RF07 §3.7.3: un rechazo cancela TODO el circuito; las firmas previas quedan invalidadas.
+            // RF07 3.7.3: un rechazo cancela TODO el circuito; las firmas previas quedan invalidadas.
             var circ = await _db.FirmaCircuitos.FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
             if (circ is not null) { circ.Estado = EstadoCircuito.Cancelado; circ.MotivoCancelacion = comentario.Trim(); }
             var cf = await _db.FirmaCircuitoFirmantes.FirstOrDefaultAsync(x => x.CircuitoId == cid && x.FirmaId == f.Id, cancellationToken);
@@ -1150,14 +1154,24 @@ public sealed class FirmaService : IFirmaService
         return correo[0] + new string('*', Math.Min(3, at - 1)) + correo[at..];
     }
 
-    /// <summary>Valida que el documento sea firmable: con binario PDF y no firmado aun.</summary>
-    private static string? ValidarFirmablePdf(Documento doc)
+    /// <summary>Valida que el documento sea firmable: con binario PDF o imagen y no firmado aun.</summary>
+    private string? ValidarFirmablePdf(Documento doc)
     {
         if (doc.EstadoFirma == EstadoFirmaDocumento.Firmado) { return "El documento ya esta firmado."; }
         if (!doc.TieneBinario || string.IsNullOrEmpty(doc.RutaAlmacenamiento)) { return "El documento no tiene archivo para firmar."; }
         var esPdf = string.Equals(doc.Formato, "PDF", StringComparison.OrdinalIgnoreCase)
                     || (doc.NombreArchivoOriginal?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ?? false);
-        return esPdf ? null : "La firma electronica del slice 1 solo aplica a PDF.";
+        var esImagen = _imgStamper.Soporta(doc.Formato)
+                       || _imgStamper.Soporta(ExtensionDe(doc.NombreArchivoOriginal));
+        return (esPdf || esImagen) ? null : "La firma electronica aplica a PDF o imagenes (jpg/png/tif/bmp/gif).";
+    }
+
+    /// <summary>Extension (sin punto, minuscula) del nombre de archivo, o null.</summary>
+    private static string? ExtensionDe(string? nombreArchivo)
+    {
+        if (string.IsNullOrWhiteSpace(nombreArchivo)) { return null; }
+        var ext = System.IO.Path.GetExtension(nombreArchivo);
+        return string.IsNullOrWhiteSpace(ext) ? null : ext.TrimStart('.').ToLowerInvariant();
     }
 
     // ---- Mi Firma: grafo / firma manuscrita (RF03 3.3.3) ----
@@ -1297,30 +1311,54 @@ public sealed class FirmaService : IFirmaService
         var cajita = new CajitaFirma(snap.Nombre, snap.Cargo, snap.Dependencia,
             ahora.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), $"verificar.tronox.co/v/{doc.Id}", indiceCajita,
             TextoConfig: cfg.FirmaTextoDefault, MostrarNombre: cfg.FirmaMostrarNombre, GrafoBase64: grafo);
-        var sellado = _stamper.EstamparCajita(original, cajita);
-        // Archivado PDF/A-2b (RF02, Decreto 2364): convierte el PDF sellado con LibreOffice. Best-effort:
-        // si no hay soffice (p. ej. en local) o falla, se conserva el sellado sin convertir.
-        var pdfa = await _pdfa.ConvertirPdfAAsync(sellado, cancellationToken);
+        byte[] sellado;
         string hash;
-        if (pdfa is not null)
+        string extension, contentType;
+
+        // Formato de imagen efectivo: por doc.Formato o, en su defecto, por la extension del nombre original.
+        var fmtImagen = _imgStamper.Soporta(doc.Formato)
+            ? doc.Formato
+            : (_imgStamper.Soporta(ExtensionDe(doc.NombreArchivoOriginal)) ? ExtensionDe(doc.NombreArchivoOriginal) : null);
+
+        if (fmtImagen is not null)
         {
-            // Sellado XMP length-neutral con hash byte-range (RF02/RF03): inserta el bloque tronox: y calcula
-            // el hash excluyendo el paquete XMP. Best-effort: si no se puede sellar, hash del PDF/A completo.
-            var datos = new DatosSellado(
-                _tenant.TenantId!.Value, doc.Id, snap.Nombre, TotalFirmantes: 1, ahora, "Electronica",
-                $"verificar.tronox.co/v/{doc.Id}");
-            var xmp = _xmp.Sellar(pdfa, datos);
-            if (xmp is not null) { sellado = xmp.Pdf; hash = xmp.Hash; }
-            else { sellado = pdfa; hash = DocumentoRules.HashSha256(pdfa); }
+            // Documento IMAGEN (RF03-B): se estampa la cajita en una banda al pie (SkiaSharp). No aplica
+            // PDF/A ni XMP; la integridad la da el SHA-256 del resultado.
+            sellado = _imgStamper.EstamparCajita(original, fmtImagen, cajita);
+            hash = DocumentoRules.HashSha256(sellado);
+            var fmt = fmtImagen.Trim().ToLowerInvariant();
+            extension = fmt is "jpg" or "jpeg" ? "jpg" : "png";
+            contentType = extension == "jpg" ? "image/jpeg" : "image/png";
         }
         else
         {
-            hash = DocumentoRules.HashSha256(sellado);
+            sellado = _stamper.EstamparCajita(original, cajita);
+            // Archivado PDF/A-2b (RF02, Decreto 2364): convierte el PDF sellado con LibreOffice. Best-effort:
+            // si no hay soffice (p. ej. en local) o falla, se conserva el sellado sin convertir.
+            var pdfa = await _pdfa.ConvertirPdfAAsync(sellado, cancellationToken);
+            if (pdfa is not null)
+            {
+                // Sellado XMP length-neutral con hash byte-range (RF02/RF03): inserta el bloque tronox: y calcula
+                // el hash excluyendo el paquete XMP. Best-effort: si no se puede sellar, hash del PDF/A completo.
+                var datos = new DatosSellado(
+                    _tenant.TenantId!.Value, doc.Id, snap.Nombre, TotalFirmantes: 1, ahora, "Electronica",
+                    $"verificar.tronox.co/v/{doc.Id}");
+                var xmp = _xmp.Sellar(pdfa, datos);
+                if (xmp is not null) { sellado = xmp.Pdf; hash = xmp.Hash; }
+                else { sellado = pdfa; hash = DocumentoRules.HashSha256(pdfa); }
+            }
+            else
+            {
+                hash = DocumentoRules.HashSha256(sellado);
+            }
+            extension = "pdf";
+            contentType = "application/pdf";
         }
-        var nuevaKey = $"{_tenant.TenantId!.Value}/{Guid.NewGuid():N}.pdf";
+
+        var nuevaKey = $"{_tenant.TenantId!.Value}/{Guid.NewGuid():N}.{extension}";
         using (var ms = new MemoryStream(sellado, writable: false))
         {
-            await _storage.PutAsync(nuevaKey, ms, "application/pdf", cancellationToken);
+            await _storage.PutAsync(nuevaKey, ms, contentType, cancellationToken);
         }
         return (sellado.LongLength, hash, ahora, nuevaKey);
     }

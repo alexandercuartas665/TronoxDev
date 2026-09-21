@@ -47,14 +47,14 @@ public class MenuConfigRulesTests
             "Menu completo",
             new List<MenuExportNode>
             {
-                new("Section", "Mis Procesos", "list", null, "misproc", null, null, "Ready", true, 0,
+                new("Section", "Mis Procesos", "list", null, "misproc", null, null, null, "Ready", true, 0,
                     new List<MenuExportNode>
                     {
-                        new("Item", "Crear", null, "000038", "crear-actividad", null, null, "Ready", true, 0, new()),
-                        new("Subgroup", "Comercial", null, null, "sg-comercial", null, null, "Ready", true, 1,
+                        new("Item", "Crear", null, "000038", "crear-actividad", null, null, null, "Ready", true, 0, new()),
+                        new("Subgroup", "Comercial", null, null, "sg-comercial", null, null, null, "Ready", true, 1,
                             new List<MenuExportNode>
                             {
-                                new("Item", "Requerimientos", null, "000477", "actividades", null, null, "InDevelopment", false, 0, new())
+                                new("Item", "Requerimientos", null, "000477", "actividades", null, null, null, "InDevelopment", false, 0, new())
                             })
                     })
             });
