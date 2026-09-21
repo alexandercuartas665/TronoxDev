@@ -643,6 +643,23 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 28. Deploy a prod de Ola 1 (fidelidad de sellado: NTP + QR + XMP byte-range + verificador) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `4ca96a0`) la Ola 1 completa (ADR-028).
+
+- **0 migraciones nuevas** (prod sigue en 45). Backup previo `tronox_prod_20260921_102918_pre_ola1.sql.gz`.
+- Runbook: build tronox-web:prod (capa LibreOffice cacheada) -> verificado vs postgres desechable
+  (/login 200, /dev/login 404, **/v/1 200**, 45 migraciones sin cambio) -> save|gzip|ssh docker load ->
+  `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404, **/v/1 200 (portal verificador publico en vivo)**;
+  migraciones 45; **postgres-prod NO recreado** (restarts=0); **29 contenedores**; soffice presente.
+- Contenido: NTP off por defecto (sin cambio hasta que el admin lo active); QR en el certificado; cada
+  firma nueva se sella con XMP byte-range sobre el PDF/A; el verificador resuelve /v/{docId}. Prod aun no
+  tiene documentos firmados, asi que el contenido del verificador se probo en local (doc 107 -> Firma
+  verificada). El dominio verificar.tronox.co necesita DNS/Caddy aparte (diferido).
+
+---
+
 ## 27. Deploy a prod de Fase C.1 + C.2 (certificado + PDF/A via LibreOffice) (2026-09-21)
 
 Desplegado a prod (host 10.0.0.3, commit `6edbdf6`) el certificado/acta de firma (C.1, ADR-026) y el
