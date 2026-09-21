@@ -27,9 +27,13 @@
             <h1 class="cd-title">Niveles de Clasificacion Documental</h1>
             <div class="cd-sub">RQ01 &middot; Reserva y clasificacion de la informacion (Ley 1712/2014)</div>
         </div>
-        @if (_canEdit)
+        @if (_canEdit && !EscalaCompleta)
         {
             <button class="cd-btn" @onclick="@(() => OpenModal(null))"><i class="bi bi-plus-lg"></i> Nuevo nivel</button>
+        }
+        else if (_canEdit && EscalaCompleta)
+        {
+            <span class="cd-full" title="La escala de reserva es cerrada: exactamente 4 niveles (orden 1 a 4)."><i class="bi bi-check2-circle"></i> Escala completa (4 niveles)</span>
         }
     </div>
 
@@ -164,6 +168,7 @@
     .cd-btn:hover { background: #1d4ed8; }
     .cd-btn:disabled { opacity: .6; cursor: default; }
     .cd-btn.soft { background: #eef2f7; color: #475569; }
+    .cd-full { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #1f6b35; background: #f1fbf3; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 14px; }
 
     .cd-modal-back { position: fixed; inset: 0; background: rgba(15,23,42,.4); z-index: 1050; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; overflow-y: auto; }
     .cd-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
@@ -210,6 +215,18 @@
 
     private async Task LoadAsync() => _niveles = await Svc.ListAsync(soloActivos: false);
 
+    // La escala de reserva es CERRADA a 4 niveles (RF05): orden 1..4, unico. Con 4 ordenes
+    // ocupados no cabe un 5o, asi que se oculta el alta para no ofrecer un camino que siempre falla.
+    private bool EscalaCompleta => _niveles.Count >= 4;
+
+    // Primer orden libre del rango 1..4 (no "el siguiente al maximo", que se saldria de la escala).
+    private int PrimerOrdenLibre()
+    {
+        var usados = _niveles.Select(x => x.NivelOrden).ToHashSet();
+        for (int o = 1; o <= 4; o++) { if (!usados.Contains(o)) { return o; } }
+        return 1; // Escala llena: el modal no deberia abrirse (boton oculto); salvaguarda.
+    }
+
     private void OpenModal(NivelClasificacionDto? n)
     {
         _modalError = null; _ok = null; _error = null;
@@ -218,7 +235,7 @@
         _fCodigo = n?.Codigo ?? "";
         _fDescripcion = n?.Descripcion;
         _fColor = n?.ColorEtiqueta ?? "#64748b";
-        _fOrden = n?.NivelOrden ?? (_niveles.Count > 0 ? _niveles.Max(x => x.NivelOrden) + 1 : 1);
+        _fOrden = n?.NivelOrden ?? PrimerOrdenLibre();
         _fActivo = n?.Activo ?? true;
         _showModal = true;
     }
@@ -241,6 +258,12 @@
             _showModal = false;
             _ok = _editId is null ? "Nivel creado." : "Nivel actualizado.";
             await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            // Red de seguridad: sin este catch una excepcion en el handler tumba el circuito
+            // Blazor y la UI cae al generico "Ha ocurrido un error." en vez del mensaje util.
+            _modalError = "No se pudo guardar el nivel: " + ex.Message;
         }
         finally { _busy = false; }
     }

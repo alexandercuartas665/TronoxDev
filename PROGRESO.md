@@ -1323,3 +1323,17 @@ cliente) quedan diferidos. Plan por olas en el vault (PLAN DE TRABAJO, ACTUALIZA
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
+
+## 28. Niveles de Clasificacion: escala cerrada en la UI (2026-09-21)
+
+RQ01 - RF01-P.3 (solo UI, sin migracion). El alta de nivel proponia orden 5 (max+1) sobre una
+escala CERRADA de 4 (orden 1..4, RF05), asi que cada "Nuevo nivel" terminaba en el error de
+validacion; con builds viejos podia caer al generico "Ha ocurrido un error.".
+
+- **NivelesClasificacion.razor**: con 4 niveles (`EscalaCompleta`) se oculta "+ Nuevo nivel" y se
+  muestra el distintivo "Escala completa (4 niveles)"; ya no se ofrece un camino que siempre falla.
+- `OpenModal` propone el PRIMER orden libre del rango 1..4 (`PrimerOrdenLibre`) en vez de max+1.
+- Red de seguridad: el handler de guardar envuelve el guardado en `catch` que escribe el mensaje en
+  `_modalError` (en vez de tumbar el circuito Blazor al generico). El Result tipado ya se propagaba.
+- Verificado e2e (dev-login, tenant 2): con los 4 niveles sembrados el boton de alta queda oculto;
+  el mensaje tipado del orden invalido se ve en el modal. Compila y corre (dotnet watch).
