@@ -10,7 +10,17 @@ namespace Tronox.Application.Radicacion;
 public interface IRadicadorService
 {
     Task<RadicarResult> RadicarAsync(RadicarNuevoRequest request, CancellationToken ct = default);
+
+    /// <summary>Radica subiendo primero los documentos electronicos a object storage (RF02, paso 3.5 del
+    /// asistente): calcula contentType/SHA-256/folios, sube cada archivo y los cuelga del radicado. Los
+    /// folios totales se derivan de los archivos si el request no trae folios.</summary>
+    Task<RadicarResult> RadicarConArchivosAsync(RadicarNuevoRequest request,
+        IReadOnlyList<AdjuntoBytes> archivos, CancellationToken ct = default);
 }
+
+/// <summary>Archivo crudo (bytes en memoria) que el asistente sube al radicar. La subida a object storage
+/// (invariante 9) y el calculo de key/SHA/folios los hace el servicio, no la UI.</summary>
+public sealed record AdjuntoBytes(string Nombre, byte[] Contenido, string? MimeType = null);
 
 /// <summary>Datos para crear un radicado nuevo. Los adjuntos ya deben estar en object storage (StorageKey).</summary>
 public sealed record RadicarNuevoRequest(

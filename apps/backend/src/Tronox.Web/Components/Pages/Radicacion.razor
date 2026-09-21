@@ -3,6 +3,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Tronox.Application.Radicacion
 @using Tronox.Domain.Enums
+@using Microsoft.AspNetCore.Components.Forms
 @inject IRadicacionBandejaService BandejaSvc
 @inject IRadicacionDistribucionService DistSvc
 @inject IRadicadorService RadSvc
@@ -337,8 +338,34 @@
                                 <button type="button" class="rad-chip @(_wzSoporte == "Fisico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Fisico")">Fisico</button>
                                 <button type="button" class="rad-chip @(_wzSoporte == "Electronico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Electronico")">Electronico</button>
                             </div>
-                            @if (_wzSoporte == "Electronico") { <small class="text-muted">La carga de documentos electronicos se habilita en la Fase 2.</small> }
                         </div>
+                        @if (_wzSoporte == "Electronico")
+                        {
+                            <div class="field">
+                                <label class="form-label">Documentos electronicos</label>
+                                <label class="rad-drop">
+                                    <InputFile OnChange="WzOnFiles" multiple />
+                                    <i class="bi bi-cloud-arrow-up"></i>
+                                    <span>Haz clic para subir. PDF, DOCX, XLSX, JPG, PNG, TIFF, XML - max 50 MB c/u.</span>
+                                </label>
+                                @if (_wzArchivos.Count > 0)
+                                {
+                                    <div class="rad-files">
+                                        @for (var i = 0; i < _wzArchivos.Count; i++)
+                                        {
+                                            var idx = i; var f = _wzArchivos[i];
+                                            <div class="rad-file">
+                                                <span class="rad-file-ext">@(string.IsNullOrEmpty(f.Ext) ? "?" : f.Ext.ToUpperInvariant())</span>
+                                                <span class="rad-file-nom" title="@f.Nombre">@f.Nombre</span>
+                                                <span class="rad-file-tam">@WzTam(f.Tamano)</span>
+                                                <button type="button" class="rad-file-x" @onclick="@(() => _wzArchivos.RemoveAt(idx))">&times;</button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (_wzFileError is not null) { <small class="text-danger">@_wzFileError</small> }
+                            </div>
+                        }
                         <div class="field">
                             <label class="form-label">Asunto *</label>
                             <textarea class="form-control" rows="2" maxlength="500" @bind="_wzAsunto"></textarea>
@@ -348,7 +375,18 @@
                             <textarea class="form-control" rows="2" @bind="_wzDescripcion"></textarea>
                         </div>
                         <div class="rad-2col">
-                            <div class="field"><label class="form-label">Numero de folios</label><input type="number" min="0" class="form-control" @bind="_wzFolios" /></div>
+                            <div class="field">
+                                <label class="form-label">Numero de folios</label>
+                                @if (_wzSoporte == "Electronico" && _wzArchivos.Count > 0)
+                                {
+                                    <input type="text" class="form-control" value="Automatico" readonly />
+                                    <small class="text-muted">Se calcula de los documentos (PDF: paginas).</small>
+                                }
+                                else
+                                {
+                                    <input type="number" min="0" class="form-control" @bind="_wzFolios" />
+                                }
+                            </div>
                             <div class="field"><label class="form-label">Numero de anexos</label><input type="number" min="0" class="form-control" @bind="_wzAnexos" /></div>
                         </div>
                     }
@@ -457,6 +495,17 @@
     .rad-ok { text-align:center; padding:16px 8px; }
     .rad-ok-ico { width:56px; height:56px; margin:0 auto 10px; border-radius:50%; background:#D1FAE5; color:#065F46; font-size:1.8rem; display:flex; align-items:center; justify-content:center; }
     .rad-ok-num { font-size:1.3rem; font-weight:700; color:#405189; letter-spacing:.5px; }
+    .rad-drop { display:flex; flex-direction:column; align-items:center; gap:4px; border:2px dashed var(--tx-border,#cbd5e1); border-radius:10px; padding:16px 12px; text-align:center; cursor:pointer; background:var(--tx-muted,#f8fafc); font-size:.8rem; color:var(--ink-2,#475569); }
+    .rad-drop:hover { border-color:#405189; }
+    .rad-drop i { font-size:1.4rem; color:#405189; }
+    .rad-drop input[type=file] { display:none; }
+    .rad-files { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+    .rad-file { display:flex; align-items:center; gap:8px; border:1px solid var(--tx-border,#e2e8f0); border-radius:8px; padding:6px 10px; background:var(--tx-surface,#fff); }
+    .rad-file-ext { font-size:.66rem; font-weight:700; background:#EFF6FF; color:#2563EB; border-radius:5px; padding:2px 6px; min-width:38px; text-align:center; }
+    .rad-file-nom { flex:1; min-width:0; font-size:.8rem; color:var(--ink-1,#0f172a); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .rad-file-tam { font-size:.72rem; color:var(--ink-3,#94a3b8); }
+    .rad-file-x { border:none; background:none; color:#94a3b8; cursor:pointer; font-size:1.1rem; line-height:1; }
+    .rad-file-x:hover { color:#DC2626; }
 </style>
 
 @code {
@@ -596,6 +645,12 @@
     // Paso 4 - destino.
     private string _wzDepDestId = "", _wzFuncDestId = "";
     private RadicadoPrioridad _wzPrio = RadicadoPrioridad.Normal;
+    // Adjuntos (Fase 2): documentos electronicos subidos al radicar.
+    private const long WzMaxBytes = 50L * 1024 * 1024;
+    private static readonly string[] WzExts = ["pdf", "docx", "xlsx", "pptx", "jpg", "jpeg", "png", "tif", "tiff", "gif", "bmp", "xml", "txt"];
+    private sealed class WzArchivo { public byte[] Bytes = Array.Empty<byte>(); public string Nombre = ""; public long Tamano; public string Ext = ""; }
+    private readonly List<WzArchivo> _wzArchivos = new();
+    private string? _wzFileError;
 
     private (int n, string lbl)[] WzPasos => new[]
     {
@@ -614,6 +669,7 @@
         _wzTerTipo = "Natural"; _wzRemTipoDoc = "CC"; _wzRemDoc = _wzRemNombre = _wzRemEmail = _wzRemTel = "";
         _wzDepOrigenId = _wzFuncOrigenId = ""; _wzSoporte = "Fisico"; _wzAsunto = _wzDescripcion = "";
         _wzFolios = 1; _wzAnexos = 0; _wzDepDestId = _wzFuncDestId = ""; _wzPrio = RadicadoPrioridad.Normal;
+        _wzArchivos.Clear(); _wzFileError = null;
         _wzFuncsOrigen = _wzFuncsDest = Array.Empty<OpcionDto>();
         _wzTipos = await BandejaSvc.TiposAsistenteAsync();
         _wzNiveles = await BandejaSvc.NivelesReservaAsync();
@@ -644,6 +700,26 @@
         _wzFuncDestId = "";
         _wzFuncsDest = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDepDestId, out var d) ? d : null);
     }
+
+    private async Task WzOnFiles(InputFileChangeEventArgs e)
+    {
+        _wzFileError = null;
+        foreach (var f in e.GetMultipleFiles(20))
+        {
+            var ext = System.IO.Path.GetExtension(f.Name).TrimStart('.').ToLowerInvariant();
+            if (!WzExts.Contains(ext)) { _wzFileError = $"'{f.Name}': extension no permitida."; continue; }
+            if (f.Size <= 0 || f.Size > WzMaxBytes) { _wzFileError = $"'{f.Name}': tamano invalido (max 50 MB)."; continue; }
+            byte[] bytes;
+            using (var ms = new MemoryStream())
+            {
+                await f.OpenReadStream(WzMaxBytes).CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+            _wzArchivos.Add(new WzArchivo { Bytes = bytes, Nombre = f.Name, Tamano = bytes.LongLength, Ext = ext });
+        }
+    }
+
+    private static string WzTam(long b) => b < 1024 ? $"{b} B" : b < 1048576 ? $"{b / 1024.0:0.#} KB" : $"{b / 1048576.0:0.#} MB";
 
     private string? WzValidarPaso(int step) => step switch
     {
@@ -676,6 +752,7 @@
         var tipo = WzTipoSel!;
         var anonimo = _wzDir == RadicadoTipo.Entrada && _wzTerTipo == "Anonimo";
         var esEntrada = _wzDir == RadicadoTipo.Entrada;
+        var usaArchivos = _wzSoporte == "Electronico" && _wzArchivos.Count > 0;
         _wzBusy = true; _wzError = null;
         try
         {
@@ -696,12 +773,16 @@
                 Soporte: _wzSoporte,
                 Prioridad: _wzPrio,
                 Adjuntos: null,
-                Folios: _wzFolios,
+                // En electronico con archivos los folios los calcula el servicio (suma de paginas).
+                Folios: usaArchivos ? null : _wzFolios,
                 NumAnexos: _wzAnexos,
                 DependenciaOrigenId: !esEntrada && long.TryParse(_wzDepOrigenId, out var doId) ? doId : null,
                 FuncionarioOrigenId: !esEntrada && long.TryParse(_wzFuncOrigenId, out var foId) ? foId : null);
 
-            var res = await RadSvc.RadicarAsync(req);
+            var res = usaArchivos
+                ? await RadSvc.RadicarConArchivosAsync(req,
+                    _wzArchivos.Select(a => new AdjuntoBytes(a.Nombre, a.Bytes)).ToList())
+                : await RadSvc.RadicarAsync(req);
             if (!res.Ok) { _wzError = res.Error ?? "No se pudo radicar."; return; }
 
             // Radicar + distribuir en un paso (calca el legacy): si se eligio dependencia destino, distribuir.

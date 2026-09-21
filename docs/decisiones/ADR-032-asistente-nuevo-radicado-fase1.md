@@ -64,3 +64,20 @@ direccion, PQRSD/Tutela, permite anonimo, nivel default) y `NivelesReservaAsync`
   asistente creo el radicado ALCPRU-E-2026-000002 (Entrada, Derecho de Peticion/PQRSD, remitente inline,
   folios 3), lo distribuyo a Gestion Documental en un paso (estado Distribuido), y la bandeja + contadores
   se refrescaron (Todos 37->38, PQRSD 21->22).
+
+## Actualizacion - Fase 2 (documentos electronicos / adjuntos)
+
+Cuando el soporte es Electronico, el paso 3 del asistente permite subir documentos (InputFile, calcando
+CargaArchivosModal): PDF/DOCX/XLSX/imagenes/XML, max 50 MB c/u, con lista y quitar. Al radicar:
+
+- `IRadicadorService.RadicarConArchivosAsync(request, archivos)` (nuevo) sube cada archivo a **object
+  storage** (invariante 9, key opaca tenant-scoped `{tenant}/{guid}.{ext}`), calcula contentType y SHA-256
+  (reusa `DocumentoRules`) y **folios automaticos** (PDF: conteo de objetos /Type /Page, calca
+  `ContarPaginasPdf` de Documentos; otros = 1), y cuelga los `RadicadoArchivo` del radicado via el radicar
+  base. La UI solo pasa los bytes; la logica de storage/tenant queda en Application. `RadicadorService`
+  ahora inyecta `IObjectStorage`.
+- Diferido a fase posterior: estampa arrastrable del sticker sobre el PDF, visor en el asistente,
+  digitalizacion post-radicado (TWAIN), y el flujo de Salida ("Responder"/rad_salida).
+- Verificado e2e (Chrome + file_upload): ALCPRU-E-2026-000003 con adjunto radicado_prueba.pdf subido a
+  object storage (storage_key + sha256 de 64 hex) y **folios=2 auto-calculados** del PDF de 2 paginas.
+  582 tests verdes.

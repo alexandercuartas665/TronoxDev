@@ -662,6 +662,11 @@ que estaba como placeholder en la bandeja (`NuevoRadicado()` solo mostraba un fl
 - **Verificado:** build verde; 581 tests (incl. aislamiento). E2e en dev: creo ALCPRU-E-2026-000002
   (Entrada/PQRSD, remitente inline, folios 3), distribuido a Gestion Documental en un paso (Distribuido),
   bandeja + contadores refrescados (Todos 37->38, PQRSD 21->22). **No desplegado aun.**
+- **Fase 2 (documentos electronicos / adjuntos):** con soporte Electronico, el paso 3 permite subir
+  documentos (InputFile). `RadicarConArchivosAsync` los sube a object storage (invariante 9, SHA-256,
+  contentType) con **folios automaticos** (PDF: /Type /Page). RadicadorService inyecta IObjectStorage.
+  Sin migracion. Verificado e2e (Chrome+file_upload): ALCPRU-E-2026-000003 con radicado_prueba.pdf en
+  storage (key+sha) y folios=2. 582 tests. Diferido: estampa arrastrable, visor, salida/rad_salida.
 
 ---
 
