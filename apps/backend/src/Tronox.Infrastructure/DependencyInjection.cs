@@ -53,8 +53,18 @@ public static class DependencyInjection
         // Correo saliente via SMTP configurable por tenant, con la clave cifrada (RQ01 RF01-P.2).
         services.AddScoped<Application.Common.IEmailSender, Email.SmtpEmailSender>();
 
+        // Object storage de binarios de documentos = Azure Blob Storage (ADR-009). En dev apunta a
+        // Azurite; el connection string vive en configuracion/.env, nunca en el repo. Intercambiable
+        // por otra implementacion de IObjectStorage sin tocar los casos de uso.
+        services.Configure<Storage.ObjectStorageOptions>(
+            configuration.GetSection(Storage.ObjectStorageOptions.SectionName));
+        // Scoped (ADR-012): resuelve la cuenta Azure Blob por-tenant (config cifrada) con fallback global.
+        services.AddScoped<IObjectStorage, Storage.AzureBlobObjectStorage>();
+        services.AddSingleton<IBlobConnectionTester, Storage.BlobConnectionTester>();
+
         // Gateway de IA multi-proveedor (base de RQ16).
         services.AddHttpClient<Tronox.Application.Tenancy.IAiProviderClient, Ai.AiProviderClient>();
+        services.AddHttpClient<Tronox.Application.Documentos.IOcrService, Ocr.OcrService>();
         services.AddHttpClient<Tronox.Application.Auth.IGoogleOAuthClient, Auth.GoogleOAuthClient>();
 
         // Aprovisionamiento del menu canonico por tenant (RF09 5.9.4). Cuelga del ALTA de tenant,
@@ -75,6 +85,26 @@ public static class DependencyInjection
         // Comprobantes PDF (QuestPDF). Licencia Community: gratis para empresas con ingresos < USD 1M/ano.
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         services.AddScoped<Application.Common.IReceiptPdfRenderer, Pdf.QuestPdfReceiptRenderer>();
+        services.AddScoped<Application.Common.IRotuloExportador, Pdf.QuestPdfRotuloExportador>();
+        services.AddScoped<Application.Common.IActaFirmaRenderer, Pdf.QuestPdfActaRenderer>();
+        services.AddSingleton<Application.Common.IPdfAConverter, Pdf.LibreOfficePdfAConverter>();
+        services.AddSingleton<Application.Common.INtpTimeProvider, Time.NtpTimeProvider>();
+        services.AddScoped<Application.Documentos.IFuenteExternaService, Integraciones.SftpFuenteExternaService>();
+        services.AddSingleton<Application.Common.IPdfXmpSealer, Pdf.PdfXmpSealer>();
+        services.AddSingleton<Application.Common.IImageSignatureStamper, Pdf.SkiaImageSignatureStamper>();
+
+        // HTML -> PDF con Chromium headless (PuppeteerSharp) para el editor de texto interno (RF08).
+        // Reemplaza a SelectPdf (comercial, solo Windows) por un motor cross-platform (contenedor Linux).
+        services.AddSingleton<Application.Common.IHtmlToPdfConverter, Pdf.PuppeteerHtmlToPdfConverter>();
+
+        // Estampado de la copia de impresion (RF05) con PdfSharpCore (cross-platform, ver ADR-016).
+        services.AddSingleton<Application.Common.IPdfPrintStamper, Pdf.PdfSharpPrintStamper>();
+
+        // Cajita visual de firma (RQ05 - RF03-B) con PdfSharpCore (ver ADR-017).
+        services.AddSingleton<Application.Common.IPdfSignatureStamper, Pdf.PdfSharpSignatureStamper>();
+
+        // Marca de agua de seguridad del visor (RQ04 RF04) para Reservado/Clasificado: PDF + imagen.
+        services.AddSingleton<Application.Common.ISecurityWatermarker, Pdf.SecurityWatermarker>();
 
         return services;
     }

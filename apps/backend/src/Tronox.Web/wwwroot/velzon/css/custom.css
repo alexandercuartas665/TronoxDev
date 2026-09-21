@@ -1590,6 +1590,13 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
 .tx-entidad .tx-ent-btn.danger:hover, .tx-mod .tx-ent-btn.danger:hover {
   background: var(--kt-danger-light); border-color: var(--kt-danger); color: var(--kt-danger);
 }
+/* Variante verde (RF04: "Publicar como version TRD"). */
+.tx-entidad .tx-ent-btn.ok, .tx-mod .tx-ent-btn.ok {
+  background: var(--kt-success); border-color: var(--kt-success); color: #fff;
+}
+.tx-entidad .tx-ent-btn.ok:hover, .tx-mod .tx-ent-btn.ok:hover {
+  background: var(--kt-success-active, var(--kt-success)); border-color: var(--kt-success-active, var(--kt-success)); color: #fff;
+}
 .tx-entidad .tx-ent-btn:disabled, .tx-mod .tx-ent-btn:disabled { opacity: .55; cursor: not-allowed; }
 
 /* ---------- Aviso de resultado ---------- */

@@ -1,0 +1,116 @@
+@page "/modulo/formularios/imprimir/{ResponseId:long}"
+@attribute [Authorize(Policy = "Perm:modulo/formularios:View")]
+@* Vista de impresion de una respuesta de formulario (RQ08, port ECOREX). Documento limpio
+   etiqueta -> valor (respeta formato, firma/imagen inline, GridDetail como tabla) y dispara el
+   dialogo de impresion / PDF del navegador. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@layout Tronox.Web.Components.Layout.EmptyLayout
+@using System.Text.Json
+@using Tronox.Application.Forms
+@using Tronox.Domain.Enums
+@inject IFormResponseService RespSvc
+@inject IFormDefinitionService DefSvc
+@inject IJSRuntime JS
+
+<PageTitle>Imprimir - TRONOX SGDEA</PageTitle>
+
+@if (_def is null || _resp is null)
+{
+    <div style="padding:24px;font-family:sans-serif">@(_error ?? "Cargando...")</div>
+}
+else
+{
+    <div class="fpr-page">
+        <div class="fpr-head">
+            <h1>@_def.Title</h1>
+            <div class="fpr-meta">
+                <span>FORX-@_def.Code · rev @_def.Revision</span>
+                @if (!string.IsNullOrWhiteSpace(_resp.Reference)) { <span>Ref: @_resp.Reference</span> }
+                @if (_resp.RecordNumber is not null) { <span>N.º @_resp.RecordNumber</span> }
+                @if (_resp.SubmittedAt is not null) { <span>@_resp.SubmittedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span> }
+            </div>
+        </div>
+
+        @foreach (var q in _def.Questions.Where(q => !FormFieldValidator.IsNonInput(q.ControlType)).OrderBy(q => q.SortOrder))
+        {
+            var raw = _resp.Data.TryGetValue(q.FieldCode, out var v) ? v.Value : null;
+            <div class="fpr-row">
+                <div class="fpr-label">@q.Label</div>
+                <div class="fpr-value">@RenderValue(q, raw)</div>
+            </div>
+        }
+    </div>
+
+    <div class="fpr-actions">
+        <button onclick="window.print()">Imprimir / PDF</button>
+    </div>
+}
+
+<style>
+    .fpr-page { max-width: 820px; margin: 24px auto; padding: 24px; font-family: 'Segoe UI', system-ui, sans-serif; color: #1a1a2e; }
+    .fpr-head { border-bottom: 2px solid #0c478a; padding-bottom: 10px; margin-bottom: 16px; }
+    .fpr-head h1 { font-size: 22px; margin: 0 0 4px; }
+    .fpr-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #555; }
+    .fpr-row { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px dotted #ddd; }
+    .fpr-label { flex: 0 0 240px; font-weight: 600; }
+    .fpr-value { flex: 1; white-space: pre-wrap; }
+    .fpr-value table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    .fpr-value table th, .fpr-value table td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+    .fpr-value img { max-width: 260px; max-height: 140px; border: 1px solid #ccc; }
+    .fpr-actions { text-align: center; margin: 20px; }
+    .fpr-actions button { padding: 8px 18px; background: #0c478a; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+    @@media print { .fpr-actions { display: none; } .fpr-page { margin: 0; } }
+</style>
+
+@code {
+    [Parameter] public long ResponseId { get; set; }
+
+    private FormDefinitionDetailDto? _def;
+    private FormResponseDto? _resp;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _resp = await RespSvc.GetAsync(ResponseId);
+        if (_resp is null) { _error = "La respuesta no existe."; return; }
+        _def = await DefSvc.GetAsync(_resp.DefinitionId);
+        if (_def is null) { _error = "El formulario no existe."; }
+    }
+
+    private RenderFragment RenderValue(FormQuestionDto q, string? raw) => __builder =>
+    {
+        if (string.IsNullOrWhiteSpace(raw)) { <text>—</text>; return; }
+
+        if (q.ControlType is FormControlType.Signature or FormControlType.Photo or FormControlType.Image)
+        {
+            if (raw.StartsWith("data:")) { <img src="@raw" alt="@q.Label" /> } else { @raw }
+        }
+        else if (q.ControlType == FormControlType.GridDetail)
+        {
+            var rows = FormFieldValidator.ParseGridRows(raw);
+            var cols = FormFieldValidator.ParseOptions(q.OptionsJson);
+            <table>
+                <thead><tr>@foreach (var c in cols) { <th>@c.Label</th> }</tr></thead>
+                <tbody>
+                    @foreach (var r in rows)
+                    {
+                        <tr>@foreach (var c in cols) { <td>@(r.TryGetValue(c.Id, out var cv) ? cv : "")</td> }</tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else if (q.ControlType == FormControlType.MultiCheck)
+        {
+            @string.Join(", ", FormFieldValidator.ParseMultiValues(raw))
+        }
+        else if (q.ControlType is FormControlType.Select or FormControlType.Radio)
+        {
+            var opt = FormFieldValidator.ParseOptions(q.OptionsJson).FirstOrDefault(o => o.Id == raw || o.Value == raw);
+            @(opt?.Label ?? raw)
+        }
+        else
+        {
+            @raw
+        }
+    };
+}

@@ -1,0 +1,166 @@
+@page "/modulo/configuracion-smtp"
+@attribute [Authorize(Policy = "Perm:modulo/configuracion-smtp:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Admin
+@using Tronox.Application.Common
+@using Tronox.Web.Auth
+@inject IEmailConfigService EmailSvc
+@inject IEmailSender EmailSender
+@inject ICurrentPermissions Perms
+@inject ITenantContext Tenant
+
+@* RQ01 - Configuracion de correo saliente (SMTP). Porta gen_config_smtp.aspx: parametros del
+   servidor SMTP para envio de correos transaccionales (notificaciones, reseteo, etc.). La clave se
+   guarda cifrada (AES-256). NOTA: EmailConfig es un singleton GLOBAL de la plataforma; esta pantalla
+   lo expone en el menu del tenant a peticion del cliente. *@
+
+<PageTitle>Configuracion de Correo (SMTP) - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Inicio</a><span class="sep">/</span>
+    <span>Configuracion General</span><span class="sep">/</span>
+    <span class="cur">Configuracion de Correo (SMTP)</span>
+</nav>
+
+<div class="module-head">
+    <div>
+        <div class="module-eyebrow"><span>RQ01 &middot; Correo saliente</span></div>
+        <h1 class="page-title" style="margin-top:8px;">Configuracion de Correo <span>(SMTP)</span></h1>
+        <p class="page-sub" style="margin-bottom:0;">Servidor SMTP que envia los correos del sistema (notificaciones de radicacion/PQRSD, reseteo de contrasena). Compatible con SendGrid, Gmail, Mailgun. La clave se guarda cifrada.</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    <div class="card-soft" style="max-width:660px;padding:22px;">
+        <div class="row g-3">
+            <div class="col-8 auth-field">
+                <label>Host SMTP</label>
+                <input class="form-control" @bind="_host" placeholder="smtp.sendgrid.net" disabled="@(!_canEdit)" />
+            </div>
+            <div class="col-4 auth-field">
+                <label>Puerto</label>
+                <input class="form-control" type="number" @bind="_port" placeholder="587" disabled="@(!_canEdit)" />
+            </div>
+        </div>
+
+        <div class="auth-field" style="margin-top:14px;">
+            <label>Usuario SMTP</label>
+            <input class="form-control" @bind="_user" placeholder="apikey (en SendGrid) o tu usuario" disabled="@(!_canEdit)" />
+        </div>
+        <div class="auth-field" style="margin-top:14px;">
+            <label>Clave SMTP @(_hasPassword ? "(guardada; deja vacio para conservarla)" : "")</label>
+            <input class="form-control" type="password" @bind="_password" placeholder="@(_hasPassword ? "********" : "Tu clave o API key")" disabled="@(!_canEdit)" />
+        </div>
+
+        <div class="row g-3" style="margin-top:4px;">
+            <div class="col-6 auth-field">
+                <label>Remitente (From)</label>
+                <input class="form-control" @bind="_fromEmail" placeholder="no-responder@entidad.gov.co" disabled="@(!_canEdit)" />
+            </div>
+            <div class="col-6 auth-field">
+                <label>Nombre del remitente</label>
+                <input class="form-control" @bind="_fromName" placeholder="TRONOX SGDEA" disabled="@(!_canEdit)" />
+            </div>
+        </div>
+
+        <div class="form-check form-switch" style="margin-top:16px;">
+            <input class="form-check-input" type="checkbox" id="ssl" @bind="_useSsl" disabled="@(!_canEdit)" />
+            <label class="form-check-label" for="ssl">Usar SSL/TLS</label>
+        </div>
+        <div class="form-check form-switch" style="margin-top:6px;">
+            <input class="form-check-input" type="checkbox" id="enabled" @bind="_enabled" disabled="@(!_canEdit)" />
+            <label class="form-check-label" for="enabled">Habilitar envio de correo</label>
+        </div>
+
+        @if (_canEdit)
+        {
+            <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">@(_saving ? "Guardando..." : "Guardar")</button>
+                <button class="btn btn-outline-secondary" @onclick="OpenTest" disabled="@(!_enabled)">Enviar correo de prueba</button>
+                @if (_savedOk) { <span class="text-success" style="font-size:.9rem;">Guardado.</span> }
+                @if (!string.IsNullOrWhiteSpace(_error)) { <span class="text-danger" style="font-size:.9rem;">@_error</span> }
+            </div>
+        }
+    </div>
+
+    @if (_testing)
+    {
+        <div class="card-soft" style="max-width:660px;padding:18px;margin-top:16px;">
+            <h6 style="font-weight:700;">Enviar correo de prueba</h6>
+            <div class="auth-field" style="margin-top:8px;">
+                <label>Correo destino</label>
+                <input class="form-control" type="email" @bind="_testTo" placeholder="tu.correo@ejemplo.com" />
+            </div>
+            <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+                <button class="btn btn-primary btn-sm" @onclick="SendTestAsync" disabled="@_sending">@(_sending ? "Enviando..." : "Enviar prueba")</button>
+                <button class="btn btn-link btn-sm" @onclick="() => _testing = false">Cancelar</button>
+                @if (!string.IsNullOrWhiteSpace(_testResult)) { <span style="font-size:.9rem;" class="@(_testOk ? "text-success" : "text-danger")">@_testResult</span> }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private const string ModuleKey = "modulo/configuracion-smtp";
+
+    private bool _loading = true, _saving, _savedOk, _testing, _sending, _testOk, _canEdit;
+    private string? _error, _testResult;
+
+    private string? _host, _user, _password, _fromEmail, _fromName, _testTo;
+    private int _port = 587;
+    private bool _useSsl = true, _enabled, _hasPassword;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+
+        var c = await EmailSvc.GetAsync();
+        if (c is not null)
+        {
+            _host = c.SmtpHost; _port = c.SmtpPort; _user = c.SmtpUser;
+            _useSsl = c.UseSsl; _fromEmail = c.FromEmail; _fromName = c.FromName;
+            _enabled = c.IsEnabled; _hasPassword = c.HasPassword;
+        }
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!_canEdit) { return; }
+        _saving = true; _savedOk = false; _error = null;
+        try
+        {
+            await EmailSvc.SaveAsync(
+                new SaveEmailConfigRequest(_host, _port, _user, _password, _useSsl, _fromEmail, _fromName, _enabled),
+                Tenant.UserId ?? 0);
+            _password = null;
+            _hasPassword = _hasPassword || true;
+            _savedOk = true;
+        }
+        catch { _error = "No se pudo guardar."; }
+        finally { _saving = false; }
+    }
+
+    private void OpenTest() { _testing = true; _testResult = null; }
+
+    private async Task SendTestAsync()
+    {
+        _sending = true; _testResult = null;
+        var to = (_testTo ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(to) || !to.Contains('@'))
+        {
+            _testOk = false; _testResult = "Escribe un correo valido."; _sending = false; return;
+        }
+        var html = "<p>Este es un correo de prueba de TRONOX SGDEA. Si lo recibiste, el SMTP funciona.</p>";
+        var r = await EmailSender.SendAsync(to, "Prueba de correo - TRONOX SGDEA", html);
+        _testOk = r.Ok;
+        _testResult = r.Ok ? "Enviado. Revisa la bandeja." : (r.Error ?? "No se pudo enviar.");
+        _sending = false;
+    }
+}

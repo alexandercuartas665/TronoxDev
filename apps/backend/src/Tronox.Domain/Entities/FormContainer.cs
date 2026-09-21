@@ -1,0 +1,44 @@
+using Tronox.Domain.Common;
+using Tronox.Domain.Enums;
+
+namespace Tronox.Domain.Entities;
+
+/// <summary>
+/// Contenedor del arbol de un formulario dinamico (RQ08, port ECOREX / ADR-0015+ADR-0021). Arbol por
+/// ParentId (self-FK NO ACTION: el servicio borra el subarbol explicitamente); vive y muere con su
+/// definicion (FK cascade). TENANT-SCOPED.
+/// </summary>
+public class FormContainer : TenantEntity
+{
+    public long DefinitionId { get; set; }
+    public FormDefinition? Definition { get; set; }
+
+    public string Name { get; set; } = null!;
+
+    public FormContainerType ContainerType { get; set; } = FormContainerType.Segment;
+
+    /// <summary>Contenedor padre (null = raiz). Self-FK NO ACTION, nunca cascada.</summary>
+    public long? ParentId { get; set; }
+    public FormContainer? Parent { get; set; }
+    public ICollection<FormContainer> Children { get; set; } = [];
+
+    public int SortOrder { get; set; }
+
+    /// <summary>Estilo visual opcional (clases/inline segun el renderer).</summary>
+    public string? Style { get; set; }
+
+    /// <summary>Etiquetas en linea: el label se pinta al frente del valor en vez de arriba.</summary>
+    public bool InlineLabels { get; set; }
+
+    /// <summary>Nombres de las pestanas cuando ContainerType es Tabs (arreglo JSON de strings).</summary>
+    public string? TabsJson { get; set; }
+
+    /// <summary>Ancho en columnas de la grilla de 12 del constructor (1..12).</summary>
+    public int Width { get; set; } = 12;
+
+    /// <summary>Fijo en el layout: el constructor no permite reordenarlo.</summary>
+    public bool IsLocked { get; set; }
+
+    /// <summary>Oculto: ni el contenedor ni su subarbol se pintan en el renderer.</summary>
+    public bool IsHidden { get; set; }
+}

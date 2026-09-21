@@ -41,6 +41,13 @@ public class MenuNode : TenantEntity
     public string? Description { get; set; }
     public string? HelpText { get; set; }
 
+    /// <summary>
+    /// Origen de migracion: documenta de que modulo/pantalla del proyecto legacy proviene este item
+    /// (ej. "doc_bandeja.aspx", "mis_firmas.aspx"). Metadato de trazabilidad del port; no participa en
+    /// permisos ni en el render. Texto libre editable desde el Administrador de Menu.
+    /// </summary>
+    public string? OrigenMigracion { get; set; }
+
     public MenuNodeState State { get; set; } = MenuNodeState.Ready;
 
     public bool IsVisible { get; set; } = true;

@@ -1,0 +1,216 @@
+@page "/m/{Code}"
+@attribute [Authorize]
+@* Bandeja de registros de un formulario promovido a MODULO (RQ08, ola F4, port ECOREX). KPIs, tabs
+   Activos/Anulados, tabla con columnas configuradas (GridDetail expandible), export a Excel y modales
+   Nuevo/Ver/Anular/Eliminar reusando el DynamicFormRenderer. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text.Json
+@using Tronox.Application.Forms
+@using Tronox.Domain.Enums
+@using Tronox.Web.Components.Shared
+@inject IFormDefinitionService DefSvc
+@inject IFormResponseService RespSvc
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>@(_def?.Title ?? "Módulo") - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    @if (_def is null) { <div class="tx-ent-hint" style="padding:18px">@(_loadError ?? "Cargando...")</div> }
+    else
+    {
+        <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div>
+                <h1 class="tx-ent-title">@_def.Title</h1>
+                <p class="tx-ent-sub" style="margin:2px 0 0">FORX-@_def.Code · @(_records?.Count ?? 0) registros</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="tx-ent-btn primary" @onclick="NuevoRegistro" disabled="@(_def.Status != FormStatus.Active)"><i class="bi bi-plus-lg"></i> Nuevo registro</button>
+                <button class="tx-ent-btn" @onclick="ExportXlsx"><i class="bi bi-file-earmark-excel"></i> Exportar Excel</button>
+            </div>
+        </div>
+
+        @if (_def.Status != FormStatus.Active) { <div class="tx-ent-alert" style="margin-top:8px"><i class="bi bi-info-circle"></i><span>El formulario está en borrador: publícalo para capturar registros.</span></div> }
+        @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+        @* KPIs *@
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:12px">
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">Registros</div><div style="font-size:24px;font-weight:700">@Total</div></div>
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">Confirmados</div><div style="font-size:24px;font-weight:700">@Confirmados</div></div>
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">Anulados</div><div style="font-size:24px;font-weight:700">@Anulados</div></div>
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">Este mes</div><div style="font-size:24px;font-weight:700">@EsteMes</div></div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px">
+            <input class="tx-ent-input" style="max-width:260px" placeholder="Buscar por número o referencia..." @bind="_query" @bind:event="oninput" />
+            <div style="display:flex;gap:6px">
+                <button class="tx-ent-btn sm @(_tab == "act" ? "primary" : "")" @onclick='() => _tab = "act"'>Activos</button>
+                <button class="tx-ent-btn sm @(_tab == "void" ? "primary" : "")" @onclick='() => _tab = "void"'>Anulados</button>
+            </div>
+        </div>
+
+        <div class="tx-ent-table-wrap" style="margin-top:12px">
+            <table class="tx-ent-table">
+                <thead>
+                    <tr>
+                        <th>NÚMERO</th><th>FECHA</th><th>ESTADO</th>
+                        @foreach (var c in _cols) { <th>@c.Label</th> }
+                        <th class="right">ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_records is null) { <tr><td colspan="@(_cols.Count + 4)" class="tx-ent-hint" style="text-align:center;padding:18px">Cargando...</td></tr> }
+                    else if (Filtered.Count == 0) { <tr><td colspan="@(_cols.Count + 4)" class="tx-ent-hint" style="text-align:center;padding:18px">Sin registros.</td></tr> }
+                    else
+                    {
+                        @foreach (var r in Filtered)
+                        {
+                            var rr = r;
+                            <tr>
+                                <td class="mono">@(r.RecordNumber ?? "--")</td>
+                                <td>@((r.TransactionDate ?? r.SubmittedAt)?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "--")</td>
+                                <td><span class="tx-ent-badge @(r.RecordStatus == FormRecordStatus.Voided ? "off" : "ok")">@EstadoLabel(r.RecordStatus)</span></td>
+                                @foreach (var c in _cols) { <td>@Display(c, r.Fields.TryGetValue(c.Code, out var v) ? v : null)</td> }
+                                <td class="right">
+                                    <button class="tx-ent-btn sm" title="Ver" @onclick="@(() => Ver(rr.Id))"><i class="bi bi-eye"></i></button>
+                                    <a class="tx-ent-btn sm" title="Imprimir" href="/modulo/formularios/imprimir/@r.Id" target="_blank"><i class="bi bi-printer"></i></a>
+                                    @if (r.RecordStatus != FormRecordStatus.Voided) { <button class="tx-ent-btn sm danger" title="Anular" @onclick="@(() => OpenAnular(rr.Id))"><i class="bi bi-slash-circle"></i></button> }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (_showRenderer)
+{
+    <div class="modal-overlay" @onclick="CloseRenderer">
+        <div class="modal-dialog" style="max-width:920px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>@(_rendererMode == FormRenderMode.Fill ? "Nuevo registro" : "Registro")</h3><button class="modal-close" @onclick="CloseRenderer">&times;</button></div>
+            <div class="modal-body">
+                <DynamicFormRenderer DefinitionId="_def!.Id" ResponseId="_viewId" Mode="_rendererMode"
+                                     ShowHeader="false" OnSubmitted="OnSubmitted" />
+            </div>
+        </div>
+    </div>
+}
+
+@if (_anularId is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _anularId = null)">
+        <div class="modal-dialog" style="max-width:480px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Anular registro</h3><button class="modal-close" @onclick="@(() => _anularId = null)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                <div class="tx-ent-field"><label>Motivo <span class="req">*</span></label><textarea class="tx-ent-input" @bind="_anularMotivo" rows="3"></textarea></div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _anularId = null)">Cancelar</button>
+                <button class="tx-ent-btn danger" @onclick="Anular" disabled="@string.IsNullOrWhiteSpace(_anularMotivo)">Anular</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    private FormDefinitionDetailDto? _def;
+    private string? _loadError, _pageError;
+    private IReadOnlyList<FormRecordListItemDto>? _records;
+    private List<(string Code, string Label)> _cols = [];
+    private readonly Dictionary<string, Dictionary<string, string>> _optLabels = [];
+    private string _query = "", _tab = "act";
+
+    private bool _showRenderer;
+    private FormRenderMode _rendererMode = FormRenderMode.Fill;
+    private long? _viewId;
+
+    private long? _anularId;
+    private string _anularMotivo = "";
+
+    private int Total => _records?.Count ?? 0;
+    private int Confirmados => _records?.Count(r => r.RecordStatus == FormRecordStatus.Confirmed) ?? 0;
+    private int Anulados => _records?.Count(r => r.RecordStatus == FormRecordStatus.Voided) ?? 0;
+    private int EsteMes => _records?.Count(r => (r.TransactionDate ?? r.SubmittedAt) is DateTimeOffset d && d.Year == DateTimeOffset.UtcNow.Year && d.Month == DateTimeOffset.UtcNow.Month) ?? 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var all = await DefSvc.ListAsync(includeArchived: true);
+        var item = all.FirstOrDefault(d => string.Equals(d.Code, Code, StringComparison.OrdinalIgnoreCase));
+        if (item is null) { _loadError = "Módulo no encontrado."; return; }
+        _def = await DefSvc.GetAsync(item.Id);
+        if (_def is null) { _loadError = "Módulo no encontrado."; return; }
+
+        var inputs = _def.Questions.Where(q => !FormFieldValidator.IsNonInput(q.ControlType)).OrderBy(q => q.SortOrder).ToList();
+        var configured = ParseCodes(_def.ListColumnsJson);
+        _cols = (configured.Count > 0
+                ? configured.Select(code => inputs.FirstOrDefault(q => q.FieldCode == code)).Where(q => q is not null).Select(q => (q!.FieldCode, q.Label))
+                : inputs.Take(6).Select(q => (q.FieldCode, q.Label)))
+            .ToList();
+        foreach (var q in inputs.Where(q => q.ControlType is FormControlType.Select or FormControlType.Radio or FormControlType.MultiCheck))
+        {
+            _optLabels[q.FieldCode] = FormFieldValidator.ParseOptions(q.OptionsJson).ToDictionary(o => o.Id, o => o.Label);
+        }
+        await Reload();
+    }
+
+    private async Task Reload() => _records = await RespSvc.ListRecordsAsync(_def!.Id);
+
+    private IReadOnlyList<FormRecordListItemDto> Filtered
+    {
+        get
+        {
+            var q = (_records ?? []).Where(r => _tab == "void" ? r.RecordStatus == FormRecordStatus.Voided : r.RecordStatus != FormRecordStatus.Voided);
+            if (!string.IsNullOrWhiteSpace(_query))
+            {
+                var t = _query.Trim().ToLowerInvariant();
+                q = q.Where(r => (r.RecordNumber ?? "").ToLowerInvariant().Contains(t) || (r.Reference ?? "").ToLowerInvariant().Contains(t));
+            }
+            return q.ToList();
+        }
+    }
+
+    private void NuevoRegistro() { _viewId = null; _rendererMode = FormRenderMode.Fill; _showRenderer = true; }
+    private void Ver(long id) { _viewId = id; _rendererMode = FormRenderMode.ReadOnly; _showRenderer = true; }
+    private void CloseRenderer() => _showRenderer = false;
+    private async Task OnSubmitted() { _showRenderer = false; await Reload(); }
+
+    private void OpenAnular(long id) { _anularId = id; _anularMotivo = ""; }
+    private async Task Anular()
+    {
+        if (_anularId is not long id) { return; }
+        var res = await RespSvc.VoidAsync(id, _anularMotivo.Trim());
+        _anularId = null;
+        if (!res.IsOk) { _pageError = res.Error; return; }
+        await Reload();
+    }
+
+    private async Task ExportXlsx()
+    {
+        var bytes = await RespSvc.ExportRecordsXlsxAsync(_def!.Id);
+        if (bytes is null) { _pageError = "Este formulario no es un módulo transaccional."; return; }
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("tronoxFormCapture.downloadBase64", b64,
+            $"{_def.Code}-registros.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private static List<string> ParseCodes(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) { return []; }
+        try { return JsonSerializer.Deserialize<List<string>>(json) ?? []; } catch { return []; }
+    }
+
+    private static string EstadoLabel(FormRecordStatus s) => s switch
+    { FormRecordStatus.Confirmed => "Confirmado", FormRecordStatus.Voided => "Anulado", _ => "Borrador" };
+
+    private string Display((string Code, string Label) col, string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) { return "--"; }
+        if (!_optLabels.TryGetValue(col.Code, out var map)) { return raw; }
+        var ids = raw.TrimStart().StartsWith('[') ? FormFieldValidator.ParseMultiValues(raw) : [raw];
+        return string.Join(", ", ids.Select(id => map.TryGetValue(id, out var l) ? l : id));
+    }
+}

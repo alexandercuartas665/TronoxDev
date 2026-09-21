@@ -1,0 +1,115 @@
+@* Solicitar Revision/Aprobacion (RQ04 - RF11). Crea una tarea de validacion asignada a un usuario del
+   tenant. NO cambia el estado del documento (traza paralela). Reusa el diseno exp-modal-* del modulo. *@
+@using Tronox.Application.Validaciones
+@using Tronox.Domain.Enums
+@inject IValidacionService Svc
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<div class="exp-modal-overlay open">
+    <div class="exp-modal-shell" style="max-width:520px">
+        <div class="exp-modal-header">
+            <h4 class="exp-modal-title"><i class="bi @Icono" style="color:@Color"></i>&nbsp; Solicitar @TituloTipo</h4>
+            <button class="exp-modal-close" @onclick="Cerrar"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="exp-modal-body">
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#475569">
+                <i class="bi bi-file-earmark-text" style="color:#94A3B8"></i>&nbsp; Documento: <strong>@NombreDoc</strong>
+            </div>
+            <div class="fir-note" style="background:#EFF6FF;border-color:#BFDBFE;color:#1e40af;margin-bottom:14px">
+                <i class="bi bi-info-circle" style="color:#2563EB"></i>
+                <span>La @TituloTipo.ToLower() es una tarea de trazabilidad: <strong>no bloquea</strong> ni cambia el estado del documento. Solo el usuario asignado podra responderla en su bandeja.</span>
+            </div>
+
+            @if (_err is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_err</div> }
+
+            <label class="det-label">Asignar a <span class="req">*</span></label>
+            <select class="det-input" @bind="_asignadoId">
+                <option value="0">— Selecciona un usuario —</option>
+                @foreach (var u in _usuarios) { <option value="@u.Id">@u.Nombre</option> }
+            </select>
+            @if (_usuarios.Count == 0) { <div style="font-size:11px;color:#94A3B8;margin-top:4px">No hay otros usuarios en el tenant.</div> }
+
+            <div style="display:flex;gap:12px;margin-top:12px">
+                <div style="flex:1">
+                    <label class="det-label">Prioridad</label>
+                    <select class="det-input" @bind="_prioridad">
+                        <option value="Baja">Baja</option>
+                        <option value="Media">Media</option>
+                        <option value="Alta">Alta</option>
+                        <option value="Urgente">Urgente</option>
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label class="det-label">Fecha limite</label>
+                    <input type="date" class="det-input" @bind="_fechaLimite" />
+                </div>
+            </div>
+
+            <label class="det-label" style="margin-top:12px">Instrucciones</label>
+            <textarea class="det-input" rows="3" maxlength="2000" placeholder="Que necesitas que revise/apruebe (opcional)" @bind="_instrucciones"></textarea>
+        </div>
+        <div class="exp-modal-footer">
+            <button class="exp-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <button class="exp-btn exp-btn-primary" style="background:@Color;border-color:@Color" @onclick="Enviar" disabled="@(_busy || _asignadoId <= 0)">
+                <i class="bi @Icono"></i>&nbsp; @(_busy ? "Enviando…" : "Solicitar")
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .exp-modal-overlay { position:fixed; inset:0; z-index:1000008; background:rgba(15,23,42,.45); display:flex; align-items:flex-start; justify-content:center; padding:90px 20px 30px; }
+    .exp-modal-shell { background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.18); width:100%; max-height:calc(100vh - 120px); overflow-y:auto; }
+    .exp-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #E2E8F0; }
+    .exp-modal-title { font-size:16px; font-weight:800; color:#0F172A; margin:0; }
+    .exp-modal-close { width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; color:#475569; display:inline-flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; }
+    .exp-modal-close:hover { background:#F8FAFC; color:#DC2626; }
+    .exp-modal-body { padding:18px 20px; }
+    .exp-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid #E2E8F0; }
+    .det-label { display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:5px; }
+    .det-label .req { color:#DC2626; margin-left:2px; }
+    .det-input { width:100%; padding:9px 12px; border:1px solid #E2E8F0; border-radius:10px; font-size:13px; color:#0F172A; background:#fff; box-sizing:border-box; }
+    .det-input:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+    .fir-note { display:flex; gap:9px; align-items:flex-start; border:1px solid; border-radius:10px; padding:11px 13px; font-size:12px; line-height:1.45; }
+</style>
+
+@code {
+    [Parameter] public long DocId { get; set; }
+    [Parameter] public string NombreDoc { get; set; } = "";
+    [Parameter] public TipoValidacion Tipo { get; set; }
+    [Parameter] public EventCallback<string?> OnCerrar { get; set; }
+
+    private IReadOnlyList<UsuarioAsignableDto> _usuarios = [];
+    private long _asignadoId;
+    private string _prioridad = "Media";
+    private DateTime? _fechaLimite;
+    private string _instrucciones = "";
+    private bool _busy;
+    private string? _err;
+
+    private long Actor => Tenant.UserId ?? 0;
+    private string TituloTipo => Tipo == TipoValidacion.Aprobacion ? "Aprobación" : "Revisión";
+    private string Icono => Tipo == TipoValidacion.Aprobacion ? "bi-check-lg" : "bi-eye";
+    private string Color => Tipo == TipoValidacion.Aprobacion ? "#16A34A" : "#2563EB";
+
+    protected override async Task OnInitializedAsync()
+        => _usuarios = await Svc.GetUsuariosAsignablesAsync(Actor);
+
+    private async Task Enviar()
+    {
+        _err = null; _busy = true;
+        try
+        {
+            var prio = Enum.TryParse<PrioridadTarea>(_prioridad, out var p) ? p : PrioridadTarea.Media;
+            var fl = _fechaLimite is DateTime dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+            var req = new SolicitarValidacionRequest(DocId, Tipo, _asignadoId, prio, fl,
+                string.IsNullOrWhiteSpace(_instrucciones) ? null : _instrucciones);
+            var res = await Svc.SolicitarAsync(req, Actor);
+            if (res.IsOk) { await OnCerrar.InvokeAsync($"Solicitud de {TituloTipo.ToLower()} enviada."); }
+            else { _err = res.Error ?? "No se pudo crear la solicitud."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync(null);
+}

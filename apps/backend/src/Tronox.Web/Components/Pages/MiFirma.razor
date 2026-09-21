@@ -1,0 +1,129 @@
+@page "/modulo/firmas-mifirma"
+@attribute [Authorize(Policy = "Perm:modulo/firmas-mis:View")]
+@* "Mi Firma" (RQ05 - RF03 §3.3.3), port de ctrlMiFirma.ascx. Captura la firma manuscrita (grafo) del
+   usuario en un pad (canvas) y la guarda en firma_grafos. La cajita de firma la pinta al sellar el
+   documento. Autoservicio: cualquier usuario con acceso a firma (Perm firmas-mis) registra la suya. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Firmas
+@inject IFirmaService Firmas
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject IJSRuntime JS
+
+<PageTitle>Mi Firma - TRONOX SGDEA</PageTitle>
+
+<style>
+    .mfz-wrap { padding: 8px 0 40px; max-width: 720px; }
+    .mfz-header { margin-bottom: 18px; }
+    .mfz-title { font-size: 20px; font-weight: 800; color: #0F172A; margin: 0; display: flex; align-items: center; gap: 10px; }
+    .mfz-subtitle { font-size: 12.5px; color: #94A3B8; margin-top: 3px; }
+    .mfz-back { font-size: 12.5px; color: #2563EB; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+    .mfz-back:hover { text-decoration: underline; }
+    .mfz-card { border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px 22px; background: #fff; }
+    .mfz-actual { border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; margin-bottom: 16px; background: #F8FAFC; }
+    .mfz-actual-lbl { font-size: 12px; font-weight: 700; color: #64748B; margin-bottom: 8px; }
+    .mfz-actual img { max-width: 320px; max-height: 130px; background: #fff; border: 1px solid #EEF2F7; border-radius: 8px; padding: 6px; }
+    .mfz-hint { font-size: 12.5px; color: #475569; margin-bottom: 8px; }
+    .mfz-pad { border: 2px dashed #94A3B8; border-radius: 12px; background: #FBFCFE; touch-action: none; width: 100%; max-width: 600px; height: 200px; display: block; cursor: crosshair; }
+    .mfz-acts { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .mfz-btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid #2563EB; background: #2563EB; color: #fff; }
+    .mfz-btn:disabled { opacity: .6; cursor: default; }
+    .mfz-btn-l { border-color: #CBD5E1; background: #fff; color: #475569; }
+    .mfz-msg { display: block; margin-top: 12px; font-size: 13px; font-weight: 700; }
+    .mfz-ok { color: #16A34A; }
+    .mfz-err { color: #DC2626; }
+</style>
+
+<div class="mfz-wrap">
+    <a class="mfz-back" href="/modulo/firmas-mis"><i class="bi bi-arrow-left"></i> Volver a Mis Firmas</a>
+    <div class="mfz-header">
+        <h1 class="mfz-title"><i class="bi bi-pencil" style="color:#2563EB;"></i> Mi Firma</h1>
+        <div class="mfz-subtitle">Registre su firma manuscrita. Aparecera en los documentos que firme electronicamente.</div>
+    </div>
+
+    <div class="mfz-card">
+        @if (!string.IsNullOrEmpty(_actual))
+        {
+            <div class="mfz-actual">
+                <div class="mfz-actual-lbl">Firma registrada actualmente:</div>
+                <img src="@_actual" alt="Firma registrada" />
+            </div>
+        }
+
+        <div class="mfz-hint">Dibuje su firma en el recuadro:</div>
+        <canvas id="mifirmaPad" class="mfz-pad"></canvas>
+
+        <div class="mfz-acts">
+            <button type="button" class="mfz-btn mfz-btn-l" @onclick="Limpiar" disabled="@_busy">Limpiar</button>
+            <button type="button" class="mfz-btn" @onclick="Guardar" disabled="@_busy">
+                <i class="bi bi-save"></i> Guardar firma
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_ok))
+        {
+            <span class="mfz-msg mfz-ok">@_ok</span>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <span class="mfz-msg mfz-err">@_error</span>
+        }
+    </div>
+</div>
+
+@code {
+    private string? _actual;
+    private string? _ok, _error;
+    private bool _busy;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _actual = await Firmas.GetMiGrafoAsync(Actor);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("firmaGrafo.init", "mifirmaPad");
+        }
+    }
+
+    private async Task Limpiar()
+    {
+        _ok = _error = null;
+        await JS.InvokeVoidAsync("firmaGrafo.clear", "mifirmaPad");
+    }
+
+    private async Task Guardar()
+    {
+        _ok = _error = null;
+        var vacio = await JS.InvokeAsync<bool>("firmaGrafo.isEmpty", "mifirmaPad");
+        if (vacio)
+        {
+            _error = "Dibuje su firma primero.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var dataUri = await JS.InvokeAsync<string>("firmaGrafo.toDataURL", "mifirmaPad");
+            var res = await Firmas.GuardarMiGrafoAsync(dataUri, Actor);
+            if (res.IsOk)
+            {
+                _actual = await Firmas.GetMiGrafoAsync(Actor);
+                _ok = "Firma guardada correctamente.";
+                await JS.InvokeVoidAsync("firmaGrafo.clear", "mifirmaPad");
+            }
+            else
+            {
+                _error = res.Error ?? "No se pudo guardar la firma.";
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -63,5 +63,29 @@ window.tronoxFormCapture = (function () {
     });
   }
 
-  return { initSignature, signatureData, clearSignature, testStroke, geolocate };
+  // Descarga un archivo desde base64 (export XLSX de la bandeja de modulo).
+  function downloadBase64(b64, filename, mime) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) { bytes[i] = bin.charCodeAt(i); }
+    const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename || 'archivo'; document.body.appendChild(a);
+    a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  // Captura de archivo/foto: input file -> dataURL (para Photo/Image/File).
+  function fileToDataUrl(inputId) {
+    return new Promise((resolve) => {
+      const el = document.getElementById(inputId);
+      if (!el || !el.files || !el.files[0]) { resolve(''); return; }
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => resolve('');
+      r.readAsDataURL(el.files[0]);
+    });
+  }
+
+  return { initSignature, signatureData, clearSignature, testStroke, geolocate, downloadBase64, fileToDataUrl };
 })();

@@ -1,0 +1,168 @@
+@page "/modulo/workflows-ejecucion"
+@attribute [Authorize(Policy = "Perm:modulo/workflows-ejecucion:View")]
+@* Ejecucion de flujos BPMN (RQ11, ADR-010): arranca una instancia de un flujo publicado y atiende
+   sus pasos current (completar con resultado de aprobacion / rechazar con motivo). Prueba e2e del
+   motor. Las compuertas se autorresuelven; la instancia cierra al quedarse sin pasos vigentes. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Workflows
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@inject IWorkflowDesignService DesignSvc
+@inject IWorkflowEngine Engine
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<PageTitle>Ejecución de flujos - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a><span>/</span>
+        <a href="/modulo/workflows">Workflow Documental</a><span>/</span>
+        <span class="current">Ejecución</span>
+    </nav>
+
+    <div class="tx-ent-headrow">
+        <h1 class="tx-ent-title">Ejecución de flujos</h1>
+        <p class="tx-ent-sub" style="margin:2px 0 0">Arranca una instancia de un flujo publicado y atiende sus pasos.</p>
+    </div>
+
+    @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+    <div class="tx-ent-card" style="padding:14px;margin-top:12px;max-width:720px">
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div class="tx-ent-field" style="flex:1;min-width:240px;margin:0">
+                <label>Flujo publicado</label>
+                <select class="tx-ent-input" @bind="_selDefId">
+                    <option value="0">— Selecciona un flujo —</option>
+                    @foreach (var f in _published)
+                    {
+                        <option value="@f.DefinitionId">@f.ProcessCode · @f.Name (v@(f.Version))</option>
+                    }
+                </select>
+            </div>
+            <button class="tx-ent-btn primary" @onclick="Start" disabled="@(_busy || _selDefId == 0)">Iniciar instancia</button>
+        </div>
+        @if (_published.Count == 0) { <div class="tx-ent-hint" style="margin-top:8px">No hay flujos publicados. Publica uno desde el diseñador.</div> }
+    </div>
+
+    @if (_instance is not null)
+    {
+        <div class="tx-ent-card" style="padding:16px;margin-top:14px;max-width:720px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <h3 style="margin:0">Instancia #@_instance.Id</h3>
+                <span class="tx-ent-badge @EstadoCss(_instance.Status)">@EstadoLabel(_instance.Status)</span>
+            </div>
+            <div class="tx-ent-hint" style="margin:4px 0 12px">Iniciada @_instance.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") · ciclo @_instance.CurrentCycle</div>
+
+            @if (_instance.Status == WorkflowInstanceStatus.Completed)
+            {
+                <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>Flujo completado.</span></div>
+            }
+            else if (_instance.Status == WorkflowInstanceStatus.Stuck)
+            {
+                <div class="tx-ent-fielderr">El flujo quedó atascado (Stuck): revisa el diseño (posible loop).</div>
+            }
+            else if (_instance.CurrentSteps.Count == 0)
+            {
+                <div class="tx-ent-hint">Sin pasos vigentes.</div>
+            }
+            else
+            {
+                <div class="tx-ent-hint" style="font-weight:600;margin-bottom:6px">Pasos por atender</div>
+                @foreach (var step in _instance.CurrentSteps)
+                {
+                    var ss = step;
+                    <div style="border:1px solid var(--kt-border,#e9ebec);border-radius:8px;padding:10px;margin-bottom:8px">
+                        <div style="font-weight:600">@(step.NodeName ?? step.BpmnElementId) <span class="tx-ent-hint">· @step.NodeType</span></div>
+                        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+                            <input class="tx-ent-input" style="max-width:160px" placeholder="Resultado (ej. Approved)" value="@_approvalResult" @onchange="@(e => _approvalResult = e.Value?.ToString())" />
+                            <input class="tx-ent-input" style="max-width:220px" placeholder="Comentario (opcional)" value="@_approvalComment" @onchange="@(e => _approvalComment = e.Value?.ToString())" />
+                            <button class="tx-ent-btn sm primary" @onclick="@(() => Complete(ss.Id))" disabled="@_busy">Completar</button>
+                            <button class="tx-ent-btn sm danger" @onclick="@(() => Reject(ss.Id))" disabled="@_busy">Rechazar</button>
+                        </div>
+                    </div>
+                }
+                <div class="tx-ent-hint">Las compuertas exclusivas se resuelven solas con el "resultado" que ingreses (ej. <span class="mono">Approved</span> enruta por la rama <span class="mono">approval == 'Approved'</span>).</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private long Actor => Tenant.UserId ?? 0;
+    private IReadOnlyList<FlowCardDto> _published = [];
+    private long _selDefId;
+    private WorkflowInstanceDto? _instance;
+    private string? _approvalResult = "Approved", _approvalComment;
+    private string? _pageError;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await LoadPublished();
+
+    private async Task LoadPublished()
+    {
+        var index = await DesignSvc.ListForIndexAsync();
+        _published = index.Cards.Where(c => c.Estado == "En marcha").ToList();
+    }
+
+    private async Task Start()
+    {
+        if (_selDefId == 0) { return; }
+        _busy = true; _pageError = null;
+        try
+        {
+            var res = await Engine.StartInstanceAsync(_selDefId);
+            if (res.Status == WorkflowEngineStatus.StuckDetected) { _instance = res.Value; _pageError = res.Error; return; }
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _instance = res.Value;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Complete(long stepId)
+    {
+        if (_instance is null) { return; }
+        _busy = true; _pageError = null;
+        try
+        {
+            var res = await Engine.CompleteStepAsync(_instance.Id, stepId, Actor,
+                string.IsNullOrWhiteSpace(_approvalResult) ? null : _approvalResult,
+                string.IsNullOrWhiteSpace(_approvalComment) ? null : _approvalComment);
+            if (res.Status == WorkflowEngineStatus.StuckDetected) { _instance = res.Value; _pageError = res.Error; return; }
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _instance = res.Value; _approvalComment = null;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Reject(long stepId)
+    {
+        if (_instance is null) { return; }
+        _busy = true; _pageError = null;
+        try
+        {
+            var reason = string.IsNullOrWhiteSpace(_approvalComment) ? "Rechazado" : _approvalComment!;
+            var res = await Engine.RejectStepAsync(_instance.Id, stepId, Actor, reason);
+            if (res.Status == WorkflowEngineStatus.StuckDetected) { _instance = res.Value; _pageError = res.Error; return; }
+            if (!res.IsOk) { _pageError = res.Error; return; }
+            _instance = res.Value; _approvalComment = null;
+        }
+        finally { _busy = false; }
+    }
+
+    private static string EstadoLabel(WorkflowInstanceStatus s) => s switch
+    {
+        WorkflowInstanceStatus.Running => "En progreso",
+        WorkflowInstanceStatus.Completed => "Completado",
+        WorkflowInstanceStatus.Cancelled => "Cancelado",
+        WorkflowInstanceStatus.Stuck => "Atascado",
+        _ => s.ToString()
+    };
+
+    private static string EstadoCss(WorkflowInstanceStatus s) => s switch
+    {
+        WorkflowInstanceStatus.Completed => "ok",
+        WorkflowInstanceStatus.Stuck => "off",
+        WorkflowInstanceStatus.Cancelled => "off",
+        _ => ""
+    };
+}

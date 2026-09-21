@@ -180,6 +180,8 @@ public sealed class EntidadService : IEntidadService
         entidad.ZonaHoraria = request.ZonaHoraria.Trim();
         entidad.IdiomaDefecto = request.IdiomaDefecto.Trim();
         entidad.Estado = request.Estado;
+        entidad.NombreReal = Nullable(request.NombreReal);
+        entidad.Observaciones = Nullable(request.Observaciones);
     }
 
     private static string? Nullable(string? value)
@@ -218,5 +220,5 @@ public sealed class EntidadService : IEntidadService
         e.CiudadId, e.Ciudad?.Nombre,
         e.DireccionPrincipal, e.Telefono, e.CorreoInstitucional, e.PaginaWeb,
         e.RepresentanteLegal, e.LogoUrl, e.CodigoFondoAgn,
-        e.ZonaHoraria, e.IdiomaDefecto, e.Estado);
+        e.ZonaHoraria, e.IdiomaDefecto, e.Estado, e.NombreReal, e.Observaciones);
 }

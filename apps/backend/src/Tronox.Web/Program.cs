@@ -8,6 +8,7 @@ using Tronox.Infrastructure;
 using Tronox.Infrastructure.Persistence;
 using Tronox.Web.Auth;
 using Tronox.Web.Components;
+using Tronox.Web.Visor;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -158,6 +159,10 @@ builder.Services.AddScoped<ITenantContext, Tronox.Web.Auth.AmbientTenantContext>
 builder.Services.AddSignalR();
 builder.Services.AddScoped<Tronox.Application.Notifications.INotificationBroadcaster, Tronox.Web.RealTime.SignalRNotificationBroadcaster>();
 builder.Services.AddScoped<Tronox.Web.Services.CircuitFormGate>();
+// Alertas de firma pendiente (RF11 Inc.2): escaneo periodico cross-tenant con dias habiles.
+builder.Services.AddHostedService<Tronox.Web.Services.FirmaAlertasHostedService>();
+// OCR automatico al incorporar (RQ04 - RF04): procesa los documentos Pendiente por tenant configurado.
+builder.Services.AddHostedService<Tronox.Web.Services.OcrAutoHostedService>();
 
 var app = builder.Build();
 
@@ -262,6 +267,9 @@ app.MapRazorComponents<App>()
 
 app.MapHub<Tronox.Web.RealTime.NotificationHub>("/hubs/notifications");
 
+// Visor documental (RF04): endpoints de binario + datos consumidos por wwwroot/visor/exp_visor.js.
+app.MapVisorEndpoints();
+
 app.MapPost("/auth/login", async (
     HttpContext http,
     [FromForm] string email,
@@ -341,6 +349,62 @@ app.MapPost("/auth/login", async (
     await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), authProps);
     return Results.Redirect(redirect);
 }).DisableAntiforgery();
+
+// Dev-login: SOLO en entorno Development. Firma la sesion de un usuario por correo SIN pedir clave,
+// replicando exactamente los claims/esquema de /auth/login (misma cookie). Sirve para automatizar
+// pruebas de UI sin depender del autofill del formulario. NUNCA se registra fuera de Development,
+// por lo que en produccion la ruta no existe (404). Uso: /dev/login  o  /dev/login?email=otro@correo.
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/dev/login", async (
+        HttpContext http,
+        IApplicationDbContext db,
+        [FromQuery] string? email) =>
+    {
+        var normalized = (email ?? "admin2@tronox.local").Trim().ToLowerInvariant();
+        var user = await db.PlatformUsers.FirstOrDefaultAsync(u => u.Email == normalized);
+        if (user is null)
+        {
+            return Results.Text($"[dev-login] usuario '{normalized}' no encontrado", "text/plain", null, 404);
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.DisplayName ?? user.Email),
+            new(ClaimTypes.Email, user.Email)
+        };
+
+        var isOperator = user.PlatformRole is PlatformRole;
+        if (isOperator)
+        {
+            claims.Add(new Claim("platform_role", user.PlatformRole!.Value.ToString()));
+        }
+
+        var membership = await db.TenantUsers
+            .IgnoreQueryFilters()
+            .Where(tu => tu.PlatformUserId == user.Id && tu.Status == PlatformUserStatus.Active)
+            .OrderBy(tu => tu.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (membership is not null)
+        {
+            claims.Add(new Claim("tenant_id", membership.TenantId.ToString()));
+            claims.Add(new Claim("tenant_role", membership.TenantRole.ToString()));
+        }
+
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await http.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity),
+            new Microsoft.AspNetCore.Authentication.AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30)
+            });
+        return Results.Redirect(isOperator ? "/" : "/inicio");
+    });
+}
 
 // Auto-registro (autogestion): un visitante crea su propia agencia + usuario Owner. La cuenta
 // queda en PendingActivation; se envia un codigo de 6 digitos por correo y el visitante debe

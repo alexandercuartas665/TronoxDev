@@ -21,8 +21,31 @@ public sealed class SmtpEmailSender : IEmailSender
         _secretProtector = secretProtector;
     }
 
-    public async Task<EmailSendResult> SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
+    public Task<EmailSendResult> SendAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default)
+        => EnviarAsync([toEmail], subject, htmlBody, adjunto: null, cancellationToken);
+
+    public Task<EmailSendResult> SendWithAttachmentAsync(
+        IReadOnlyList<string> toEmails, string subject, string htmlBody,
+        byte[] attachmentBytes, string attachmentFileName, string attachmentContentType,
+        CancellationToken cancellationToken = default)
+        => EnviarAsync(toEmails, subject, htmlBody,
+            new Adjunto(attachmentBytes, attachmentFileName, attachmentContentType), cancellationToken);
+
+    private sealed record Adjunto(byte[] Bytes, string FileName, string ContentType);
+
+    private async Task<EmailSendResult> EnviarAsync(
+        IReadOnlyList<string> toEmails, string subject, string htmlBody, Adjunto? adjunto, CancellationToken cancellationToken)
     {
+        var destinos = (toEmails ?? [])
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Select(e => e.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (destinos.Count == 0)
+        {
+            return new EmailSendResult(false, "Indica al menos un destinatario.");
+        }
+
         var cfg = await _db.EmailConfigs.AsNoTracking().FirstOrDefaultAsync(cancellationToken);
         if (cfg is null || !cfg.IsEnabled)
         {
@@ -59,9 +82,25 @@ public sealed class SmtpEmailSender : IEmailSender
                 Body = htmlBody,
                 IsBodyHtml = true
             };
-            message.To.Add(new MailAddress(toEmail));
+            foreach (var d in destinos) { message.To.Add(new MailAddress(d)); }
 
-            await client.SendMailAsync(message, cancellationToken);
+            MemoryStream? ms = null;
+            if (adjunto is not null)
+            {
+                ms = new MemoryStream(adjunto.Bytes, writable: false);
+                var att = new Attachment(ms, adjunto.FileName,
+                    string.IsNullOrWhiteSpace(adjunto.ContentType) ? "application/octet-stream" : adjunto.ContentType);
+                message.Attachments.Add(att);
+            }
+
+            try
+            {
+                await client.SendMailAsync(message, cancellationToken);
+            }
+            finally
+            {
+                ms?.Dispose();
+            }
             return new EmailSendResult(true, null);
         }
         catch (Exception ex)

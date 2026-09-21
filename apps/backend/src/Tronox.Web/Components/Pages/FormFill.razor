@@ -1,0 +1,51 @@
+@page "/modulo/formularios/{Id:long}/llenar"
+@attribute [Authorize(Policy = "Perm:modulo/formularios:View")]
+@* Llenado de un formulario dinamico publicado (RQ08, port ECOREX). Envoltura del DynamicFormRenderer
+   en modo Fill: el renderer crea el borrador, captura y envia con validacion servidor. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Forms
+@using Tronox.Domain.Enums
+@using Tronox.Web.Auth
+@using Tronox.Web.Components.Shared
+@inject IFormDefinitionService DefSvc
+@inject NavigationManager Nav
+
+<PageTitle>Llenar formulario - TRONOX SGDEA</PageTitle>
+
+<div class="tx-mod tx-dep tx-trdc">
+    <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+        <a href="/inicio">Inicio</a><span>/</span>
+        <a href="/modulo/formularios">Formularios</a><span>/</span>
+        <span class="current">Llenar</span>
+    </nav>
+
+    @if (_loadError is not null)
+    {
+        <div class="tx-ent-hint" style="padding:18px">@_loadError</div>
+    }
+    else if (_ready)
+    {
+        <div style="max-width:920px;margin:12px auto">
+            <DynamicFormRenderer DefinitionId="Id" Reference="@Reference" Mode="FormRenderMode.Fill"
+                                 ShowHeader="true" ApplyCardWidth="true" OnSubmitted="OnSubmitted" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    [SupplyParameterFromQuery] public string? Reference { get; set; }
+
+    private bool _ready;
+    private string? _loadError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var def = await DefSvc.GetAsync(Id);
+        if (def is null) { _loadError = "El formulario no existe."; return; }
+        if (def.Status != FormStatus.Active) { _loadError = "El formulario no está publicado."; return; }
+        _ready = true;
+    }
+
+    private void OnSubmitted() => Nav.NavigateTo("/modulo/formularios");
+}

@@ -159,6 +159,91 @@ public sealed class TrdConstruccionTests : IClassFixture<PostgresTenantIsolation
         }
     }
 
+    // ---- RF05: tipologias documentales + metadatos de documento ----
+
+    [Fact]
+    public async Task Tipologia_CRUD_YMetadatoDocumento()
+    {
+        var s = await SeedAsync();
+        await using var ctx = _fixture.CreateContext(s.TenantId);
+        var svc = NewService(ctx, s);
+        var a = Ok(await svc.AddAsignacionAsync(s.VersionId, Req(s.DepA, s.Serie), Actor));
+
+        // Alta de tipologia.
+        var tip = await svc.AddTipologiaAsync(a.Id, new SaveTipologiaRequest(
+            "Acta de Reunion", SoporteTipologia.Electronico, "PDF", ObligatorioEnExpediente: true), Actor);
+        Assert.True(tip.IsOk, tip.Error);
+        Assert.Equal(SoporteTipologia.Electronico, tip.Value!.Soporte);
+        Assert.True(tip.Value.ObligatorioEnExpediente);
+
+        // Aparece colgada de la asignacion.
+        var conTip = (await svc.GetAsignacionesAsync(s.VersionId, s.DepA)).Single(x => x.Id == a.Id);
+        Assert.Single(conTip.Tipologias);
+
+        // Metadato de DOCUMENTO sobre la tipologia (contexto Documento).
+        var md = await svc.AddMetadatoDocumentoAsync(tip.Value.Id, new SaveMetadatoRequest(
+            "Numero de acta", TipoDatoMetadato.Numerico, true), Actor);
+        Assert.True(md.IsOk, md.Error);
+        Assert.Equal(ContextoMetadato.Documento, md.Value!.Contexto);
+        Assert.Equal(tip.Value.Id, md.Value.TrdTipologiaId);
+
+        // El metadato de documento va bajo la tipologia; NO como metadato del expediente.
+        var recargada = (await svc.GetAsignacionesAsync(s.VersionId, s.DepA)).Single(x => x.Id == a.Id);
+        Assert.Empty(recargada.Metadatos); // expediente vacio
+        Assert.Single(recargada.Tipologias[0].Metadatos); // documento con 1
+
+        // Editar y luego inactivar la tipologia.
+        var upd = await svc.UpdateTipologiaAsync(tip.Value.Id, new SaveTipologiaRequest(
+            "Acta Extraordinaria", SoporteTipologia.Hibrido, "PDF", false), Actor);
+        Assert.True(upd.IsOk, upd.Error);
+        Assert.Equal(SoporteTipologia.Hibrido, upd.Value!.Soporte);
+
+        var arch = await svc.SetTipologiaArchivedAsync(tip.Value.Id, archived: true, Actor);
+        Assert.True(arch.IsOk, arch.Error);
+        var soloActivas = (await svc.GetAsignacionesAsync(s.VersionId, s.DepA)).Single(x => x.Id == a.Id);
+        Assert.All(soloActivas.Tipologias, t => Assert.True(t.IsArchived));
+    }
+
+    [Fact]
+    public async Task Tipologia_NoSeAgrega_SobreVersionHistorico()
+    {
+        var s = await SeedAsync();
+        await using var ctx = _fixture.CreateContext(s.TenantId);
+        var svc = NewService(ctx, s);
+        var a = Ok(await svc.AddAsignacionAsync(s.VersionId, Req(s.DepA, s.Serie), Actor));
+
+        await using (var seedCtx = _fixture.CreateContext(s.TenantId))
+        {
+            var v = await seedCtx.TrdVersiones.FirstAsync(x => x.Id == s.VersionId);
+            v.Estado = TrdVersionEstado.Historico;
+            await seedCtx.SaveChangesAsync();
+        }
+
+        var r = await svc.AddTipologiaAsync(a.Id, new SaveTipologiaRequest("X", SoporteTipologia.Fisico), Actor);
+        Assert.Equal(TrdServiceStatus.Invalid, r.Status);
+    }
+
+    [Fact]
+    public async Task Tipologias_NoSeVenEntreTenants()
+    {
+        var a = await SeedAsync();
+        await using (var ctxA = _fixture.CreateContext(a.TenantId))
+        {
+            var svcA = NewService(ctxA, a);
+            var asigA = Ok(await svcA.AddAsignacionAsync(a.VersionId, Req(a.DepA, a.Serie), Actor));
+            var tipA = await svcA.AddTipologiaAsync(asigA.Id, new SaveTipologiaRequest("Acta", SoporteTipologia.Electronico), Actor);
+            Assert.True(tipA.IsOk, tipA.Error);
+        }
+        var b = await SeedAsync();
+        await using (var ctxB = _fixture.CreateContext(b.TenantId))
+        {
+            // El tenant B no ve nada de A: su version esta vacia de asignaciones (y por ende de tipologias).
+            var svcB = NewService(ctxB, b);
+            var asigB = await svcB.GetAsignacionesAsync(b.VersionId, b.DepA);
+            Assert.Empty(asigB);
+        }
+    }
+
     // ================= Helpers =================
 
     private AddAsignacionRequest Req(long depId, long serieId, int tiempoGestion = 2)

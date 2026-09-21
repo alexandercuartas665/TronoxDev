@@ -1,0 +1,24 @@
+@page "/modulo/calendario-habil"
+@attribute [Authorize(Policy = "Perm:modulo/calendario-habil:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@* RQ01 - Calendario habil. Reutiliza el control completo (CalendarioHabilPanel) calcado del legacy
+   ctrlCalendarioHabil: dias habiles de la semana + jornada + calendario mensual con festivos. El mismo
+   control va embebido siempre visible en "Datos de la Entidad". *@
+
+<PageTitle>Calendario Habil - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Workspace</a><span class="sep">/</span>
+    <span>Configuracion General y Organizacional</span><span class="sep">/</span>
+    <span class="cur">Calendario Habil</span>
+</nav>
+
+<div class="module-head">
+    <div>
+        <h1 class="page-title" style="margin:0;">Calendario Hábil</h1>
+        <p class="page-sub" style="margin:4px 0 0;">Días hábiles, jornada y festivos para el cálculo de términos de radicación.</p>
+    </div>
+</div>
+
+<CalendarioHabilPanel />

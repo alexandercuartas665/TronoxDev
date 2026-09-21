@@ -240,6 +240,65 @@ namespace Tronox.Infrastructure.Migrations
                     b.ToTable("ai_usage_logs", (string)null);
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.AlmacenamientoConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("ConnectionStringCifrada")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("connection_string_cifrada");
+
+                    b.Property<string>("Contenedor")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("contenedor");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Prefijo")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("prefijo");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_almacenamientos_config");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_almacenamientos_config_tenant_id");
+
+                    b.ToTable("almacenamientos_config", (string)null);
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.BusinessUnit", b =>
                 {
                     b.Property<long>("Id")
@@ -302,6 +361,505 @@ namespace Tronox.Infrastructure.Migrations
                         .HasDatabaseName("ix_business_units_tenant_id_sort_order");
 
                     b.ToTable("business_units", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.BuzonCorreo", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("Carpeta")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("carpeta");
+
+                    b.Property<string>("ContrasenaEncrypted")
+                        .HasColumnType("text")
+                        .HasColumnName("contrasena_encrypted");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long?>("DependenciaDefaultId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("dependencia_default_id");
+
+                    b.Property<string>("DireccionEmail")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("direccion_email");
+
+                    b.Property<string>("FrecuenciaRevision")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("frecuencia_revision");
+
+                    b.Property<string>("ModoRadicacion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("modo_radicacion");
+
+                    b.Property<string>("NombreBuzon")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("nombre_buzon");
+
+                    b.Property<string>("Protocolo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("protocolo");
+
+                    b.Property<int?>("Puerto")
+                        .HasColumnType("integer")
+                        .HasColumnName("puerto");
+
+                    b.Property<string>("Seguridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("seguridad");
+
+                    b.Property<string>("Servidor")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("servidor");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int?>("TiempoEsperaMinutos")
+                        .HasColumnType("integer")
+                        .HasColumnName("tiempo_espera_minutos");
+
+                    b.Property<long?>("TipoComunicacionDefaultId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tipo_comunicacion_default_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("usuario");
+
+                    b.HasKey("Id")
+                        .HasName("pk_buzones_correo");
+
+                    b.HasIndex("DependenciaDefaultId")
+                        .HasDatabaseName("ix_buzones_correo_dependencia_default_id");
+
+                    b.HasIndex("TipoComunicacionDefaultId")
+                        .HasDatabaseName("ix_buzones_correo_tipo_comunicacion_default_id");
+
+                    b.HasIndex("TenantId", "Activo")
+                        .HasDatabaseName("ix_buzones_correo_tenant_id_activo");
+
+                    b.ToTable("buzones_correo", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CalendarioHabilConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("Domingo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("domingo");
+
+                    b.Property<string>("JornadaFin")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasColumnName("jornada_fin");
+
+                    b.Property<string>("JornadaInicio")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasColumnName("jornada_inicio");
+
+                    b.Property<bool>("Jueves")
+                        .HasColumnType("boolean")
+                        .HasColumnName("jueves");
+
+                    b.Property<bool>("Lunes")
+                        .HasColumnType("boolean")
+                        .HasColumnName("lunes");
+
+                    b.Property<bool>("Martes")
+                        .HasColumnType("boolean")
+                        .HasColumnName("martes");
+
+                    b.Property<bool>("Miercoles")
+                        .HasColumnType("boolean")
+                        .HasColumnName("miercoles");
+
+                    b.Property<bool>("Sabado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("sabado");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<bool>("Viernes")
+                        .HasColumnType("boolean")
+                        .HasColumnName("viernes");
+
+                    b.HasKey("Id")
+                        .HasName("pk_calendarios_habiles");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_calendarios_habiles_tenant_id");
+
+                    b.ToTable("calendarios_habiles", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CorreoDescartado", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Causal")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("causal");
+
+                    b.Property<long>("CorreoRecibidoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("correo_recibido_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha");
+
+                    b.Property<DateTime?>("FechaRecupera")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_recupera");
+
+                    b.Property<bool>("Recuperado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("recuperado");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long?>("UsuarioId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<long?>("UsuarioRecuperaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("usuario_recupera_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_correos_descartados");
+
+                    b.HasIndex("CorreoRecibidoId")
+                        .HasDatabaseName("ix_correos_descartados_correo_recibido_id");
+
+                    b.HasIndex("TenantId", "CorreoRecibidoId")
+                        .HasDatabaseName("ix_correos_descartados_tenant_id_correo_recibido_id");
+
+                    b.ToTable("correos_descartados", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CorreoRecibido", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Asunto")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("asunto");
+
+                    b.Property<long?>("BuzonCorreoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("buzon_correo_id");
+
+                    b.Property<string>("BuzonEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("buzon_email");
+
+                    b.Property<int>("Confianza")
+                        .HasColumnType("integer")
+                        .HasColumnName("confianza");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CuerpoTratado")
+                        .HasColumnType("text")
+                        .HasColumnName("cuerpo_tratado");
+
+                    b.Property<string>("DuplicadoNumero")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("duplicado_numero");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<DateTime?>("FechaRecepcion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_recepcion");
+
+                    b.Property<string>("InReplyTo")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("in_reply_to");
+
+                    b.Property<string>("MessageId")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("message_id");
+
+                    b.Property<string>("Modo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("modo");
+
+                    b.Property<int>("NumAdjuntos")
+                        .HasColumnType("integer")
+                        .HasColumnName("num_adjuntos");
+
+                    b.Property<DateTime?>("RadicaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("radica_en");
+
+                    b.Property<long?>("RadicadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("radicado_id");
+
+                    b.Property<string>("RadicadoNumero")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("radicado_numero");
+
+                    b.Property<string>("RadicadoRef")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("radicado_ref");
+
+                    b.Property<string>("Remitente")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("remitente");
+
+                    b.Property<string>("RemitenteEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("remitente_email");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long?>("TipoDetectadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tipo_detectado_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_correos_recibidos");
+
+                    b.HasIndex("BuzonCorreoId")
+                        .HasDatabaseName("ix_correos_recibidos_buzon_correo_id");
+
+                    b.HasIndex("TipoDetectadoId")
+                        .HasDatabaseName("ix_correos_recibidos_tipo_detectado_id");
+
+                    b.HasIndex("TenantId", "Estado")
+                        .HasDatabaseName("ix_correos_recibidos_tenant_id_estado");
+
+                    b.HasIndex("TenantId", "MessageId")
+                        .HasDatabaseName("ix_correos_recibidos_tenant_id_message_id");
+
+                    b.ToTable("correos_recibidos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CorreoRecibidoAdjunto", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CorreoRecibidoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("correo_recibido_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("EsCuerpoHtml")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_cuerpo_html");
+
+                    b.Property<bool>("EsHilo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_hilo");
+
+                    b.Property<string>("Extension")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("extension");
+
+                    b.Property<string>("MimeType")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<string>("StorageBucket")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("storage_bucket");
+
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<long>("TamanoBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tamano_bytes");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_correos_recibidos_adjuntos");
+
+                    b.HasIndex("CorreoRecibidoId")
+                        .HasDatabaseName("ix_correos_recibidos_adjuntos_correo_recibido_id");
+
+                    b.HasIndex("TenantId", "CorreoRecibidoId")
+                        .HasDatabaseName("ix_correos_recibidos_adjuntos_tenant_id_correo_recibido_id");
+
+                    b.ToTable("correos_recibidos_adjuntos", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.Departamento", b =>
@@ -658,6 +1216,475 @@ namespace Tronox.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.DiaFestivo", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("EsNacional")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_nacional");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nombre");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Nacional")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dias_festivos");
+
+                    b.HasIndex("TenantId", "Fecha")
+                        .IsUnique()
+                        .HasDatabaseName("ix_dias_festivos_tenant_id_fecha");
+
+                    b.ToTable("dias_festivos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Documento", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ContenidoHtml")
+                        .HasColumnType("text")
+                        .HasColumnName("contenido_html");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long?>("DocumentoPadreId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("documento_padre_id");
+
+                    b.Property<bool>("EsVersionHistorica")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_version_historica");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<string>("EstadoFirma")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado_firma");
+
+                    b.Property<long?>("ExpedienteId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expediente_id");
+
+                    b.Property<DateOnly?>("FechaDocumento")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_documento");
+
+                    b.Property<DateTime?>("FechaIncorporacion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_incorporacion");
+
+                    b.Property<int?>("Folios")
+                        .HasColumnType("integer")
+                        .HasColumnName("folios");
+
+                    b.Property<string>("Formato")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("formato");
+
+                    b.Property<string>("HashSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash_sha256");
+
+                    b.Property<string>("JustificacionAnulacion")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("justificacion_anulacion");
+
+                    b.Property<long?>("NivelClasificacionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nivel_clasificacion_id");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("NombreArchivoOriginal")
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("nombre_archivo_original");
+
+                    b.Property<string>("OcrEstado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("ocr_estado");
+
+                    b.Property<string>("OcrTexto")
+                        .HasColumnType("text")
+                        .HasColumnName("ocr_texto");
+
+                    b.Property<int?>("OrdenEnExpediente")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden_en_expediente");
+
+                    b.Property<int?>("PaginaFin")
+                        .HasColumnType("integer")
+                        .HasColumnName("pagina_fin");
+
+                    b.Property<int?>("PaginaInicio")
+                        .HasColumnType("integer")
+                        .HasColumnName("pagina_inicio");
+
+                    b.Property<string>("RutaAlmacenamiento")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("ruta_almacenamiento");
+
+                    b.Property<string>("Soporte")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("soporte");
+
+                    b.Property<long?>("TamanoBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tamano_bytes");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<bool>("TieneBinario")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tiene_binario");
+
+                    b.Property<long?>("TrdAsignacionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_asignacion_id");
+
+                    b.Property<long?>("TrdTipologiaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_tipologia_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<int>("VersionActual")
+                        .HasColumnType("integer")
+                        .HasColumnName("version_actual");
+
+                    b.HasKey("Id")
+                        .HasName("pk_documentos");
+
+                    b.HasIndex("DocumentoPadreId")
+                        .HasDatabaseName("ix_documentos_documento_padre_id");
+
+                    b.HasIndex("NivelClasificacionId")
+                        .HasDatabaseName("ix_documentos_nivel_clasificacion_id");
+
+                    b.HasIndex("TrdAsignacionId")
+                        .HasDatabaseName("ix_documentos_trd_asignacion_id");
+
+                    b.HasIndex("TrdTipologiaId")
+                        .HasDatabaseName("ix_documentos_trd_tipologia_id");
+
+                    b.HasIndex("ExpedienteId", "OrdenEnExpediente")
+                        .HasDatabaseName("ix_documentos_expediente_id_orden_en_expediente");
+
+                    b.HasIndex("TenantId", "Estado")
+                        .HasDatabaseName("ix_documentos_tenant_id_estado");
+
+                    b.HasIndex("TenantId", "CreatedBy", "Estado")
+                        .HasDatabaseName("ix_documentos_tenant_id_created_by_estado");
+
+                    b.ToTable("documentos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.DocumentoCompartido", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<long>("BeneficiarioPlatformUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("beneficiario_platform_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DocumentoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("documento_id");
+
+                    b.Property<DateTime?>("FechaRevocado")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_revocado");
+
+                    b.Property<long?>("OrigenRolId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("origen_rol_id");
+
+                    b.Property<bool>("PuedeDescargar")
+                        .HasColumnType("boolean")
+                        .HasColumnName("puede_descargar");
+
+                    b.Property<bool>("PuedeEditarMetadatos")
+                        .HasColumnType("boolean")
+                        .HasColumnName("puede_editar_metadatos");
+
+                    b.Property<bool>("PuedeVer")
+                        .HasColumnType("boolean")
+                        .HasColumnName("puede_ver");
+
+                    b.Property<long?>("RevocadoPor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revocado_por");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_documentos_compartidos");
+
+                    b.HasIndex("DocumentoId", "BeneficiarioPlatformUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_documentos_compartidos_documento_id_beneficiario_platform_u");
+
+                    b.HasIndex("TenantId", "BeneficiarioPlatformUserId", "Activo")
+                        .HasDatabaseName("ix_documentos_compartidos_tenant_id_beneficiario_platform_user");
+
+                    b.ToTable("documentos_compartidos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.DocumentoMetadato", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DocumentoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("documento_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long>("TrdMetadatoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_metadato_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("Valor")
+                        .HasColumnType("text")
+                        .HasColumnName("valor");
+
+                    b.HasKey("Id")
+                        .HasName("pk_documento_metadatos");
+
+                    b.HasIndex("TrdMetadatoId")
+                        .HasDatabaseName("ix_documento_metadatos_trd_metadato_id");
+
+                    b.HasIndex("DocumentoId", "TrdMetadatoId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_documento_metadatos_documento_id_trd_metadato_id");
+
+                    b.ToTable("documento_metadatos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.DocumentoValidacion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CargoAsignado")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("cargo_asignado");
+
+                    b.Property<string>("Comentarios")
+                        .HasColumnType("text")
+                        .HasColumnName("comentarios");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DocumentoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("documento_id");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<DateOnly?>("FechaLimite")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_limite");
+
+                    b.Property<DateTime?>("FechaRespuesta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_respuesta");
+
+                    b.Property<string>("Instrucciones")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("instrucciones");
+
+                    b.Property<string>("NombreAsignado")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre_asignado");
+
+                    b.Property<string>("Prioridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("prioridad");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("UsuarioAsignadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("usuario_asignado_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_documento_validaciones");
+
+                    b.HasIndex("DocumentoId")
+                        .HasDatabaseName("ix_documento_validaciones_documento_id");
+
+                    b.HasIndex("UsuarioAsignadoId")
+                        .HasDatabaseName("ix_documento_validaciones_usuario_asignado_id");
+
+                    b.HasIndex("TenantId", "UsuarioAsignadoId", "Estado")
+                        .HasDatabaseName("ix_documento_validaciones_tenant_id_usuario_asignado_id_estado");
+
+                    b.ToTable("documento_validaciones", (string)null);
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.EmailConfig", b =>
                 {
                     b.Property<long>("Id")
@@ -810,6 +1837,14 @@ namespace Tronox.Infrastructure.Migrations
                         .HasColumnType("character varying(15)")
                         .HasColumnName("nit");
 
+                    b.Property<string>("NombreReal")
+                        .HasColumnType("text")
+                        .HasColumnName("nombre_real");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("text")
+                        .HasColumnName("observaciones");
+
                     b.Property<string>("PaginaWeb")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -887,6 +1922,1002 @@ namespace Tronox.Infrastructure.Migrations
                         .HasDatabaseName("ix_entidades_tenant_id_nit");
 
                     b.ToTable("entidades", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Expediente", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("codigo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("Eliminado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("eliminado");
+
+                    b.Property<long?>("EliminadoPorUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("eliminado_por_user_id");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<string>("EstadoUbicacion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado_ubicacion");
+
+                    b.Property<string>("Fase")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("fase");
+
+                    b.Property<DateOnly>("FechaApertura")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_apertura");
+
+                    b.Property<DateOnly?>("FechaCierre")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_cierre");
+
+                    b.Property<DateTime?>("FechaEliminacion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_eliminacion");
+
+                    b.Property<string>("JustificacionEliminacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("justificacion_eliminacion");
+
+                    b.Property<long>("NivelClasificacionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nivel_clasificacion_id");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long>("TrdAsignacionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_asignacion_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_expedientes");
+
+                    b.HasIndex("NivelClasificacionId")
+                        .HasDatabaseName("ix_expedientes_nivel_clasificacion_id");
+
+                    b.HasIndex("TrdAsignacionId")
+                        .HasDatabaseName("ix_expedientes_trd_asignacion_id");
+
+                    b.HasIndex("TenantId", "Codigo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_expedientes_tenant_id_codigo");
+
+                    b.HasIndex("TenantId", "Estado")
+                        .HasDatabaseName("ix_expedientes_tenant_id_estado");
+
+                    b.HasIndex("TenantId", "Fase")
+                        .HasDatabaseName("ix_expedientes_tenant_id_fase");
+
+                    b.ToTable("expedientes", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteCierre", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("ExpedienteId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expediente_id");
+
+                    b.Property<string>("FirmaDigitalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("firma_digital_id");
+
+                    b.Property<string>("HashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash_sha256");
+
+                    b.Property<string>("JustificacionReapertura")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("justificacion_reapertura");
+
+                    b.Property<int>("NumeroCierre")
+                        .HasColumnType("integer")
+                        .HasColumnName("numero_cierre");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_expediente_cierres");
+
+                    b.HasIndex("ExpedienteId", "NumeroCierre")
+                        .HasDatabaseName("ix_expediente_cierres_expediente_id_numero_cierre");
+
+                    b.ToTable("expediente_cierres", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteMetadato", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("ExpedienteId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expediente_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long>("TrdMetadatoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_metadato_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("Valor")
+                        .HasColumnType("text")
+                        .HasColumnName("valor");
+
+                    b.HasKey("Id")
+                        .HasName("pk_expediente_metadatos");
+
+                    b.HasIndex("TrdMetadatoId")
+                        .HasDatabaseName("ix_expediente_metadatos_trd_metadato_id");
+
+                    b.HasIndex("ExpedienteId", "TrdMetadatoId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_expediente_metadatos_expediente_id_trd_metadato_id");
+
+                    b.ToTable("expediente_metadatos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteUbicacion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("ExpedienteId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expediente_id");
+
+                    b.Property<string>("Fase")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("fase");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("observacion");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long>("TopografiaElementoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("topografia_elemento_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_expediente_ubicaciones");
+
+                    b.HasIndex("TopografiaElementoId")
+                        .HasDatabaseName("ix_expediente_ubicaciones_topografia_elemento_id");
+
+                    b.HasIndex("ExpedienteId", "CreatedAt")
+                        .HasDatabaseName("ix_expediente_ubicaciones_expediente_id_created_at");
+
+                    b.ToTable("expediente_ubicaciones", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteVinculo", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("ExpedienteDestinoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expediente_destino_id");
+
+                    b.Property<long>("ExpedienteOrigenId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expediente_origen_id");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("observacion");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_expediente_vinculos");
+
+                    b.HasIndex("ExpedienteDestinoId")
+                        .HasDatabaseName("ix_expediente_vinculos_expediente_destino_id");
+
+                    b.HasIndex("ExpedienteOrigenId")
+                        .HasDatabaseName("ix_expediente_vinculos_expediente_origen_id");
+
+                    b.HasIndex("TenantId", "Activo")
+                        .HasDatabaseName("ix_expediente_vinculos_tenant_id_activo");
+
+                    b.ToTable("expediente_vinculos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Firma", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CargoFirmante")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("cargo_firmante");
+
+                    b.Property<long?>("CircuitoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("circuito_id");
+
+                    b.Property<string>("ComentarioRechazo")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("comentario_rechazo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DependenciaFirmante")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("dependencia_firmante");
+
+                    b.Property<long>("DocumentoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("documento_id");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<DateOnly?>("FechaLimite")
+                        .HasColumnType("date")
+                        .HasColumnName("fecha_limite");
+
+                    b.Property<long>("FirmanteUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("firmante_user_id");
+
+                    b.Property<string>("HashDocumento")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash_documento");
+
+                    b.Property<string>("Instrucciones")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("instrucciones");
+
+                    b.Property<string>("IpFirma")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ip_firma");
+
+                    b.Property<string>("NombreFirmante")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre_firmante");
+
+                    b.Property<bool>("OtpRequerido")
+                        .HasColumnType("boolean")
+                        .HasColumnName("otp_requerido");
+
+                    b.Property<string>("Prioridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("prioridad");
+
+                    b.Property<string>("SesionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("sesion_id");
+
+                    b.Property<long>("SolicitadoPor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("solicitado_por");
+
+                    b.Property<string>("Tag")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("tag");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("TimestampFirma")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("timestamp_firma");
+
+                    b.Property<string>("TipoFirma")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tipo_firma");
+
+                    b.Property<DateTimeOffset?>("UltimaAlertaAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultima_alerta_at");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firmas");
+
+                    b.HasIndex("DocumentoId")
+                        .HasDatabaseName("ix_firmas_documento_id");
+
+                    b.HasIndex("TenantId", "FirmanteUserId", "Estado")
+                        .HasDatabaseName("ix_firmas_tenant_id_firmante_user_id_estado");
+
+                    b.HasIndex("TenantId", "SolicitadoPor", "Estado")
+                        .HasDatabaseName("ix_firmas_tenant_id_solicitado_por_estado");
+
+                    b.ToTable("firmas", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaCircuito", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DocumentoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("documento_id");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<int>("FirmantesCompletados")
+                        .HasColumnType("integer")
+                        .HasColumnName("firmantes_completados");
+
+                    b.Property<string>("Modo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("modo");
+
+                    b.Property<string>("MotivoCancelacion")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("motivo_cancelacion");
+
+                    b.Property<bool>("OtpRequerido")
+                        .HasColumnType("boolean")
+                        .HasColumnName("otp_requerido");
+
+                    b.Property<string>("SolicitanteNombre")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("solicitante_nombre");
+
+                    b.Property<long>("SolicitantePlatformUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("solicitante_platform_user_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<bool>("TipoFirmaMixto")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tipo_firma_mixto");
+
+                    b.Property<int>("TotalFirmantes")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_firmantes");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firma_circuitos");
+
+                    b.HasIndex("DocumentoId")
+                        .HasDatabaseName("ix_firma_circuitos_documento_id");
+
+                    b.HasIndex("TenantId", "SolicitantePlatformUserId", "Estado")
+                        .HasDatabaseName("ix_firma_circuitos_tenant_id_solicitante_platform_user_id_esta");
+
+                    b.ToTable("firma_circuitos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaCircuitoFirmante", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CargoFirmante")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("cargo_firmante");
+
+                    b.Property<long>("CircuitoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("circuito_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<long?>("FirmaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("firma_id");
+
+                    b.Property<long>("FirmantePlatformUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("firmante_platform_user_id");
+
+                    b.Property<string>("NombreFirmante")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre_firmante");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("TimestampFirma")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("timestamp_firma");
+
+                    b.Property<string>("TipoFirma")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tipo_firma");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firma_circuito_firmantes");
+
+                    b.HasIndex("CircuitoId", "Orden")
+                        .HasDatabaseName("ix_firma_circuito_firmantes_circuito_id_orden");
+
+                    b.HasIndex("TenantId", "FirmantePlatformUserId", "Estado")
+                        .HasDatabaseName("ix_firma_circuito_firmantes_tenant_id_firmante_platform_user_i");
+
+                    b.ToTable("firma_circuito_firmantes", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("FirmaConsentimiento")
+                        .HasColumnType("boolean")
+                        .HasColumnName("firma_consentimiento");
+
+                    b.Property<int>("FirmaDias")
+                        .HasColumnType("integer")
+                        .HasColumnName("firma_dias");
+
+                    b.Property<bool>("FirmaForzarLectura")
+                        .HasColumnType("boolean")
+                        .HasColumnName("firma_forzar_lectura");
+
+                    b.Property<int>("FirmaFrecuenciaDias")
+                        .HasColumnType("integer")
+                        .HasColumnName("firma_frecuencia_dias");
+
+                    b.Property<bool>("FirmaMasivaActiva")
+                        .HasColumnType("boolean")
+                        .HasColumnName("firma_masiva_activa");
+
+                    b.Property<bool>("FirmaMostrarIdentificacion")
+                        .HasColumnType("boolean")
+                        .HasColumnName("firma_mostrar_identificacion");
+
+                    b.Property<bool>("FirmaMostrarNombre")
+                        .HasColumnType("boolean")
+                        .HasColumnName("firma_mostrar_nombre");
+
+                    b.Property<bool>("FirmaMostrarQr")
+                        .HasColumnType("boolean")
+                        .HasColumnName("firma_mostrar_qr");
+
+                    b.Property<string>("FirmaPosicionDefault")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("firma_posicion_default");
+
+                    b.Property<string>("FirmaQrTamano")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("firma_qr_tamano");
+
+                    b.Property<string>("FirmaTextoDefault")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("firma_texto_default");
+
+                    b.Property<bool>("ModuloFirmaActivo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("modulo_firma_activo");
+
+                    b.Property<bool>("NtpActivo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ntp_activo");
+
+                    b.Property<string>("NtpServidor")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("ntp_servidor");
+
+                    b.Property<string>("OtpCanal")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("otp_canal");
+
+                    b.Property<int>("OtpExpiracionMinutos")
+                        .HasColumnType("integer")
+                        .HasColumnName("otp_expiracion_minutos");
+
+                    b.Property<string>("OtpModo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("otp_modo");
+
+                    b.Property<bool>("OtpRequeridoGlobal")
+                        .HasColumnType("boolean")
+                        .HasColumnName("otp_requerido_global");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firma_configs");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_firma_configs_tenant_id");
+
+                    b.ToTable("firma_configs", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaGrafo", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("ImagenBase64")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("imagen_base64");
+
+                    b.Property<long>("PlatformUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("platform_user_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firma_grafos");
+
+                    b.HasIndex("TenantId", "PlatformUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_firma_grafos_tenant_id_platform_user_id");
+
+                    b.ToTable("firma_grafos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaOtp", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Canal")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("canal");
+
+                    b.Property<string>("CodigoHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("codigo_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset>("ExpiraAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_at");
+
+                    b.Property<long>("FirmaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("firma_id");
+
+                    b.Property<int>("Intentos")
+                        .HasColumnType("integer")
+                        .HasColumnName("intentos");
+
+                    b.Property<string>("LoteId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("lote_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("Usuario")
+                        .HasColumnType("bigint")
+                        .HasColumnName("usuario");
+
+                    b.Property<DateTimeOffset?>("VerificadoAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verificado_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firma_otps");
+
+                    b.HasIndex("FirmaId", "VerificadoAt")
+                        .HasDatabaseName("ix_firma_otps_firma_id_verificado_at");
+
+                    b.HasIndex("LoteId", "VerificadoAt")
+                        .HasDatabaseName("ix_firma_otps_lote_id_verificado_at");
+
+                    b.ToTable("firma_otps", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaPlantilla", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("ConfigJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("config_json");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("descripcion");
+
+                    b.Property<string>("Modo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("modo");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("nombre");
+
+                    b.Property<bool>("OtpRequerido")
+                        .HasColumnType("boolean")
+                        .HasColumnName("otp_requerido");
+
+                    b.Property<string>("Resumen")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("resumen");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("TotalFirmantes")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_firmantes");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firma_plantillas");
+
+                    b.HasIndex("TenantId", "Activo")
+                        .HasDatabaseName("ix_firma_plantillas_tenant_id_activo");
+
+                    b.ToTable("firma_plantillas", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.Fondo", b =>
@@ -978,6 +3009,805 @@ namespace Tronox.Infrastructure.Migrations
                         .HasDatabaseName("ix_fondos_tenant_id_estado");
 
                     b.ToTable("fondos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormContainer", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ContainerType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("container_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<bool>("InlineLabels")
+                        .HasColumnType("boolean")
+                        .HasColumnName("inline_labels");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_hidden");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_locked");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<long?>("ParentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("parent_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("Style")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("style");
+
+                    b.Property<string>("TabsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("tabs_json");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_containers");
+
+                    b.HasIndex("ParentId")
+                        .HasDatabaseName("ix_form_containers_parent_id");
+
+                    b.HasIndex("DefinitionId", "ParentId", "SortOrder")
+                        .HasDatabaseName("ix_form_containers_definition_id_parent_id_sort_order");
+
+                    b.ToTable("form_containers", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormDefinition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CardLayout")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("card_layout");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("FilterFieldsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("filter_fields_json");
+
+                    b.Property<string>("IdentityMode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("identity_mode");
+
+                    b.Property<string>("IdentitySourceFieldCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("identity_source_field_code");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_archived");
+
+                    b.Property<bool>("IsModule")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_module");
+
+                    b.Property<bool>("IsTransactional")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_transactional");
+
+                    b.Property<string>("ListColumnsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("list_columns_json");
+
+                    b.Property<string>("ModuleIcon")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("module_icon");
+
+                    b.Property<long?>("ModuleMenuNodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("module_menu_node_id");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<long?>("SequenceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sequence_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("UniqueKeyFieldsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("unique_key_fields_json");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_definitions");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_form_definitions_tenant_id_code");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_form_definitions_tenant_id_status");
+
+                    b.ToTable("form_definitions", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormFieldCondition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("action");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<string>("Operator")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("operator");
+
+                    b.Property<string>("SetValue")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("set_value");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("SourceFieldCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("source_field_code");
+
+                    b.Property<string>("TargetFieldCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("target_field_code");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_field_conditions");
+
+                    b.HasIndex("DefinitionId", "SortOrder")
+                        .HasDatabaseName("ix_form_field_conditions_definition_id_sort_order");
+
+                    b.ToTable("form_field_conditions", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormFlowLink", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("FormResponseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("form_response_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("WorkflowInstanceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("workflow_instance_id");
+
+                    b.Property<long>("WorkflowNodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("workflow_node_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_flow_links");
+
+                    b.HasIndex("FormResponseId")
+                        .HasDatabaseName("ix_form_flow_links_form_response_id");
+
+                    b.HasIndex("WorkflowNodeId")
+                        .HasDatabaseName("ix_form_flow_links_workflow_node_id");
+
+                    b.HasIndex("WorkflowInstanceId", "Status")
+                        .HasDatabaseName("ix_form_flow_links_workflow_instance_id_status");
+
+                    b.ToTable("form_flow_links", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormQuestion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Aggregate")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("aggregate");
+
+                    b.Property<string>("AutofillMapJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("autofill_map_json");
+
+                    b.Property<string>("CalcExpression")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("calc_expression");
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("caption");
+
+                    b.Property<string>("CascadeConfigJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("cascade_config_json");
+
+                    b.Property<long?>("ContainerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("container_id");
+
+                    b.Property<string>("ControlType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("control_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DefaultDynamic")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("default_dynamic");
+
+                    b.Property<string>("DefaultValue")
+                        .HasColumnType("text")
+                        .HasColumnName("default_value");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<string>("DisplayField")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("display_field");
+
+                    b.Property<string>("FieldCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("field_code");
+
+                    b.Property<string>("FieldVisibilityJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("field_visibility_json");
+
+                    b.Property<string>("FilterJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("filter_json");
+
+                    b.Property<string>("Format")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("format");
+
+                    b.Property<string>("GridCol")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("grid_col");
+
+                    b.Property<string>("HelpText")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("help_text");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_hidden");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_locked");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("Numeral")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("numeral");
+
+                    b.Property<string>("OptionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("options_json");
+
+                    b.Property<string>("PlaceholderText")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("placeholder_text");
+
+                    b.Property<string>("Presentation")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("presentation");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("SourceKind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("source_kind");
+
+                    b.Property<string>("SourceRef")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("source_ref");
+
+                    b.Property<long?>("SubformDefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("subform_definition_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("ValidationJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("validation_json");
+
+                    b.Property<string>("ValueField")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("value_field");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_questions");
+
+                    b.HasIndex("ContainerId")
+                        .HasDatabaseName("ix_form_questions_container_id");
+
+                    b.HasIndex("DefinitionId", "FieldCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_form_questions_definition_id_field_code");
+
+                    b.HasIndex("DefinitionId", "ContainerId", "SortOrder")
+                        .HasDatabaseName("ix_form_questions_definition_id_container_id_sort_order");
+
+                    b.ToTable("form_questions", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormRecordLink", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ChildResponseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("child_response_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("ParentFieldCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("parent_field_code");
+
+                    b.Property<long>("ParentResponseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("parent_response_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_record_links");
+
+                    b.HasIndex("ChildResponseId")
+                        .HasDatabaseName("ix_form_record_links_child_response_id");
+
+                    b.HasIndex("ParentResponseId", "ParentFieldCode", "SortOrder")
+                        .HasDatabaseName("ix_form_record_links_parent_response_id_parent_field_code_sort");
+
+                    b.ToTable("form_record_links", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormResponse", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("data");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<string>("RecordNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("record_number");
+
+                    b.Property<string>("RecordStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("record_status");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("reference");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<long?>("SubmittedByTenantUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("submitted_by_tenant_user_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("TransactionDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("transaction_date");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("void_reason");
+
+                    b.Property<DateTimeOffset?>("VoidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("voided_at");
+
+                    b.Property<long?>("VoidedByTenantUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("voided_by_tenant_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_responses");
+
+                    b.HasIndex("DefinitionId", "Reference")
+                        .HasDatabaseName("ix_form_responses_definition_id_reference");
+
+                    b.HasIndex("TenantId", "DefinitionId", "RecordStatus")
+                        .HasDatabaseName("ix_form_responses_tenant_id_definition_id_record_status");
+
+                    b.HasIndex("TenantId", "DefinitionId", "Status")
+                        .HasDatabaseName("ix_form_responses_tenant_id_definition_id_status");
+
+                    b.ToTable("form_responses", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormToken", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("AllowAnonymous")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allow_anonymous");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("reference");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<bool>("SingleUse")
+                        .HasColumnType("boolean")
+                        .HasColumnName("single_use");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_tokens");
+
+                    b.HasIndex("DefinitionId")
+                        .HasDatabaseName("ix_form_tokens_definition_id");
+
+                    b.HasIndex("TenantId", "TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_form_tokens_tenant_id_token_hash");
+
+                    b.ToTable("form_tokens", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.GoogleAuthConfig", b =>
@@ -1211,6 +4041,10 @@ namespace Tronox.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<string>("OrigenMigracion")
+                        .HasColumnType("text")
+                        .HasColumnName("origen_migracion");
+
                     b.Property<long?>("ParentId")
                         .HasColumnType("bigint")
                         .HasColumnName("parent_id");
@@ -1316,6 +4150,85 @@ namespace Tronox.Infrastructure.Migrations
                         .HasDatabaseName("ix_menu_views_tenant_id_name");
 
                     b.ToTable("menu_views", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.MigracionRadicadosLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ArchivoNombre")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("archivo_nombre");
+
+                    b.Property<int>("CantidadErrores")
+                        .HasColumnType("integer")
+                        .HasColumnName("cantidad_errores");
+
+                    b.Property<int>("CantidadExitosos")
+                        .HasColumnType("integer")
+                        .HasColumnName("cantidad_exitosos");
+
+                    b.Property<int>("CantidadTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("cantidad_total");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long?>("EjecutadaPorTenantUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("ejecutada_por_tenant_user_id");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<string>("EstadoDestino")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado_destino");
+
+                    b.Property<DateTimeOffset>("FechaMigracion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_migracion");
+
+                    b.Property<string>("ReporteJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("reporte_json");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_migraciones_radicados");
+
+                    b.HasIndex("TenantId", "FechaMigracion")
+                        .HasDatabaseName("ix_migraciones_radicados_tenant_id_fecha_migracion");
+
+                    b.ToTable("migraciones_radicados", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.ModuleDefinition", b =>
@@ -1892,6 +4805,73 @@ namespace Tronox.Infrastructure.Migrations
                     b.ToTable("niveles_clasificacion", (string)null);
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.NotificacionRadicacionConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DestinatariosRolesJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("destinatarios_roles_json");
+
+                    b.Property<string>("DestinatariosUsuariosJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("destinatarios_usuarios_json");
+
+                    b.Property<string>("Evento")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("evento");
+
+                    b.Property<string>("PlantillaAsunto")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("plantilla_asunto");
+
+                    b.Property<string>("PlantillaCuerpo")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("plantilla_cuerpo");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notificaciones_radicacion");
+
+                    b.HasIndex("TenantId", "Evento")
+                        .IsUnique()
+                        .HasDatabaseName("ix_notificaciones_radicacion_tenant_id_evento");
+
+                    b.ToTable("notificaciones_radicacion", (string)null);
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.Notification", b =>
                 {
                     b.Property<long>("Id")
@@ -1971,6 +4951,59 @@ namespace Tronox.Infrastructure.Migrations
                         .HasDatabaseName("ix_notifications_recipient_tenant_user_id_is_read_created_at");
 
                     b.ToTable("notifications", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.OcrConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("ApiKeyCifrada")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("api_key_cifrada");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Endpoint")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ocr_configs");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ocr_configs_tenant_id");
+
+                    b.ToTable("ocr_configs", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.OrgUnit", b =>
@@ -2244,6 +5277,73 @@ namespace Tronox.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.ParametrosSeguridad", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("ComplejidadContrasena")
+                        .HasColumnType("boolean")
+                        .HasColumnName("complejidad_contrasena");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("HistorialContrasenas")
+                        .HasColumnType("integer")
+                        .HasColumnName("historial_contrasenas");
+
+                    b.Property<int>("IntentosFallidosMax")
+                        .HasColumnType("integer")
+                        .HasColumnName("intentos_fallidos_max");
+
+                    b.Property<int>("LongitudMinimaContrasena")
+                        .HasColumnType("integer")
+                        .HasColumnName("longitud_minima_contrasena");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int?>("TiempoAvisoVencimientoDias")
+                        .HasColumnType("integer")
+                        .HasColumnName("tiempo_aviso_vencimiento_dias");
+
+                    b.Property<int>("TiempoInactividadSesionMin")
+                        .HasColumnType("integer")
+                        .HasColumnName("tiempo_inactividad_sesion_min");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<int>("VigenciaContrasenaDias")
+                        .HasColumnType("integer")
+                        .HasColumnName("vigencia_contrasena_dias");
+
+                    b.HasKey("Id")
+                        .HasName("pk_parametros_seguridad");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_parametros_seguridad_tenant_id");
+
+                    b.ToTable("parametros_seguridad", (string)null);
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.PasswordResetToken", b =>
                 {
                     b.Property<long>("Id")
@@ -2297,6 +5397,163 @@ namespace Tronox.Infrastructure.Migrations
                         .HasDatabaseName("ix_password_reset_tokens_token_hash");
 
                     b.ToTable("password_reset_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Plantilla", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ContenidoHtml")
+                        .HasColumnType("text")
+                        .HasColumnName("contenido_html");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("descripcion");
+
+                    b.Property<string>("Encabezado")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("encabezado");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<string>("FormatoPapel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("formato_papel");
+
+                    b.Property<string>("Margenes")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("margenes");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Orientacion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("orientacion");
+
+                    b.Property<string>("PiePagina")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("pie_pagina");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long?>("TrdTipologiaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_tipologia_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<int>("UsoContador")
+                        .HasColumnType("integer")
+                        .HasColumnName("uso_contador");
+
+                    b.Property<int>("VariablesNum")
+                        .HasColumnType("integer")
+                        .HasColumnName("variables_num");
+
+                    b.HasKey("Id")
+                        .HasName("pk_plantillas");
+
+                    b.HasIndex("TrdTipologiaId")
+                        .HasDatabaseName("ix_plantillas_trd_tipologia_id");
+
+                    b.HasIndex("TenantId", "Estado")
+                        .HasDatabaseName("ix_plantillas_tenant_id_estado");
+
+                    b.ToTable("plantillas", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.PlantillaTipo", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("PlantillaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("plantilla_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TipologiaNombre")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("tipologia_nombre");
+
+                    b.Property<long>("TrdTipologiaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_tipologia_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_plantilla_tipos");
+
+                    b.HasIndex("TrdTipologiaId")
+                        .HasDatabaseName("ix_plantilla_tipos_trd_tipologia_id");
+
+                    b.HasIndex("PlantillaId", "TrdTipologiaId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_plantilla_tipos_plantilla_id_trd_tipologia_id");
+
+                    b.ToTable("plantilla_tipos", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.PlatformBranding", b =>
@@ -2443,6 +5700,879 @@ namespace Tronox.Infrastructure.Migrations
                         .HasFilter("google_subject IS NOT NULL");
 
                     b.ToTable("platform_users", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadPortalConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AvisoPrivacidad")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("aviso_privacidad");
+
+                    b.Property<string>("Banner")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("banner");
+
+                    b.Property<string>("CanalesAtencion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("canales_atencion");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)")
+                        .HasColumnName("color");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("ExigirCaptcha")
+                        .HasColumnType("boolean")
+                        .HasColumnName("exigir_captcha");
+
+                    b.Property<string>("Faq")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("faq");
+
+                    b.Property<int>("MaxAdjuntoMb")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_adjunto_mb");
+
+                    b.Property<string>("Nit")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("nit");
+
+                    b.Property<string>("NombreEntidad")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("nombre_entidad");
+
+                    b.Property<bool>("PermitirAnonimo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("permitir_anonimo");
+
+                    b.Property<string>("Slug")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("slug");
+
+                    b.Property<string>("Subtitulo")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subtitulo");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rad_portal_configs");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("ix_rad_portal_configs_slug");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_rad_portal_configs_tenant_id");
+
+                    b.ToTable("rad_portal_configs", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadPrioridad", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("codigo");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)")
+                        .HasColumnName("color");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("EsBase")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_base");
+
+                    b.Property<string>("Icono")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("icono");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("nombre");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden");
+
+                    b.Property<int?>("SlaSugerido")
+                        .HasColumnType("integer")
+                        .HasColumnName("sla_sugerido");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rad_prioridades");
+
+                    b.HasIndex("TenantId", "Codigo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_rad_prioridades_tenant_id_codigo");
+
+                    b.ToTable("rad_prioridades", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicacionConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Alerta1Porcentaje")
+                        .HasColumnType("integer")
+                        .HasColumnName("alerta1porcentaje");
+
+                    b.Property<int>("Alerta2Porcentaje")
+                        .HasColumnType("integer")
+                        .HasColumnName("alerta2porcentaje");
+
+                    b.Property<int>("AlertaTutelaHoras")
+                        .HasColumnType("integer")
+                        .HasColumnName("alerta_tutela_horas");
+
+                    b.Property<int>("ConsecutivoEntradaInicio")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutivo_entrada_inicio");
+
+                    b.Property<int>("ConsecutivoInternoInicio")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutivo_interno_inicio");
+
+                    b.Property<int>("ConsecutivoSalidaInicio")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutivo_salida_inicio");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("DigitosConsecutivo")
+                        .HasColumnType("integer")
+                        .HasColumnName("digitos_consecutivo");
+
+                    b.Property<bool>("IncluirAnio")
+                        .HasColumnType("boolean")
+                        .HasColumnName("incluir_anio");
+
+                    b.Property<bool>("NotificarDireccionAlVencer")
+                        .HasColumnType("boolean")
+                        .HasColumnName("notificar_direccion_al_vencer");
+
+                    b.Property<bool>("NotificarJefeAlVencer")
+                        .HasColumnType("boolean")
+                        .HasColumnName("notificar_jefe_al_vencer");
+
+                    b.Property<bool>("ReinicioAnual")
+                        .HasColumnType("boolean")
+                        .HasColumnName("reinicio_anual");
+
+                    b.Property<string>("Separador")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasColumnName("separador");
+
+                    b.Property<string>("SiglaRadicacion")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("sigla_radicacion");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_radicacion_configs");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_radicacion_configs_tenant_id");
+
+                    b.ToTable("radicacion_configs", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Radicado", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Anonimo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("anonimo");
+
+                    b.Property<string>("Asunto")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("asunto");
+
+                    b.Property<string>("Canal")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("canal");
+
+                    b.Property<string>("CanalEnvio")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("canal_envio");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long?>("DependenciaDestinoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("dependencia_destino_id");
+
+                    b.Property<long?>("DependenciaOrigenId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("dependencia_origen_id");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("descripcion");
+
+                    b.Property<bool>("EsRespuestaDefinitiva")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_respuesta_definitiva");
+
+                    b.Property<bool>("EsRespuestaPublica")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_respuesta_publica");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<string>("EstadoEnvio")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado_envio");
+
+                    b.Property<DateTime?>("FechaDistribucion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_distribucion");
+
+                    b.Property<DateTime>("FechaRadicacion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_radicacion");
+
+                    b.Property<DateTime?>("FechaVencimiento")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_vencimiento");
+
+                    b.Property<int?>("Folios")
+                        .HasColumnType("integer")
+                        .HasColumnName("folios");
+
+                    b.Property<long?>("FuncionarioAsignadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("funcionario_asignado_id");
+
+                    b.Property<long?>("FuncionarioOrigenId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("funcionario_origen_id");
+
+                    b.Property<long?>("NivelReservaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nivel_reserva_id");
+
+                    b.Property<int?>("NumAnexos")
+                        .HasColumnType("integer")
+                        .HasColumnName("num_anexos");
+
+                    b.Property<string>("NumeroRadicado")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("numero_radicado");
+
+                    b.Property<string>("PortalToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("portal_token");
+
+                    b.Property<string>("Prioridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("prioridad");
+
+                    b.Property<long?>("RadicadoRelacionadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("radicado_relacionado_id");
+
+                    b.Property<string>("RemitenteDocumento")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("remitente_documento");
+
+                    b.Property<string>("RemitenteEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("remitente_email");
+
+                    b.Property<string>("RemitenteNombre")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("remitente_nombre");
+
+                    b.Property<string>("RemitenteTelefono")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("remitente_telefono");
+
+                    b.Property<string>("RemitenteTipoDoc")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("remitente_tipo_doc");
+
+                    b.Property<string>("RespuestaPublica")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("respuesta_publica");
+
+                    b.Property<string>("Soporte")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("soporte");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo");
+
+                    b.Property<long?>("TipoComunicacionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tipo_comunicacion_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long?>("UsuarioRadicaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("usuario_radica_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_radicados");
+
+                    b.HasIndex("DependenciaDestinoId")
+                        .HasDatabaseName("ix_radicados_dependencia_destino_id");
+
+                    b.HasIndex("DependenciaOrigenId")
+                        .HasDatabaseName("ix_radicados_dependencia_origen_id");
+
+                    b.HasIndex("NivelReservaId")
+                        .HasDatabaseName("ix_radicados_nivel_reserva_id");
+
+                    b.HasIndex("RadicadoRelacionadoId")
+                        .HasDatabaseName("ix_radicados_radicado_relacionado_id");
+
+                    b.HasIndex("TipoComunicacionId")
+                        .HasDatabaseName("ix_radicados_tipo_comunicacion_id");
+
+                    b.HasIndex("TenantId", "Estado")
+                        .HasDatabaseName("ix_radicados_tenant_id_estado");
+
+                    b.HasIndex("TenantId", "FechaRadicacion")
+                        .HasDatabaseName("ix_radicados_tenant_id_fecha_radicacion");
+
+                    b.HasIndex("TenantId", "FechaVencimiento")
+                        .HasDatabaseName("ix_radicados_tenant_id_fecha_vencimiento");
+
+                    b.HasIndex("TenantId", "NumeroRadicado")
+                        .IsUnique()
+                        .HasDatabaseName("ix_radicados_tenant_id_numero_radicado");
+
+                    b.HasIndex("TenantId", "RadicadoRelacionadoId")
+                        .HasDatabaseName("ix_radicados_tenant_id_radicado_relacionado_id");
+
+                    b.ToTable("radicados", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoArchivo", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Extension")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("extension");
+
+                    b.Property<DateTime>("FechaCarga")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_carga");
+
+                    b.Property<string>("MimeType")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("nombre");
+
+                    b.Property<long>("RadicadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("radicado_id");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<string>("StorageBucket")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("storage_bucket");
+
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<long>("TamanoBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tamano_bytes");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_radicados_archivos");
+
+                    b.HasIndex("RadicadoId")
+                        .HasDatabaseName("ix_radicados_archivos_radicado_id");
+
+                    b.HasIndex("TenantId", "RadicadoId")
+                        .HasDatabaseName("ix_radicados_archivos_tenant_id_radicado_id");
+
+                    b.ToTable("radicados_archivos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoComunicacion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Asunto")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("asunto");
+
+                    b.Property<string>("Canal")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("canal");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Destino")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("destino");
+
+                    b.Property<string>("Detalle")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("detalle");
+
+                    b.Property<string>("Estado")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha");
+
+                    b.Property<long>("RadicadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("radicado_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long?>("UsuarioId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_radicados_comunicaciones");
+
+                    b.HasIndex("RadicadoId")
+                        .HasDatabaseName("ix_radicados_comunicaciones_radicado_id");
+
+                    b.HasIndex("TenantId", "RadicadoId")
+                        .HasDatabaseName("ix_radicados_comunicaciones_tenant_id_radicado_id");
+
+                    b.ToTable("radicados_comunicaciones", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoTarea", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DependenciaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("dependencia_id");
+
+                    b.Property<long?>("DistribuidoPorId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("distribuido_por_id");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<DateTime>("FechaAsignacion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_asignacion");
+
+                    b.Property<DateTime?>("FechaGestion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_gestion");
+
+                    b.Property<long?>("FuncionarioId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("funcionario_id");
+
+                    b.Property<string>("Instrucciones")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("instrucciones");
+
+                    b.Property<string>("Observacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("observacion");
+
+                    b.Property<string>("Origen")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("origen");
+
+                    b.Property<string>("Prioridad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("prioridad");
+
+                    b.Property<long>("RadicadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("radicado_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_radicados_tareas");
+
+                    b.HasIndex("DependenciaId")
+                        .HasDatabaseName("ix_radicados_tareas_dependencia_id");
+
+                    b.HasIndex("RadicadoId")
+                        .HasDatabaseName("ix_radicados_tareas_radicado_id");
+
+                    b.HasIndex("TenantId", "DependenciaId", "Estado")
+                        .HasDatabaseName("ix_radicados_tareas_tenant_id_dependencia_id_estado");
+
+                    b.HasIndex("TenantId", "RadicadoId", "Activa")
+                        .HasDatabaseName("ix_radicados_tareas_tenant_id_radicado_id_activa");
+
+                    b.ToTable("radicados_tareas", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoTrazabilidad", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Accion")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("accion");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Detalle")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("detalle");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha");
+
+                    b.Property<long>("RadicadoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("radicado_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long?>("UsuarioId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_radicados_trazabilidad");
+
+                    b.HasIndex("RadicadoId")
+                        .HasDatabaseName("ix_radicados_trazabilidad_radicado_id");
+
+                    b.HasIndex("TenantId", "RadicadoId", "Accion")
+                        .HasDatabaseName("ix_radicados_trazabilidad_tenant_id_radicado_id_accion");
+
+                    b.ToTable("radicados_trazabilidad", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoVisibilidadPermiso", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Nivel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("nivel");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long>("TenantUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_user_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_radicados_visibilidad");
+
+                    b.HasIndex("TenantId", "TenantUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_radicados_visibilidad_tenant_id_tenant_user_id");
+
+                    b.ToTable("radicados_visibilidad", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.Rol", b =>
@@ -3711,6 +7841,151 @@ namespace Tronox.Infrastructure.Migrations
                     b.ToTable("tenant_users", (string)null);
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.TipoComunicacion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("codigo");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)")
+                        .HasColumnName("color");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("DescripcionCiudadano")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("descripcion_ciudadano");
+
+                    b.Property<int?>("DiasProrroga")
+                        .HasColumnType("integer")
+                        .HasColumnName("dias_prorroga");
+
+                    b.Property<int?>("DiasRespuesta")
+                        .HasColumnType("integer")
+                        .HasColumnName("dias_respuesta");
+
+                    b.Property<string>("Direccion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("direccion");
+
+                    b.Property<bool>("EsBase")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_base");
+
+                    b.Property<bool>("EsPqrsd")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_pqrsd");
+
+                    b.Property<bool>("EsRecurso")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_recurso");
+
+                    b.Property<bool>("EsTutela")
+                        .HasColumnType("boolean")
+                        .HasColumnName("es_tutela");
+
+                    b.Property<bool>("HabilitadoWeb")
+                        .HasColumnType("boolean")
+                        .HasColumnName("habilitado_web");
+
+                    b.Property<string>("Icono")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("icono");
+
+                    b.Property<string>("InicioTermino")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("inicio_termino");
+
+                    b.Property<long?>("NivelReservaDefaultId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nivel_reserva_default_id");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("nombre");
+
+                    b.Property<int?>("OrdenPortal")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden_portal");
+
+                    b.Property<string>("PalabrasClave")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("palabras_clave");
+
+                    b.Property<bool>("PermiteAnonimo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("permite_anonimo");
+
+                    b.Property<bool>("Prorrogable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("prorrogable");
+
+                    b.Property<bool>("RequiereRespuesta")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requiere_respuesta");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TipoDia")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo_dia");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tipos_comunicacion");
+
+                    b.HasIndex("NivelReservaDefaultId")
+                        .HasDatabaseName("ix_tipos_comunicacion_nivel_reserva_default_id");
+
+                    b.HasIndex("TenantId", "Codigo")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tipos_comunicacion_tenant_id_codigo");
+
+                    b.HasIndex("TenantId", "Direccion", "Activo")
+                        .HasDatabaseName("ix_tipos_comunicacion_tenant_id_direccion_activo");
+
+                    b.ToTable("tipos_comunicacion", (string)null);
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.TopografiaElemento", b =>
                 {
                     b.Property<long>("Id")
@@ -4025,6 +8300,10 @@ namespace Tronox.Infrastructure.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("trd_asignacion_id");
 
+                    b.Property<long?>("TrdTipologiaId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_tipologia_id");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -4039,10 +8318,80 @@ namespace Tronox.Infrastructure.Migrations
                     b.HasIndex("ListaMaestraId")
                         .HasDatabaseName("ix_trd_metadatos_lista_maestra_id");
 
+                    b.HasIndex("TrdTipologiaId")
+                        .HasDatabaseName("ix_trd_metadatos_trd_tipologia_id");
+
                     b.HasIndex("TrdAsignacionId", "Orden")
                         .HasDatabaseName("ix_trd_metadatos_trd_asignacion_id_orden");
 
                     b.ToTable("trd_metadatos", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.TrdTipologia", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Formato")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("formato");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_archived");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nombre");
+
+                    b.Property<bool>("ObligatorioEnExpediente")
+                        .HasColumnType("boolean")
+                        .HasColumnName("obligatorio_en_expediente");
+
+                    b.Property<string>("Soporte")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("soporte");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<long>("TrdAsignacionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trd_asignacion_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_trd_tipologias");
+
+                    b.HasIndex("TrdAsignacionId", "Nombre")
+                        .HasDatabaseName("ix_trd_tipologias_trd_asignacion_id_nombre");
+
+                    b.ToTable("trd_tipologias", (string)null);
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.TrdVersion", b =>
@@ -4095,6 +8444,12 @@ namespace Tronox.Infrastructure.Migrations
                     b.Property<DateOnly>("FechaVigenciaDesde")
                         .HasColumnType("date")
                         .HasColumnName("fecha_vigencia_desde");
+
+                    b.Property<string>("ModoCodigoSerie")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("modo_codigo_serie");
 
                     b.Property<long>("TenantId")
                         .HasColumnType("bigint")
@@ -4193,6 +8548,584 @@ namespace Tronox.Infrastructure.Migrations
                     b.ToTable("usuarios_roles", (string)null);
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("BpmnXml")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("bpmn_xml");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_archived");
+
+                    b.Property<bool>("IsPaused")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_paused");
+
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_published");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("ProcessCode")
+                        .IsRequired()
+                        .HasMaxLength(25)
+                        .HasColumnType("character varying(25)")
+                        .HasColumnName("process_code");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_workflow_definitions");
+
+                    b.HasIndex("TenantId", "ProcessCode", "IsPublished")
+                        .HasDatabaseName("ix_workflow_definitions_tenant_id_process_code_is_published");
+
+                    b.HasIndex("TenantId", "ProcessCode", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workflow_definitions_tenant_id_process_code_version");
+
+                    b.ToTable("workflow_definitions", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowEdge", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("BpmnElementId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bpmn_element_id");
+
+                    b.Property<string>("ConditionExpression")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("condition_expression");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("name");
+
+                    b.Property<long>("SourceNodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_node_id");
+
+                    b.Property<long>("TargetNodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("target_node_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_workflow_edges");
+
+                    b.HasIndex("DefinitionId")
+                        .HasDatabaseName("ix_workflow_edges_definition_id");
+
+                    b.HasIndex("SourceNodeId")
+                        .HasDatabaseName("ix_workflow_edges_source_node_id");
+
+                    b.HasIndex("TargetNodeId")
+                        .HasDatabaseName("ix_workflow_edges_target_node_id");
+
+                    b.ToTable("workflow_edges", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowInstance", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("CurrentCycle")
+                        .HasColumnType("integer")
+                        .HasColumnName("current_cycle");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_workflow_instances");
+
+                    b.HasIndex("DefinitionId")
+                        .HasDatabaseName("ix_workflow_instances_definition_id");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_workflow_instances_tenant_id_status");
+
+                    b.ToTable("workflow_instances", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowNode", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("AllowsAssignment")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allows_assignment");
+
+                    b.Property<string>("BpmnElementId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bpmn_element_id");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("color");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<int?>("H")
+                        .HasColumnType("integer")
+                        .HasColumnName("h");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NodeType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("node_type");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<long?>("RestartNodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("restart_node_id");
+
+                    b.Property<int?>("StepNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("step_number");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<int?>("W")
+                        .HasColumnType("integer")
+                        .HasColumnName("w");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("Id")
+                        .HasName("pk_workflow_nodes");
+
+                    b.HasIndex("RestartNodeId")
+                        .HasDatabaseName("ix_workflow_nodes_restart_node_id");
+
+                    b.HasIndex("DefinitionId", "BpmnElementId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workflow_nodes_definition_id_bpmn_element_id");
+
+                    b.ToTable("workflow_nodes", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowNodeForm", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("DefinitionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("definition_id");
+
+                    b.Property<long>("NodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("node_id");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_workflow_node_forms");
+
+                    b.HasIndex("DefinitionId")
+                        .HasDatabaseName("ix_workflow_node_forms_definition_id");
+
+                    b.HasIndex("NodeId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workflow_node_forms_node_id");
+
+                    b.ToTable("workflow_node_forms", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowNodePolicy", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("OrgUnitId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("org_unit_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("WorkflowNodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("workflow_node_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_workflow_node_policies");
+
+                    b.HasIndex("OrgUnitId")
+                        .HasDatabaseName("ix_workflow_node_policies_org_unit_id");
+
+                    b.HasIndex("WorkflowNodeId", "OrgUnitId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workflow_node_policies_workflow_node_id_org_unit_id");
+
+                    b.ToTable("workflow_node_policies", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowStepHistory", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ApprovalComment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("approval_comment");
+
+                    b.Property<string>("ApprovalResult")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("approval_result");
+
+                    b.Property<long?>("AssignedToTenantUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("assigned_to_tenant_user_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("CycleIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("cycle_index");
+
+                    b.Property<long?>("ExecutedByTenantUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("executed_by_tenant_user_id");
+
+                    b.Property<long>("InstanceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("instance_id");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_current");
+
+                    b.Property<bool>("IsCycleStart")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_cycle_start");
+
+                    b.Property<long>("NodeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<long>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_workflow_step_histories");
+
+                    b.HasIndex("NodeId")
+                        .HasDatabaseName("ix_workflow_step_histories_node_id");
+
+                    b.HasIndex("InstanceId", "IsCurrent")
+                        .HasDatabaseName("ix_workflow_step_histories_instance_id_is_current");
+
+                    b.ToTable("workflow_step_histories", (string)null);
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.BuzonCorreo", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.OrgUnit", "DependenciaDefault")
+                        .WithMany()
+                        .HasForeignKey("DependenciaDefaultId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_buzones_correo_org_units_dependencia_default_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TipoComunicacion", "TipoComunicacionDefault")
+                        .WithMany()
+                        .HasForeignKey("TipoComunicacionDefaultId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_buzones_correo_tipos_comunicacion_tipo_comunicacion_default");
+
+                    b.Navigation("DependenciaDefault");
+
+                    b.Navigation("TipoComunicacionDefault");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CorreoDescartado", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.CorreoRecibido", "CorreoRecibido")
+                        .WithMany()
+                        .HasForeignKey("CorreoRecibidoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_correos_descartados_correos_recibidos_correo_recibido_id");
+
+                    b.Navigation("CorreoRecibido");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CorreoRecibido", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.BuzonCorreo", "BuzonCorreo")
+                        .WithMany()
+                        .HasForeignKey("BuzonCorreoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_correos_recibidos_buzones_correo_buzon_correo_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TipoComunicacion", null)
+                        .WithMany()
+                        .HasForeignKey("TipoDetectadoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_correos_recibidos_tipos_comunicacion_tipo_detectado_id");
+
+                    b.Navigation("BuzonCorreo");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CorreoRecibidoAdjunto", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.CorreoRecibido", "CorreoRecibido")
+                        .WithMany("Adjuntos")
+                        .HasForeignKey("CorreoRecibidoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_correos_recibidos_adjuntos_correos_recibidos_correo_recibid");
+
+                    b.Navigation("CorreoRecibido");
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.Departamento", b =>
                 {
                     b.HasOne("Tronox.Domain.Entities.Pais", "Pais")
@@ -4203,6 +9136,101 @@ namespace Tronox.Infrastructure.Migrations
                         .HasConstraintName("fk_departamentos_paises_pais_id");
 
                     b.Navigation("Pais");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Documento", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Documento", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentoPadreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_documentos_documentos_documento_padre_id");
+
+                    b.HasOne("Tronox.Domain.Entities.Expediente", "Expediente")
+                        .WithMany()
+                        .HasForeignKey("ExpedienteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_documentos_expedientes_expediente_id");
+
+                    b.HasOne("Tronox.Domain.Entities.NivelClasificacion", "NivelClasificacion")
+                        .WithMany()
+                        .HasForeignKey("NivelClasificacionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_documentos_niveles_clasificacion_nivel_clasificacion_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TrdAsignacion", "TrdAsignacion")
+                        .WithMany()
+                        .HasForeignKey("TrdAsignacionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_documentos_trd_asignaciones_trd_asignacion_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TrdTipologia", "TrdTipologia")
+                        .WithMany()
+                        .HasForeignKey("TrdTipologiaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_documentos_trd_tipologias_trd_tipologia_id");
+
+                    b.Navigation("Expediente");
+
+                    b.Navigation("NivelClasificacion");
+
+                    b.Navigation("TrdAsignacion");
+
+                    b.Navigation("TrdTipologia");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.DocumentoCompartido", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Documento", "Documento")
+                        .WithMany()
+                        .HasForeignKey("DocumentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_documentos_compartidos_documentos_documento_id");
+
+                    b.Navigation("Documento");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.DocumentoMetadato", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Documento", "Documento")
+                        .WithMany("Metadatos")
+                        .HasForeignKey("DocumentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_documento_metadatos_documentos_documento_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TrdMetadato", "TrdMetadato")
+                        .WithMany()
+                        .HasForeignKey("TrdMetadatoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_documento_metadatos_trd_metadatos_trd_metadato_id");
+
+                    b.Navigation("Documento");
+
+                    b.Navigation("TrdMetadato");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.DocumentoValidacion", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Documento", "Documento")
+                        .WithMany()
+                        .HasForeignKey("DocumentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_documento_validaciones_documentos_documento_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TenantUser", "UsuarioAsignado")
+                        .WithMany()
+                        .HasForeignKey("UsuarioAsignadoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_documento_validaciones_tenant_users_usuario_asignado_id");
+
+                    b.Navigation("Documento");
+
+                    b.Navigation("UsuarioAsignado");
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.Entidad", b =>
@@ -4232,6 +9260,150 @@ namespace Tronox.Infrastructure.Migrations
                     b.Navigation("Pais");
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.Expediente", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.NivelClasificacion", "NivelClasificacion")
+                        .WithMany()
+                        .HasForeignKey("NivelClasificacionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expedientes_niveles_clasificacion_nivel_clasificacion_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TrdAsignacion", "TrdAsignacion")
+                        .WithMany()
+                        .HasForeignKey("TrdAsignacionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expedientes_trd_asignaciones_trd_asignacion_id");
+
+                    b.Navigation("NivelClasificacion");
+
+                    b.Navigation("TrdAsignacion");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteCierre", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Expediente", "Expediente")
+                        .WithMany()
+                        .HasForeignKey("ExpedienteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expediente_cierres_expedientes_expediente_id");
+
+                    b.Navigation("Expediente");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteMetadato", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Expediente", "Expediente")
+                        .WithMany("Metadatos")
+                        .HasForeignKey("ExpedienteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_expediente_metadatos_expedientes_expediente_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TrdMetadato", "TrdMetadato")
+                        .WithMany()
+                        .HasForeignKey("TrdMetadatoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expediente_metadatos_trd_metadatos_trd_metadato_id");
+
+                    b.Navigation("Expediente");
+
+                    b.Navigation("TrdMetadato");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteUbicacion", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Expediente", "Expediente")
+                        .WithMany()
+                        .HasForeignKey("ExpedienteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expediente_ubicaciones_expedientes_expediente_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TopografiaElemento", "TopografiaElemento")
+                        .WithMany()
+                        .HasForeignKey("TopografiaElementoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expediente_ubicaciones_topografia_elementos_topografia_elem");
+
+                    b.Navigation("Expediente");
+
+                    b.Navigation("TopografiaElemento");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.ExpedienteVinculo", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Expediente", "ExpedienteDestino")
+                        .WithMany()
+                        .HasForeignKey("ExpedienteDestinoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expediente_vinculos_expedientes_expediente_destino_id");
+
+                    b.HasOne("Tronox.Domain.Entities.Expediente", "ExpedienteOrigen")
+                        .WithMany()
+                        .HasForeignKey("ExpedienteOrigenId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expediente_vinculos_expedientes_expediente_origen_id");
+
+                    b.Navigation("ExpedienteDestino");
+
+                    b.Navigation("ExpedienteOrigen");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Firma", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Documento", "Documento")
+                        .WithMany()
+                        .HasForeignKey("DocumentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_firmas_documentos_documento_id");
+
+                    b.Navigation("Documento");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaCircuito", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Documento", "Documento")
+                        .WithMany()
+                        .HasForeignKey("DocumentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_firma_circuitos_documentos_documento_id");
+
+                    b.Navigation("Documento");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaCircuitoFirmante", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FirmaCircuito", "Circuito")
+                        .WithMany("Firmantes")
+                        .HasForeignKey("CircuitoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_firma_circuito_firmantes_firma_circuitos_circuito_id");
+
+                    b.Navigation("Circuito");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaOtp", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Firma", "Firma")
+                        .WithMany()
+                        .HasForeignKey("FirmaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_firma_otps_firmas_firma_id");
+
+                    b.Navigation("Firma");
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.Fondo", b =>
                 {
                     b.HasOne("Tronox.Domain.Entities.Sede", "Sede")
@@ -4241,6 +9413,133 @@ namespace Tronox.Infrastructure.Migrations
                         .HasConstraintName("fk_fondos_sedes_sede_id");
 
                     b.Navigation("Sede");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormContainer", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormDefinition", "Definition")
+                        .WithMany("Containers")
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_containers_form_definitions_definition_id");
+
+                    b.HasOne("Tronox.Domain.Entities.FormContainer", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_form_containers_form_containers_parent_id");
+
+                    b.Navigation("Definition");
+
+                    b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormFieldCondition", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_field_conditions_form_definitions_definition_id");
+
+                    b.Navigation("Definition");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormFlowLink", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormResponse", "FormResponse")
+                        .WithMany()
+                        .HasForeignKey("FormResponseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_flow_links_form_responses_form_response_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowInstance", "WorkflowInstance")
+                        .WithMany()
+                        .HasForeignKey("WorkflowInstanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_flow_links_workflow_instances_workflow_instance_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowNode", "WorkflowNode")
+                        .WithMany()
+                        .HasForeignKey("WorkflowNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_flow_links_workflow_nodes_workflow_node_id");
+
+                    b.Navigation("FormResponse");
+
+                    b.Navigation("WorkflowInstance");
+
+                    b.Navigation("WorkflowNode");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormQuestion", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormContainer", "Container")
+                        .WithMany()
+                        .HasForeignKey("ContainerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_form_questions_form_containers_container_id");
+
+                    b.HasOne("Tronox.Domain.Entities.FormDefinition", "Definition")
+                        .WithMany("Questions")
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_questions_form_definitions_definition_id");
+
+                    b.Navigation("Container");
+
+                    b.Navigation("Definition");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormRecordLink", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormResponse", "ChildResponse")
+                        .WithMany()
+                        .HasForeignKey("ChildResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_record_links_form_responses_child_response_id");
+
+                    b.HasOne("Tronox.Domain.Entities.FormResponse", "ParentResponse")
+                        .WithMany()
+                        .HasForeignKey("ParentResponseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_record_links_form_responses_parent_response_id");
+
+                    b.Navigation("ChildResponse");
+
+                    b.Navigation("ParentResponse");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormResponse", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_responses_form_definitions_definition_id");
+
+                    b.Navigation("Definition");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormToken", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_tokens_form_definitions_definition_id");
+
+                    b.Navigation("Definition");
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.ListaOpcion", b =>
@@ -4336,6 +9635,138 @@ namespace Tronox.Infrastructure.Migrations
                         .HasConstraintName("fk_org_unit_members_org_units_org_unit_id");
 
                     b.Navigation("OrgUnit");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Plantilla", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.TrdTipologia", "TrdTipologia")
+                        .WithMany()
+                        .HasForeignKey("TrdTipologiaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_plantillas_trd_tipologias_trd_tipologia_id");
+
+                    b.Navigation("TrdTipologia");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.PlantillaTipo", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Plantilla", "Plantilla")
+                        .WithMany("Tipos")
+                        .HasForeignKey("PlantillaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_plantilla_tipos_plantillas_plantilla_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TrdTipologia", "TrdTipologia")
+                        .WithMany()
+                        .HasForeignKey("TrdTipologiaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_plantilla_tipos_trd_tipologias_trd_tipologia_id");
+
+                    b.Navigation("Plantilla");
+
+                    b.Navigation("TrdTipologia");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Radicado", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.OrgUnit", "DependenciaDestino")
+                        .WithMany()
+                        .HasForeignKey("DependenciaDestinoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_radicados_org_units_dependencia_destino_id");
+
+                    b.HasOne("Tronox.Domain.Entities.OrgUnit", "DependenciaOrigen")
+                        .WithMany()
+                        .HasForeignKey("DependenciaOrigenId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_radicados_org_units_dependencia_origen_id");
+
+                    b.HasOne("Tronox.Domain.Entities.NivelClasificacion", "NivelReserva")
+                        .WithMany()
+                        .HasForeignKey("NivelReservaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_radicados_niveles_clasificacion_nivel_reserva_id");
+
+                    b.HasOne("Tronox.Domain.Entities.Radicado", "RadicadoRelacionado")
+                        .WithMany()
+                        .HasForeignKey("RadicadoRelacionadoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_radicados_radicados_radicado_relacionado_id");
+
+                    b.HasOne("Tronox.Domain.Entities.TipoComunicacion", "TipoComunicacion")
+                        .WithMany()
+                        .HasForeignKey("TipoComunicacionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_radicados_tipos_comunicacion_tipo_comunicacion_id");
+
+                    b.Navigation("DependenciaDestino");
+
+                    b.Navigation("DependenciaOrigen");
+
+                    b.Navigation("NivelReserva");
+
+                    b.Navigation("RadicadoRelacionado");
+
+                    b.Navigation("TipoComunicacion");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoArchivo", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Radicado", "Radicado")
+                        .WithMany("Archivos")
+                        .HasForeignKey("RadicadoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_radicados_archivos_radicados_radicado_id");
+
+                    b.Navigation("Radicado");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoComunicacion", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Radicado", "Radicado")
+                        .WithMany("Comunicaciones")
+                        .HasForeignKey("RadicadoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_radicados_comunicaciones_radicados_radicado_id");
+
+                    b.Navigation("Radicado");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoTarea", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.OrgUnit", "Dependencia")
+                        .WithMany()
+                        .HasForeignKey("DependenciaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_radicados_tareas_org_units_dependencia_id");
+
+                    b.HasOne("Tronox.Domain.Entities.Radicado", "Radicado")
+                        .WithMany("Tareas")
+                        .HasForeignKey("RadicadoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_radicados_tareas_radicados_radicado_id");
+
+                    b.Navigation("Dependencia");
+
+                    b.Navigation("Radicado");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.RadicadoTrazabilidad", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.Radicado", "Radicado")
+                        .WithMany("Trazas")
+                        .HasForeignKey("RadicadoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_radicados_trazabilidad_radicados_radicado_id");
+
+                    b.Navigation("Radicado");
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.Rol", b =>
@@ -4499,6 +9930,17 @@ namespace Tronox.Infrastructure.Migrations
                     b.Navigation("Sede");
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.TipoComunicacion", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.NivelClasificacion", "NivelReservaDefault")
+                        .WithMany()
+                        .HasForeignKey("NivelReservaDefaultId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_tipos_comunicacion_niveles_clasificacion_nivel_reserva_defa");
+
+                    b.Navigation("NivelReservaDefault");
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.TopografiaElemento", b =>
                 {
                     b.HasOne("Tronox.Domain.Entities.TopografiaNivel", "Nivel")
@@ -4573,7 +10015,27 @@ namespace Tronox.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_trd_metadatos_trd_asignaciones_trd_asignacion_id");
 
+                    b.HasOne("Tronox.Domain.Entities.TrdTipologia", "TrdTipologia")
+                        .WithMany("Metadatos")
+                        .HasForeignKey("TrdTipologiaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_trd_metadatos_trd_tipologias_trd_tipologia_id");
+
                     b.Navigation("ListaMaestra");
+
+                    b.Navigation("TrdAsignacion");
+
+                    b.Navigation("TrdTipologia");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.TrdTipologia", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.TrdAsignacion", "TrdAsignacion")
+                        .WithMany("Tipologias")
+                        .HasForeignKey("TrdAsignacionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_trd_tipologias_trd_asignaciones_trd_asignacion_id");
 
                     b.Navigation("TrdAsignacion");
                 });
@@ -4599,9 +10061,182 @@ namespace Tronox.Infrastructure.Migrations
                     b.Navigation("TenantUser");
                 });
 
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowEdge", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.WorkflowDefinition", "Definition")
+                        .WithMany("Edges")
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_edges_workflow_definitions_definition_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowNode", "SourceNode")
+                        .WithMany()
+                        .HasForeignKey("SourceNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_edges_workflow_nodes_source_node_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowNode", "TargetNode")
+                        .WithMany()
+                        .HasForeignKey("TargetNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_edges_workflow_nodes_target_node_id");
+
+                    b.Navigation("Definition");
+
+                    b.Navigation("SourceNode");
+
+                    b.Navigation("TargetNode");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowInstance", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.WorkflowDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_instances_workflow_definitions_definition_id");
+
+                    b.Navigation("Definition");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowNode", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.WorkflowDefinition", "Definition")
+                        .WithMany("Nodes")
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_nodes_workflow_definitions_definition_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowNode", "RestartNode")
+                        .WithMany()
+                        .HasForeignKey("RestartNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_workflow_nodes_workflow_nodes_restart_node_id");
+
+                    b.Navigation("Definition");
+
+                    b.Navigation("RestartNode");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowNodeForm", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.FormDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_node_forms_form_definitions_definition_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowNode", "Node")
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_node_forms_workflow_nodes_node_id");
+
+                    b.Navigation("Definition");
+
+                    b.Navigation("Node");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowNodePolicy", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.OrgUnit", "OrgUnit")
+                        .WithMany()
+                        .HasForeignKey("OrgUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_node_policies_org_units_org_unit_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowNode", "WorkflowNode")
+                        .WithMany()
+                        .HasForeignKey("WorkflowNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_node_policies_workflow_nodes_workflow_node_id");
+
+                    b.Navigation("OrgUnit");
+
+                    b.Navigation("WorkflowNode");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowStepHistory", b =>
+                {
+                    b.HasOne("Tronox.Domain.Entities.WorkflowInstance", "Instance")
+                        .WithMany()
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_step_histories_workflow_instances_instance_id");
+
+                    b.HasOne("Tronox.Domain.Entities.WorkflowNode", "Node")
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workflow_step_histories_workflow_nodes_node_id");
+
+                    b.Navigation("Instance");
+
+                    b.Navigation("Node");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.CorreoRecibido", b =>
+                {
+                    b.Navigation("Adjuntos");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Documento", b =>
+                {
+                    b.Navigation("Metadatos");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Expediente", b =>
+                {
+                    b.Navigation("Metadatos");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FirmaCircuito", b =>
+                {
+                    b.Navigation("Firmantes");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormContainer", b =>
+                {
+                    b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.FormDefinition", b =>
+                {
+                    b.Navigation("Containers");
+
+                    b.Navigation("Questions");
+                });
+
             modelBuilder.Entity("Tronox.Domain.Entities.ListaMaestra", b =>
                 {
                     b.Navigation("Opciones");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Plantilla", b =>
+                {
+                    b.Navigation("Tipos");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.Radicado", b =>
+                {
+                    b.Navigation("Archivos");
+
+                    b.Navigation("Comunicaciones");
+
+                    b.Navigation("Tareas");
+
+                    b.Navigation("Trazas");
                 });
 
             modelBuilder.Entity("Tronox.Domain.Entities.SaasPlan", b =>
@@ -4627,6 +10262,20 @@ namespace Tronox.Infrastructure.Migrations
             modelBuilder.Entity("Tronox.Domain.Entities.TrdAsignacion", b =>
                 {
                     b.Navigation("Metadatos");
+
+                    b.Navigation("Tipologias");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.TrdTipologia", b =>
+                {
+                    b.Navigation("Metadatos");
+                });
+
+            modelBuilder.Entity("Tronox.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.Navigation("Edges");
+
+                    b.Navigation("Nodes");
                 });
 #pragma warning restore 612, 618
         }

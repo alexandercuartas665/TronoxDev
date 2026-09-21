@@ -68,5 +68,12 @@ public enum FormControlType
     /// FormRecordLink. A diferencia de GridDetail (filas en el jsonb del padre), cada hijo es un
     /// FormResponse propio, reportable aparte.
     /// </summary>
-    Subform
+    Subform,
+
+    /// <summary>
+    /// Configurador en cascada (motor generico config-driven): N niveles encadenados cuya
+    /// configuracion (niveles, opciones, juegos de columnas, mapeo rama->tabla) vive en
+    /// FormQuestion.CascadeConfigJson. El valor capturado es el arbol de selecciones + tablas.
+    /// </summary>
+    CascadeConfigurator
 }

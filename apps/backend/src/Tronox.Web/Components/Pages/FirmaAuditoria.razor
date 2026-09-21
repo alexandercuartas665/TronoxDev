@@ -1,0 +1,151 @@
+@page "/modulo/firmas-auditoria"
+@attribute [Authorize(Policy = "Perm:modulo/firmas-mis:View")]
+@* Auditoria de firma con filtros (RQ05 - RF12), port de fir_auditoria.aspx. Registro append-only del
+   ledger, filtrable por evento/usuario/documento/fechas y paginado. Solo lectura. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Firmas
+@inject IFirmaService Firmas
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<PageTitle>Auditoria de Firma - TRONOX SGDEA</PageTitle>
+
+<style>
+    .fau-wrap { padding: 8px 0 40px; }
+    .fau-title { font-size: 20px; font-weight: 800; color: #0F172A; margin: 0; display: flex; align-items: center; gap: 10px; }
+    .fau-sub { font-size: 12.5px; color: #94A3B8; margin: 3px 0 16px; }
+    .fau-filtros { background: #fff; border: 1px solid #E2E8F0; border-radius: 14px; padding: 14px 16px; display: grid; grid-template-columns: repeat(5, 1fr) auto; gap: 12px; align-items: end; margin-bottom: 16px; }
+    .fau-f label { display: block; font-size: 11.5px; font-weight: 700; color: #64748B; margin-bottom: 4px; }
+    .fau-in { width: 100%; height: 38px; border: 1px solid #E2E8F0; border-radius: 9px; padding: 0 10px; font-size: 13px; background: #fff; color: #0F172A; }
+    .fau-btn { height: 38px; padding: 0 16px; border-radius: 9px; border: 1px solid #2563EB; background: #2563EB; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .fau-btn-l { border-color: #CBD5E1; background: #fff; color: #475569; }
+    .fau-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 6px 4px; }
+    .fau-table { width: 100%; border-collapse: collapse; }
+    .fau-table th { text-align: left; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: .04em; padding: 11px 14px; border-bottom: 1px solid #E2E8F0; }
+    .fau-table td { padding: 11px 14px; font-size: 13px; color: #334155; border-bottom: 1px solid #EEF2F7; vertical-align: top; }
+    .fau-ev { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; background: rgba(37,99,235,.10); color: #2563EB; }
+    .fau-ts { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: #94A3B8; white-space: nowrap; }
+    .fau-det { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #94A3B8; word-break: break-all; }
+    .fau-actor { font-weight: 700; color: #2563EB; }
+    .fau-pag { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; }
+    .fau-empty { text-align: center; padding: 30px; color: #94A3B8; }
+</style>
+
+<div class="fau-wrap tx-mod">
+    <h2 class="fau-title"><i class="bi bi-clock-history" style="color:#2563EB"></i> Auditoría de Firma</h2>
+    <div class="fau-sub">Registro inmutable (append-only) de la actividad de firma. Filtra por evento, usuario, documento o fechas.</div>
+
+    <div class="fau-filtros">
+        <div class="fau-f">
+            <label>Evento</label>
+            <select class="fau-in" @bind="_evento">
+                <option value="">Todos</option>
+                @foreach (var e in _eventos) { <option value="@e.Accion">@e.Etiqueta</option> }
+            </select>
+        </div>
+        <div class="fau-f">
+            <label>Usuario</label>
+            <select class="fau-in" @bind="_actorId">
+                <option value="0">Todos</option>
+                @foreach (var u in _usuarios) { <option value="@u.PlatformUserId">@u.Nombre</option> }
+            </select>
+        </div>
+        <div class="fau-f">
+            <label>Documento (id)</label>
+            <input class="fau-in" type="number" min="1" @bind="_docId" placeholder="Todos" />
+        </div>
+        <div class="fau-f">
+            <label>Desde</label>
+            <input class="fau-in" type="date" @bind="_desde" />
+        </div>
+        <div class="fau-f">
+            <label>Hasta</label>
+            <input class="fau-in" type="date" @bind="_hasta" />
+        </div>
+        <div class="fau-f" style="display:flex;gap:8px;">
+            <button class="fau-btn" @onclick="Buscar">Filtrar</button>
+            <button class="fau-btn fau-btn-l" @onclick="Limpiar">Limpiar</button>
+        </div>
+    </div>
+
+    <div class="fau-card">
+        @if (_pag is null)
+        {
+            <div class="fau-empty">Cargando…</div>
+        }
+        else if (_pag.Items.Count == 0)
+        {
+            <div class="fau-empty">No hay eventos que coincidan con el filtro.</div>
+        }
+        else
+        {
+            <table class="fau-table">
+                <thead>
+                    <tr><th style="width:150px">Fecha</th><th style="width:160px">Evento</th><th style="width:180px">Usuario</th><th>Detalle</th><th style="width:120px">IP</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var ev in _pag.Items)
+                    {
+                        <tr>
+                            <td class="fau-ts">@ev.Fecha.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td><span class="fau-ev">@ev.Evento</span></td>
+                            <td class="fau-actor">@ev.Actor</td>
+                            <td class="fau-det">@(ev.Detalle ?? "—")</td>
+                            <td class="fau-ts">@(ev.Ip ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="fau-pag">
+                <span style="font-size:12.5px;color:#64748B;">@_pag.Total evento(s) · página @_pag.Pagina de @TotalPaginas</span>
+                <span style="display:flex;gap:8px;">
+                    <button class="fau-btn fau-btn-l" disabled="@(_pag.Pagina <= 1)" @onclick="Anterior">Anterior</button>
+                    <button class="fau-btn fau-btn-l" disabled="@(_pag.Pagina >= TotalPaginas)" @onclick="Siguiente">Siguiente</button>
+                </span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<EventoOpcionDto> _eventos = [];
+    private IReadOnlyList<FirmanteOpcionDto> _usuarios = [];
+    private PistaPaginaDto? _pag;
+
+    private string _evento = "";
+    private long _actorId;
+    private int? _docId;
+    private DateOnly? _desde, _hasta;
+    private int _pagina = 1;
+
+    private long Actor => Tenant.UserId ?? 0;
+    private int TotalPaginas => _pag is null || _pag.Total == 0 ? 1 : (int)Math.Ceiling(_pag.Total / (double)_pag.TamPagina);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _eventos = Firmas.GetEventosAuditoria();
+        _usuarios = await Firmas.GetFirmantesAsignablesAsync(Actor);
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        var f = new FiltroPistaFirma(
+            Evento: string.IsNullOrWhiteSpace(_evento) ? null : _evento,
+            ActorUserId: _actorId > 0 ? _actorId : null,
+            DocId: _docId is > 0 ? _docId : null,
+            Desde: _desde, Hasta: _hasta,
+            Pagina: _pagina, TamPagina: 25);
+        _pag = await Firmas.ListarPistaFiltradaAsync(f, Actor);
+    }
+
+    private async Task Buscar() { _pagina = 1; await Cargar(); }
+
+    private async Task Limpiar()
+    {
+        _evento = ""; _actorId = 0; _docId = null; _desde = null; _hasta = null; _pagina = 1;
+        await Cargar();
+    }
+
+    private async Task Anterior() { if (_pagina > 1) { _pagina--; await Cargar(); } }
+    private async Task Siguiente() { if (_pagina < TotalPaginas) { _pagina++; await Cargar(); } }
+}

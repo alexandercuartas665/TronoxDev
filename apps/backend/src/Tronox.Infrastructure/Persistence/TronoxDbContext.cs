@@ -88,8 +88,63 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<ListaOpcion> ListaOpciones => Set<ListaOpcion>();
     public DbSet<TrdAsignacion> TrdAsignaciones => Set<TrdAsignacion>();
     public DbSet<TrdMetadato> TrdMetadatos => Set<TrdMetadato>();
+    public DbSet<TrdTipologia> TrdTipologias => Set<TrdTipologia>();
     public DbSet<TopografiaNivel> TopografiaNiveles => Set<TopografiaNivel>();
     public DbSet<TopografiaElemento> TopografiaElementos => Set<TopografiaElemento>();
+    public DbSet<Expediente> Expedientes => Set<Expediente>();
+    public DbSet<ExpedienteMetadato> ExpedienteMetadatos => Set<ExpedienteMetadato>();
+    public DbSet<ExpedienteCierre> ExpedienteCierres => Set<ExpedienteCierre>();
+    public DbSet<ExpedienteUbicacion> ExpedienteUbicaciones => Set<ExpedienteUbicacion>();
+    public DbSet<ExpedienteVinculo> ExpedienteVinculos => Set<ExpedienteVinculo>();
+    public DbSet<Documento> Documentos => Set<Documento>();
+    public DbSet<DocumentoMetadato> DocumentoMetadatos => Set<DocumentoMetadato>();
+    public DbSet<DocumentoCompartido> DocumentosCompartidos => Set<DocumentoCompartido>();
+    public DbSet<DocumentoValidacion> DocumentoValidaciones => Set<DocumentoValidacion>();
+    public DbSet<Firma> Firmas => Set<Firma>();
+    public DbSet<FirmaOtp> FirmaOtps => Set<FirmaOtp>();
+    public DbSet<FirmaCircuito> FirmaCircuitos => Set<FirmaCircuito>();
+    public DbSet<FirmaCircuitoFirmante> FirmaCircuitoFirmantes => Set<FirmaCircuitoFirmante>();
+    public DbSet<Plantilla> Plantillas => Set<Plantilla>();
+    public DbSet<PlantillaTipo> PlantillaTipos => Set<PlantillaTipo>();
+    public DbSet<FormDefinition> FormDefinitions => Set<FormDefinition>();
+    public DbSet<FormContainer> FormContainers => Set<FormContainer>();
+    public DbSet<FormQuestion> FormQuestions => Set<FormQuestion>();
+    public DbSet<FormResponse> FormResponses => Set<FormResponse>();
+    public DbSet<FormToken> FormTokens => Set<FormToken>();
+    public DbSet<FormFieldCondition> FormFieldConditions => Set<FormFieldCondition>();
+    public DbSet<FormRecordLink> FormRecordLinks => Set<FormRecordLink>();
+    public DbSet<WorkflowNodeForm> WorkflowNodeForms => Set<WorkflowNodeForm>();
+    public DbSet<FormFlowLink> FormFlowLinks => Set<FormFlowLink>();
+    public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
+    public DbSet<WorkflowNode> WorkflowNodes => Set<WorkflowNode>();
+    public DbSet<WorkflowEdge> WorkflowEdges => Set<WorkflowEdge>();
+    public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
+    public DbSet<WorkflowStepHistory> WorkflowStepHistories => Set<WorkflowStepHistory>();
+    public DbSet<WorkflowNodePolicy> WorkflowNodePolicies => Set<WorkflowNodePolicy>();
+    public DbSet<RadicacionConfig> RadicacionConfigs => Set<RadicacionConfig>();
+    public DbSet<TipoComunicacion> TiposComunicacion => Set<TipoComunicacion>();
+    public DbSet<BuzonCorreo> BuzonesCorreo => Set<BuzonCorreo>();
+    public DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion => Set<NotificacionRadicacionConfig>();
+    public DbSet<MigracionRadicadosLog> MigracionesRadicados => Set<MigracionRadicadosLog>();
+    public DbSet<Radicado> Radicados => Set<Radicado>();
+    public DbSet<RadicadoTrazabilidad> RadicadosTrazabilidad => Set<RadicadoTrazabilidad>();
+    public DbSet<CorreoRecibido> CorreosRecibidos => Set<CorreoRecibido>();
+    public DbSet<RadicadoTarea> RadicadosTareas => Set<RadicadoTarea>();
+    public DbSet<RadicadoArchivo> RadicadosArchivos => Set<RadicadoArchivo>();
+    public DbSet<RadicadoComunicacion> RadicadosComunicaciones => Set<RadicadoComunicacion>();
+    public DbSet<RadicadoVisibilidadPermiso> RadicadosVisibilidad => Set<RadicadoVisibilidadPermiso>();
+    public DbSet<DiaFestivo> DiasFestivos => Set<DiaFestivo>();
+    public DbSet<CalendarioHabilConfig> CalendariosHabiles => Set<CalendarioHabilConfig>();
+    public DbSet<CorreoRecibidoAdjunto> CorreosRecibidosAdjuntos => Set<CorreoRecibidoAdjunto>();
+    public DbSet<CorreoDescartado> CorreosDescartados => Set<CorreoDescartado>();
+    public DbSet<RadPrioridad> RadPrioridades => Set<RadPrioridad>();
+    public DbSet<RadPortalConfig> RadPortalConfigs => Set<RadPortalConfig>();
+    public DbSet<ParametrosSeguridad> ParametrosSeguridad => Set<ParametrosSeguridad>();
+    public DbSet<FirmaConfig> FirmaConfigs => Set<FirmaConfig>();
+    public DbSet<FirmaGrafo> FirmaGrafos => Set<FirmaGrafo>();
+    public DbSet<FirmaPlantilla> FirmaPlantillas => Set<FirmaPlantilla>();
+    public DbSet<AlmacenamientoConfig> AlmacenamientosConfig => Set<AlmacenamientoConfig>();
+    public DbSet<OcrConfig> OcrConfigs => Set<OcrConfig>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<TenantModule> TenantModules => Set<TenantModule>();
@@ -315,6 +370,25 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<FormRecordStatus>().HaveConversion<string>().HaveMaxLength(40);
         // Transversales (ola F6).
         configurationBuilder.Properties<FormDefaultDynamic>().HaveConversion<string>().HaveMaxLength(40);
+        // Ancho de tarjeta (ola F4): enum persistido como string.
+        configurationBuilder.Properties<FormCardLayout>().HaveConversion<string>().HaveMaxLength(20);
+        // Configuracion de Radicacion (RQ09 RF01): enums persistidos como string.
+        configurationBuilder.Properties<RadicacionDireccion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicacionTipoDia>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicacionInicioTermino>().HaveConversion<string>().HaveMaxLength(30);
+        configurationBuilder.Properties<BuzonProtocolo>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<BuzonSeguridad>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<BuzonModoRadicacion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<BuzonFrecuenciaRevision>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicacionEventoNotificacion>().HaveConversion<string>().HaveMaxLength(40);
+        // Radicacion operativa (RQ09 - panel/bandeja/correos): enums persistidos como string.
+        configurationBuilder.Properties<RadicadoTipo>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicadoEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicadoCanal>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicadoPrioridad>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<CorreoRevisionEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<RadicadoTareaEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<VisibilidadNivel>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<RuleStatus>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleTriggerKind>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<RuleExecutionStatus>().HaveConversion<string>().HaveMaxLength(40);
@@ -368,14 +442,35 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<SubfondoEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Configuracion documental (RQ02): estados como texto acotado.
         configurationBuilder.Properties<TrdVersionEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<ModoCodigoSerie>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<SerieEstado>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ListaEstado>().HaveConversion<string>().HaveMaxLength(20);
         // Construccion de la TRD (RF04): enums como texto acotado.
         configurationBuilder.Properties<DisposicionFinal>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<TipoDatoMetadato>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ContextoMetadato>().HaveConversion<string>().HaveMaxLength(20);
+        // Tipologias documentales (RF05): soporte como texto acotado.
+        configurationBuilder.Properties<SoporteTipologia>().HaveConversion<string>().HaveMaxLength(20);
         // Topografia fisica (RQ02 - RF06): estado como texto acotado.
         configurationBuilder.Properties<TopografiaEstado>().HaveConversion<string>().HaveMaxLength(20);
+        // Gestion integral de expedientes (RQ03): estado de tramite, fase y ubicacion como texto.
+        configurationBuilder.Properties<EstadoExpediente>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FaseArchivo>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EstadoUbicacionExpediente>().HaveConversion<string>().HaveMaxLength(20);
+        // Gestion integral de documentos (RQ04): estado, firma, soporte y OCR como texto acotado.
+        configurationBuilder.Properties<EstadoDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EstadoFirmaDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<SoporteDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<OcrEstadoDocumento>().HaveConversion<string>().HaveMaxLength(20);
+        // Tareas de validacion (RQ04 - RF11/RF12): tipo, estado y prioridad como texto acotado.
+        configurationBuilder.Properties<TipoValidacion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EstadoValidacion>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<PrioridadTarea>().HaveConversion<string>().HaveMaxLength(20);
+        // Plantillas documentales (RQ04 - RF09): estado y diseno de hoja como texto acotado.
+        configurationBuilder.Properties<PlantillaEstado>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FormatoPapel>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<OrientacionPapel>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<MargenesPapel>().HaveConversion<string>().HaveMaxLength(20);
         // Datos de la Entidad (RQ01 - RF01 4.1.1): tipo y estado como texto acotado.
         configurationBuilder.Properties<TipoEntidad>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EntidadEstado>().HaveConversion<string>().HaveMaxLength(20);
@@ -878,16 +973,32 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.HasIndex(x => x.NivelClasificacionId);
         });
 
-        // Metadatos de la asignacion (RF04 paso 6). Viven y mueren con su asignacion (Cascade). La
-        // FK a la lista (tipo Lista, RF03) es RESTRICT: una lista en uso no se borra por cascada.
+        // Metadatos de la asignacion. Contexto Expediente (RF04 paso 6): TrdTipologiaId null, cuelgan
+        // de la asignacion. Contexto Documento (RF05 3.5.3): cuelgan de una tipologia. Viven y mueren
+        // con su asignacion/tipologia (Cascade; PostgreSQL admite multiples rutas de cascada). La FK a
+        // la lista (tipo Lista, RF03) es RESTRICT: una lista en uso no se borra por cascada.
         modelBuilder.Entity<TrdMetadato>(b =>
         {
             b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
             b.HasOne(x => x.TrdAsignacion).WithMany(x => x.Metadatos)
                 .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdTipologia).WithMany(x => x.Metadatos)
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne(x => x.ListaMaestra).WithMany()
                 .HasForeignKey(x => x.ListaMaestraId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TrdAsignacionId, x.Orden });
+            b.HasIndex(x => x.TrdTipologiaId);
+        });
+
+        // Tipologias documentales (RQ02 - RF05). Cuelgan de una asignacion Dependencia+Serie (3.5.1) y
+        // viven/mueren con ella (Cascade). Se inactivan en vez de borrarse (invariante 8, 3.5.5-5).
+        modelBuilder.Entity<TrdTipologia>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Formato).HasMaxLength(100);
+            b.HasOne(x => x.TrdAsignacion).WithMany(x => x.Tipologias)
+                .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TrdAsignacionId, x.Nombre });
         });
 
         // Topografia fisica (RQ02 - RF06). Niveles: nombre/sigla/orden unicos por tenant. Elementos:
@@ -919,7 +1030,697 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasFilter(isNpgsql ? "parent_id IS NULL" : "[parent_id] IS NULL");
         });
 
-        // Asignacion por nodo (ADR-0035, ola F1): que Dependencia/Cargo atiende un paso Task.
+        // Gestion integral de expedientes (RQ03). El expediente conserva su asignacion de TRD (DAT-03,
+        // FK RESTRICT: la TRD no se borra en cascada), su nivel de clasificacion propio (RF10) y su
+        // codigo estructurado unico por tenant (RF04). Nada de borrado fisico: eliminacion logica.
+        modelBuilder.Entity<Expediente>(b =>
+        {
+            b.Property(x => x.Codigo).HasMaxLength(60).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.JustificacionEliminacion).HasMaxLength(1000);
+            b.HasOne(x => x.TrdAsignacion).WithMany()
+                .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.NivelClasificacion).WithMany()
+                .HasForeignKey(x => x.NivelClasificacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.Fase });
+            b.HasIndex(x => x.TrdAsignacionId);
+            b.HasIndex(x => x.NivelClasificacionId);
+        });
+
+        // Metadatos de expediente (RQ03, DAT-04): valor por (expediente, definicion de RQ02). Viven y
+        // mueren con el expediente (Cascade). La FK a la definicion es RESTRICT (no se borra por aqui).
+        modelBuilder.Entity<ExpedienteMetadato>(b =>
+        {
+            b.HasOne(x => x.Expediente).WithMany(x => x.Metadatos)
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdMetadato).WithMany()
+                .HasForeignKey(x => x.TrdMetadatoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ExpedienteId, x.TrdMetadatoId }).IsUnique();
+        });
+
+        // Cierre/reapertura (RQ03 RF08): asiento append-only con hash de integridad. FK RESTRICT.
+        modelBuilder.Entity<ExpedienteCierre>(b =>
+        {
+            b.Property(x => x.HashSha256).HasMaxLength(64).IsRequired();
+            b.Property(x => x.FirmaDigitalId).HasMaxLength(100);
+            b.Property(x => x.JustificacionReapertura).HasMaxLength(1000);
+            b.HasOne(x => x.Expediente).WithMany()
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ExpedienteId, x.NumeroCierre });
+        });
+
+        // Ubicacion fisica (RQ03 RF12): historial append-only ligado a la topografia (RQ02). FK RESTRICT.
+        modelBuilder.Entity<ExpedienteUbicacion>(b =>
+        {
+            b.Property(x => x.Observacion).HasMaxLength(1000);
+            b.HasOne(x => x.Expediente).WithMany()
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TopografiaElemento).WithMany()
+                .HasForeignKey(x => x.TopografiaElementoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ExpedienteId, x.CreatedAt });
+        });
+
+        // Vinculos entre expedientes (RQ03 RF14): relacion bidireccional, desvincular logico. FK RESTRICT
+        // (dos FKs al mismo maestro => sin cascada para no crear multiples caminos de borrado).
+        modelBuilder.Entity<ExpedienteVinculo>(b =>
+        {
+            b.Property(x => x.Observacion).HasMaxLength(1000);
+            b.HasOne(x => x.ExpedienteOrigen).WithMany()
+                .HasForeignKey(x => x.ExpedienteOrigenId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.ExpedienteDestino).WithMany()
+                .HasForeignKey(x => x.ExpedienteDestinoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Activo });
+            b.HasIndex(x => x.ExpedienteOrigenId);
+            b.HasIndex(x => x.ExpedienteDestinoId);
+        });
+
+        // Gestion integral de documentos (RQ04). El binario vive en object storage (ADR-009): aqui solo
+        // la key + hash + tamano + formato. Las FKs a expediente/TRD/tipologia/nivel/version-padre son
+        // RESTRICT (nada se borra en cascada; el unico borrado fisico es el borrador nunca archivado,
+        // que se hace explicitamente sobre esta tabla). Metadatos EAV contexto Documento (DAT-04).
+        modelBuilder.Entity<Documento>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.NombreArchivoOriginal).HasMaxLength(260);
+            b.Property(x => x.Formato).HasMaxLength(10);
+            b.Property(x => x.HashSha256).HasMaxLength(64);
+            b.Property(x => x.RutaAlmacenamiento).HasMaxLength(500);
+            b.Property(x => x.JustificacionAnulacion).HasMaxLength(2000);
+            b.HasOne(x => x.Expediente).WithMany()
+                .HasForeignKey(x => x.ExpedienteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TrdAsignacion).WithMany()
+                .HasForeignKey(x => x.TrdAsignacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TrdTipologia).WithMany()
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.NivelClasificacion).WithMany()
+                .HasForeignKey(x => x.NivelClasificacionId).OnDelete(DeleteBehavior.Restrict);
+            // Auto-FK de versionamiento (RF03): version historica -> documento vivo. NO ACTION.
+            b.HasOne<Documento>().WithMany()
+                .HasForeignKey(x => x.DocumentoPadreId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            // Bandeja "Mis Borradores": borradores del creador. Foliacion/orden dentro del expediente.
+            b.HasIndex(x => new { x.TenantId, x.CreatedBy, x.Estado });
+            b.HasIndex(x => new { x.ExpedienteId, x.OrdenEnExpediente });
+        });
+
+        modelBuilder.Entity<DocumentoMetadato>(b =>
+        {
+            b.HasOne(x => x.Documento).WithMany(x => x.Metadatos)
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdMetadato).WithMany()
+                .HasForeignKey(x => x.TrdMetadatoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DocumentoId, x.TrdMetadatoId }).IsUnique();
+        });
+
+        // Comparticion interna de documentos (RF07). Cascade con el documento (si el borrador se borra
+        // fisico, sus comparticiones se van con el). Indice de la bandeja "Compartidos conmigo": por
+        // beneficiario + activo. Unico por (documento, beneficiario) para el upsert de permisos.
+        modelBuilder.Entity<DocumentoCompartido>(b =>
+        {
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.BeneficiarioPlatformUserId, x.Activo });
+            b.HasIndex(x => new { x.DocumentoId, x.BeneficiarioPlatformUserId }).IsUnique();
+        });
+
+        // Tareas de validacion (RQ04 - RF11/RF12): revision/aprobacion asignada a un usuario. Cuelga del
+        // documento (Cascade: si el borrador se borra fisicamente, sus tareas se van con el). El usuario
+        // asignado es NO ACTION (un usuario no se borra por aqui). Indice de bandeja por asignado+estado.
+        modelBuilder.Entity<DocumentoValidacion>(b =>
+        {
+            b.Property(x => x.NombreAsignado).HasMaxLength(200);
+            b.Property(x => x.CargoAsignado).HasMaxLength(200);
+            b.Property(x => x.Instrucciones).HasMaxLength(2000);
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.UsuarioAsignado).WithMany()
+                .HasForeignKey(x => x.UsuarioAsignadoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.UsuarioAsignadoId, x.Estado });
+            b.HasIndex(x => x.DocumentoId);
+        });
+
+        // Firmas electronicas (RQ05 - RF05). Cuelga del documento (Cascade: si el borrador se borra
+        // fisicamente, sus firmas se van con el). Enums como string (sin migracion al agregar valores).
+        // Indices: firmas del firmante por estado (bandeja de solicitudes) y firmas de un documento.
+        modelBuilder.Entity<Firma>(b =>
+        {
+            b.Property(x => x.NombreFirmante).HasMaxLength(200).IsRequired();
+            b.Property(x => x.CargoFirmante).HasMaxLength(200);
+            b.Property(x => x.DependenciaFirmante).HasMaxLength(200);
+            b.Property(x => x.HashDocumento).HasMaxLength(64);
+            b.Property(x => x.IpFirma).HasMaxLength(64);
+            b.Property(x => x.SesionId).HasMaxLength(100);
+            b.Property(x => x.TipoFirma).HasMaxLength(30).HasConversion<string>();
+            b.Property(x => x.Estado).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.Prioridad).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.Instrucciones).HasMaxLength(2000);
+            b.Property(x => x.Tag).HasMaxLength(60);
+            b.Property(x => x.ComentarioRechazo).HasMaxLength(2000);
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.FirmanteUserId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.SolicitadoPor, x.Estado });
+            b.HasIndex(x => x.DocumentoId);
+        });
+
+        // OTP de firma (RQ05 - RF08). Cuelga de la firma (Cascade). Solo se guarda el hash del codigo.
+        modelBuilder.Entity<FirmaOtp>(b =>
+        {
+            b.Property(x => x.CodigoHash).HasMaxLength(64).IsRequired();
+            b.Property(x => x.Canal).HasMaxLength(20);
+            b.Property(x => x.LoteId).HasMaxLength(40);
+            b.HasOne(x => x.Firma).WithMany()
+                .HasForeignKey(x => x.FirmaId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.FirmaId, x.VerificadoAt });
+            b.HasIndex(x => new { x.LoteId, x.VerificadoAt });
+        });
+
+        // Circuitos de firma (RQ05 - RF07). Cuelgan del documento (Cascade). Enums como string.
+        modelBuilder.Entity<FirmaCircuito>(b =>
+        {
+            b.Property(x => x.Modo).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.Estado).HasMaxLength(20).HasConversion<string>();
+            b.Property(x => x.SolicitanteNombre).HasMaxLength(200);
+            b.Property(x => x.MotivoCancelacion).HasMaxLength(2000);
+            b.HasOne(x => x.Documento).WithMany()
+                .HasForeignKey(x => x.DocumentoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.SolicitantePlatformUserId, x.Estado });
+            b.HasIndex(x => x.DocumentoId);
+        });
+        modelBuilder.Entity<FirmaCircuitoFirmante>(b =>
+        {
+            b.Property(x => x.NombreFirmante).HasMaxLength(200).IsRequired();
+            b.Property(x => x.CargoFirmante).HasMaxLength(200);
+            b.Property(x => x.TipoFirma).HasMaxLength(30).HasConversion<string>();
+            b.Property(x => x.Estado).HasMaxLength(20).HasConversion<string>();
+            b.HasOne(x => x.Circuito).WithMany(c => c.Firmantes)
+                .HasForeignKey(x => x.CircuitoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.CircuitoId, x.Orden });
+            b.HasIndex(x => new { x.TenantId, x.FirmantePlatformUserId, x.Estado });
+        });
+
+        // Plantillas documentales (RQ04 - RF09). La tipologia representante es RESTRICT (no se borra por
+        // cascada). Se inactivan, no se borran (invariante 8). N:N con tipologias via PlantillaTipo.
+        modelBuilder.Entity<Plantilla>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(500);
+            b.Property(x => x.Encabezado).HasMaxLength(50);
+            b.Property(x => x.PiePagina).HasMaxLength(50);
+            b.HasOne(x => x.TrdTipologia).WithMany()
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+        });
+
+        modelBuilder.Entity<PlantillaTipo>(b =>
+        {
+            b.Property(x => x.TipologiaNombre).HasMaxLength(200);
+            b.HasOne(x => x.Plantilla).WithMany(x => x.Tipos)
+                .HasForeignKey(x => x.PlantillaId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.TrdTipologia).WithMany()
+                .HasForeignKey(x => x.TrdTipologiaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.PlantillaId, x.TrdTipologiaId }).IsUnique();
+            b.HasIndex(x => x.TrdTipologiaId);
+        });
+
+        // Motor de formularios dinamicos (RQ08, port ECOREX / ADR-0015). Definicion -> arbol de
+        // contenedores -> preguntas; respuestas como documento JSON (jsonb). Code unico por tenant.
+        // Concurrencia optimista (Version, ADR-0013). Los enums ya tienen conversion a texto arriba.
+        modelBuilder.Entity<FormDefinition>(b =>
+        {
+            b.Property(x => x.Code).HasMaxLength(50).IsRequired();
+            b.Property(x => x.Title).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(1000);
+            b.Property(x => x.Version).IsConcurrencyToken();
+            // Transaccionalidad + modulo (olas F3/F4): claves/columnas/filtros como documento JSON.
+            b.Property(x => x.IdentitySourceFieldCode).HasMaxLength(100);
+            b.Property(x => x.UniqueKeyFieldsJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.ModuleIcon).HasMaxLength(60);
+            b.Property(x => x.ListColumnsJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.FilterFieldsJson).HasColumnType(jsonColumnType);
+            b.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Status });
+        });
+
+        modelBuilder.Entity<FormContainer>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Style).HasMaxLength(500);
+            b.Property(x => x.TabsJson).HasColumnType(jsonColumnType);
+            b.HasOne(x => x.Definition).WithMany(x => x.Containers)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            // Self-FK NO ACTION: el servicio reparenta el subarbol antes de borrar; la cascada de la
+            // definicion elimina todo el conjunto de una vez.
+            b.HasOne(x => x.Parent).WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DefinitionId, x.ParentId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<FormQuestion>(b =>
+        {
+            b.Property(x => x.FieldCode).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Label).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Caption).HasMaxLength(300);
+            b.Property(x => x.HelpText).HasMaxLength(1000);
+            b.Property(x => x.GridCol).HasMaxLength(30).IsRequired();
+            b.Property(x => x.Numeral).HasMaxLength(20);
+            b.Property(x => x.PlaceholderText).HasMaxLength(300);
+            b.Property(x => x.Format).HasMaxLength(30);
+            b.Property(x => x.OptionsJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.ValidationJson).HasColumnType(jsonColumnType);
+            // Origen de datos / lookup + cascada + permisos por campo (olas F1/F2/F6).
+            b.Property(x => x.SourceRef).HasMaxLength(200);
+            b.Property(x => x.DisplayField).HasMaxLength(100);
+            b.Property(x => x.ValueField).HasMaxLength(100);
+            b.Property(x => x.Format).HasMaxLength(30);
+            b.Property(x => x.CalcExpression).HasMaxLength(1000);
+            b.Property(x => x.FilterJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.AutofillMapJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.FieldVisibilityJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.CascadeConfigJson).HasColumnType(jsonColumnType);
+            b.HasOne(x => x.Definition).WithMany(x => x.Questions)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Container).WithMany()
+                .HasForeignKey(x => x.ContainerId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DefinitionId, x.FieldCode }).IsUnique();
+            b.HasIndex(x => new { x.DefinitionId, x.ContainerId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<FormResponse>(b =>
+        {
+            b.Property(x => x.Reference).HasMaxLength(100);
+            b.Property(x => x.Data).HasColumnType(jsonColumnType).IsRequired();
+            b.Property(x => x.Version).IsConcurrencyToken();
+            // Registro transaccional (ola F3).
+            b.Property(x => x.RecordNumber).HasMaxLength(100);
+            b.Property(x => x.VoidReason).HasMaxLength(2000);
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.DefinitionId, x.Status });
+            b.HasIndex(x => new { x.DefinitionId, x.Reference });
+            b.HasIndex(x => new { x.TenantId, x.DefinitionId, x.RecordStatus });
+        });
+
+        // Formularios avanzados: tokens de publicacion, condiciones autocontenidas, maestro-detalle,
+        // y vinculo formulario<->nodo/paso de flujo BPMN (RQ08 x RQ11).
+        modelBuilder.Entity<FormToken>(b =>
+        {
+            b.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
+            b.Property(x => x.Reference).HasMaxLength(100);
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.TokenHash }).IsUnique();
+        });
+
+        modelBuilder.Entity<FormFieldCondition>(b =>
+        {
+            b.Property(x => x.SourceFieldCode).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Operator).HasMaxLength(20).IsRequired();
+            b.Property(x => x.Value).HasMaxLength(500);
+            b.Property(x => x.Action).HasMaxLength(20).IsRequired();
+            b.Property(x => x.TargetFieldCode).HasMaxLength(100).IsRequired();
+            b.Property(x => x.SetValue).HasMaxLength(500);
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.DefinitionId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<FormRecordLink>(b =>
+        {
+            b.Property(x => x.ParentFieldCode).HasMaxLength(100).IsRequired();
+            b.HasOne(x => x.ParentResponse).WithMany()
+                .HasForeignKey(x => x.ParentResponseId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ChildResponse).WithMany()
+                .HasForeignKey(x => x.ChildResponseId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ParentResponseId, x.ParentFieldCode, x.SortOrder });
+        });
+
+        modelBuilder.Entity<WorkflowNodeForm>(b =>
+        {
+            b.HasOne(x => x.Node).WithMany()
+                .HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.NodeId).IsUnique();
+        });
+
+        modelBuilder.Entity<FormFlowLink>(b =>
+        {
+            b.HasOne(x => x.FormResponse).WithMany()
+                .HasForeignKey(x => x.FormResponseId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.WorkflowInstance).WithMany()
+                .HasForeignKey(x => x.WorkflowInstanceId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.WorkflowNode).WithMany()
+                .HasForeignKey(x => x.WorkflowNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.WorkflowInstanceId, x.Status });
+        });
+
+        // Configuracion de Radicacion (RQ09 RF01). Config singleton por tenant; catalogo de tipos;
+        // buzones (clave AES-256); notificaciones por evento; bitacora de migracion.
+        modelBuilder.Entity<RadicacionConfig>(b =>
+        {
+            b.Property(x => x.Separador).HasMaxLength(5).IsRequired();
+            b.Property(x => x.SiglaRadicacion).HasMaxLength(12);
+            // Singleton por tenant.
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        modelBuilder.Entity<TipoComunicacion>(b =>
+        {
+            b.Property(x => x.Codigo).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Icono).HasMaxLength(60);
+            b.Property(x => x.Color).HasMaxLength(9);
+            b.Property(x => x.PalabrasClave).HasMaxLength(500);
+            b.Property(x => x.DescripcionCiudadano).HasMaxLength(1000);
+            b.HasOne(x => x.NivelReservaDefault).WithMany()
+                .HasForeignKey(x => x.NivelReservaDefaultId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Direccion, x.Activo });
+        });
+
+        modelBuilder.Entity<BuzonCorreo>(b =>
+        {
+            b.Property(x => x.NombreBuzon).HasMaxLength(100).IsRequired();
+            b.Property(x => x.DireccionEmail).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Servidor).HasMaxLength(200);
+            b.Property(x => x.Usuario).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Carpeta).HasMaxLength(100).IsRequired();
+            b.HasOne(x => x.TipoComunicacionDefault).WithMany()
+                .HasForeignKey(x => x.TipoComunicacionDefaultId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.DependenciaDefault).WithMany()
+                .HasForeignKey(x => x.DependenciaDefaultId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Activo });
+        });
+
+        modelBuilder.Entity<NotificacionRadicacionConfig>(b =>
+        {
+            b.Property(x => x.DestinatariosRolesJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.DestinatariosUsuariosJson).HasColumnType(jsonColumnType);
+            b.Property(x => x.PlantillaAsunto).HasMaxLength(300);
+            b.Property(x => x.PlantillaCuerpo).HasMaxLength(4000);
+            b.HasIndex(x => new { x.TenantId, x.Evento }).IsUnique();
+        });
+
+        modelBuilder.Entity<MigracionRadicadosLog>(b =>
+        {
+            b.Property(x => x.ArchivoNombre).HasMaxLength(300);
+            b.Property(x => x.EstadoDestino).HasMaxLength(20).IsRequired();
+            b.Property(x => x.Estado).HasMaxLength(20).IsRequired();
+            b.Property(x => x.ReporteJson).HasColumnType(jsonColumnType);
+            b.HasIndex(x => new { x.TenantId, x.FechaMigracion });
+        });
+
+        // Radicacion operativa (RQ09): radicado + trazabilidad + correos. Espejo de RAD_RADICADOS /
+        // RAD_TRAZABILIDAD / RAD_CORREOS. Dependencias/funcionarios como FK referenciales (NO ACTION,
+        // evita rutas de cascada multiples); trazas en cascada con el radicado.
+        modelBuilder.Entity<Radicado>(b =>
+        {
+            b.Property(x => x.NumeroRadicado).HasMaxLength(60).IsRequired();
+            b.Property(x => x.Asunto).HasMaxLength(500);
+            b.Property(x => x.RemitenteNombre).HasMaxLength(300);
+            b.HasOne(x => x.TipoComunicacion).WithMany()
+                .HasForeignKey(x => x.TipoComunicacionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.DependenciaDestino).WithMany()
+                .HasForeignKey(x => x.DependenciaDestinoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.DependenciaOrigen).WithMany()
+                .HasForeignKey(x => x.DependenciaOrigenId).OnDelete(DeleteBehavior.Restrict);
+            b.Property(x => x.Descripcion).HasMaxLength(2000);
+            b.Property(x => x.Soporte).HasMaxLength(20);
+            b.Property(x => x.RemitenteTipoDoc).HasMaxLength(20);
+            b.Property(x => x.RemitenteDocumento).HasMaxLength(40);
+            b.Property(x => x.RemitenteEmail).HasMaxLength(200);
+            b.Property(x => x.RemitenteTelefono).HasMaxLength(40);
+            b.Property(x => x.EstadoEnvio).HasMaxLength(20);
+            b.Property(x => x.CanalEnvio).HasMaxLength(20);
+            b.Property(x => x.PortalToken).HasMaxLength(64);
+            b.Property(x => x.RespuestaPublica).HasMaxLength(4000);
+            b.HasOne(x => x.NivelReserva).WithMany()
+                .HasForeignKey(x => x.NivelReservaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.RadicadoRelacionado).WithMany()
+                .HasForeignKey(x => x.RadicadoRelacionadoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.NumeroRadicado }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.FechaRadicacion });
+            b.HasIndex(x => new { x.TenantId, x.FechaVencimiento });
+            b.HasIndex(x => new { x.TenantId, x.RadicadoRelacionadoId });
+        });
+
+        modelBuilder.Entity<RadicadoTrazabilidad>(b =>
+        {
+            b.Property(x => x.Accion).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Detalle).HasMaxLength(1000);
+            b.HasOne(x => x.Radicado).WithMany(r => r.Trazas)
+                .HasForeignKey(x => x.RadicadoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.RadicadoId, x.Accion });
+        });
+
+        modelBuilder.Entity<CorreoRecibido>(b =>
+        {
+            b.Property(x => x.BuzonEmail).HasMaxLength(200);
+            b.Property(x => x.Remitente).HasMaxLength(300);
+            b.Property(x => x.RemitenteEmail).HasMaxLength(200);
+            b.Property(x => x.Asunto).HasMaxLength(500);
+            b.Property(x => x.MessageId).HasMaxLength(400);
+            b.Property(x => x.InReplyTo).HasMaxLength(400);
+            b.Property(x => x.DuplicadoNumero).HasMaxLength(60);
+            b.Property(x => x.RadicadoRef).HasMaxLength(60);
+            b.Property(x => x.RadicadoNumero).HasMaxLength(60);
+            b.HasOne(x => x.BuzonCorreo).WithMany()
+                .HasForeignKey(x => x.BuzonCorreoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Tronox.Domain.Entities.TipoComunicacion>().WithMany()
+                .HasForeignKey(x => x.TipoDetectadoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Estado });
+            b.HasIndex(x => new { x.TenantId, x.MessageId });
+        });
+
+        modelBuilder.Entity<CorreoRecibidoAdjunto>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Extension).HasMaxLength(20);
+            b.Property(x => x.MimeType).HasMaxLength(120);
+            b.Property(x => x.StorageBucket).HasMaxLength(100);
+            b.Property(x => x.StorageKey).HasMaxLength(400);
+            b.Property(x => x.Sha256).HasMaxLength(64);
+            b.HasOne(x => x.CorreoRecibido).WithMany(c => c.Adjuntos)
+                .HasForeignKey(x => x.CorreoRecibidoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.CorreoRecibidoId });
+        });
+
+        modelBuilder.Entity<CorreoDescartado>(b =>
+        {
+            b.Property(x => x.Causal).HasMaxLength(1000).IsRequired();
+            b.HasOne(x => x.CorreoRecibido).WithMany()
+                .HasForeignKey(x => x.CorreoRecibidoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.CorreoRecibidoId });
+        });
+
+        // Radicacion operativa - bandeja/distribucion/detalle (RQ09 RF07/RF11/RF12).
+        modelBuilder.Entity<RadicadoTarea>(b =>
+        {
+            b.Property(x => x.Instrucciones).HasMaxLength(1000);
+            b.Property(x => x.Origen).HasMaxLength(30).IsRequired();
+            b.Property(x => x.Observacion).HasMaxLength(1000);
+            b.HasOne(x => x.Radicado).WithMany(r => r.Tareas)
+                .HasForeignKey(x => x.RadicadoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Dependencia).WithMany()
+                .HasForeignKey(x => x.DependenciaId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.RadicadoId, x.Activa });
+            b.HasIndex(x => new { x.TenantId, x.DependenciaId, x.Estado });
+        });
+
+        modelBuilder.Entity<RadicadoArchivo>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(300).IsRequired();
+            b.Property(x => x.Extension).HasMaxLength(20);
+            b.Property(x => x.MimeType).HasMaxLength(120);
+            b.Property(x => x.StorageBucket).HasMaxLength(100);
+            b.Property(x => x.StorageKey).HasMaxLength(400);
+            b.Property(x => x.Sha256).HasMaxLength(64);
+            b.HasOne(x => x.Radicado).WithMany(r => r.Archivos)
+                .HasForeignKey(x => x.RadicadoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.RadicadoId });
+        });
+
+        modelBuilder.Entity<RadicadoComunicacion>(b =>
+        {
+            b.Property(x => x.Canal).HasMaxLength(20);
+            b.Property(x => x.Destino).HasMaxLength(300);
+            b.Property(x => x.Asunto).HasMaxLength(500);
+            b.Property(x => x.Detalle).HasMaxLength(2000);
+            b.Property(x => x.Estado).HasMaxLength(20);
+            b.HasOne(x => x.Radicado).WithMany(r => r.Comunicaciones)
+                .HasForeignKey(x => x.RadicadoId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.RadicadoId });
+        });
+
+        modelBuilder.Entity<RadicadoVisibilidadPermiso>(b =>
+        {
+            b.HasIndex(x => new { x.TenantId, x.TenantUserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<DiaFestivo>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
+            b.Property(x => x.Tipo).HasMaxLength(20).IsRequired().HasDefaultValue("Nacional");
+            b.HasIndex(x => new { x.TenantId, x.Fecha }).IsUnique();
+        });
+
+        modelBuilder.Entity<CalendarioHabilConfig>(b =>
+        {
+            b.Property(x => x.JornadaInicio).HasMaxLength(5).IsRequired();
+            b.Property(x => x.JornadaFin).HasMaxLength(5).IsRequired();
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        modelBuilder.Entity<RadPrioridad>(b =>
+        {
+            b.Property(x => x.Codigo).HasMaxLength(40).IsRequired();
+            b.Property(x => x.Nombre).HasMaxLength(50).IsRequired();
+            b.Property(x => x.Icono).HasMaxLength(10);
+            b.Property(x => x.Color).HasMaxLength(9);
+            b.HasIndex(x => new { x.TenantId, x.Codigo }).IsUnique();
+        });
+
+        modelBuilder.Entity<ParametrosSeguridad>(b => b.HasIndex(x => x.TenantId).IsUnique());
+        modelBuilder.Entity<FirmaConfig>(b =>
+        {
+            b.Property(x => x.NtpServidor).HasMaxLength(200);
+            b.Property(x => x.FirmaPosicionDefault).HasMaxLength(20).IsRequired();
+            b.Property(x => x.FirmaQrTamano).HasMaxLength(20).IsRequired();
+            b.Property(x => x.FirmaTextoDefault).HasMaxLength(100);
+            b.Property(x => x.OtpModo).HasMaxLength(20).IsRequired();
+            b.Property(x => x.OtpCanal).HasMaxLength(20).IsRequired();
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        // Firma manuscrita (grafo) del usuario (RF03 §3.3.3, legacy FIR_FIRMA_GRAFO). Una vigente por (tenant, usuario).
+        modelBuilder.Entity<FirmaGrafo>(b =>
+        {
+            b.Property(x => x.ImagenBase64).IsRequired();
+            b.Property(x => x.ContentType).HasMaxLength(30).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.PlatformUserId }).IsUnique();
+        });
+
+        // Plantillas de firma reutilizables (TRON-20, legacy FIR_PLANTILLAS).
+        modelBuilder.Entity<FirmaPlantilla>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(400);
+            b.Property(x => x.Modo).HasMaxLength(20).IsRequired();
+            b.Property(x => x.Resumen).HasMaxLength(300);
+            b.Property(x => x.ConfigJson).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.Activo });
+        });
+
+        // Almacenamiento Azure Blob por entidad (ADR-012). La cadena de conexion se guarda CIFRADA.
+        modelBuilder.Entity<AlmacenamientoConfig>(b =>
+        {
+            b.Property(x => x.ConnectionStringCifrada).HasMaxLength(4000);
+            b.Property(x => x.Contenedor).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Prefijo).HasMaxLength(200);
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        modelBuilder.Entity<OcrConfig>(b =>
+        {
+            b.Property(x => x.Endpoint).HasMaxLength(300);
+            b.Property(x => x.ApiKeyCifrada).HasMaxLength(4000);
+            b.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        modelBuilder.Entity<RadPortalConfig>(b =>
+        {
+            b.Property(x => x.NombreEntidad).HasMaxLength(100);
+            b.Property(x => x.Subtitulo).HasMaxLength(200);
+            b.Property(x => x.Nit).HasMaxLength(30);
+            b.Property(x => x.Color).HasMaxLength(9);
+            b.Property(x => x.Banner).HasMaxLength(1000);
+            b.Property(x => x.CanalesAtencion).HasMaxLength(1000);
+            b.Property(x => x.AvisoPrivacidad).HasMaxLength(4000);
+            b.Property(x => x.Faq).HasMaxLength(4000);
+            b.Property(x => x.Slug).HasMaxLength(60);
+            b.HasIndex(x => x.TenantId).IsUnique();
+            b.HasIndex(x => x.Slug).IsUnique();
+        });
+
+        // Motor de flujos BPMN (RQ11, port del motor de ECOREX). El XML BPMN se guarda tal cual
+        // (columna texto); nodos/aristas se materializan para la ejecucion. Historial append-only.
+        // Los enums (WorkflowNodeType/InstanceStatus/StepStatus) ya tienen conversion a texto arriba.
+        modelBuilder.Entity<WorkflowDefinition>(b =>
+        {
+            b.Property(x => x.ProcessCode).HasMaxLength(25).IsRequired();
+            b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(1000);
+            b.Property(x => x.BpmnXml).IsRequired();
+            b.Property(x => x.Category).HasMaxLength(100);
+            // Version de negocio (1..n), NO token de concurrencia. Unico por (tenant, codigo, version).
+            b.HasIndex(x => new { x.TenantId, x.ProcessCode, x.Version }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.ProcessCode, x.IsPublished });
+        });
+
+        modelBuilder.Entity<WorkflowNode>(b =>
+        {
+            b.Property(x => x.BpmnElementId).HasMaxLength(100).IsRequired();
+            b.Property(x => x.Name).HasMaxLength(300);
+            b.Property(x => x.Color).HasMaxLength(20);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.HasOne(x => x.Definition).WithMany(x => x.Nodes)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            // Self-FK del reinicio NO ACTION: nunca arrastra por cascada.
+            b.HasOne(x => x.RestartNode).WithMany()
+                .HasForeignKey(x => x.RestartNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.DefinitionId, x.BpmnElementId }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkflowEdge>(b =>
+        {
+            b.Property(x => x.BpmnElementId).HasMaxLength(100);
+            b.Property(x => x.Name).HasMaxLength(300);
+            b.Property(x => x.ConditionExpression).HasMaxLength(500);
+            b.HasOne(x => x.Definition).WithMany(x => x.Edges)
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+            // Aristas -> nodos NO ACTION: el borrado del nodo lo maneja el servicio (borra sus
+            // aristas antes); la cascada de la definicion elimina todo el conjunto de una vez.
+            b.HasOne(x => x.SourceNode).WithMany()
+                .HasForeignKey(x => x.SourceNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.TargetNode).WithMany()
+                .HasForeignKey(x => x.TargetNodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.DefinitionId);
+        });
+
+        modelBuilder.Entity<WorkflowInstance>(b =>
+        {
+            // Concurrencia optimista (Version, ADR-0013): la incrementa el interceptor.
+            b.Property(x => x.Version).IsConcurrencyToken();
+            b.HasOne(x => x.Definition).WithMany()
+                .HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.TenantId, x.Status });
+            b.HasIndex(x => x.DefinitionId);
+        });
+
+        modelBuilder.Entity<WorkflowStepHistory>(b =>
+        {
+            b.Property(x => x.ApprovalResult).HasMaxLength(100);
+            b.Property(x => x.ApprovalComment).HasMaxLength(2000);
+            b.HasOne(x => x.Instance).WithMany()
+                .HasForeignKey(x => x.InstanceId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Node).WithMany()
+                .HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.InstanceId, x.IsCurrent });
+        });
+
+        // Asignacion por nodo (RQ11 / ADR-0035): que Dependencia/Cargo atiende un paso Task.
+        modelBuilder.Entity<WorkflowNodePolicy>(b =>
+        {
+            b.HasOne(x => x.WorkflowNode).WithMany()
+                .HasForeignKey(x => x.WorkflowNodeId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.OrgUnit).WithMany()
+                .HasForeignKey(x => x.OrgUnitId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.WorkflowNodeId, x.OrgUnitId }).IsUnique();
+        });
 
         modelBuilder.Entity<ModuleDefinition>(b =>
         {

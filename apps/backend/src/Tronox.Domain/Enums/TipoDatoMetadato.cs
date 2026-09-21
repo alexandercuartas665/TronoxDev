@@ -22,5 +22,12 @@ public enum TipoDatoMetadato
     Lista = 4,
 
     /// <summary>Selector Si / No.</summary>
-    Booleano = 5
+    Booleano = 5,
+
+    /// <summary>
+    /// Valor monetario (numero con formato de moneda). Anadido para paridad con el legacy, que
+    /// distingue Moneda de Numerico (ver ADR-008). La spec RF04 3.4.1 paso 6 listaba 6 tipos; este
+    /// es el septimo.
+    /// </summary>
+    Moneda = 6
 }

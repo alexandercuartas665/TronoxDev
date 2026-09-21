@@ -1,0 +1,215 @@
+@page "/modulo/workflows"
+@attribute [Authorize(Policy = "Perm:modulo/workflows:View")]
+@* Motor de flujos BPMN (RQ11, port del motor de ECOREX, ADR-010). Indice: KPIs + tarjetas por
+   proceso; abrir el disenador bpmn-js (componente FlowEditor) inline; crear flujo nuevo. Llave
+   de permisos = ruta de menu "modulo/workflows". *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Workflows
+@using Tronox.Web.Auth
+@inject IWorkflowDesignService DesignSvc
+@inject ICurrentPermissions Perms
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
+
+<PageTitle>Workflow Documental - TRONOX SGDEA</PageTitle>
+
+@if (_editorId is long editId)
+{
+    @* @key fuerza a Blazor a recrear (disponer + montar) el editor al cambiar de definicion
+       -- p.ej. tras importar o derivar borrador -- para que el canvas y el estado del panel
+       arranquen limpios en el nuevo flujo. *@
+    <FlowEditor @key="editId" DefinitionId="editId" Categories="_categories"
+                OnClose="CloseEditor" OnDefinitionSwitched="SwitchEditor" />
+}
+else
+{
+    <div class="tx-mod tx-dep tx-trdc">
+        <nav class="tronox-breadcrumb" aria-label="Ruta de navegación">
+            <a href="/inicio">Inicio</a><span>/</span>
+            <span>Workflow Documental</span><span>/</span>
+            <span class="current">Mis Workflows</span>
+        </nav>
+
+        <div class="tx-ent-headrow" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div>
+                <h1 class="tx-ent-title">Workflow Documental</h1>
+                <p class="tx-ent-sub" style="margin:2px 0 0">Diseña procesos BPMN, publícalos y ejecútalos. Motor de flujos con constructor visual.</p>
+            </div>
+            @if (_canCreate)
+            {
+                <button class="tx-ent-btn primary" @onclick="OpenNuevo"><i class="bi bi-plus-lg"></i> Nuevo flujo</button>
+            }
+        </div>
+
+        @if (_pageOk is not null) { <div class="tx-ent-alert ok"><i class="bi bi-check-circle"></i><span>@_pageOk</span></div> }
+        @if (_pageError is not null) { <div class="tx-ent-fielderr">@_pageError</div> }
+
+        @* KPIs *@
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px">
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">Flujos</div><div style="font-size:26px;font-weight:700">@(_index?.Kpis.Flows ?? 0)</div></div>
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">En marcha</div><div style="font-size:26px;font-weight:700">@(_index?.Kpis.RunningFlows ?? 0)</div></div>
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">Instancias activas</div><div style="font-size:26px;font-weight:700">@(_index?.Kpis.ActiveInstances ?? 0)</div></div>
+            <div class="tx-ent-card" style="padding:14px"><div class="tx-ent-hint">Ejecuciones del mes</div><div style="font-size:26px;font-weight:700">@((_index?.Kpis.MonthExecutions ?? 0).ToString("N0", _co))</div></div>
+        </div>
+
+        @* Buscador + tabs de categoria *@
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px">
+            <input class="tx-ent-input" style="max-width:280px" placeholder="Buscar por nombre o código..." @bind="_query" @bind:event="oninput" />
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                @foreach (var (cat, count) in CategoryTabs)
+                {
+                    var c = cat;
+                    <button class="tx-ent-btn sm @(_activeCat == c ? "primary" : "")" @onclick="@(() => _activeCat = c)">@(c ?? "Todos") <span class="tx-ent-badge sm">@count</span></button>
+                }
+            </div>
+        </div>
+
+        @* Tarjetas *@
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:14px">
+            @if (_index is null) { <div class="tx-ent-hint" style="padding:18px">Cargando...</div> }
+            else if (Filtered.Count == 0) { <div class="tx-ent-hint" style="padding:18px">No hay flujos. Crea el primero con "Nuevo flujo".</div> }
+            else
+            {
+                @foreach (var card in Filtered)
+                {
+                    var cc = card;
+                    <button class="tx-ent-card" style="padding:14px;text-align:left;cursor:pointer;border:1px solid var(--kt-border,#e9ebec)" @onclick="@(() => OpenEditor(cc.DefinitionId))">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                            <span class="mono tx-ent-hint">@card.ProcessCode · v@(card.Version)</span>
+                            <span class="tx-ent-badge @EstadoCss(card.Estado)">
+                                @if (card.RunningInstances > 0) { <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#0ab39c;margin-right:4px"></span> }
+                                @card.Estado
+                            </span>
+                        </div>
+                        <div style="font-weight:600;margin:6px 0 2px">@card.Name</div>
+                        <div class="tx-ent-hint" style="margin-bottom:8px">@(string.IsNullOrWhiteSpace(card.Category) ? "Sin categoría" : card.Category) · @card.NodeCount nodos</div>
+                        <div style="display:flex;gap:14px;font-size:12px">
+                            <span title="Instancias en curso"><i class="bi bi-play-circle"></i> @card.RunningInstances</span>
+                            <span title="Ejecuciones del mes"><i class="bi bi-calendar-check"></i> @card.MonthExecutions</span>
+                            <span title="Tasa de éxito"><i class="bi bi-graph-up"></i> @card.SuccessRate%</span>
+                        </div>
+                    </button>
+                }
+            }
+        </div>
+    </div>
+}
+
+@if (_showNuevo)
+{
+    <div class="modal-overlay" @onclick="@(() => _showNuevo = false)">
+        <div class="modal-dialog" style="max-width:560px;width:96%" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Nuevo flujo</h3><button class="modal-close" @onclick="@(() => _showNuevo = false)">&times;</button></div>
+            <div class="modal-body tx-mod tx-trdc">
+                @if (_nuevoError is not null) { <div class="tx-ent-fielderr">@_nuevoError</div> }
+                <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_nName" maxlength="200" placeholder="Aprobación de resoluciones" /></div>
+                <div class="tx-ent-field"><label>Categoría <span class="opt">(opcional)</span></label><input class="tx-ent-input" @bind="_nCategory" maxlength="100" list="wf-cats" placeholder="Comercial, Jurídico..." /></div>
+                <datalist id="wf-cats">@foreach (var c in _categories) { <option value="@c" /> }</datalist>
+                <div class="tx-ent-hint">Nace en estado Borrador. Al crearlo se abre el diseñador.</div>
+            </div>
+            <div class="modal-foot">
+                <button class="tx-ent-btn" @onclick="@(() => _showNuevo = false)" disabled="@_nBusy">Cancelar</button>
+                <button class="tx-ent-btn primary" @onclick="GuardarNuevo" disabled="@_nBusy">Crear y diseñar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string ModuleKey = "modulo/workflows";
+    private static readonly System.Globalization.CultureInfo _co = new("es-CO");
+    private long Actor => Tenant.UserId ?? 0;
+
+    private bool _canCreate, _canEdit;
+    private FlowIndexDto? _index;
+    private long? _editorId;
+    private string? _pageOk, _pageError;
+
+    private string _query = "";
+    private string? _activeCat;
+    private IReadOnlyList<string> _categories = [];
+
+    private bool _showNuevo, _nBusy;
+    private string? _nuevoError;
+    private string _nName = "", _nCategory = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var eff = await Perms.GetAsync();
+        _canCreate = eff.Can(ModuleKey, PermissionAction.Create);
+        _canEdit = eff.Can(ModuleKey, PermissionAction.Edit);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _index = await DesignSvc.ListForIndexAsync();
+        _categories = _index.Cards.Select(c => c.Category).Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c!).Distinct().OrderBy(c => c).ToList();
+    }
+
+    private IReadOnlyList<(string? Cat, int Count)> CategoryTabs
+    {
+        get
+        {
+            var cards = _index?.Cards ?? [];
+            var tabs = new List<(string?, int)> { (null, cards.Count) };
+            tabs.AddRange(cards.Where(c => !string.IsNullOrWhiteSpace(c.Category))
+                .GroupBy(c => c.Category!).OrderBy(g => g.Key)
+                .Select(g => ((string?)g.Key, g.Count())));
+            return tabs;
+        }
+    }
+
+    private IReadOnlyList<FlowCardDto> Filtered
+    {
+        get
+        {
+            var cards = (_index?.Cards ?? []).AsEnumerable();
+            if (_activeCat is not null) { cards = cards.Where(c => c.Category == _activeCat); }
+            if (!string.IsNullOrWhiteSpace(_query))
+            {
+                var q = _query.Trim().ToLowerInvariant();
+                cards = cards.Where(c => c.Name.ToLowerInvariant().Contains(q) || c.ProcessCode.ToLowerInvariant().Contains(q));
+            }
+            return cards.OrderBy(c => c.Name).ToList();
+        }
+    }
+
+    private static string EstadoCss(string estado) => estado switch
+    {
+        "En marcha" => "ok",
+        "Pausado" => "off",
+        "Archivado" => "off",
+        _ => ""
+    };
+
+    private void OpenEditor(long id) { _pageOk = null; _pageError = null; _editorId = id; }
+
+    private async Task CloseEditor() { _editorId = null; await Reload(); }
+
+    // Solo cambia la definicion abierta en el editor. NO recarga el indice aqui: durante un
+    // switch el indice no esta visible, y consultar el DbContext del circuito mientras el editor
+    // recien montado tambien lo consulta provoca acceso concurrente (rompe el circuito). El
+    // indice se recarga al cerrar el editor (CloseEditor).
+    private void SwitchEditor(long newId) => _editorId = newId;
+
+    private void OpenNuevo()
+    {
+        _nName = ""; _nCategory = ""; _nuevoError = null; _nBusy = false;
+        _pageOk = null; _pageError = null; _showNuevo = true;
+    }
+
+    private async Task GuardarNuevo()
+    {
+        _nBusy = true; _nuevoError = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_nName)) { _nuevoError = "El nombre es obligatorio."; return; }
+            var res = await DesignSvc.CreateDraftAsync(_nName.Trim(), string.IsNullOrWhiteSpace(_nCategory) ? null : _nCategory.Trim());
+            if (!res.IsOk) { _nuevoError = res.Error; return; }
+            _showNuevo = false;
+            OpenEditor(res.Value!.DefinitionId);
+        }
+        finally { _nBusy = false; }
+    }
+}

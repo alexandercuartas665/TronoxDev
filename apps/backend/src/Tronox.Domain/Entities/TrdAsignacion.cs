@@ -67,10 +67,17 @@ public class TrdAsignacion : TenantEntity
     public NivelClasificacion? NivelClasificacion { get; set; }
 
     /// <summary>
-    /// Metadatos del EXPEDIENTE (contexto = Expediente) que se diligencian al crear un expediente
-    /// bajo esta serie en esta dependencia (RF04 paso 6).
+    /// Metadatos de la asignacion: incluye los del EXPEDIENTE (contexto = Expediente, RF04 paso 6) y
+    /// los del DOCUMENTO (contexto = Documento, RF05) que ademas cuelgan de una tipologia. Se separan
+    /// por Contexto/TrdTipologiaId al proyectar.
     /// </summary>
     public ICollection<TrdMetadato> Metadatos { get; set; } = [];
+
+    /// <summary>
+    /// Tipos documentales (tipologias) de esta asignacion Dependencia+Serie (RF05 3.5.1). Cada uno
+    /// con su soporte, formato y metadatos de documento.
+    /// </summary>
+    public ICollection<TrdTipologia> Tipologias { get; set; } = [];
 
     /// <summary>
     /// Inactivacion en vez de borrado fisico (invariante 8). Sobre una version Vigente NO se puede

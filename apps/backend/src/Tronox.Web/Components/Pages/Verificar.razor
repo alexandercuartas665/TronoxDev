@@ -1,0 +1,126 @@
+@page "/v/{DocId:long}"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Firmas
+@inject IVerificacionFirmaService Verif
+
+@* Portal verificador PUBLICO de firma (RQ05 - RF04). Resuelve el documento por id (el que estampa el QR
+   y el XMP: verificar.tronox.co/v/{id}) y muestra solo datos probatorios (entidad, estado, hash, firmantes).
+   Sin sesion, cross-tenant, sin exponer el binario. *@
+
+<PageTitle>Verificacion de firma - TRONOX</PageTitle>
+
+<div class="vf-wrap">
+    <div class="vf-brand">
+        <span class="vf-logo"><i class="bi bi-patch-check-fill"></i></span>
+        <span class="vf-brand-t">TRONOX <b>SGDEA</b></span>
+        <span class="vf-brand-s">Verificacion de firma electronica</span>
+    </div>
+
+    @if (_cargando)
+    {
+        <div class="vf-card vf-center"><div class="vf-muted">Verificando documento #@DocId...</div></div>
+    }
+    else if (_res is null)
+    {
+        <div class="vf-card vf-center">
+            <div class="vf-badge vf-no"><i class="bi bi-x-circle"></i></div>
+            <div class="vf-h">No se encontro el documento</div>
+            <div class="vf-muted">No existe un documento con el identificador <b>#@DocId</b> en el sistema.</div>
+        </div>
+    }
+    else
+    {
+        <div class="vf-card">
+            <div class="vf-status @(_res.Firmado ? "ok" : "warn")">
+                <span class="vf-badge @(_res.Firmado ? "vf-ok" : "vf-wa")">
+                    <i class="bi @(_res.Firmado ? "bi-patch-check-fill" : "bi-hourglass-split")"></i>
+                </span>
+                <div>
+                    <div class="vf-h">@(_res.Firmado ? "Firma verificada" : "Documento sin firma completa")</div>
+                    <div class="vf-muted">@(_res.Firmado
+                        ? "Este documento fue firmado electronicamente y su firma esta registrada."
+                        : $"Estado de firma actual: {_res.EstadoFirma}.")</div>
+                </div>
+            </div>
+
+            <div class="vf-grid">
+                <div class="vf-k">Entidad</div>
+                <div class="vf-v">@(_res.Entidad)</div>
+                <div class="vf-k">Documento</div>
+                <div class="vf-v">@_res.DocumentoNombre</div>
+                <div class="vf-k">Identificador</div>
+                <div class="vf-v">#@_res.DocumentoId</div>
+                <div class="vf-k">Hash SHA-256 registrado</div>
+                <div class="vf-v vf-mono">@(string.IsNullOrWhiteSpace(_res.HashRegistrado) ? "-" : _res.HashRegistrado)</div>
+            </div>
+
+            @if (_res.Firmantes.Count > 0)
+            {
+                <div class="vf-sub">Firmantes</div>
+                @foreach (var f in _res.Firmantes)
+                {
+                    <div class="vf-firmante">
+                        <span class="vf-fic"><i class="bi bi-pen"></i></span>
+                        <div>
+                            <div class="vf-fn">@f.Nombre</div>
+                            <div class="vf-muted">
+                                @(f.Fecha is DateTimeOffset dt ? dt.ToLocalTime().ToString("dd MMM yyyy HH:mm") + " GMT" : "-")
+                                &middot; @f.TipoFirma
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
+            <div class="vf-note">
+                <i class="bi bi-info-circle"></i>
+                La integridad del documento se comprueba recalculando su hash SHA-256 y comparandolo con el
+                valor registrado que se muestra arriba. Este portal no almacena ni expone el contenido del documento.
+            </div>
+        </div>
+    }
+
+    <div class="vf-foot">TRONOX SGDEA &middot; Sistema de Gestion Documental Electronica de Archivo</div>
+</div>
+
+<style>
+    .vf-wrap { max-width: 640px; margin: 0 auto; padding: 40px 18px 60px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #0F172A; }
+    .vf-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+    .vf-logo { width: 38px; height: 38px; border-radius: 10px; background: #1D4ED8; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 20px; }
+    .vf-brand-t { font-size: 18px; font-weight: 700; }
+    .vf-brand-s { font-size: 12.5px; color: #64748B; margin-left: auto; }
+    .vf-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 18px; padding: 22px 24px; box-shadow: 0 10px 40px rgba(15,23,42,.06); }
+    .vf-center { text-align: center; }
+    .vf-status { display: flex; align-items: center; gap: 14px; padding-bottom: 18px; border-bottom: 1px solid #EEF2F7; margin-bottom: 16px; }
+    .vf-badge { width: 54px; height: 54px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+    .vf-ok { background: rgba(22,163,74,.12); color: #16A34A; }
+    .vf-wa { background: rgba(245,158,11,.14); color: #B45309; }
+    .vf-no { background: rgba(239,68,68,.12); color: #DC2626; margin: 0 auto 8px; }
+    .vf-h { font-size: 17px; font-weight: 800; }
+    .vf-muted { font-size: 13px; color: #64748B; }
+    .vf-grid { display: grid; grid-template-columns: 180px 1fr; gap: 8px 14px; margin: 4px 0 6px; }
+    .vf-k { font-size: 12.5px; color: #94A3B8; }
+    .vf-v { font-size: 13.5px; color: #0F172A; word-break: break-word; }
+    .vf-mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #334155; }
+    .vf-sub { font-size: 13px; font-weight: 800; color: #0F172A; margin: 18px 0 8px; }
+    .vf-firmante { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #F1F5F9; }
+    .vf-fic { width: 34px; height: 34px; border-radius: 9px; background: #EFF6FF; color: #2563EB; display: inline-flex; align-items: center; justify-content: center; }
+    .vf-fn { font-size: 13.5px; font-weight: 700; }
+    .vf-note { display: flex; gap: 10px; font-size: 12px; color: #64748B; background: #F8FAFC; border: 1px solid #EEF2F7; border-radius: 12px; padding: 12px 14px; margin-top: 18px; }
+    .vf-foot { text-align: center; font-size: 11.5px; color: #94A3B8; margin-top: 22px; }
+</style>
+
+@code {
+    [Parameter] public long DocId { get; set; }
+
+    private bool _cargando = true;
+    private VerificacionResultado? _res;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _res = await Verif.VerificarAsync(DocId); }
+        finally { _cargando = false; }
+    }
+}

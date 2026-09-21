@@ -1,0 +1,113 @@
+@* Firma directa (RQ05 - RF05, slice 1: calca FirmaDirectaHelper - sin stepper de 5 pasos, sin OTP).
+   El usuario logueado firma su propio documento Terminado: identidad (snapshot) + consentimiento (RF08)
+   y se sella el PDF (cajita visual + hash). El stepper OTP + la solicitud a otro firmante son del
+   modulo RQ05 completo (ver ADR-017). Reusa el diseno exp-modal-* de los modales del modulo. *@
+@using Tronox.Application.Firmas
+@inject IFirmaService Firmas
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+<div class="exp-modal-overlay open">
+    <div class="exp-modal-shell" style="max-width:500px">
+        <div class="exp-modal-header">
+            <h4 class="exp-modal-title"><i class="bi bi-patch-check" style="color:#7C3AED"></i>&nbsp; Firmar electrónicamente</h4>
+            <button class="exp-modal-close" @onclick="Cerrar"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="exp-modal-body">
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#475569">
+                <i class="bi bi-file-earmark-pdf" style="color:#94A3B8"></i>&nbsp; Documento: <strong>@NombreDoc</strong>
+            </div>
+
+            @if (_err is not null) { <div class="tx-ent-fielderr" style="margin-bottom:12px">@_err</div> }
+
+            @if (_snap is null && _err is null)
+            {
+                <div class="tx-ent-hint">Cargando identidad del firmante…</div>
+            }
+            else if (_snap is not null)
+            {
+                <div class="fir-id">
+                    <div class="fir-id-ava">@Iniciales(_snap.Nombre)</div>
+                    <div>
+                        <div class="fir-id-nom">@_snap.Nombre</div>
+                        <div class="fir-id-sub">@(string.Join(" · ", new[] { _snap.Cargo, _snap.Dependencia }.Where(s => !string.IsNullOrWhiteSpace(s))) is { Length: > 0 } cd ? cd : "Firmante autenticado en esta sesión")</div>
+                    </div>
+                </div>
+
+                <div class="fir-note">
+                    <i class="bi bi-shield-check" style="color:#16A34A"></i>
+                    <span>Se sellará el PDF con la <strong>cajita de firma</strong> (nombre, fecha/hora) y un <strong>hash SHA-256</strong> de integridad. Queda como versión oficial firmada. Firma directa: <strong>no requiere OTP</strong>.</span>
+                </div>
+
+                <label class="fir-consent">
+                    <input type="checkbox" @bind="_consent" />
+                    <span>Declaro que firmo electrónicamente este documento y acepto que quede sellado con mi identidad y la fecha y hora de la firma.</span>
+                </label>
+            }
+        </div>
+        <div class="exp-modal-footer">
+            <button class="exp-btn" @onclick="Cerrar" disabled="@_busy">Cancelar</button>
+            <button class="exp-btn exp-btn-primary" style="background:#7C3AED;border-color:#7C3AED" @onclick="Firmar" disabled="@(_busy || !_consent || _snap is null)">
+                <i class="bi bi-patch-check"></i>&nbsp; @(_busy ? "Firmando…" : "Firmar")
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .exp-modal-overlay { position:fixed; inset:0; z-index:1000008; background:rgba(15,23,42,.45); display:flex; align-items:flex-start; justify-content:center; padding:90px 20px 30px; }
+    .exp-modal-shell { background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.18); width:100%; max-height:calc(100vh - 120px); overflow-y:auto; }
+    .exp-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #E2E8F0; }
+    .exp-modal-title { font-size:16px; font-weight:800; color:#0F172A; margin:0; }
+    .exp-modal-close { width:32px; height:32px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; color:#475569; display:inline-flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; }
+    .exp-modal-close:hover { background:#F8FAFC; color:#DC2626; }
+    .exp-modal-body { padding:18px 20px; }
+    .exp-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid #E2E8F0; }
+    .fir-id { display:flex; align-items:center; gap:12px; border:1px solid #E2E8F0; border-radius:12px; padding:12px 14px; }
+    .fir-id-ava { width:42px; height:42px; border-radius:50%; background:#EDE9FE; color:#7C3AED; font-weight:800; font-size:15px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .fir-id-nom { font-size:14px; font-weight:700; color:#0F172A; }
+    .fir-id-sub { font-size:12px; color:#94A3B8; margin-top:1px; }
+    .fir-note { display:flex; gap:9px; align-items:flex-start; background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:11px 13px; margin-top:14px; font-size:12px; color:#166534; line-height:1.45; }
+    .fir-consent { display:flex; gap:9px; align-items:flex-start; margin-top:14px; font-size:12.5px; color:#334155; line-height:1.45; cursor:pointer; }
+    .fir-consent input { margin-top:2px; accent-color:#7C3AED; flex-shrink:0; }
+</style>
+
+@code {
+    [Parameter] public long DocId { get; set; }
+    [Parameter] public string NombreDoc { get; set; } = "";
+    [Parameter] public EventCallback<string?> OnCerrar { get; set; }
+
+    private FirmanteSnapshotDto? _snap;
+    private bool _consent;
+    private bool _busy;
+    private string? _err;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var res = await Firmas.GetFirmanteSnapshotAsync(DocId, Actor);
+        if (res.IsOk) { _snap = res.Value; }
+        else { _err = res.Error ?? "No se pudo preparar la firma."; }
+    }
+
+    private async Task Firmar()
+    {
+        _err = null; _busy = true;
+        try
+        {
+            var res = await Firmas.FirmarDirectoAsync(DocId, Actor, null, null);
+            if (res.IsOk) { await OnCerrar.InvokeAsync("Documento firmado electrónicamente."); }
+            else { _err = res.Error ?? "No se pudo firmar el documento."; }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync(null);
+
+    private static string Iniciales(string nombre)
+    {
+        var parts = nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) { return "?"; }
+        return parts.Length == 1 ? parts[0][..1].ToUpper() : (parts[0][..1] + parts[^1][..1]).ToUpper();
+    }
+}

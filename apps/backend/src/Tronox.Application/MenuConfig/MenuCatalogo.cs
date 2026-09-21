@@ -105,7 +105,8 @@ public static class MenuCatalogo
                         new("Topografía Física", "modulo/topografia-fisica", "bi-diagram-2", "RF06"),
                         // Rotulos con tilde EXACTOS del prototipo (contenido de UI, no identificador).
                         new("Configuración Radicación", "modulo/config-radicacion", "bi-hash", "RF01"),
-                        new("Configuración PQR", "modulo/config-pqr", "bi-megaphone", "RF01")
+                        new("Configuración PQR", "modulo/config-pqr", "bi-megaphone", "RF01"),
+                        new("Configuración de Correo (SMTP)", "modulo/configuracion-smtp", "bi-envelope-at", "RF01")
                     ]),
                     new("Organizacional", "req001-organizacional", "bi-diagram-3", null,
                     [
@@ -124,6 +125,8 @@ public static class MenuCatalogo
                 new("Versiones de TRD", "modulo/trd-versiones", "bi-clock-history", "RF01"),
                 new("Catalogo de Series y Subseries", "modulo/series-subseries", "bi-collection", "RF02"),
                 new("Listas Maestras", "modulo/listas-maestras", "bi-list-ul", "RF03"),
+                new("Niveles de Clasificacion Documental", "modulo/niveles-clasificacion", "bi-shield-lock", "RF01"),
+                new("Fondos Documentales", "modulo/fondos-documentales", "bi-archive", "RF02"),
                 new("Tabla de Retencion Documental", "modulo/trd", "bi-table", "RF04"),
                 new("Importar / Exportar", "modulo/trd-importar-exportar", "bi-cloud-arrow-up", "RF07"),
                 new("Plantilla Documentos", "modulo/plantilla-documentos", "bi-file-earmark-richtext", "RF10")
@@ -150,6 +153,7 @@ public static class MenuCatalogo
             new("Firma Electronica y Digital", "req005", "bi-pen", "RQ05",
             [
                 new("Mis Firmas", "modulo/firmas-mis", "bi-inbox", "RF10"),
+                new("Mi Firma", "modulo/firmas-mifirma", "bi-pencil", "RF03"),
                 new("Configuracion del Modulo de Firma", "modulo/firmas-config", "bi-gear", "RF01"),
                 new("Proveedores ECD", "modulo/firmas-proveedores", "bi-shield-lock", "RF14"),
                 new("Vigencia de Certificados", "modulo/firmas-vigencia", "bi-patch-check", "RF19"),
@@ -165,18 +169,17 @@ public static class MenuCatalogo
                 new("Plantillas", "modulo/formularios-plantillas", "bi-files", "RF05"),
                 new("Bandeja de Respuestas", "modulo/formularios-respuestas", "bi-inbox", "RF07"),
                 new("Respuestas Huerfanas", "modulo/formularios-huerfanas", "bi-inboxes", "RF07")
-            ], MenuNodeState.Disabled),
+            ], MenuNodeState.InDevelopment),
 
+            // RQ11 se construye como motor BPMN (port de ECOREX, ADR-010), NO como la cadena de
+            // pasos del vault. Slice 1: disenador bpmn-js (Mis Workflows) + ejecucion. Las pantallas
+            // de la vision de cadena de pasos (estados, biblioteca, monitoreo, config) se reintroducen
+            // cuando se construyan.
             new("Workflow Documental", "req011", "bi-diagram-2", "RQ11",
             [
                 new("Mis Workflows", "modulo/workflows", "bi-diagram-2", "RF03"),
-                new("Constructor de Workflow", "modulo/workflows-constructor", "bi-diagram-3", "RF03"),
-                new("Historial de Versiones", "modulo/workflows-versiones", "bi-clock-history", "RF08"),
-                new("Estados Personalizados", "modulo/workflows-estados", "bi-flag", "RF02"),
-                new("Biblioteca de Plantillas", "modulo/workflows-biblioteca", "bi-collection", "RF09"),
-                new("Panel de Monitoreo", "modulo/workflows-monitoreo", "bi-activity", "RF11"),
-                new("Configuracion del Modulo", "modulo/workflows-config", "bi-gear", "RF01")
-            ], MenuNodeState.Disabled)
+                new("Ejecucion de Flujos", "modulo/workflows-ejecucion", "bi-play-circle", "RF10")
+            ], MenuNodeState.Ready)
         ], []),
 
         // ========================================================= GESTION Y TRAMITE
@@ -186,14 +189,15 @@ public static class MenuCatalogo
             [
                 new("Panel de Control", "modulo/radicacion-panel", "bi-speedometer2", "RF12"),
                 new("Radicacion", "modulo/radicacion", "bi-inboxes", "RF11"),
-                new("Correos por Revisar", "modulo/radicacion-correos", "bi-envelope", "RF04")
+                new("Correos por Revisar", "modulo/radicacion-correos", "bi-envelope", "RF04"),
+                new("Portal Ciudadano", "modulo/portal-abrir", "bi-globe", "RF03")
             ]),
 
             new("Gestion y Tramite", "req010", "bi-list-task", "RQ10",
             [
-                new("Mis Tareas", "modulo/tramite-mis-tareas", "bi-check2-square", "RF12"),
+                new("Tramites (mis tareas)", "modulo/tramite-mis-tareas", "bi-check2-square", "RF12"),
                 new("Firmar", "modulo/tramite-firmar", "bi-pen", "RF08")
-            ], MenuNodeState.Disabled),
+            ], MenuNodeState.InDevelopment),
 
             new("PQRSD", "req015", "bi-megaphone", "RQ15",
             [

@@ -1,0 +1,24 @@
+@page "/modulo/config-pqr"
+@attribute [Authorize(Policy = "Perm:modulo/config-pqr:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject NavigationManager Nav
+
+@* RQ09 - RF01. "Configuracion PQR" quedo absorbida por "Configuracion Radicacion" (calcado 1:1 de
+   rad_config.aspx, pantalla unica de 7 secciones). Prioridades y Portal Web viven ahora alli. Esta
+   ruta se conserva por compatibilidad del menu y redirige a la seccion correspondiente. *@
+
+<PageTitle>Configuracion PQR - TRONOX SGDEA</PageTitle>
+
+<div style="padding:24px;color:#566980;font-family:Poppins,sans-serif">
+    Redirigiendo a <a href="/modulo/config-radicacion?sec=prioridades">Configuracion de Radicacion</a>...
+</div>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Nav.NavigateTo("/modulo/config-radicacion?sec=prioridades", forceLoad: false);
+        }
+    }
+}

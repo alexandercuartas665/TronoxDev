@@ -56,13 +56,319 @@ Puertos de desarrollo: 5443 postgres · 6390 redis · 5683/15683 rabbitmq · 900
 | RF01 | **Versiones de TRD** | HECHO - marco legal; una sola Vigente por tenant (indice unico parcial + flip a Historico al activar), maquina de estados (En Construccion/Vigente/Historico/Inactivo), sin borrado fisico, convalidacion solo si Publica. Migrado del legacy `doc_versionesTRD.aspx` (2026-07-27) |
 | RF02 | **Catalogo de Series y Subseries** | HECHO - arbol autorreferencial (jerarquia ilimitada), codigo unico por nivel + nombre unico entre hermanos, inactivacion sin borrado fisico, ciclos fail-closed. Migrado del legacy `doc_catalogoTRD.aspx` (2026-07-27) |
 | RF03 | **Administrador de Listas** | HECHO - maestro-detalle Lista/Opciones; nombre unico por tenant, clave (interna, nueva) unica en la lista, orden reordenable, usabilidad >= 2 activas, sin borrado fisico. Migrado del legacy `doc_adminlistas.aspx` (2026-07-27) |
-| RF04 | **Construccion de la TRD (cruce Dependencia + Serie)** | HECHO (nucleo) - CCD automatico, personalizacion por dependencia, tiempos/disposicion/clasificacion, metadatos de expediente; solo-lectura por estado de version (RF01 3.1.3). Puente Abrir/Ver TRD desde RF01. Migrado del legacy `doc_tablaRetencionDocumental.aspx` (2026-07-28). `modo_codigo_serie` descartado (ADR-006). Tipologias -> RF05 |
-| RF05 | Tipologias Documentales | PENDIENTE - completa la composicion documental de RF04 |
+| RF04 | **Construccion de la TRD (cruce Dependencia + Serie)** | HECHO - CCD automatico, personalizacion por dependencia, tiempos/disposicion/clasificacion, metadatos de expediente; solo-lectura por estado de version (RF01 3.1.3). Puente Abrir/Ver TRD desde RF01. **UI rehecha list-first** (lista "Gestion de TRD por dependencia" con Estado TRD DERIVADO + Ver/Crear + workspace), fiel al legacy `doc_tablaRetencionDocumental.aspx` (2026-08-01, ADR-007). `modo_codigo_serie` descartado (ADR-006) |
+| RF05 | **Tipologias Documentales** | HECHO - tipos documentales por asignacion (nombre, soporte Fisico/Electronico/Hibrido, formato, obligatorio en expediente) + metadatos de documento (contexto Documento, colgados de la tipologia). Embebido en la pantalla de RF04 igual que el legacy (2026-08-01, ADR-007) |
+
+**Wizards fieles al legacy (2026-08-04):** el modal "Crear" simple se reemplazo por los dos
+asistentes que trae el fuente VB.NET `doc_tablaRetencionDocumental.aspx`:
+`pnlModalSubserie` (wizard **Nueva Serie/Subserie de 4 pasos**: Datos basicos -> Caracterizacion
+-> Metadatos de expediente -> Tipologias, cada una con sus metadatos de documento) y
+`pnlModalTipologia` (wizard **Tipologia de 2 pasos**: Configuracion -> Confirmar, en modo alta y
+edicion). El boton `+` contextual decide subserie vs tipologia segun la estructura de la serie,
+igual que el legacy. `pnlModalProcedimiento` NO se construye (huerfano en el legacy: el
+procedimiento se edita inline en el paso 2). Import CSV/JSON del paso 4 diferido a RF07.
+Verificado end-to-end en local: el wizard crea asignacion + metadato + tipologia, genera el CCD
+(`100.150`) y respeta el aislamiento por tenant. Al verificar se detecto que la BD dev estaba
+atrasada (faltaba la migracion RF05 `trd_tipologia_id`); se aplico. Build verde, 513 tests.
 | RF06 | **Topografia Fisica** | HECHO - jerarquia de niveles configurable + arbol de elementos con codigo topografico automatico (siglas raiz->hoja), ocupacion y estados. Migrado del legacy `NEWFRONT_doc_bodegas.aspx` (2026-07-28). Menu en GENERAL, bajo Datos de la Entidad (decision del usuario) |
 | RF07..RF10 | (resto de RQ02) | PENDIENTE |
 
-**Del resto (RQ03 a RQ17): nada construido.** El menu muestra las opciones del arbol canonico,
-pero la gran mayoria llevan a una ficha de "modulo pendiente". **Menu completo != sistema construido.**
+**Del resto (RQ05 a RQ17): nada construido** (salvo lo de RQ03/RQ04 abajo). El menu muestra las
+opciones del arbol canonico, pero la mayoria llevan a una ficha de "modulo pendiente".
+**Menu completo != sistema construido.**
+
+---
+
+## 2.c Fase 3 - Oleada Expedientes/Documentos (RQ03 + RQ04) - primeros slices
+
+Migracion fiel de 4 modulos del legacy VB.NET (`C:\Desarrollo\core\...\Modulos\`), en este orden
+(2026-08-04). Todos verificados end-to-end en local y con tests de reglas puras.
+
+| Modulo | Legacy | Ruta / menu | Estado |
+|---|---|---|---|
+| **Mis Expedientes** (RQ03 - RF01/RF03/RF04/RF10) | `exp_bandeja` | `modulo/expedientes-mios` (Gestion Integral de Expedientes) | HECHO (slice bandeja+crear) - codigo estructurado `[dep]-[serie]-[anio]-[consec6]` con `TenantSequence`, herencia de clasificacion SOLO ELEVAR (RF10), metadatos EAV (DAT-04), inmutabilidad de la asignacion de TRD (DAT-03), **fail-closed por clasificacion resuelto en el servicio**. Eliminacion logica. Verificado: `100-150-2026-000001`. Diferido: detalle completo, cierre/reapertura+indice/firma, transferencias/fases, compartir, ubicacion, alertas, FUID/rotulos/exportadores, vistas y columnas personalizadas |
+| **Mis Documentos** (RQ04 - RF15/RF16) | `doc_bandeja` | `modulo/documentos` (Gestion Integral de Documentos) | HECHO (slice borradores+archivar) - 3 bandejas; crear borrador (binario en **object storage Azure Blob** o Fisico), ver, editar, descargar, eliminar (unico borrado fisico), y **Archivar** en expediente (hereda asignacion TRD DAT-03, foliacion inmutable). Binario NUNCA en BD (invariante 9). Verificado con Azurite. Diferido: compartir (RF07), versionado (RF03), busqueda avanzada (RF14), OCR, editor/plantillas WYSIWYG (RF08/RF10), restricciones (RF13), referencias (RF17) |
+| **Mis Tareas** (RQ04 - RF11/RF12) | `mis_tareas` | `modulo/tramite-mis-tareas` (Gestion y Tramite) | HECHO - solicitar Revision/Aprobacion desde un documento (RF11) + bandeja Pendientes/Historial con chips + Tramitar (Aprobar/Devolver/Rechazar, comentario obligatorio al devolver/rechazar). **La validacion NO cambia el estado del documento** (RF11 CA-1): flujo de metadatos paralelo. Solo el asignado responde. Diferido: circuitos secuencial/paralelo, notificacion por correo, badge en tiempo real |
+| **Plantillas Documentales** (RQ04 - RF09) | `doc_plantillasDocumentales` | `modulo/formularios-plantillas` (Motor de Formularios, **eleccion del usuario**) | HECHO (slice CRUD) - plantilla con contenido y variables `{{...}}`, asociacion N:N a tipologias, estado Activa/Inactiva (sin borrado fisico), conteo de variables automatico. Catalogo de variables Sistema/Expediente/Firma + **Terceros deshabilitado hasta RQ07 (DAT-02)**. Diferido: editor WYSIWYG (CKEditor/TipTap) y consumo RF10 (crear documento desde plantilla) |
+
+**Object storage = Azure Blob Storage** (ADR-009, eleccion del usuario, paridad con el legacy; NO
+S3/MinIO como decia CLAUDE.md). Abstraccion `IObjectStorage` + `AzureBlobObjectStorage`; local con
+**Azurite** (`tronox-azurite`). **Pendiente: reflejar ADR-009 en el vault + CLAUDE.md.**
+
+**Menu:** se habilitaron los modulos padre `req008` (Motor de Formularios) y `req010` (Gestion y
+Tramite) de Disabled -> InDevelopment para que Plantillas y Mis Tareas salgan en el sidebar (sus
+items hermanos aun sin construir van al placeholder, como en Expedientes/Documentos).
+
+**Ubicacion de Plantillas:** el vault la pone en Configuracion Documental (RQ02); el usuario eligio
+Motor de Formularios (`modulo/formularios-plantillas`). Decision registrada aqui.
+
+4 migraciones EF nuevas (`ExpedientesRq03Bandeja`, `DocumentosRq04`, `ValidacionesRq04Rf12`,
+`PlantillasRq04Rf09`). Build verde, 540 tests.
+
+---
+
+## 2.d Fase 4 - Ports desde ECOREX.tareas (RQ08 Forms + RQ11 Workflow BPMN)
+
+Ports del proyecto hermano `C:\DesarrolloIA\ECOREX.tareas` (Guid->long, sin las dependencias
+podadas). Ambos verificados end-to-end en local. **Commit `5ba938b` + DESPLEGADOS a prod
+(2026-08-05):** migraciones `FormulariosRq08` + `WorkflowBpmnRq11` auto-aplicadas, 10 tablas
+nuevas, 30 contenedores (sin caer vecinos), HTTP 200, 0 reinicios. Permisos concedidos a los
+roles admin de los 2 tenants de prod (formularios + workflows + workflows-ejecucion).
+Backup previo: `backup_pre_rq08_rq11_20260805_092016.sql.gz`.
+
+### RQ08 - Motor de Formularios Dinamicos (`modulo/formularios`) - PORT FIEL
+Primer slice recortado (commit 5ba938b) fue calificado "mediocre" por el usuario: la idea era un
+port MILIMETRICO. Se REHIZO como port fiel de ECOREX (JSON-por-respuesta, ADR-011; sobre tx-*, no
+copiando el CSS de ECOREX; decision del usuario).
+
+- **Dominio a fidelidad:** los 28 tipos de control (incl. CascadeConfigurator), FormQuestion con
+  todos los campos (origen de datos/lookup, calculados, cascada, visibilidad por rol, formato,
+  subform), FormDefinition transaccional + modulo + CardLayout, FormResponse con campos de registro;
+  5 entidades nuevas: FormToken, FormRecordLink, WorkflowNodeForm, FormFlowLink y FormFieldCondition
+  (regla condicional AUTOCONTENIDA que reemplaza el motor de Reglas podado).
+- **Application:** motores puros (FormExpressionEvaluator calculados, FormGridCalculator + xlsx,
+  Cascade config+runtime), validador completo (28 tipos + grilla por columna), evaluador de
+  condiciones puro, servicios `FormDefinitionService` (913) + `FormResponseService` (571) completos
+  (CRUD + move/duplicate, transaccional + consecutivo via ISequenceService, bandeja + export,
+  maestro-detalle), tokens (SHA-256), framework de lookups (sin fuentes: diferidas).
+- **Web (tx-*):** catalogo TARJETAS + TABLA (toggle, 4 KPIs, tabs Activos/Archivados, buscador,
+  archivar/restaurar); disenador 3-COLUMNAS (paleta + arbol, barra de dispositivo, drag-drop,
+  pestanas Diseno/Datos/Reglas, todos los contenedores/tipos, duplicar, publicar por URL); renderer
+  de los 28 tipos (grilla dinamica, subform, cascada, firma/GPS/archivo, condiciones en vivo,
+  autosave, anular); bandeja de modulo `/m/{code}`; impresion `/formularios/imprimir/{id}`.
+- Migracion `FormsFidelidadRq08`. Build verde, 334 tests Application (incl. condiciones). Verificado
+  e2e: catalogo tarjetas+tabla, disenador 3-col, llenar -> validar -> respuesta persistida (id 5).
+
+**Diferido (con nota, no por recorte unilateral):** lookups de Tercero (hasta RQ07); Item/
+DataContainer (modulos de ECOREX que no aplican a TRONOX); visor publico anonimo `/f/{token}`
+(necesita plumbing de tenant-ambiente sin sesion); binding runtime formulario<->paso de flujo BPMN
+(entidades listas); VLOOKUP de grilla. Ruido menor: 404 de choices.js/flatpickr (plugins Velzon).
+**Pendientes de gobernanza: ADR del CSS tx-* (se aparta de Velzon-only para el diseñador) + vault.**
+
+### RQ11 - Workflow Documental = motor BPMN (`modulo/workflows`) - **ADR-010**
+El usuario eligio **portar el motor BPMN de ECOREX** (canvas bpmn-js), que **contradice la spec
+RQ11 v2.0 del vault** (cadena de pasos estilo HubSpot, que rechaza BPMN explicitamente). Decision
+documentada en **ADR-010**; el vault queda por actualizar.
+
+- **Dominio (6):** `WorkflowDefinition` (XML BPMN + version inmutable), `WorkflowNode`/`Edge`
+  (grafo materializado), `WorkflowInstance` (IVersioned), `WorkflowStepHistory` (token = filas
+  append-only IsCurrent), `WorkflowNodePolicy` (asignacion por OrgUnit). Enums ya venian del clon.
+- **Application:** motor `WorkflowEngine` (avance en cascada tope 50, compuertas auto-resueltas por
+  `approval == 'X'`, reinicios por RestartNode, rechazo con reactivacion, cierre implicito),
+  logica pura (`BpmnProcessParser`/`BpmnXmlWriter`/`WorkflowConditionEvaluator`/`WorkflowAutoLayout`),
+  `WorkflowDesignService` (backend del editor bpmn-js), resolver de asignacion por organigrama
+  (`OrgAssigneeTree` puro + `NodeAssigneeResolver` + `WorkflowNodePolicyService`). Hook de reglas
+  = `NoOpWorkflowRuleHook`.
+- **Podas respecto de ECOREX:** acople a TaskItem/Tareas-Kanban (eliminado), motor de Reglas
+  (NoOp), formularios/agentes por nodo (diferidos), `BpmnXmlMerger` (no portado -> las mutaciones
+  regeneran el XML en vez de mergear).
+- **Web:** `Workflows.razor` (indice KPIs+tarjetas + editor embebido), `FlowEditor.razor` (canvas
+  bpmn-js + paneles config/asignacion/condiciones), `WorkflowRuntime.razor` (arrancar+atender).
+  bpmn-js v8.8.2 vendorizado en `wwwroot/lib/bpmnio/` (~484 KB) + `wwwroot/js/tronox-bpmn.js`.
+  Menu `req011` Disabled -> Ready (2 hojas: Mis Workflows + Ejecucion).
+- Migracion `WorkflowBpmnRq11`. Build verde, **14 tests puros nuevos**. Verificado e2e: crear ->
+  disenar (canvas monta, paleta, shapes) -> importar BPMN -> publicar -> arrancar instancia ->
+  Task -> compuerta enruta por condicion -> Task -> End -> instancia Completed.
+- **Defectos corregidos en verificacion:** (a) `AddStep` usaba navegacion en vez de FK escalar
+  para el nodo AsNoTracking (habria insertado nodos duplicados con IDs long); (b) `v@x.Version`
+  renderizaba literal; (c) el editor no cambiaba de definicion tras importar por acceso concurrente
+  al DbContext del circuito (se quito el `Reload` del switch y se anadio `@key`).
+- **Limitacion conocida (chip):** importar un `.bpmn` SIN seccion de diagrama (DI) deja el lienzo
+  en blanco (bpmn-js necesita coordenadas); el motor si computa el layout. Los flujos dibujados en
+  bpmn-js siempre traen DI y renderizan bien.
+
+---
+
+## 2.e Fase 5 - Configuracion de Radicacion (RQ09 RF01)
+
+Construido 2026-08-05, **config-first** (RQ09 la operacion no opera aun). El usuario pidio migrar
+`.../Radicacion/rad_config.aspx`; **ese archivo NO existe** en el legacy (la carpeta `Radicacion/`
+es el tablero del bot de facturas DIAN, dominio ERP; la radicacion documental legacy es
+`doc_ventanillaunica.aspx`, la operacion). Se construyo **fiel al vault RQ09 RF01** (fuente de
+verdad, que ademas ubica la config en Config General). Ubicacion: Config General y Organizacional
+-> General -> **Configuracion Radicacion** (`modulo/config-radicacion`, el item ya existia como
+placeholder; ahora desarrollado). Estilo tx-*, NO el legacy.
+
+- **Dominio:** 8 enums + 5 entidades: `RadicacionConfig` (singleton: consecutivos RF01-1 + alertas
+  SLA RF01-3), `TipoComunicacion` (RF01-2), `BuzonCorreo` (RF01-4, clave AES-256), `NotificacionRadicacionConfig`
+  (RF01-5), `MigracionRadicadosLog` (RF01-6).
+- **Application:** `RadicacionConfigService` (GetConfig crea+siembra 13 tipos base + 10 eventos),
+  `TipoComunicacionService` (CRUD, base no eliminable), `BuzonCorreoService` (CRUD, ISecretProtector).
+- **Infra:** 5 tablas, migracion `ConfigRadicacionRf01`, FKs a niveles/dependencias/entidad.
+- **Web:** `ConfigRadicacion.razor` (1228 lineas) con 6 pestañas tx-* (Consecutivos con preview,
+  Tipos, Alertas SLA, Buzones, Notificaciones, Migracion). Verificado e2e: 13 tipos base + config +
+  10 eventos sembrados al primer acceso.
+- **Diferido (integracion posterior, no recorte de UI):** worker de captura de correos IMAP/Graph;
+  proceso asincrono de importacion de migracion historica; lectura del ultimo consecutivo del emisor
+  de secuencias (hoy 0). Documentado en el vault: `REQ009/RQ09_RF01_Implementacion.md`.
+
+---
+
+## 2.f Administrador de Menu - mas interaccion en el editor (2026-08-06)
+
+Peticion del usuario: mas control en la herramienta de configuracion del menu. El backend
+(`MenuConfigService`) ya tenia `CreateNodeAsync`/`MoveNodeAsync`/`ToggleNodeVisibilityAsync`;
+el trabajo fue exponerlo mejor en `ConfiguracionMenu.razor` (editor de la vista):
+
+- **Crear subniveles:** el boton "+" de un contenedor antes SOLO creaba Items. Ahora una Section o
+  Subgroup ofrece **dos** acciones: "Agregar subnivel" (crea Subgroup anidado) y "Agregar elemento"
+  (Item). Las reglas de `MenuNodeKindRules` ya permitian Subgroup dentro de Section/Subgroup.
+- **Mover a otro grupo (explicito):** boton "Mover a otro grupo" en Items y Subgroups que abre un
+  modal con selector de contenedores validos (ruta "Seccion / Subgrupo" para desambiguar), excluyendo
+  el propio nodo, su padre actual y sus descendientes. Complementa el drag-drop (fragil en Blazor).
+- **Sin eliminacion, solo ocultar (peticion "de momento"):** se quito el boton papelera de las filas
+  del arbol. Queda el toggle de visibilidad (ocultar/mostrar), que aplica a cualquier nodo: grupo,
+  subnivel o elemento. `DeleteNodeAsync` queda en el codigo, inactivo, para reactivar luego.
+
+Build verde. Pendiente: e2e visual (requiere login, que no automatizo por no teclear claves).
+
+---
+
+## 2.g Port Radicacion legacy VB.NET - Modulo 1: Panel de Control (2026-08-06)
+
+Arranca el port MILIMETRICO del modulo de Radicacion desde el legacy VB.NET
+(`C:\Desarrollo\core\Bootstrap\Formularios\Modulos\Radicacion\`), modulo por modulo, al sistema
+nuevo. Decisiones del usuario: dominio REAL milimetrico; legacy manda y solo se adaptan invariantes;
+config PQR (rad_config) se reconcilia al llegar. El legacy es SOLO LECTURA (nunca se escribe en el).
+
+**Modulo 1 - Panel de Control** (legacy `rad_panel.aspx` + `rad_panel_op.ashx` -> `modulo/radicacion-panel`,
+nodo de menu ya existente en MenuCatalogo bajo Gestion y Tramite / Ventanilla Unica). Dashboard de
+SOLO LECTURA. Spec milimetrica del legacy en `scratchpad/spec_rad_panel.md`.
+
+- **Dominio:** `Radicado` (espejo RAD_RADICADOS), `RadicadoTrazabilidad` (RAD_TRAZABILIDAD, append-only),
+  `CorreoRecibido` (RAD_CORREOS) + 5 enums. Adaptaciones de invariante: tenant_id + filtro global;
+  dependencias/funcionarios como FK (OrgUnit/TenantUser) en vez de codigos; remitente inline
+  (RemitenteNombre/Anonimo) hasta que exista RQ07 Terceros (entonces FK RemitenteTerceroId).
+- **Infra:** DbSets + config EF (indices por tenant, FK NO ACTION, trazas cascade) + migracion
+  `RadicacionOperativaPanel` (3 tablas).
+- **Application:** `RadicacionPanelService.GetDashboardAsync(desde,hasta)` = replica de AccDashboard
+  (6 KPIs, 7 series, actividad) en LINQ parametrizado. QUIRKS del legacy conservados a proposito: los
+  KPIs son "actuales/hoy" e ignoran el rango; actividad = ultimos 6.
+- **Web:** `PanelRadicacion.razor` (`/modulo/radicacion-panel`): selector de periodo (5 chips + rango),
+  6 tarjetas KPI, 7 graficos SVG/CSS a mano (hbars, donut, gauge SLA, lineas, vbars) fieles al legacy,
+  tabla de actividad. Estilo tx-/tema (no el CSS legacy). Pop-up de detalle = marcador hasta portar
+  rad_detalle.
+- **Seed demo LOCAL** (solo tenant 1, `scratchpad/seed_panel_demo.sql`): 4 tipos, 3 dependencias,
+  36 radicados, 5 trazas, 3 correos. Para probar el panel con datos (arranca vacio en prod).
+
+Build verde. Diferido honesto: el panel se llena con datos reales al portar rad_radicar/rad_bandeja;
+el filtro de visibilidad RF11-8 se integra con la bandeja.
+
+---
+
+## 2.h Port Radicacion - Modulo 2: Bandeja + Distribucion + Detalle (2026-08-06)
+
+Segundo lote del port de Radicacion (rad_bandeja + dependencias). Decision del usuario: bandeja de
+listado completa + **Distribuir funcional** + **rad_detalle portado milimetrico** (no marcador).
+Responder / Registrar envio / + Nuevo Radicado quedan como marcadores hasta portar rad_radicar /
+rad_salida. Specs milimetricas en scratchpad (spec_rad_bandeja / spec_rad_detalle / spec_distribucion).
+
+- **Dominio (delta):** `RadicadoTarea` (RAD_TAREAS), `RadicadoArchivo` (RAD_RADICADO_ARCHIVOS ->
+  object storage, invariante 9, sin BLOB), `RadicadoComunicacion` (RAD_COMUNICACIONES),
+  `RadicadoVisibilidadPermiso` (RAD_PERMISOS_VISIBILIDAD) + enums `RadicadoTareaEstado`/`VisibilidadNivel`.
+  Columnas nuevas en `Radicado`: descripcion, remitente (tipo_doc/documento/email/telefono), nivel_reserva,
+  folios, num_anexos, soporte, radicado_relacionado (self-FK padre/salidas), es_respuesta_definitiva,
+  estado/canal_envio. Migracion `RadicacionBandejaDistribucion` (4 tablas + columnas).
+- **Application:** `RadicacionVisibilidadService` (resolver fail-closed, ADR-013),
+  `RadicacionBandejaService` (listado con 6 tabs + filtros + contadores + catalogos), `RadicacionDistribucionService`
+  (distribuir/reasignar en UNA transaccion, FK a OrgUnit/TenantUser, traza DISTRIBUIR/REASIGNAR),
+  `RadicadoDetalleService` (DTO info+docs+traza+tareas+comunicaciones+padre+salidas). LINQ parametrizado.
+- **Web:** `/modulo/radicacion` (Radicacion.razor): tabs con contadores, filtros, grilla E/S/I, export CSV,
+  acciones Ver/Distribuir; modal Distribuir funcional. Detalle como drawer `RadDetalle.razor` (5 pestanas).
+  Marcadores: Responder/Nuevo (rad_radicar), Registrar envio (rad_salida), visor de documentos (upload).
+- **ADR-013:** visibilidad fail-closed - el permiso del modulo es el gate; la visibilidad es tightening
+  aditivo; error -> Propios, nunca Todos (invierte el fail-open del legacy).
+
+Build verde. Quirks del legacy NO replicados: fail-open, SQL concatenado, sin transaccion, SELECT MAX(REG),
+funcionario por nombre, BLOB en BD, callbacks window.parent.
+
+---
+
+## 2.i Port Radicacion - Modulo 3: Correos por Revisar + fundaciones (2026-08-06)
+
+Tercer lote del port de Radicacion (rad_correos). Decisiones del usuario: portar el calendario habil
+ahora (festivos reales) y el boton "Simular correo" para datos de prueba. El flujo "radicar desde
+correo" es el PRIMER camino que CREA radicados, asi que arrastra fundaciones compartidas con
+rad_radicar. Spec en scratchpad/spec_rad_correos.md.
+
+**Fundaciones (Fase 1):**
+- **Calendario habil (RQ01):** `FestivosColombia` (calculo puro Ley Emiliani + Pascua/Computus),
+  entidad `DiaFestivo`, `CalendarioHabilService` (EsHabil/ProximoHabil/SumarDiasHabiles + siembra por
+  anio), pagina `/modulo/calendario-habil`.
+- **Consecutivo:** se REUTILIZA `ISequenceService` (SELECT FOR UPDATE, scope tenant/tipo/anio -> reinicio
+  anual por codigo). No se duplico logica.
+- **`RadicadorService`:** orquestador que crea el Radicado (consecutivo + vencimiento SLA via calendario +
+  numero Sigla+Cod+Anio+consec). Reutilizable por correos y rad_radicar.
+
+**Correos por Revisar (Fase 2):**
+- **Dominio:** `CorreoRecibido` extendida (message_id, cuerpo tratado, tipo_detectado, confianza,
+  duplicado/ref, modo, radica_en, num_adjuntos, remitente_email...), `CorreoRecibidoAdjunto`
+  (object storage), `CorreoDescartado` (log append-only). Migracion `CalendarioHabilYCorreos` (3 tablas).
+- **Application:** `RadicacionCorreosService` (listar 2 tabs + contadores, detalle, radicar/vincular
+  [usa RadicadorService, RF04-5 cierra termino], editar, descartar con causal, recuperar, simular).
+- **Web:** `/modulo/radicacion-correos` (bandeja dos paneles + lectura + modales editar/descartar).
+
+Diferido honesto: captura IMAP/Graph (worker), descarga/visor de adjuntos (necesita upload), tercero
+RQ07 (remitente inline). Quirks legacy NO replicados: BLOB, SQL concatenado, fail-open, sin transaccion,
+MAX(REG), consecutivo sin bloqueo. Build verde.
+
+---
+
+## 2.j Port Radicacion - Configuracion PQR (2026-08-06)
+
+Port de las dos secciones que faltaban de rad_config (Prioridades + Portal Web). Decision del usuario:
+PANTALLA APARTE (no extender "Configuracion Radicacion"). El resto de rad_config ya estaba cubierto por
+la Config Radicacion RF01 (buzones ya tenian puerto+clave AES; el numero se compone con Entidad.Sigla en
+RadicadorService, no requiere campos extra). Spec en scratchpad/spec_rad_config.md.
+
+- **Dominio:** `RadPrioridad` (RAD_PRIORIDADES, base no eliminable) + `RadPortalConfig` (RAD_PORTAL_CONFIG,
+  singleton, con Slug para resolver el tenant server-side en el portal publico). Migracion
+  `ConfigPqrPrioridadesPortal` (2 tablas).
+- **Application:** `ConfiguracionPqrService` (prioridades CRUD + siembra base Normal/Alta/Urgente; portal
+  config get/save; toggles de tipos publicados via TipoComunicacion.HabilitadoWeb).
+- **Web:** `/modulo/config-pqr` (ConfiguracionPqr.razor): pestanas Prioridades y Portal Web + tipos publicados.
+
+Build verde.
+
+---
+
+## 2.k Port Radicacion - Portal Ciudadano (2026-08-06)
+
+Port de rad_portal (superficie PUBLICA: radicar PQRSD + consultar estado, sin login). Alcance elegido:
+"funcional + refuerzos base". Spec en scratchpad/spec_portal_ciudadano.md. ADR-014 (tenant por slug).
+
+- **Dominio:** `Radicado` += PortalToken, RespuestaPublica, EsRespuestaPublica. Migracion
+  `PortalCiudadanoRadicadoTokens`.
+- **Application:** `PortalCiudadanoService` - ResolverTenant por SLUG (IgnoreQueryFilters), GetPortal
+  (branding + tipos publicados via HabilitadoWeb), Radicar (reutiliza RadicadorService, canal Web, token),
+  Consultar (numero+documento, solo datos publicos: estado, dependencia, semaforo, timeline publico,
+  respuesta publica). Anonimos sin seguimiento.
+- **Web:** `/portal/{slug}` (PortalCiudadano.razor, AllowAnonymous + EmptyLayout): radicar + consultar.
+  Cada llamada corre bajo `AmbientTenantContext.Begin(tenant)` (aislamiento sin usuario, ADR-014).
+
+Refuerzos DIFERIDOS: reCAPTCHA v3 real (toggle listo, llaves despues), rate-limit Redis, upload de
+adjuntos a object storage. Quirks legacy NO replicados: tenant por query manipulable, captcha casero
+System.Drawing, SQL concatenado, BLOB, rate-limit en memoria. Build verde.
+
+---
+
+## 2.l Port Radicacion - Mis Tareas / Bandeja de Tramites (2026-08-06)
+
+Port de rad_tramites (RF07-3). Renombrado a "Tramites (mis tareas)" en el menu (decision del usuario).
+Primer modulo con el VISUAL CALCADO del legacy desde el inicio (clases tr-, navy #405189, Poppins), por
+la nueva regla del usuario (ports calcan el legacy, no la plantilla nueva). Spec en scratchpad/spec_rad_tramites.md.
+
+- **Dominio:** sin cambios (RadicadoTarea, Radicado.FechaVencimiento, RadPrioridad ya existian).
+- **Application:** `RadicacionTramitesService` (Listar con 4 tabs + contadores + filtros; Aceptar; Rechazar
+  con recreacion de tarea/devolucion del radicado; Asignar por el jefe). Visibilidad FAIL-CLOSED (mias +
+  las de mi dependencia sin asignar), corrige el fail-open del legacy. Transaccion por accion. Redirigir
+  reutiliza el servicio de distribucion existente.
+- **Web:** `/modulo/tramite-mis-tareas` (MisTareas.razor) calcado: KPIs, toolbar (busqueda+filtros+export),
+  4 tabs, grilla de 8 columnas con semaforo SLA, acciones Ver(drawer)/Aceptar/Rechazar/Asignar/Redirigir,
+  modales calcados. Detalle via drawer RadDetalle (no iframe).
+
+Quirks legacy NO replicados: fail-open, SQL concatenado, MAX(REG), funcionario por texto, sin transaccion,
+iframe de detalle. Build verde.
 
 ---
 
@@ -165,3 +471,869 @@ Pendiente para URL publica: **dominio + bloque en el Caddy externo** (decision d
 
 El codigo se aparta de la especificacion en 8 puntos, todos con decision explicita del usuario y
 ADR. Estan consolidados en el vault para que el equipo que lea Obsidian no lea ficcion.
+
+---
+
+## 9. Lote milimetrico RQ02/RQ09 + 3 modulos nuevos (2026-08-11, commit e3380a6, DESPLEGADO)
+
+Ajustes fieles al legacy VB.NET y modulos que faltaban, desplegados a produccion (`10.0.0.3:5680`,
+2 migraciones auto-aplicadas + SQL de aprovisionamiento de menu/permisos en los 2 tenants).
+
+- **Configuracion Radicacion** (`rad_config.aspx`): recalcada 1:1 (nav lateral + 7 secciones:
+  Consecutivos, Prioridades, Tipos, Buzones, Portal Web, Notificaciones, Migracion). Sigla e
+  "incluir anio" editables (columnas `sigla_radicacion`, `incluir_anio`). Config PQR redirige aqui.
+- **Niveles de Clasificacion Documental** (`ClasificacionDocumental.aspx`): pagina nueva
+  (`/modulo/niveles-clasificacion`, lista de tarjetas) sobre `NivelClasificacionService` (ya existia).
+- **Fondos Documentales** (`FondosDocumentales.aspx`): pagina nueva (`/modulo/fondos-documentales`)
+  sobre `FondoService`. Resuelve el pendiente "Fondos (RF02) sin pantalla" (seccion 7, item 12).
+- **Configuracion de Correo (SMTP)** (`gen_config_smtp.aspx`): pagina de tenant
+  (`/modulo/configuracion-smtp`) sobre `EmailConfigService` (nota: `EmailConfig` es singleton GLOBAL).
+- **Versiones TRD** (`doc_versionesTRD.aspx`): buscador/filtro/paginacion, columna "Creado por",
+  y **MODO_CODIGO_SERIE reintroducido** (revierte ADR-006, ahora `superseded`): enum
+  `ModoCodigoSerie` en `TrdVersion` (migracion `modo_codigo_serie`), selector en el modal
+  (CalcularCodigo autogenera `TRD-<anio>-v<N>` / EditarCodigo manual) y columna badge en la grilla.
+- **Series/Subseries** (`doc_catalogoTRD.aspx`): panel de detalle del nodo seleccionado con boton
+  explicito "Agregar subserie", boton "+ Subserie" por fila, textos de modal "Nueva/Crear Subserie"
+  + info-box del padre, y auto-expandir/seleccionar el padre al crear (paridad UX del legacy).
+- **Menu**: 3 items nuevos en `MenuCatalogo` (tenants nuevos) + SQL idempotente para los tenants
+  existentes (nodos + 6 acciones a SUPER_ADMIN/ADMIN). En prod cada tenant tiene 2 vistas: el item
+  entra una vez por vista, sin duplicados intra-vista (verificado).
+- **Inventario de port** actualizado en el vault (`02. Inventario de modulos/INVENTARIO_PORT_...`).
+
+---
+
+## 10. Calendario Habil embebido en Datos de la Entidad (2026-08-13, fiel al legacy)
+
+Reintroducido el control completo `ctrlCalendarioHabil` (legacy `General/CalendarioHabil/`) calcado 1:1,
+ahora **siempre visible** dentro de Datos de la Entidad (sin el gateo por seleccion de entidad del
+legacy: en TRONOX la entidad es el tenant de la sesion).
+
+- **Dominio**: nueva entidad `CalendarioHabilConfig` (dias habiles Lun-Dom + jornada inicio/fin, 1 por
+  tenant) + campo `Tipo` en `DiaFestivo` (Nacional/Local/Institucional). Migracion `CalendarioHabilConfig`
+  (tabla `calendarios_habiles` + columna `tipo`, con `UPDATE` de festivos propios existentes a `Local`).
+- **Application**: `ICalendarioHabilService` con `ObtenerConfigAsync`/`GuardarConfigAsync` + tipo en
+  `AgregarAsync`. El calculo de habiles (`EsHabil`/`ProximoHabil`/`SumarDiasHabiles`) ahora respeta los
+  dias configurados; el default (Lun-Vie) preserva el comportamiento SLA previo (invariante DAT-06 intacto).
+- **Web**: componente reutilizable `CalendarioHabilPanel.razor` (visual calcado: 2 columnas dias+jornada /
+  calendario mensual con festivos, nav de mes, modal "Agregar Festivo Local" LOCAL/INSTITUCIONAL, leyenda,
+  autosiembra nacional). Embebido en `DatosEntidad.razor` y reusado por la pagina suelta
+  `/modulo/calendario-habil`.
+- **Fix de paso**: el panel embebido se solapaba con la init async de la pagina padre compartiendo el
+  `DbContext` scoped ("A second operation was started on this context"). Se le dio su propio scope de DI
+  (`OwningComponentBase`); el tenant sigue resolviendo por el `IHttpContextAccessor` singleton.
+- Verificado en local: renderiza completo, autosembro 18 festivos 2026, sin errores de circuito.
+
+---
+
+## 11. Expedientes RQ03: bandeja milimetrica + detalle + backends + Azure Blob por entidad (2026-08-17)
+
+Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.aspx` + `exp_detalle.aspx`.
+
+- **Bandeja "Mis Expedientes"** (`Expedientes.razor`) recalcada con el sistema visual `.exp-*` del legacy:
+  5 KPIs (con "con alertas"/"pendientes transferencia" placeholder), 5 pestanas (+ Mis Vistas),
+  filtros rapidos (incl. Fase) + panel avanzado (dependencia/serie/fechas), seleccion masiva,
+  badges pill de color, paginacion cliente 20/pag. Modal Editar calcado (3 secciones: inmutables,
+  clasificacion TRD read-only, datos editables).
+- **Pagina de detalle** `ExpedienteDetalle.razor` (`/modulo/expedientes-detalle/{id}`): el ojo/codigo de
+  la bandeja NAVEGAN (no modal, como el redirect legacy). Boton "Volver a la bandeja". 5 pestanas:
+  Detalle (ficha con datos TRD reales), Ubicacion Fisica, Trazabilidad, Vinculados; Documentos difiere.
+- **Backends autocontenidos nuevos** (Domain+App+Infra+migracion `ExpedienteCierreUbicacionVinculos`):
+  - `ExpedienteCierre`: cerrar/reabrir con hash SHA-256 del indice (append-only); la firma real es RQ05.
+  - `ExpedienteUbicacion`: historial de ubicacion fisica ligado a la topografia (RQ02).
+  - `ExpedienteVinculo`: vinculos bidireccionales entre expedientes (desvincular logico).
+  - Trazabilidad: lectura de `SuperAdminAuditLogs` por expediente.
+  - `GetDetalleAsync` extendido con retencion TRD (tiempos gestion/central, disposicion, DDHH/DIH, procedimiento).
+  - Diferidos con aviso honesto (no inventados): Documentos RQ04, Firma/Indice RQ05, Cambiar Fase
+    (Transferencias), Rotulo, Compartir.
+- **Almacenamiento Azure Blob POR ENTIDAD** (ADR-012 sobre ADR-009): seccion en Datos de la Entidad con
+  cadena de conexion CIFRADA (AES-256 via ISecretProtector), contenedor, prefijo, activar y probar
+  conexion. `AzureBlobObjectStorage` pasa a scoped y resuelve la cuenta por-tenant con fallback global.
+  Nuevas tablas `almacenamientos_config`, entidad `AlmacenamientoConfig`, `IBlobConnectionTester`.
+- **ETL de datos de prueba** (solo LOCAL tenant 2): 23 expedientes reales del legacy 00132 (Azure SQL via
+  10.0.0.2), creando el andamiaje TRD (3 dependencias GTH/1.2/ATC + 6 series 50/50.02/50.02.01/1/3/10 +
+  7 asignaciones). Codigo/nombre/estado/fase/nivel/fechas fieles. No se despliega a prod.
+
+---
+
+## 12. Carga de documentos del legacy en el detalle (2026-08-17)
+
+- **Pestana "Documentos"** del detalle de expediente cableada (antes "proximamente"):
+  `IDocumentoService.ListarPorExpedienteAsync` + `ExpedienteDocumentoDto`; tabla con #orden, nombre,
+  formato, folios, tamano, fecha incorporacion, estado, firma y **descarga** (reutiliza `DescargarAsync`
+  + `tronoxDownload` JS). La descarga sale por el `IObjectStorage` del tenant (cuenta Azure Blob
+  configurada en Datos de la Entidad, ADR-012).
+- **ETL de documentos** (solo LOCAL tenant 2): 96 documentos actuales (no historicos) de los 23
+  expedientes 00132, con nombre/formato/folios/paginas/tamano/hash/estado/firma/OCR y su
+  `ruta_almacenamiento` (GUID del blob legacy). 83 con binario. Mapeo de enums (Sin_Firma->SinFirma,
+  No_Aplica->NoAplica, Terminado->Archivado) y FKs (expediente por codigo, asignacion heredada). Las
+  versiones historicas (57) no se cargaron (UI de versionado diferida).
+
+---
+
+## 13. Documentos milimetricos en el detalle + Carga de Archivos (RQ04, 2026-08-17)
+
+- **Pestana Documentos** del detalle recalcada al legacy `exp_detalle`: toolbar (Vista, CSV, XLSX, XML,
+  PDF, + Nuevo Documento) + contador "N documentos · N folios totales" + 12 columnas exactas (Tipo,
+  Nombre, Tipo documental, Fecha doc., Fecha incorporacion, Folios, Formato, Tamano, Origen, Estado,
+  Firma, Acciones ojo/lapiz/mas). Exportadores/Vista diferidos con aviso honesto.
+- **Modal "Nuevo Documento"** (menu de incorporacion, calcado): breadcrumb Fondo>Serie>Codigo, caja RF09,
+  4 metodos (Carga de Archivos RF01·RF02, Digitalizar RF18, Editor RF09, Fuente externa RF20·RF21
+  proximamente). Validado contra `ctrlIncorporarDoc.ascx`.
+- **Carga de Archivos** (Flujo A, `CargaArchivosModal.razor`): modal 3 columnas (dropzone+cola con foco |
+  visor | metadatos), indexacion uno-a-uno como el legacy (no wizard). Subida al CONFIRMAR cada doc.
+  Backend `IncorporarEnExpedienteAsync`: sube al object storage (Azure Blob por entidad), hash SHA-256,
+  foliacion continua (orden + paginas), nace Archivado, nivel heredado, cuenta paginas de PDF. Tipologia
+  opcional; metadatos dinamicos de la tipologia. Refresca la grilla via callback.
+
+---
+
+## 14. Ubicacion Fisica milimetrica: cascada topografica + validacion (RQ03 RF12, 2026-08-17)
+
+- La pestana **Ubicacion Fisica** del detalle se recalco al legacy `exp_detalle` (RF12, Mantis #6491).
+  Antes era un dropdown plano (Opcion C); ahora es la **cascada de niveles** del legacy sobre la
+  topografia fisica real del tenant (RQ02 - Topografia Fisica), no un modulo inventado.
+- Modal "Asignar / Cambiar ubicacion": selects en cascada raiz -> hoja (Bodega > Estante > Entrepano
+  > Caja...), breadcrumb en vivo, precarga con la ubicacion actual, exige seleccionar la HOJA final.
+- Validacion calcada de `ValidarUbicacionAsignable`: recorre la cadena hoja->raiz; bloquea si la hoja
+  o cualquier ancestro esta Inactivo ("esta Inactiva" / "pertenece a una rama Inactiva") o si la hoja
+  esta Llena ("esta Llena"). Fail-closed: el servidor re-valida (hoja + cadena) en `AsignarUbicacionAsync`.
+- Backend: `GetTopografiaArbolAsync` (arbol aplanado con codigo topografico + asignabilidad por nodo) +
+  helper `ValidarUbicacionAsignable`. Historial append-only + estado_ubicacion (Sin_Ubicar/Ubicado/Reubicado).
+- Auditoria e2e con dev-login (tenant 2, 14 nodos): OK hoja valida (Guardar activo, breadcrump de 4
+  niveles), BLOQUEA hoja Llena, BLOQUEA hoja bajo rama Inactiva, guardado real crea fila + pobla panel
+  actual e historial con el codigo topografico NOR-EST01-ENT01-CAJ001.
+
+---
+
+## 15. Vinculos milimetricos: buscador + feedback + confirm (RQ03 RF14, 2026-08-18)
+
+- La pestana **Expedientes Vinculados** se calco al legacy `exp_detalle` (Fase 13). El backend ya era
+  fiel (bidireccional, excluye ya-vinculados y a si mismo, filtro por clasificacion, top-20, dup-check,
+  auditoria vincular/desvincular); se cerraron las brechas de UI:
+  - Panel "Agregar vinculo a otro expediente" con buscador + Observacion SIEMPRE visible + hint
+    "Relacion bidireccional - aparece en ambos expedientes".
+  - Validacion minimo 2 caracteres ("Escriba al menos 2 caracteres.") y mensaje "Sin resultados
+    (filtrado por permisos de clasificacion y excluye los ya vinculados)." calcados del legacy.
+  - Resultados con caption "Resultados (top 20)". Boton Ver (ir al vinculado) + Desvincular con
+    CONFIRM ("Desvincular este expediente? La accion queda en auditoria.").
+  - Observacion pasa a @bind:event=oninput para capturarla sin depender del blur.
+- Auditoria e2e con dev-login + MCP Chrome (tenant 2): min-2-chars OK, busqueda+resultados OK, Vincular
+  crea vinculo + toast + limpia buscador, Observacion persiste, BIDIRECCIONAL (aparece en ambos),
+  Desvincular Cancelar conserva / Aceptar soft-delete (activo=false) + toast + estado vacio.
+
+---
+
+## 16. Cerrar/Reabrir milimetricos (RQ03 RF08, 2026-08-18)
+
+- Modales Cerrar (Fase 19) y Reabrir (Fase 20) calcados del legacy `exp_detalle`. El backend ya era
+  fiel (numero de cierre incremental + hash SHA-256 del indice + registro de cierre/firma + auditoria;
+  Reabrir valida justificacion >= 20 chars server-side). Se cerraron las brechas de UI:
+  - **Cerrar**: icono circular ambar (candado), "Confirmar cierre del expediente?", texto descriptivo,
+    caja de aviso ambar "La firma del indice es inmutable...", boton rojo "Confirmar cierre".
+  - **Reabrir**: icono circular azul (candado abierto), "Reabrir expediente cerrado", texto, label
+    "Justificacion * (minimo 20 caracteres)", textarea, contador en vivo N/20 (ambar<20 / verde>=20),
+    boton deshabilitado hasta 20 chars, caja info "queda registrada en la trazabilidad", boton azul
+    "Confirmar reapertura".
+  - Header con botones mutuamente excluyentes (Cerrar si Abierto / Reabrir si Cerrado).
+  - `CerrarAsync`/`ReabrirAsync` devuelven ahora el NUMERO de cierre/evento para el mensaje calcado:
+    "Expediente cerrado correctamente (cierre N X, indice firmado)." / "Expediente reabierto. Evento N X registrado."
+- Auditoria e2e con dev-login + MCP Chrome (tenant 2, exp 5): cerrar -> estado Cerrado + registro N1 con
+  hash + mensaje + header cambia a Reabrir; reabrir con <20 deshabilita, contador verde >=20, reapertura
+  -> estado Abierto + evento N2 con justificacion + mensaje + header vuelve a Cerrar.
+
+---
+
+## 31. Deploy a prod de Ola 4 (estampa en imagenes + marca de agua de visor + full-text compartidos) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `d0df9cb`) la Ola 4 (ADR-031).
+
+- **Pure image swap, 0 migraciones** (prod sigue en 46, ultima FirmaPlantillas). Backup previo
+  `tronox_prod_20260921_125452_pre_ola4.sql.gz`. Sin paquetes nuevos (SkiaSharp/PdfSharpCore ya estaban).
+- Verificado vs postgres desechable: /login 200, /dev/login 404, /v/1 200, 46 migraciones (ultima
+  FirmaPlantillas), tablas firma_* completas, sin appsettings.*.local.json real en la imagen.
+- Verificacion prod: /login 200, /dev/login 404, /v/1 200; **postgres-prod NO recreado** (creado
+  2026-07-23, restarts=0); **29 contenedores** (ningun stack hermano cayo). Ahora en prod: firma de
+  documentos IMAGEN con cajita al pie (RF03-B), marca de agua de seguridad Usuario/Fecha/IP al visualizar
+  Reservado/Clasificado (RF04) y busqueda full-text por contenido en "Compartidos conmigo". ECD diferida
+  (placeholder en el legacy; requiere proveedor por definir con el cliente).
+
+---
+
+## 30. Deploy a prod de Ola 3 (incorporacion: digitalizar + fuente externa SFTP + auto-OCR) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `dd9ac23`) la Ola 3 completa (ADR-030).
+
+- **Pure image swap, 0 migraciones** (prod sigue en 46). Backup previo `tronox_prod_20260921_121954_pre_ola3.sql.gz`.
+- Nuevo paquete SSH.NET (SFTP). Verificado vs postgres desechable (/login 200, /v/1 200, 46 migraciones).
+- Verificacion prod: /login 200, /v/1 200; migraciones 46; **postgres-prod NO recreado** (restarts=0);
+  **29 contenedores**. Ahora en prod: Digitalizar por camara (RF18), Fuente externa SFTP (RF20/21) y el
+  worker de auto-OCR (RF04) que procesa los documentos Pendiente cada 5 min.
+
+---
+
+## 29. Deploy a prod de Ola 2 (consola de firma: auditoria + metricas + plantillas + presets) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `3742492`) la Ola 2 completa (ADR-029).
+
+- **1 migracion nueva** (prod 45 -> 46): `FirmaPlantillas` (tabla `firma_plantillas`, aditiva). Backup
+  previo `tronox_prod_20260921_112927_pre_ola2.sql.gz`.
+- Runbook: build tronox-web:prod (capa LibreOffice cacheada) -> verificado vs postgres desechable
+  (/login 200, /dev/login 404, /v/1 200, 46 migraciones con ultima FirmaPlantillas, tabla firma_plantillas
+  creada) -> save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+  (El primer intento de la verificacion desechable fallo por agotamiento de recursos LOCALES -fork- no de
+  la imagen; se limpio el build cache -~20GB- y contenedores tmp y se reintento OK.)
+- Verificacion prod: /login 200, /dev/login 404, /v/1 200; migraciones 46 (ultima FirmaPlantillas); tabla
+  firma_plantillas creada; **postgres-prod NO recreado** (restarts=0); **29 contenedores**. Ahora en prod:
+  auditoria de firma con filtros (/modulo/firmas-auditoria), consumo y metricas (/modulo/firmas-metricas),
+  plantillas de firmante y presets {{firma}} en el modal de circuito.
+
+---
+
+## 28. Deploy a prod de Ola 1 (fidelidad de sellado: NTP + QR + XMP byte-range + verificador) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `4ca96a0`) la Ola 1 completa (ADR-028).
+
+- **0 migraciones nuevas** (prod sigue en 45). Backup previo `tronox_prod_20260921_102918_pre_ola1.sql.gz`.
+- Runbook: build tronox-web:prod (capa LibreOffice cacheada) -> verificado vs postgres desechable
+  (/login 200, /dev/login 404, **/v/1 200**, 45 migraciones sin cambio) -> save|gzip|ssh docker load ->
+  `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404, **/v/1 200 (portal verificador publico en vivo)**;
+  migraciones 45; **postgres-prod NO recreado** (restarts=0); **29 contenedores**; soffice presente.
+- Contenido: NTP off por defecto (sin cambio hasta que el admin lo active); QR en el certificado; cada
+  firma nueva se sella con XMP byte-range sobre el PDF/A; el verificador resuelve /v/{docId}. Prod aun no
+  tiene documentos firmados, asi que el contenido del verificador se probo en local (doc 107 -> Firma
+  verificada). El dominio verificar.tronox.co necesita DNS/Caddy aparte (diferido).
+
+---
+
+## 27. Deploy a prod de Fase C.1 + C.2 (certificado + PDF/A via LibreOffice) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `6edbdf6`) el certificado/acta de firma (C.1, ADR-026) y el
+archivado PDF/A-2b via LibreOffice (C.2, ADR-027) en un solo deploy.
+
+- **0 migraciones nuevas** (prod sigue en 45): ninguna de las dos slices persiste esquema. Backup previo
+  `tronox_prod_20260921_095107_pre_faseC.sql.gz`.
+- **Cambio de infra**: la imagen ahora incluye LibreOffice (`libreoffice-writer` + `libreoffice-draw`,
+  soffice en /usr/bin/soffice, env TRONOX_SOFFICE_PATH). La imagen crecio de ~596MB a **1.29GB**.
+- Verificado EN LA IMAGEN antes de desplegar: soffice 24.2.7.2 presente y convierte PDF -> PDF/A-2b real
+  (marcador pdfaid:part>2). Verificado vs postgres desechable (/login 200, /dev/login 404, 45 migraciones
+  sin cambio, sin appsettings local, TRONOX_SOFFICE_PATH puesto).
+- Runbook: build tronox-web:prod (con LibreOffice) -> verificaciones -> save|gzip|ssh docker load ->
+  `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 45; **postgres-prod NO recreado**
+  (created 2026-07-23, restarts=0); **29 contenedores** (vecinos sin bajar); **soffice presente en
+  tronox-app** (LibreOffice 24.2.7.2). A partir de ahora cada firma nueva se archiva en PDF/A-2b
+  (best-effort: si la conversion fallara, se conserva el PDF sellado sin convertir).
+
+---
+
+## 26. Deploy a prod de Fase B.4 (alertas de firma pendiente RF11 Inc.2) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `a409d7b`) las alertas de firma pendiente (Fase B.4, ADR-025):
+BackgroundService en la app que avisa a los firmantes de firmas vencidas por dias habiles.
+
+- **1 migracion nueva** (prod 44 -> 45): `FirmaUltimaAlerta` (agrega `firmas.ultima_alerta_at`, aditiva).
+  Backup previo `tronox_prod_20260908_145100_pre_faseB4.sql.gz`.
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  45 migraciones con ultima FirmaUltimaAlerta, columna ultima_alerta_at creada, sin appsettings local) ->
+  save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 45; columna presente; **postgres-prod NO
+  recreado** (restarts=0); **29 contenedores**. El worker (FirmaAlertasHostedService) arranca ~3 min tras
+  el inicio y luego corre cada 12 h; el primer ciclo alerta las firmas ya vencidas (una vez c/u).
+
+---
+
+## 25. Deploy a prod del fix OCR del visor (RF04) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `f3e7ac7`) el fix del chip OCR/Reprocesar del visor (el visor
+pasaba el estado de firma en vez del estado OCR). Con esto el OCR/Reprocesar (RF04) queda operativo en
+prod (config de Azure Computer Vision en Datos de la Entidad + Reprocesar en el visor).
+
+- **Pure image swap, 0 migraciones nuevas**: prod sigue en 44. Backup previo
+  `tronox_prod_20260908_143009_pre_ocrfix.sql.gz`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 44 (sin cambio); **postgres-prod NO
+  recreado** (restarts=0); **29 contenedores** (vecinos sin bajar).
+
+---
+
+## 24. Deploy a prod de Fase B.2 (rotulacion de expedientes RF17) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `2eecdf6`) la rotulacion de expedientes (Fase B.2, ADR-024):
+modal de rotulos en la bandeja + generador PDF (QuestPDF + Code 128).
+
+- **Pure image swap, 0 migraciones nuevas**: el rotulo se arma en runtime (no persiste); prod sigue en 44
+  migraciones. Backup previo `tronox_prod_20260908_140737_pre_faseB2.sql.gz` (/opt/tronox/backups).
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  44 migraciones sin cambio con ultima FirmaGrafo, imagen SIN appsettings.*.local.json) ->
+  save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 44 (sin cambio); **postgres-prod NO
+  recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos); **29 contenedores** (vecinos sin
+  bajar); app recreada con la imagen nueva.
+
+---
+
+## 23. Deploy a prod de Fase B.1 (firma manuscrita / grafo RF03) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `b2a97a5`) el grafo de firma (Fase B.1, ADR-023): pagina "Mi
+Firma" + pintado del grafo del firmante en la cajita de sellado.
+
+- **1 migracion nueva** (prod 43 -> 44): `FirmaGrafo` (CREATE TABLE `firma_grafos`, aditiva, sin tocar
+  datos existentes). La app la auto-aplica al arrancar (TRONOX_RUN_MIGRATIONS=true). Backup previo
+  `tronox_prod_20260908_064351_pre_faseB1.sql.gz` (/opt/tronox/backups, prod estaba en 43 migraciones).
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  44 migraciones con ultima FirmaGrafo, tabla firma_grafos creada, imagen SIN appsettings.*.local.json)
+  -> save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 44 (ultima FirmaGrafo); tabla firma_grafos
+  creada; **postgres-prod NO recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos);
+  **29 contenedores** (vecinos sin bajar); imagen de app renovada.
+
+---
+
+## 22. Deploy a prod de Fase A (config de firma RF01 + notificaciones RF11) (2026-09-08)
+
+Desplegado a prod (host 10.0.0.3, commit `27e4808`) el lote acumulado en `desarrollo` desde el deploy
+previo (seccion 21): cierre de RQ05 nucleo (pista de auditoria RF12, slice 6) + **Fase A** del plan de
+pendientes: FirmaService consume la config del modulo (RF01, Fase A.1) y notificaciones de firma
+(campana in-app + correo, RF11, Fase A.2).
+
+- **1 migracion nueva** (prod 42 -> 43): `FirmaConfigActivoPorDefecto`, normalizacion una sola vez que
+  pone `modulo_firma_activo` y `firma_masiva_activa` en true para no bloquear firma al empezar a
+  consumir la config. Aditiva, sin DDL (solo UPDATE); prod tenia **0 filas** en `firma_configs` -> el
+  UPDATE fue no-op y firma sigue activa por el default sintetizado de `GetFirmaConfigAsync`. La app la
+  auto-aplica al arrancar (TRONOX_RUN_MIGRATIONS=true). Backup previo
+  `tronox_prod_20260908_051134_pre_faseA.sql.gz` (/opt/tronox/backups, prod estaba en 42 migraciones).
+- Runbook: build `tronox-web:prod` (596MB) -> verificado vs postgres desechable (/login 200,
+  /dev/login 404, 43 migraciones limpias con ultima FirmaConfigActivoPorDefecto, imagen SIN
+  appsettings.Development.local.json) -> save|gzip|ssh docker load ->
+  `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 43 (ultima FirmaConfigActivoPorDefecto);
+  **postgres-prod NO recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos);
+  **29 contenedores** (vecinos sin bajar).
+
+---
+
+## 21. Deploy a prod del lote RQ04 validacion + RQ05 firma (2026-09-07)
+
+Desplegado a prod (host 10.0.0.3, commit `14e71b7`) el lote acumulado en `desarrollo`:
+UI de validacion RF11/RF12, y RQ05 firma completo hasta slice 4 (firma directa, bandeja Mis Firmas +
+solicitar RF06, stepper OTP RF08, circuitos multi-firmante RF07), ademas del editor RF08 texto,
+compartir RF07-doc, correo, imprimir, terminar, busqueda avanzada RF14 y paginacion (pendientes de
+deploys previos).
+
+- **7 migraciones nuevas** (prod 34 -> 41): DocumentoContenidoHtml, MenuNodeOrigenMigracion,
+  DocumentoCompartido, FirmaElectronica, FirmaBandejaCampos, FirmaOtp, FirmaCircuitos. Todas aditivas;
+  la app las auto-aplica al arrancar (TRONOX_RUN_MIGRATIONS=true). Backup previo
+  `tronox_prod_20260907_162213_pre_firma.sql.gz` (/opt/tronox/backups).
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (/login 200, /dev/login 404,
+  blazor.web.js + custom.css 200, 41 migraciones limpias, imagen SIN appsettings.Development.local.json)
+  -> save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404, blazor.web.js 200; migraciones 41 (ultima
+  FirmaCircuitos); tablas firmas/firma_otps/firma_circuitos/firma_circuito_firmantes creadas;
+  **postgres-prod NO recreado** (created 2026-07-23, restarts=0 -> claves/datos intactos);
+  azurite-prod intacto; **29 contenedores** (vecinos sin bajar).
+
+---
+
+## 17. Deploy a prod del lote de detalle de Expedientes (2026-08-18)
+
+Desplegado a prod (host 10.0.0.3) el lote acumulado en `desarrollo` (commit `75e223d`):
+dev-login (solo-Development), Documentos milimetrica + Carga de Archivos, Ubicacion Fisica (cascada),
+Vinculos (buscador+confirm), Cerrar/Reabrir (modales fieles).
+
+- **Pure image swap, 0 migraciones nuevas**: prod ya estaba en 32 migraciones (el lote RQ03 con esquema
+  se desplego el 17-ago); todo lo de hoy es codigo. Backup previo `tronox_prod_20260818_045224_pre_detalle_ux.sql.gz`.
+- Runbook: build `tronox-web:prod` -> verificado vs postgres desechable (200 en /login, blazor.web.js,
+  custom.css; 32 migraciones limpias) -> scp -> docker load -> `up -d --force-recreate app`.
+- Verificacion prod: /login /_framework/blazor.web.js /velzon/css/custom.css = 200; **/dev/login = 404**
+  (correcto, gate IsDevelopment); migraciones 32 (sin cambios); **postgres NO recreado** (created 2026-07-23,
+  restarts=0 -> claves/datos intactos); vecinos **29** (sin bajar); DLLs con mtime 2026-08-18 09:4x UTC (build de hoy).
+- Rollback disponible: imagen anterior (`tronox-web:prod` 92dd69c8) queda como `<none>` en el host.
+
+---
+
+## 18. "Mis Documentos" milimetrico: acciones calcadas del legacy (RQ04 RF15, 2026-08-18)
+
+La bandeja `modulo/documentos` se recalco a `doc_bandeja.aspx`, con foco en las ACCIONES (que estaban
+muy divergentes). Sin cambios de backend (solo Razor).
+
+- **Se elimino la accion inventada** "Solicitar revision/aprobacion (RF11)" que estaba como boton inline
+  funcional; en el legacy eso son placeholders. Tambien se quito el modal RF11 y el uso de IValidacionService.
+- **Columnas** calcadas: Borradores = Nombre/Tipo documental/Fecha creacion/Folios/Tamano/Estado/Firma/Acciones;
+  Archivados = Nombre/Tipo documental/Expediente/Fecha incorporacion/Folios/Tamano/Estado/Firma/Acciones.
+- **Acciones por fila** = inline **Ver** (visor, solo si hay binario) + **Editar metadatos** + **menu de
+  mas acciones (dm)** con las secciones/items exactos del legacy:
+  - Asignar tarea: Solicitar Revision/Aprobacion/Tramite/Firma (placeholders "proximamente", como el legacy).
+  - Firma: Terminar (proximamente; solo si binario).
+  - Otras: Editar contenido (proximamente), Descargar (real, si binario), Archivar (real, wizard RF16),
+    Compartir/Enviar por correo/Imprimir (proximamente), y Eliminar documento (real, danger).
+  - Archivados: Ver + menu Otras (Descargar/Compartir/Enviar).
+- **Ver** ahora es el VISOR (abre el binario en pestana via blob), no un modal de metadatos.
+- Nombre es link al visor cuando hay binario (fisico = texto plano, sin Ver), calcado del legacy.
+- Auditado e2e (dev-login + MCP Chrome, tenant 2, admin2): columnas OK, menu con orden/labels identicos,
+  placeholders muestran "proximamente", modales Editar/Archivar(17 exp)/Eliminar abren, fisico omite
+  Ver/Terminar/Descargar/Imprimir, visor JS abre blob en _blank. (Descarga real de docs del ETL da
+  "binario no disponible" localmente porque el blob vive en Azure; en prod existe.)
+- PENDIENTE menor: el legacy muestra "Editar metadatos" inline tambien en Archivados; se omitio porque
+  editar metadatos de un archivado necesita backend diferido. A confirmar con el usuario.
+
+---
+
+## 19. "Cargar Documento" milimetrico + backend editar metadatos (RQ04, 2026-08-18)
+
+Dos entregas sobre Mis Documentos (modulo/documentos), calcadas del legacy.
+
+- **Backend editar metadatos** (commit f657bd3): copiado del handler `exp_visor_data.ashx`
+  (op=doc/tipos/campos/guardar). `GetEditarMetadatosAsync` (nombre/fecha/tipo actual + tipologias
+  activas + campos con valores), `GetMetadatosTipologiaConValoresAsync` (al cambiar tipo),
+  `GuardarMetadatosAsync` (nombre+fecha obligatorios + tipo documental + reemplaza metadatos + audita
+  el diff). Editor UI calcado de mdRender (Nombre*/Fecha*/Tipo documental + metadatos dinamicos con
+  valores). Auditado e2e: asigna tipo + captura metadatos + persiste + round-trip al reabrir.
+
+- **Modal "Cargar Documento"** ahora abre el SELECTOR "Como deseas incorporar el documento?"
+  (`ctrlIncorporarDoc` modo MisDocumentos): 4 tarjetas (Carga de Archivos / Digitalizar / Editor /
+  Fuente externa), SIN miga archivistica (borrador privado), caja RF09 "Flujo B". Antes abria un
+  formulario simple Subir/Fisico (por eso "difiere mucho").
+  - `CargaArchivosModal` gana el parametro **ModoBorrador**: en ese modo crea BORRADORES
+    (CrearBorradorBinario/Fisico), oculta folios/tipologia y muestra la ruta "Mis Documentos > Borrador
+    privado". Reusa el mismo modal 3-columnas del detalle.
+  - Digitalizar/Editor -> "proximamente"; Fuente externa -> deshabilitada.
+  - Auditado e2e (dev-login + MCP Chrome): selector sin breadcrumb + 4 tarjetas, carga en modo borrador,
+    borrador FISICO creado (doc 97), la bandeja se refresca con flash "Documento(s) creado(s) como borrador".
+
+---
+
+## 20. Visor documental completo con pdf.js (RQ04 RF04, 2026-08-18)
+
+El "ojo" de la parrilla de documentos abria el PDF crudo en una pestana (incorrecto). El legacy
+reutiliza una PAGINA VISOR (`exp_visor.aspx`) como iframe overlay. Se porto fiel:
+
+- **Assets reutilizados** (vanilla, framework-agnosticos) en `wwwroot/visor/`: pdf.js + pdf.worker.js
+  + `exp_visor.css` + `exp_visor.js` (68KB, endpoints reapuntados a `/visor/*`).
+- **Pagina** `/modulo/documento-visor` (static SSR, EmptyLayout) que replica el DOM de exp_visor.aspx:
+  barra superior (nombre, PDF N pag., acciones), miniaturas, viewer pdf.js (toolbar zoom/rotar/nav),
+  panel derecho con pestanas Metadatos / Anotaciones / Trazabilidad / Versiones. Metadatos
+  server-rendered desde `GetDetalleAsync`.
+- **Endpoints** (`VisorEndpoints.cs`, calcados de exp_visor_data.ashx / doc_visor.ashx):
+  `/visor/bin` (binario para pdf.js), `/visor/data?op=traz` (auditoria del documento), `op=ocr`
+  (estado), `op=tipos/campos` + POST `op=guardar` (editor de metadatos reusando el servicio),
+  `op=vers` y `/visor/anotaciones` diferidos (vacio). Firmar/Compartir/Correo = avisos "proximamente".
+- El **ojo** en Mis Documentos y en la pestana Documentos del detalle abre el visor como iframe
+  overlay (vzAbrirVisor/vzCerrarVisor), no el PDF crudo.
+- Auditado e2e (dev-login + MCP Chrome): render pdf.js del PDF, miniaturas, panel de metadatos
+  completo, pestana Trazabilidad (endpoint real), boton Cerrar. Iconos FA via CDN.
+- Datos de validacion: se limpiaron los borradores de admin2 y se cargaron 5 PDFs de muestra en
+  Azurite local (tenant 2 con config de blob desactivada -> usa Azurite), para probar el visor.
+
+---
+
+## 21. OCR / Reprocesar - diseno validado (PENDIENTE de construir) (RQ04 RF04, 2026-08-18)
+
+Validacion del diseno del OCR antes de construir (decision del usuario: "solo valido, aun no construyo").
+
+**Servicio: Azure Computer Vision (Read API).** Legacy `OcrDocumentoHelper.ProcesarOcr`:
+descarga el binario del blob -> llama a Azure Vision -> guarda OCR_ESTADO + OCR_TEXTO en el documento.
+
+**Parametros del OCR (donde viven en el legacy):**
+- Cuenta: parametro `COMPUTER_VISION` (Optimizer, por modulo/sucursal; fallback modulo 000783).
+- Endpoint + llave: tabla `SUCURSAL_INT` con NOMBRE='VISIONIA' (URL=endpoint, TOKEN=key).
+- Si no esta configurado: "Azure Computer Vision no esta configurado (parametro COMPUTER_VISION).
+  El OCR no puede ejecutarse hasta configurarlo."
+
+**Flujo reocr (visor):** valida binario -> resuelve cuenta -> OCR_ESTADO='Procesando' ->
+encola background -> guarda texto. op=ocr devuelve {estado, texto}.
+
+**Decision de diseno (confirmada con el usuario):** en TRONOX la config del OCR va en
+**Datos de la Entidad**, con el MISMO patron que el Almacenamiento Azure Blob por entidad (ADR-012):
+per-tenant, llave cifrada AES-256 (ISecretProtector), nunca en claro, con activo/fallback. TRONOX
+NO tiene esta config todavia.
+
+**Plan cuando se retome (config primero, servicio despues):**
+1. Entidad `OcrConfig` tenant-scoped (Activo, Endpoint, ApiKeyCifrada) + migracion + seccion en
+   DatosEntidad.razor (calcada de la seccion "Almacenamiento de Documentos (Azure Blob)").
+2. Servicio OCR (Azure Computer Vision Read API) + wire de los endpoints /visor/data op=ocr/reocr
+   (hoy placeholders en VisorEndpoints.cs). Nota: Azure no es alcanzable desde el equipo local
+   (igual que el Blob); la ejecucion real solo funcionara en prod.
+
+---
+
+## 22. Config de OCR (Azure Computer Vision) en Datos de la Entidad (RQ04 RF04, 2026-08-18)
+
+Se construyo la CONFIG del OCR (paso 1 del plan de la seccion 21), calcada del patron del
+Almacenamiento Azure Blob por entidad (ADR-012).
+
+- Entidad `OcrConfig` tenant-scoped (Endpoint, ApiKeyCifrada, Activo) + config EF (indice unico por
+  tenant) + migracion `OcrConfigAzureVision` (tabla `ocr_configs`).
+- `IEntidadConfigExtraService.GetOcrAsync/GuardarOcrAsync`: la API key se cifra AES-256 (ISecretProtector),
+  NUNCA se devuelve en claro; solo queda activo si hay endpoint + llave.
+- Seccion en Datos de la Entidad "OCR / Reconocimiento de texto (Azure Computer Vision)": toggle activo
+  + Endpoint + API Key (password), badge "Configurada", "deja vacio para conservar la actual".
+- Auditado e2e (dev-login + MCP Chrome, tenant 2): guardar -> endpoint + activo=true + api_key_cifrada
+  (prefijo CfDJ8 de DataProtection); la clave en claro NO aparece en BD; badge Configurada + mensaje OK;
+  el campo de key se limpia tras guardar.
+
+PENDIENTE (paso 2, seccion 21): el servicio Azure Computer Vision Read API + wire de /visor/data
+op=ocr/reocr (hoy placeholders). Azure no es alcanzable desde local; corre en prod.
+
+---
+
+## 23. Servicio OCR (Azure Computer Vision Read API) + wire del visor (RQ04 RF04, 2026-08-18)
+
+Paso 2 (seccion 21): el servicio real que ejecuta el OCR usando la config de la entidad (seccion 22).
+
+- Campo `Documento.OcrTexto` (text) + migracion `DocumentoOcrTexto`.
+- `IOcrService` (Application) + `OcrService` (Infrastructure, HttpClient): lee `OcrConfig` del tenant
+  (endpoint + llave descifrada), valida binario/formato, pone OcrEstado=Procesando, descarga el
+  binario del object storage, llama al Azure Computer Vision Read API v3.2 (POST analyze -> polling
+  analyzeResults -> texto), guarda OcrEstado=Completado + OcrTexto (o Error con mensaje). Audita
+  "documento.ocr". Registrado con AddHttpClient.
+- Wire de `/visor/data` op=reocr (real) + op=ocr (estado+texto) en VisorEndpoints (antes placeholders).
+- Auditado e2e (dev-login + fetch): reocr sobre doc 98 -> resuelve config, descarga binario, intenta
+  Azure; el endpoint de prueba (fake) da error controlado "Host desconocido"; OcrEstado transiciona
+  Pendiente->Procesando->Error y persiste. **Azure Cognitive Services SI es alcanzable desde local**
+  (el DNS se intento; fallo solo por hostname de prueba). Con endpoint+llave reales, corre completo.
+
+---
+
+## 24. Fix: boton Editar metadatos en la pestana Documentos del detalle (RQ04 RF05, 2026-08-18)
+
+En expedientes-detalle, el lapiz de cada documento (pestana Documentos) era un placeholder (Toast
+"fase posterior"). El legacy exp_detalle (docRpDocumentos, CommandName="EditarMetadatos") abre el
+modal "Editar metadatos del documento" (RF05). Se cableo:
+
+- El lapiz abre ahora el editor de metadatos real (Nombre/Fecha/Tipo documental + metadatos dinamicos
+  con valores), reusando el servicio ya existente (GetEditarMetadatosAsync/GuardarMetadatosAsync) - el
+  mismo de Mis Documentos y del visor.
+- Auditado e2e (dev-login + MCP Chrome, expediente 20): el lapiz abre el modal, edita el nombre y
+  guarda -> persiste + refresca la grilla.
+
+---
+
+## 25. Editor de texto interno (RF08): port de ctrlEditorTexto (2026-08-20)
+
+Port fiel del editor de texto interno del legacy (`ctrlEditorTexto.ascx`), con tres decisiones de
+sustitucion registradas en ADR-015 (repo publico + Linux + invariante de expediente):
+
+- **Editor: TinyMCE 7 self-hosted** (reemplaza CKEditor 4 EOL). Assets en `wwwroot/tinymce`; carga
+  bajo demanda via `wwwroot/js/editor-texto.js`. Toolbar equivalente + hoja Carta. Componente
+  `EditorTextoModal.razor` (modal full-screen, nombre editable, autoguardado 60s).
+- **HTML->PDF: PuppeteerSharp/Chromium** (reemplaza SelectPdf comercial/Windows). Abstraccion
+  `IHtmlToPdfConverter` + `PuppeteerHtmlToPdfConverter` (Infra). Binario por config
+  (`PUPPETEER_EXECUTABLE_PATH`): Dockerfile instala `chromium`; dev apunta a Chrome local.
+- **"Generar PDF" deja Borrador CON binario** (no Archivado): sube el PDF al object storage y marca
+  `tiene_binario/formato=pdf`, conservando Estado=Borrador; se archiva luego con RF16. El HTML se
+  guarda en la nueva columna `documentos.contenido_html` (migracion DocumentoContenidoHtml).
+- Servicio: `AbrirEditorAsync` / `GuardarContenidoAsync` (crea/actualiza borrador-texto, solo HTML) /
+  `GenerarPdfDesdeEditorAsync`. Auditoria: documento.crear_borrador_texto / editar_contenido /
+  generar_pdf.
+- Wire en Mis Documentos: menu "Editar contenido" (reabrir borrador) + selector "Desde Plantilla /
+  Editor" (nuevo en blanco).
+- Auditado e2e (dev-login + MCP Chrome): TinyMCE abre, se escribe contenido, Generar PDF -> doc 106
+  queda Borrador con binario PDF (16 KB, 1 folio, contenido_html persistido) y el **visor renderiza el
+  PDF** generado por Chromium.
+- Pendiente/diferido: plantillas (RF10), nueva version desde el editor (RF03), sanitizacion de HTML.
+
+---
+
+## 26. Campo "Origen migracion" en el menu + Compartir documento RF07 (2026-08-20)
+
+**Menu (Administrador de Menu):** nuevo metadato `menu_nodes.origen_migracion` (texto libre) para
+documentar de que modulo/pantalla legacy proviene cada item (trazabilidad del port). Cableado en
+MenuNode + DTOs (editor/edit/export) + servicio (read/update/export/import/clonado) + editor
+ConfiguracionMenu.razor. Migracion MenuNodeOrigenMigracion. Verificado: guarda y persiste.
+
+**Compartir (RF07):** port fiel del sub-flujo Compartir del legacy (EXP_DOCUMENTOS_COMPARTIDOS / shr*).
+- Entidad DocumentoCompartido (beneficiario PlatformUser; permisos Ver siempre + Editar metadatos +
+  Descargar; OrigenRol snapshot; soft-delete Activo/RevocadoPor/FechaRevocado). Migracion + config EF.
+- Servicio en DocumentoService: BuscarDestinos (usuarios+roles, excluye ya-compartidos), Compartir
+  (expande rol->usuarios snapshot, upsert de permisos, Ver implicito, audita documento.compartir,
+  notifica campana via INotificationService + email best-effort), Revocar (soft-delete),
+  ListarActivos, ListarCompartidosConmigo (reemplaza el stub de la 3a pestana).
+- UI: CompartirModal (buscador + checkboxes de permiso + accesos actuales con revocar) cableado al
+  menu Compartir en Borradores/Archivados; pestana "Compartidos conmigo" encendida (Ver + Descargar
+  si permiso). Gate por Edit (proxy de gestion: TRONOX no tiene accion Share dedicada).
+- Verificado e2e: compartir con Rita -> fila persistida; Compartidos conmigo muestra el doc con
+  permisos, compartido por y acciones.
+- Diferido/pendiente de Mis Documentos: Enviar por correo, Imprimir (copia con estampa), Busqueda
+  avanzada (RF14). Firma (Mis Firmas) es modulo aparte (grande), ya investigado a fondo.
+
+---
+
+## 27. Acciones de Mis Documentos: Correo, Imprimir, Terminar, busqueda full-text (2026-08-21)
+
+Continuacion del port de doc_bandeja (acciones del menu de 3 puntos), 4 verticales:
+
+- **Enviar por correo (RF05, cob*)** [c17281d]: IEmailSender.SendWithAttachmentAsync (varios
+  destinatarios + adjunto); DocumentoService.EnviarPorCorreoAsync (valida acceso+binario, descarga,
+  adjunta, audita documento.enviar_correo); EnviarCorreoModal (exp-modal-*). Verificado (cadena
+  completa; sin SMTP local da error controlado).
+- **Imprimir - copia con estampa (RF05, doc_visor print=1)** [7a333f2, ADR-016]: IPdfPrintStamper +
+  PdfSharpPrintStamper (PdfSharpCore cross-platform, reemplaza PdfSharp/System.Drawing del legacy;
+  Puppeteer/QuestPDF no sirven para superponer sobre un PDF existente). Sello "COPIA NO CONTROLADA -
+  Impreso por: <nombre> - Fecha: ... - TRONOX" al pie; endpoint /visor/print; audita documento.imprimir.
+  Verificado (PDF re-guardado con fuente embebida => sello dibujado). Pendiente: estampar imagenes.
+- **Terminar (ADR-003)** [be77ff6]: enum EstadoDocumento + Terminado (string, sin migracion);
+  ListarBorradores/Contar incluyen Terminado; TerminarBorradorAsync (borrador propio con binario ->
+  Terminado). UI: badge dinamico, menu Terminar->Firmar, oculta Editar/Eliminar en Terminado.
+  Verificado e2e.
+- **Busqueda rapida full-text (RF14 parcial)** [b5ad8bd]: nombre + archivo + tipologia + expediente +
+  OCR_TEXTO + CONTENIDO_HTML. Verificado (busca en contenido). Pendiente: panel AVANZADO (10 filtros +
+  grid cross-estado + fail-closed).
+
+- **Busqueda avanzada RF14 (panel completo)** [e06cff4]: BusquedaAvanzadaDtos + DocumentoService.
+  BuscarAvanzadoAsync/GetTipologiasFiltroAsync. Filtros: texto full-text, tipo documental multi, fechas
+  doc/incorporacion, creado por, soporte, nivel multi, estado multi. Fail-closed por nivel de acceso
+  efectivo (doc o expediente); excluye Borrador/Terminado ajenos y Anulado salvo filtro; TOP 200. UI:
+  panel .ba-* + grid cross-estado .doc-grid con "Volver a la bandeja". Verificado e2e (62 archivados;
+  texto "resolucion" -> 1). Diferido: Dependencia y Serie/Subserie (cadena de asignacion TRD).
+- **Paginacion de bandejas (doc-pager)** [8d3621f]: port de docPaginarTabla (12/pagina). Pager
+  "<N> documentos  < Pagina X de Y >" en las 3 bandejas + grid de busqueda; en memoria (Blazor), se
+  reinicia al recargar/filtrar. Verificado e2e (62 -> 6 paginas, navega pagina 2).
+- **Firma electronica RQ05 - slice 1: firma directa** [ADR-017]: entidad Firma (tabla firmas, calca
+  FIR_FIRMAS) + enums TipoFirma/EstadoFirma; IFirmaService con el CONTRATO ESTABLE (invariante 5):
+  SolicitarFirma/ConsultarEstadoFirma/CancelarFirma + FirmarDirectoAsync. Firma directa (calca
+  FirmaDirectaHelper: sin stepper, sin OTP): sella el PDF (IPdfSignatureStamper/PdfSharpCore: cajita
+  visual + hash SHA-256), lo deja como version oficial en sitio (sin versionar), marca el documento
+  Firmado y registra la fila. UI: FirmarModal (identidad + consentimiento RF08) desde el menu del
+  documento Terminado. Verificado e2e (doc 106 -> Firmado; fila firmas con hash coincidente; PDF
+  sellado servido 200 en el visor). Diferido (modulo RQ05 completo): stepper OTP de 5 pasos +
+  solicitud-cumplimiento (mis_firmas), PDF/A, QR, sellado XMP, hora legal NTP, certificado, masiva,
+  plantillas, cargo/dependencia del snapshot.
+
+- **Solicitar Revision/Aprobacion (RF11) + Mis tareas (RF12)**: UI sobre el ValidacionService ya
+  portado (que estaba sin UI). RF11: modal SolicitarValidacionModal (asignado + prioridad + fecha limite
+  + instrucciones) desde el menu del documento; wire de "Solicitar Revision/Aprobacion". RF12: 4a bandeja
+  "Mis tareas" en Documentos (reusa permiso modulo/documentos; sin plumbing de menu) con grid de
+  pendientes + ResponderValidacionModal (Aprobar/Devolver/Rechazar; comentario obligatorio al
+  devolver/rechazar). La validacion NO cambia el estado del documento (traza paralela, RF11 CA-1).
+  FIX de identidad: UsuarioAsignadoId es FK a tenant_users.id, pero las bandejas comparaban contra el
+  PlatformUserId del actor (coincidian solo por casualidad en tenant 2); se agrego ResolveActorTenantUserId
+  (PlatformUserId -> TenantUser.Id del tenant) en ListarPendientes/Historial/Contadores/Detalle/Responder
+  para que sea correcto cross-tenant (fail-closed). Verificado e2e: solicitud admin2->Rita (row Pendiente);
+  responder admin2 (Aprobado); contador del tab correcto. "Solicitar Tramite" queda en RQ15 (Radicacion),
+  no es validacion; "Solicitar Firma" es RQ08 (placeholder).
+
+- **Bandeja "Mis Firmas" (RQ05 - RF10, slice 2)** [ADR-018]: port de mis_firmas.aspx +
+  FirmaBandejaRepository sobre firmas individuales. Datos: +columnas en `firmas` (Prioridad,
+  FechaLimite, Instrucciones, Tag, ComentarioRechazo; backfill Prioridad='Media') y valor Rechazado
+  en EstadoFirma. Backend (IFirmaService): ListarBandejaAsync (4 vistas fail-closed), ContarResumenAsync
+  (4 KPIs; EnProgreso=0 reservado a circuitos), RechazarSolicitudAsync (comentario obligatorio),
+  FirmarSolicitadaAsync (cumple pendiente propia: sella + Firmado, mismo motor que firma directa),
+  GetFirmantesAsignablesAsync (por PlatformUserId). UI: MisFirmas.razor en /modulo/firmas-mis
+  (nodo de menu ya sembrado), diseno mf-* calcado (KPIs + tabs + grid + Firmar/Rechazar/Ver);
+  SolicitarFirmaModal cableado en "Solicitar Firma" del menu del documento (RF06). Verificado e2e:
+  solicitar admin2->Rita (Enviadas); firmar solicitud (doc 107 sellado, Firmado); rechazar con motivo;
+  KPIs y tabs correctos; blob faltante manejado sin crash. Diferido: stepper OTP (RF08), circuitos
+  (RF07), firma masiva (RF09), pista de auditoria.
+
+- **Stepper de firma con OTP (RQ05 - RF08, slice 3)** [ADR-019]: port de ctrlFirmaStepper +
+  FirmaOtpHelper. Entidad FirmaOtp (tabla firma_otps; solo hash SHA-256 del codigo, vigencia 5 min,
+  invalida previos, cuenta intentos, un solo uso). Backend: GenerarOtpAsync (RNG cripto, envio correo
+  best-effort, revela codigo solo si no hay SMTP), FirmarConOtpAsync (valida OTP -> sella -> Firmado,
+  mismo motor que la firma directa), FirmarSolicitadaAsync sin OTP se conserva. UI: FirmaStepperModal
+  de 5 pasos (Lectura con visor / Identidad / Consentimiento Decreto 2364 / OTP / Resultado con
+  certificado) + sub-paso Rechazo, diseno fst-* calcado; reemplaza el consentimiento simple del slice 2
+  en la accion Firmar de la bandeja. El codigo se lee del campo por JS al enviar (robusto). Verificado
+  e2e con codigo real (revelado en modo sin-correo): OTP correcto -> Firmado + certificado (doc 109
+  sellado); OTP incorrecto -> rechazado (intentos++), sigue Pendiente. Diferido: gating por paginas,
+  autofirma/ubicacion, grafo, QR, certificado PDF, circuitos (RF07), masiva (RF09), pista auditoria.
+
+- **Circuitos de firma multi-firmante (RQ05 - RF07, slice 4)** [ADR-020]: port de CircuitoRepository.
+  Entidades FirmaCircuito + FirmaCircuitoFirmante (+ Firma.CircuitoId). Backend (IFirmaService):
+  CrearCircuitoAsync (secuencial activa orden 1, paralelo activa todos; crea la Firma Pendiente de cada
+  activo), avance en CumplirFirmaAsync (marca firmante, incrementa, secuencial activa siguiente; doc
+  solo Firmado al completar; cajitas apiladas por indice), rechazo en RechazarSolicitudAsync cancela
+  TODO el circuito (Cancelado+motivo, firmas Rechazadas, doc SinFirma), ListarCircuitosEnviadosAsync +
+  KPI En progreso. UI: SolicitarCircuitoModal (modo, firmantes ordenados, OTP, limite) en el menu del
+  documento; tarjetas de progreso .mf-circ en la bandeja Enviadas. Verificado e2e con 3 usuarios de
+  prueba (Rita, Carlos): secuencial [Rita->Carlos] completa -> doc Firmado con 2 cajitas; paralelo con
+  rechazo -> circuito Cancelado, firmas Rechazadas, doc SinFirma. Diferido: cajita por coordenadas,
+  recrear circuito, notificar a los que ya firmaron.
+
+- **Firma masiva por lote (RQ05 - RF09, slice 5)** [ADR-021]: port de FirmaMasivaProcesador. Columna
+  FirmaOtp.LoteId (un OTP cubre el lote). Backend (IFirmaService): LoteRequiereOtpAsync,
+  GenerarOtpLoteAsync (un codigo para todo el lote), FirmarLoteAsync (valida OTP del lote una vez y
+  firma secuencialmente via CumplirFirmaAsync; los que fallan quedan Pendientes; devuelve resumen). UI:
+  checkboxes + seleccionar-todo en la barra de lote de Pendientes + modal "Firmar en lote"
+  (consentimiento agregado + OTP unico si aplica + resumen por documento). Verificado e2e: lote de 4 ->
+  2 firmados + 2 con error "binario no disponible" (quedaron Pendientes); resumen y estados correctos.
+  Diferido: auditoria unica del lote (LOTE_ID) y procesamiento en background.
+  **DESPLEGADO a prod (2026-09-07, commit 96b797a)**: migracion FirmaOtpLote (prod 41 -> 42), backup
+  previo `tronox_prod_20260907_164233_pre_rf09.sql.gz`; verificado /login 200, /dev/login 404, 42
+  migraciones, columna lote_id, postgres-prod no recreado, 29 contenedores.
+
+- **Pista de auditoria de firma (RQ05 - RF12, slice 6, CIERRE RQ05)** [ADR-022]: port de
+  FirmaAuditoriaRepository. NO duplica ledger: sirve la pista desde super_admin_audit_logs (ledger
+  append-only de plataforma, RNF-04) filtrando las acciones de firma. Se agrego la auditoria unica del
+  lote (documento.firmar_lote). Backend: ListarPistaAuditoriaAsync (resuelve actor + etiqueta amigable
+  por evento, mas recientes primero). UI: boton "Pista de auditoria" en el header de Mis Firmas + modal
+  timeline (fecha/evento/actor/detalle/IP). Verificado e2e: 12 eventos (firma directa/ejecutada,
+  rechazada, circuito creado, lote) correctos. Sin migracion (solo lectura). Diferido: eventos de grano
+  fino (Documento_Abierto/Scroll/OTP_*), filtros de la pista, nombre de documento por asiento, hora NTP.
+
+**RQ05 (Firma) CERRADO**: firma directa (RF05), bandeja Mis Firmas (RF10) + solicitar (RF06), stepper
+OTP (RF08), circuitos multi-firmante (RF07), firma masiva (RF09), pista de auditoria (RF12).
+
+- **Fase A.1 - Consumo de la config de firma (RF01)**: la UI de config ya existia (embebida en Datos de
+  la Entidad + EntidadConfigExtraService); faltaba que FirmaService la LEYERA. Ahora: OTP efectivo por
+  `otp_modo` (siempre/opcional/nunca) + `otp_requerido_global` (resuelto al crear la firma/circuito),
+  expiracion por `otp_expiracion_minutos`, gate de firma masiva por `firma_masiva_activa` (backend +
+  oculta barra/checkboxes en la bandeja), guard `modulo_firma_activo` en solicitar/circuito/directa, y
+  cajita por `firma_texto_default`/`firma_mostrar_nombre`. Defaults cambiados a ACTIVO (modulo+masiva) con
+  migracion de normalizacion `FirmaConfigActivoPorDefecto` (pone en true las filas existentes, no
+  intencionales). Verificado e2e: modo=siempre -> firma nace otp_requerido=true; masiva=off -> sin barra.
+  PROD requiere la migracion en el proximo deploy.
+- **Fase A.2 - Notificaciones de firma (RF11)**: helper NotificarFirmaAsync (campana in-app via
+  INotificationService.CreateAsync sobre TenantUserId resuelto + correo via IEmailSender, ambos
+  best-effort), calcado de FirmaNotificador. Emision: SolicitarFirma -> al firmante; CrearCircuito -> a
+  los firmantes activados (secuencial el 1o, paralelo todos); CumplirFirma -> turno siguiente
+  (secuencial) + circuito completado (al solicitante) + firmado individual (al solicitante);
+  RechazarSolicitud -> al solicitante con el motivo. Sin migracion (usa la infra Notification existente).
+  Verificado e2e: solicitar admin2->Rita crea notif TaskAssigned para Rita; rechazo de Rita crea notif
+  General "Firma rechazada" para admin2. **Fase A COMPLETA** (config + notificaciones).
+
+- **Fase B.1 - Firma manuscrita / grafo (RF03 3.3.3)** [ADR-023]: port de ctrlMiFirma.ascx +
+  FirmaGrafoRepository + el pintado de FirmaCajitaHelper. Nueva entidad `FirmaGrafo` (tabla
+  `firma_grafos`, una vigente por tenant+PlatformUserId, PNG base64) + migracion aditiva `FirmaGrafo`.
+  IFirmaService gana `GetMiGrafoAsync`/`GuardarMiGrafoAsync` (upsert, valida base64 y tamano <=1MB).
+  SellarPdfEnSitioAsync busca el grafo del firmante y lo pasa a la cajita -> aparece en TODAS las vias
+  (directa/solicitada/OTP/circuito/lote) al reusar el mismo motor. Stamper: `CajitaFirma.GrafoBase64`;
+  con grafo la caja crece a 120pt y pinta la firma escalada/centrada en franja superior + separador
+  (XImage.FromFile via ImageSharp, best-effort); sin grafo, caja de texto de 74pt como antes. UI: pagina
+  "Mi Firma" (/modulo/firmas-mifirma, gateada por permiso firmas-mis, boton en Mis Firmas) con pad de
+  captura canvas + pointer events puro (js/firma-grafo.js, sin CDN, resolucion interna fija 1200x400).
+  Verificado e2e: dibujo + guardado (fila en firma_grafos) + previsualizacion; sellado de PDF de prueba
+  muestra el grafo en la cajita (rasterizado a PNG con PDFium), y sin grafo la caja compacta original
+  (sin regresion). Diferido: grafo en la hoja "Certificacion de firmas" (Fase C).
+
+- **Fase B.2 - Rotulacion de expedientes (RQ03 - RF17)** [ADR-024]: port del modal de rotulos de
+  `exp_bandeja.aspx` + `RotuloExportador.vb`. Backend: `IExpedienteService.GenerarRotulosAsync` (fail-
+  closed por clasificacion reusando ResolveNivelMaxOrdenAsync, tope 50) arma por expediente fondo/
+  seccion/serie/subserie (arbol SerieDocumental por ParentId)/codigo/nombre/fechas/folios (SUM
+  Documento.Folios)/ubicacion (ultimo ExpedienteUbicacion). Exportador `QuestPdfRotuloExportador`
+  (QuestPDF + Code 128 via ZXing.Net rasterizado con SkiaSharp; sin QR, fiel al legacy): encabezado azul
+  "ARCHIVO DE GESTION" + 5 secciones, 3 tamanos (Caja/Carpeta/Sticker), N por hoja (1/2/4) + posicion de
+  inicio con huecos tenues. UI: el boton "Rotulos" de la barra de seleccion masiva abre el modal y
+  descarga el PDF (window.tronoxDownload). Sin migracion (se arma en runtime). Nuevos paquetes ZXing.Net
+  + SkiaSharp. Verificado: exportador con datos de muestra (rejilla 2x2, barcode, subserie "-", hueco de
+  posicion) + e2e UI (seleccion 3 expedientes -> modal -> generar -> "Rotulos generados", sin errores).
+  Diferido: desglose caja/carpeta de topografia; gate por permiso de imprimir especifico.
+
+Fase B.1 (grafo) y B.2 (rotulacion RF17) **desplegadas a prod** (2026-09-08, migraciones 44, ver
+secciones 23 y 24). Detalles menores diferidos (estampa en imagenes, full-text en compartidos, marcas de
+agua en visor).
+
+- **Fase B.3 - OCR / Reprocesar (RQ04 - RF04)**: al auditar, el OCR ya estaba **construido** (no era un
+  pendiente real; el plan estaba desactualizado): `OcrService` llama a Azure Computer Vision Read API
+  v3.2 (analyze + polling + extraccion), la cuenta (endpoint + API key cifrada AES-256) se configura en
+  **Datos de la Entidad** (`EntidadConfigExtraService.GetOcrAsync/GuardarOcrAsync`, seccion "OCR /
+  Reconocimiento de texto"), el visor expone `op=ocr`/`op=reocr` y el JS pinta el chip de estado + el
+  enlace "Reprocesar" (visible en Pendiente/Error). Sin config activa, Reprocesar avisa "no configurado".
+  **Bug corregido**: el visor pasaba `data-ocr="@_d.EstadoFirma"` (estado de FIRMA) al JS en vez del
+  estado OCR, asi que el chip/Reprocesar nunca aparecian bien. Se agrego `OcrEstado` a
+  `DocumentoDetalleDto` (+ mapeo) y el visor ahora pasa `data-ocr="@_d.OcrEstado"`. Verificado e2e: doc
+  Pendiente muestra "OCR pendiente + Reprocesar"; Reprocesar ejecuta el flujo (config activa -> valida
+  doc/formato -> Procesando -> intenta binario/Azure) y refleja el resultado en vivo (en local cayo a
+  Error por binario ausente en Azurite, path correcto). Sin migracion. Diferido: auto-OCR asincrono al
+  incorporar (hoy es manual desde el visor; la columna ocr_texto ya la indexa la busqueda avanzada).
+
+- **Fase B.4 - Alertas de firma pendiente (RQ05 - RF11 Inc.2)** [ADR-025]: cierra RF11. Validado que el
+  **Calendario Habil YA existe** (ICalendarioHabilService: EsHabil/ProximoHabil/SumarDiasHabiles + config
+  dias/jornada + festivos Colombia, configurado en Datos de la Entidad via CalendarioHabilPanel + pagina
+  /modulo/calendario-habil; ya lo usa el SLA de radicacion) -> no habia que construirlo, solo consumirlo.
+  Como los circuitos crean fila `firmas` por firmante activado, se escanea una sola fuente: `firmas`
+  Pendientes. `IFirmaAlertaService.EscanearYAlertarAsync` (tenant-scoped): vencimiento con dias HABILES
+  (SumarDiasHabiles(fechaSolicitud, FirmaDias)); re-alerta respetando FirmaFrecuenciaDias; emite campana
+  + correo al firmante (best-effort). Nueva columna `firmas.ultima_alerta_at` (migracion FirmaUltimaAlerta,
+  44->45, aditiva) para marcar lo alertado. Hospedaje: `FirmaAlertasHostedService` (BackgroundService en
+  la APP, no en Workers que no se despliega), retraso 3 min + cada 12 h, itera tenants con pendientes
+  fijando el tenant ambient. Verificado e2e local: firma vencida -> campana "Firma pendiente" + correo +
+  ultima_alerta_at marcada, log "Alertas de firma emitidas (tenant 2): 1". **Fase B COMPLETA.**
+
+Fase B COMPLETA y DESPLEGADA (grafo RF03, rotulacion RF17, OCR RF04, alertas RF11 Inc.2; prod en
+migraciones 45, ver secciones 23-26).
+
+- **Fase C.1 - Certificado / acta de firma en PDF (RQ05 - RF04)** [ADR-026]: port de fir_certificado.aspx.
+  El legacy imprimia HTML desde el navegador; en TRONOX se genera **server-side con QuestPDF** (sin
+  browser). `IFirmaService.GenerarActaAsync` lee el documento + los eventos de firma del ledger
+  `super_admin_audit_logs` (EntityId==docId + acciones de firma), resuelve actores y arma el acta:
+  resumen (Estado, **ID de transaccion** determinista estilo Adobe = TRX+base64(SHA256(tenant|doc|creado))
+  30 mayus, Hash SHA-256, Creado por, Fecha, URL de verificacion) + historial de eventos con fecha GMT /
+  actor / IP / detalle + "Documento completado". Renderer `QuestPdfActaRenderer`. Endpoint
+  `GET /visor/certificado?doc=N` (inline) + boton "Certificado" (fa-certificate) en la barra del visor.
+  Sin migracion ni infra. Verificado: harness de render (layout fiel) + e2e endpoint (doc 106 -> 200 PDF,
+  sin errores).
+
+- **Fase C.2 - Archivado PDF/A-2b via LibreOffice (RQ05 - RF02)** [ADR-027]: port de PdfAConverter.vb.
+  Se anade LibreOffice (`libreoffice-writer` + `libreoffice-draw`) a la imagen de la app (unico cambio de
+  infra; soffice en /usr/bin/soffice via env TRONOX_SOFFICE_PATH). `IPdfAConverter` /
+  `LibreOfficePdfAConverter`: `soffice --headless --norestore -env:UserInstallation=file://<perfil>
+  --convert-to pdf:writer_pdf_Export:{SelectPdfVersion long 2} --outdir <out> <entrada>`, perfil
+  temporal por conversion, timeout 120s, valida pdfaid:part (chequeo debil como el legacy). Enganche en
+  SellarPdfEnSitioAsync: tras estampar la cajita, convierte el PDF sellado a PDF/A-2b (orden estampar->
+  convertir para garantizar conformidad) y hashea el resultado. BEST-EFFORT: sin soffice (local) o si
+  falla, se conserva el PDF sellado sin convertir (la firma no se frena). Sin migracion. Diferido: XMP
+  byte-range length-neutral, veraPDF estricto, NTP, portal verificador.
+
+- **Ola 1 - Fidelidad de sellado de firma (RQ05)** [ADR-028]: cierra el cumplimiento PAdES sobre el PDF/A.
+  (1) **NTP hora legal** (RF02): INtpTimeProvider/NtpTimeProvider (SNTP UDP/123, cache offset, fallback),
+  usado en el timestamp del sellado si FirmaConfig.NtpActivo (default false). (2) **QR de verificacion**
+  (RF03): QRCoder en el acta/certificado (verificar.tronox.co/v/{id}). (3) **Sellado XMP byte-range**
+  (RF02/RF03): IPdfXmpSealer/PdfXmpSealer inserta el bloque tronox: en el xpacket del PDF/A consumiendo el
+  padding (length-neutral) y calcula el SHA-256 excluyendo el paquete XMP; RecalcularHash lo reproduce.
+  (4) **Portal verificador publico** (RF04): pagina /v/{docId} AllowAnonymous + IVerificacionFirmaService
+  cross-tenant que muestra entidad/estado/hash/firmantes sin exponer el binario. Sin migracion; paquete
+  nuevo QRCoder. Verificado: SNTP contra pool.ntp.org, sellado XMP sobre PDF/A real (neutral, hash
+  sellado==recalc, reabre), verificador e2e sin login (/v/107 -> Firma verificada). **Ola 1 COMPLETA.**
+
+- **Ola 2 - Consola de firma (RQ05)** [ADR-029]: (1) **Auditoria con filtros** (RF12):
+  ListarPistaFiltradaAsync (evento/usuario/documento/fechas + paginacion) + pagina /modulo/firmas-auditoria.
+  (2) **Consumo y metricas** (RF20): GetMetricasAsync (KPIs + SLA + volumen por mes) + pagina
+  /modulo/firmas-metricas. (3) **Plantillas de firmante** (TRON-20): entidad FirmaPlantilla + migracion
+  (45->46) + Guardar/Usar plantilla en el modal de circuito. (4) **Presets de circuito** (RF13):
+  FirmaPlantillaParser (tokens {{firma}}) + ResolverPresetAsync (lee ContenidoHtml, resuelve por
+  correo/nombre) + precarga en el modal. Verificado e2e (metricas, filtro de auditoria, preset precarga 2
+  firmantes, guardar/usar plantilla). **Ola 2 COMPLETA.** Diferido: resolucion por cargo/grupo.
+
+- **Ola 3 - Incorporacion de documentos (RQ04)** [ADR-030]: (1) **Digitalizar** (RF18): DigitalizarModal
+  + js/camara.js (getUserMedia camara trasera) -> captura JPG -> borrador. (2) **Fuente externa - SFTP**
+  (RF20/21): IFuenteExternaService/SftpFuenteExternaService (SSH.NET, clave de un solo uso) +
+  FuenteExternaModal; cloud (OneDrive/GDrive/SharePoint) diferido (OAuth). (3) **Auto-OCR** (RF04):
+  OcrAutoHostedService (BackgroundService, cada 5 min) procesa los Pendiente por tenant configurado
+  (Azure via OcrService), reemplaza el Reprocesar manual como via por defecto. Todos sobre
+  CrearBorradorBinarioAsync. Sin migracion; paquete SSH.NET. Verificado e2e (SFTP test.rebex.net, modal
+  Digitalizar con fallback sin camara, auto-OCR Pendiente 7->5). **Ola 3 COMPLETA.**
+
+- **Ola 4 - Estampa de firma en imagenes y deuda de visor (RQ04/RQ05)** [ADR-031]: (1) **ECD DIFERIDA**:
+  el legacy la tiene solo como placeholder (columnas ECD_* nunca escritas, sin proveedor/tablas/integracion);
+  no hay nada que portar, requiere definir el proveedor + credenciales con el cliente. (2) **Estampa en
+  imagenes** (RF03-B): IImageSignatureStamper/SkiaImageSignatureStamper dibuja la cajita de firma en una
+  banda al pie de imagenes (jpg/png/tif/bmp/gif) con grafo; FirmaService ramifica por formato (imagen ->
+  Skia+SHA-256; PDF -> PDF/A+XMP) y los gates PDF-only ahora aceptan imagenes. (3) **Marca de agua de
+  seguridad** (RF04): ISecurityWatermarker/SecurityWatermarker hornea mosaico diagonal Usuario/Fecha/IP
+  (gris azulado) al VISUALIZAR documentos Reservado/Clasificado (PDF con PdfSharpCore, imagen con
+  SkiaSharp); DocumentoService.GetVisorBinarioAsync + /visor/bin inline (la descarga dl=1 queda limpia).
+  (4) **Full-text en Compartidos conmigo**: ListarCompartidosConmigoAsync ahora busca en query EF por
+  nombre/archivo/tipologia/OcrTexto/ContenidoHtml (antes solo nombre en memoria). Sin migracion; sin
+  paquetes nuevos. Verificado: 578 tests (17 nuevos) + e2e (visor Reservado con mosaico Usuario/Fecha/IP
+  inline 37KB vs descarga limpia 15KB; busqueda "zafiro_tronox" solo-contenido filtra Compartidos).
+  **Ola 4 COMPLETA** (ECD diferida por diseno).
+
+veraPDF estricto, cloud OAuth, el DNS/Caddy de verificar.tronox.co y la ECD (proveedor por definir con el
+cliente) quedan diferidos. Plan por olas en el vault (PLAN DE TRABAJO, ACTUALIZACION 2026-09-21).
+
+Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
+Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
+
+## 28. Niveles de Clasificacion: escala cerrada en la UI (2026-09-21)
+
+RQ01 - RF01-P.3 (solo UI, sin migracion). El alta de nivel proponia orden 5 (max+1) sobre una
+escala CERRADA de 4 (orden 1..4, RF05), asi que cada "Nuevo nivel" terminaba en el error de
+validacion; con builds viejos podia caer al generico "Ha ocurrido un error.".
+
+- **NivelesClasificacion.razor**: con 4 niveles (`EscalaCompleta`) se oculta "+ Nuevo nivel" y se
+  muestra el distintivo "Escala completa (4 niveles)"; ya no se ofrece un camino que siempre falla.
+- `OpenModal` propone el PRIMER orden libre del rango 1..4 (`PrimerOrdenLibre`) en vez de max+1.
+- Red de seguridad: el handler de guardar envuelve el guardado en `catch` que escribe el mensaje en
+  `_modalError` (en vez de tumbar el circuito Blazor al generico). El Result tipado ya se propagaba.
+- Verificado e2e (dev-login, tenant 2): con los 4 niveles sembrados el boton de alta queda oculto;
+  el mensaje tipado del orden invalido se ve en el modal. Compila y corre (dotnet watch).

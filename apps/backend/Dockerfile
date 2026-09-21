@@ -4,7 +4,9 @@
 # A diferencia del Dockerfile heredado del backbone, esta imagen:
 #  - publica Tronox.Web (no Ecorex.SuperAdmin),
 #  - NO copia apps/agent (podado),
-#  - NO instala Chromium/PuppeteerSharp (podado),
+#  - instala Chromium para el editor de texto interno (RF08): PuppeteerSharp genera el PDF con
+#    Chromium headless, apuntando a /usr/bin/chromium (PUPPETEER_EXECUTABLE_PATH), sin descargar
+#    el binario en runtime,
 #  - escucha en 8080 detras del Caddy externo (mismo patron que Visal/ECOREX/DokTrino).
 
 # --- build ---
@@ -22,6 +24,21 @@ RUN dotnet publish src/Tronox.Web/Tronox.Web.csproj \
 # --- runtime ---
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+
+# Chromium + fuentes para el editor de texto interno (RF08). PuppeteerSharp usa este binario
+# (PUPPETEER_EXECUTABLE_PATH) para convertir HTML a PDF, sin descargar Chromium en runtime.
+# LibreOffice (writer+draw) para la conversion a PDF/A-2b de la firma (RQ05 - RF02, ADR-027):
+# soffice headless en /usr/bin/soffice; draw provee el import de PDF y el export PDF/A.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        chromium \
+        fonts-liberation \
+        fonts-dejavu-core \
+        libreoffice-writer \
+        libreoffice-draw \
+    && rm -rf /var/lib/apt/lists/*
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV TRONOX_SOFFICE_PATH=/usr/bin/soffice
+
 COPY --from=build /app/publish ./
 
 # El Caddy externo termina TLS y reenvia HTTP a este puerto (igual que los stacks hermanos).

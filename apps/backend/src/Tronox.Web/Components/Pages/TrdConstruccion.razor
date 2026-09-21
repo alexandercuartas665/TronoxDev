@@ -1,25 +1,32 @@
 @page "/trd"
 @attribute [Authorize(Policy = "Perm:modulo/trd:View")]
 @* Llave de permisos = ruta de menu "modulo/trd" (RF09 5.9.3). Se entra desde el listado de
-   Versiones de TRD (RF01) con ?version={id}. Es el submodulo de construccion de la TRD. *@
+   Versiones de TRD (RF01) con ?version={id}. Es el submodulo de construccion de la TRD y sus
+   tipologias (RF04 + RF05), equivalente al legacy doc_tablaRetencionDocumental. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text
+@using System.Xml.Linq
 @using Tronox.Application.Trd
+@using Tronox.Application.TrdVersiones
 @using Tronox.Application.SeriesDocumentales
 @using Tronox.Application.Archivistica
 @using Tronox.Application.Listas
 @using Tronox.Domain.Enums
 @using Tronox.Web.Auth
 @inject ITrdConstruccionService Svc
+@inject ITrdVersionService VersionsSvc
 @inject ISerieDocumentalService SeriesSvc
 @inject INivelClasificacionService NivelesSvc
 @inject IListaMaestraService ListasSvc
 @inject ICurrentPermissions Perms
 @inject Tronox.Application.Common.ITenantContext Tenant
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
-@* RQ02 - RF04 (Construccion de la TRD). Cruce Dependencia x Serie dentro de una version: el CCD y
-   la TRD. Respeta la solo-lectura por estado de la version (RF01 3.1.3): sobre Vigente solo se
-   agregan series y se editan procedimiento/metadatos; sobre Historico/Inactivo, solo consulta. *@
+@* RQ02 - RF04 + RF05. Vista list-first: aterriza en "Gestion de TRD por dependencia" (con Estado
+   TRD DERIVADO, ADR-007) y desde "Ver/Crear" se abre el workspace de esa dependencia, donde se
+   construye la TRD (cruce Dependencia x Serie), sus tipologias documentales y sus metadatos de
+   expediente y de documento. Respeta la solo-lectura por estado de la version (RF01 3.1.3). *@
 
 <PageTitle>Tabla de Retención Documental - TRONOX SGDEA</PageTitle>
 
@@ -32,7 +39,7 @@
         <span class="sep">/</span>
         <a href="/trd-versiones">Versiones de TRD</a>
         <span class="sep">/</span>
-        <span class="cur">Construcción de la TRD</span>
+        <span class="cur">Gestión de la TRD</span>
     </nav>
 
     @if (_version is null)
@@ -55,11 +62,11 @@
     {
         <div class="tx-ent-head">
             <div>
-                <div class="tx-ent-eyebrow"><i class="bi bi-table"></i><span>RQ02 &middot; RF04</span></div>
-                <h1 class="tx-ent-title">TRD &mdash; <span class="mono">@_version.CodigoVersion</span></h1>
+                <div class="tx-ent-eyebrow"><i class="bi bi-table"></i><span>RQ02 &middot; RF04 &middot; RF05</span></div>
+                <h1 class="tx-ent-title">Gestión de Tablas de Retención Documental &middot; <span class="mono">@_version.CodigoVersion</span></h1>
                 <p class="tx-ent-sub">
-                    Cruza cada <strong>dependencia</strong> con las <strong>series</strong> del catálogo y define sus
-                    tiempos de retención, disposición final, clasificación y metadatos. El código CCD se genera solo.
+                    Asignación por dependencia. Cada dependencia tiene su propia TRD (principio de procedencia):
+                    cruza sus <strong>series</strong>, define tiempos, disposición, clasificación, <strong>tipos documentales</strong> y metadatos.
                 </p>
             </div>
             <div>
@@ -73,7 +80,7 @@
         }
         else if (_version.Vigente)
         {
-            <div class="tx-ent-alert"><i class="bi bi-shield-lock"></i><span>Versión <strong>Vigente</strong>: puedes agregar series y editar procedimiento/metadatos, pero <strong>no</strong> los tiempos, la disposición, la clasificación ni eliminar series. Para eso crea una nueva versión.</span></div>
+            <div class="tx-ent-alert"><i class="bi bi-shield-lock"></i><span>Versión <strong>Vigente</strong>: puedes agregar series, tipos documentales y metadatos, pero <strong>no</strong> los tiempos, la disposición, la clasificación ni eliminar. Para eso crea una nueva versión.</span></div>
         }
 
         @if (_pageError is not null)
@@ -85,107 +92,553 @@
             <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
         }
 
-        <div class="tx-dep-layout">
-            @* ---- Dependencias ---- *@
-            <div class="tx-ent-card">
-                <div class="tx-dep-toolbar">
+        @* =================== LISTA "Asignacion por Dependencia" (siempre visible) =================== *@
+        <div class="tx-ent-card">
+                <div class="tx-dep-toolbar" style="gap:12px;flex-wrap:wrap">
                     <div class="tx-dep-search">
                         <i class="bi bi-search"></i>
-                        <input class="tx-ent-input" placeholder="Buscar dependencia..."
+                        <input class="tx-ent-input" placeholder="Buscar código o dependencia..."
                                value="@_search" @oninput="@(e => _search = e.Value?.ToString() ?? "")" />
                     </div>
+                    <div class="tx-ent-field" style="margin:0;min-width:200px">
+                        <select class="tx-ent-input" @bind="_estadoFilter">
+                            <option value="">Todos los estados</option>
+                            <option value="@EstadoTrdDependencia.SinTrd">Sin TRD</option>
+                            <option value="@EstadoTrdDependencia.EnConstruccion">En construcción</option>
+                            <option value="@EstadoTrdDependencia.Activa">Activa</option>
+                            <option value="@EstadoTrdDependencia.Historica">Histórica</option>
+                            <option value="@EstadoTrdDependencia.Inactiva">Inactiva</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="tx-dep-tree">
-                    @if (DependenciasFiltradas().Count == 0)
-                    {
-                        <div class="tx-ent-hint" style="padding:14px">No hay dependencias. Créalas en Organizacional › Dependencias.</div>
-                    }
-                    else
-                    {
-                        @foreach (var d in DependenciasFiltradas())
-                        {
-                            <div class="tx-dep-node @(d.DependenciaId == _selectedDepId ? "on" : "")" @onclick="@(() => SelectDep(d.DependenciaId))">
-                                <span class="tx-dep-chev ph"></span>
-                                <span class="tx-dep-node-code">@d.Codigo</span>
-                                <span class="tx-dep-node-name">@d.Nombre</span>
-                                <span class="tx-dep-node-right">
-                                    <span class="tx-ent-badge sm @(d.SeriesActivas > 0 ? "ok" : "")">@d.SeriesActivas serie(s)</span>
-                                </span>
-                            </div>
-                        }
-                    }
-                </div>
-            </div>
 
-            @* ---- Asignaciones de la dependencia ---- *@
-            <div class="tx-ent-card">
-                @if (_selectedDep is null)
-                {
-                    <div class="tx-ent-card-body"><div class="tx-ent-empty"><i class="bi bi-diagram-3"></i><div>Selecciona una dependencia para ver y construir su TRD.</div></div></div>
-                }
-                else
-                {
-                    <div class="tx-ent-card-body">
-                        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-                            <h3 style="margin:0"><span class="mono">@_selectedDep.Codigo</span> &middot; @_selectedDep.Nombre</h3>
-                            @if (_canAgregar)
+                <div class="tx-ent-table-wrap">
+                    <table class="tx-ent-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th><th>Dependencia</th><th>Versión TRD</th><th>Estado TRD</th>
+                                <th>Fecha creación</th><th>Usuario creador</th><th class="right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (DependenciasFiltradas().Count == 0)
                             {
-                                <button type="button" class="tx-ent-btn sm primary" @onclick="OpenAddAsignacion"><i class="bi bi-plus-lg"></i> Agregar serie</button>
+                                <tr><td colspan="7"><div class="tx-ent-hint" style="padding:14px">No hay dependencias que coincidan. Créalas en Organizacional › Dependencias.</div></td></tr>
                             }
+                            else
+                            {
+                                @foreach (var d in DependenciasFiltradas())
+                                {
+                                    <tr>
+                                        <td class="mono">@d.Codigo</td>
+                                        <td>@d.Nombre</td>
+                                        <td>@(d.SeriesAsignadas > 0 ? _version.CodigoVersion : "--")</td>
+                                        <td><span class="tx-ent-badge sm @EstadoDepClase(d.Estado)">@EstadoDepLabel(d.Estado)</span></td>
+                                        <td>@(d.FechaCreacion is DateTimeOffset f ? f.ToString("yyyy-MM-dd") : "--")</td>
+                                        <td>@(d.CreadoPorId is long uid ? $"Usuario {uid}" : "--")</td>
+                                        <td class="right">
+                                            @if (d.SeriesAsignadas > 0)
+                                            {
+                                                <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenWorkspace(d, autoAdd:false))"><i class="bi bi-table"></i> Ver TRD</button>
+                                            }
+                                            else if (_canAgregar)
+                                            {
+                                                <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenWorkspace(d, autoAdd:true))"><i class="bi bi-plus-lg"></i> Crear</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenWorkspace(d, autoAdd:false))"><i class="bi bi-eye"></i> Ver</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+        </div>
+
+        @* =================== WORKSPACE como MODAL (fiel al legacy pnlTRDWorkspace = rf4-modal-workspace) =================== *@
+        @if (_workspaceDep is not null)
+        {
+            <div class="modal-overlay" @onclick="BackToList">
+                <div class="modal-dialog" style="max-width:1080px;width:96%" @onclick:stopPropagation="true">
+                    <div class="modal-head">
+                        <div>
+                            <h3 style="margin:0"><span class="mono">@_workspaceDep.Codigo</span> &middot; @_workspaceDep.Nombre</h3>
+                            <div class="tx-ent-hint" style="margin-top:2px">Tabla de Retención Documental por dependencia</div>
+                        </div>
+                        <button class="modal-close" @onclick="BackToList">&times;</button>
+                    </div>
+                    <div class="modal-body tx-mod tx-trdc">
+                        @if (_pageError is not null)
+                        {
+                            <div class="tx-ent-alert err"><i class="bi bi-exclamation-triangle-fill"></i><span>@_pageError</span></div>
+                        }
+                        @if (_pageOk is not null)
+                        {
+                            <div class="tx-ent-alert ok"><i class="bi bi-check-circle-fill"></i><span>@_pageOk</span></div>
+                        }
+
+                        <div class="tx-ent-head" style="margin-bottom:8px">
+                            <div>
+                                <h3 style="margin:0">Tabla de Retención Documental</h3>
+                                <p class="tx-ent-sub" style="margin:2px 0 0">@_version.CodigoVersion &middot; Configura series, subseries y tipologías desde un solo módulo</p>
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <span class="tx-ent-badge @EstadoClase(_version.Estado)">@EstadoLabel(_version.Estado)</span>
+                                @if (_asignaciones.Count > 0)
+                                {
+                                    <button type="button" class="tx-ent-btn sm" @onclick="ExportXls" disabled="@_busy"><i class="bi bi-file-earmark-spreadsheet"></i> XLS</button>
+                                    <button type="button" class="tx-ent-btn sm" @onclick="ExportXml" disabled="@_busy"><i class="bi bi-filetype-xml"></i> XML</button>
+                                }
+                                @if (_canPublicar)
+                                {
+                                    <button type="button" class="tx-ent-btn sm ok" @onclick="@(() => _showPublicar = true)" disabled="@_busy"><i class="bi bi-cloud-arrow-up"></i> Publicar como versión TRD</button>
+                                }
+                                @if (_canAgregar)
+                                {
+                                    <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenWizard("SERIE", null))"><i class="bi bi-plus-lg"></i> Nueva Serie</button>
+                                }
+                            </div>
                         </div>
 
-                        @if (_asignaciones.Count == 0)
+                        <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span><strong>Módulo central TRD:</strong> gestiona series, subseries y tipologías documentales desde este árbol. Usa el botón <i class="bi bi-plus-lg"></i> de cada serie para agregar subseries o tipologías según su estructura.</span></div>
+
+                        <div class="tx-ent-card" style="padding:12px;margin-top:10px">
+                            <div style="margin-bottom:8px"><strong>Serie / Subserie / Tipología</strong>
+                                <span class="tx-ent-hint">&nbsp;@ContarSeries() series &middot; @ContarSubseries() subseries</span>
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
+                                <input class="tx-ent-input" style="flex:1 1 auto;min-width:120px" placeholder="Buscar serie, subserie o tipología..."
+                                       value="@_treeSearch" @oninput="@(e => _treeSearch = e.Value?.ToString() ?? "")" />
+                                <select class="tx-ent-input" style="flex:0 0 auto;width:170px" @bind="_treeLevelFilter">
+                                        <option value="">Todos los niveles</option>
+                                        <option value="serie">Series</option>
+                                        <option value="subserie">Subseries</option>
+                                        <option value="tipologia">Tipologías</option>
+                                    </select>
+                                    <select class="tx-ent-input" style="flex:0 0 auto;width:160px" @bind="_treeEstadoFilter">
+                                        <option value="">Estado: todos</option>
+                                        <option value="activo">Activo</option>
+                                        <option value="inactivo">Inactivo</option>
+                                    </select>
+                                    <button type="button" class="tx-ent-btn sm" @onclick="ExpandAll"><i class="bi bi-arrows-expand"></i> Expandir</button>
+                                    <button type="button" class="tx-ent-btn sm" @onclick="CollapseAll"><i class="bi bi-arrows-collapse"></i> Colapsar</button>
+                                    @if (_canAgregar)
+                                    {
+                                        <button type="button" class="tx-ent-btn sm primary" @onclick="@(() => OpenWizard("SERIE", null))"><i class="bi bi-plus-lg"></i> Crear</button>
+                                    }
+                                </div>
+
+                            @if (_asignaciones.Count == 0)
+                            {
+                                <div class="tx-ent-empty" style="margin-top:12px"><i class="bi bi-diagram-3"></i><div>Esta dependencia aún no tiene series en la TRD.</div></div>
+                            }
+                            else
+                            {
+                                <div class="tx-ent-table-wrap" style="margin-top:10px">
+                                    <table class="tx-ent-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Serie / Subserie / Tipología</th><th>Código</th><th>T. Gestión</th><th>T. Central</th>
+                                                <th>Disposición</th><th>Formato / Conteo</th><th>Estado</th><th class="right">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var serie in SeriesTop())
+                                            {
+                                                @if (ShowNivel("serie") && EstadoMatchAsig(serie)) { @SerieRow(serie, 0) }
+                                                @if (IsExpanded(serie) && _treeLevelFilter != "serie")
+                                                {
+                                                    @if (ShowNivel("tipologia"))
+                                                    {
+                                                        @foreach (var t in TipsVisibles(serie)) { @if (EstadoMatchTip(t)) { @TipologiaRow(serie, t) } }
+                                                    }
+                                                    @foreach (var sub in SubseriesDe(serie))
+                                                    {
+                                                        @if (ShowNivel("subserie") && EstadoMatchAsig(sub)) { @SerieRow(sub, 1) }
+                                                        @if (IsExpanded(sub) && _treeLevelFilter != "subserie" && ShowNivel("tipologia"))
+                                                        {
+                                                            @foreach (var t in TipsVisibles(sub)) { @if (EstadoMatchTip(t)) { @TipologiaRow(sub, t) } }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    @* ===== Wizard Nueva Serie/Subserie (legacy pnlModalSubserie, 4 pasos) ===== *@
+    @if (_showWizard)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showWizard = false)">
+            <div class="modal-dialog" style="max-width:840px;width:96%" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_wzMode == "SUBSERIE" ? "Nueva Subserie" : "Nueva Serie")</h3>
+                    <button class="modal-close" @onclick="@(() => _showWizard = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+                        @for (var i = 1; i <= 4; i++)
                         {
-                            <div class="tx-ent-empty" style="margin-top:14px"><i class="bi bi-table"></i><div>Esta dependencia aún no tiene series en la TRD.</div></div>
+                            var idx = i;
+                            <span class="tx-ent-badge sm @(_wzStep == idx ? "primary" : (_wzStep > idx ? "ok" : "off"))">@idx. @_wzPasos[idx - 1]</span>
+                        }
+                    </div>
+                    @if (_wzParent is not null)
+                    {
+                        <div class="tx-ent-alert"><i class="bi bi-diagram-3"></i><span>Serie padre: <strong>@_wzParent.SerieCodigo &middot; @_wzParent.SerieNombre</strong></span></div>
+                    }
+                    @if (_wzError is not null) { <div class="tx-ent-fielderr">@_wzError</div> }
+
+                    <style>
+                        .wz-info { background:#EEF6FF; border:1px solid #BFD6FF; color:#1756C1; border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:14px; }
+                        .wz-cat-badge { display:inline-flex; align-items:center; gap:4px; background:#EAF2FF; color:#2F7CF6; border-radius:999px; padding:2px 9px; font-size:10px; font-weight:800; text-transform:none; margin-left:6px; letter-spacing:0; }
+                        .wz-results { margin-top:8px; border:1px solid #D7DFEC; border-radius:10px; max-height:256px; overflow-y:auto; box-shadow:0 8px 22px rgba(15,23,42,.08); }
+                        .wz-results:empty { display:none; }
+                        .wz-opt { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; width:100%; padding:11px 14px; border:none; border-bottom:1px solid #EEF2F7; background:#fff; cursor:pointer; text-align:left; font-family:inherit; }
+                        .wz-opt:last-child { border-bottom:none; }
+                        .wz-opt:hover { background:#F4F8FF; box-shadow:inset 3px 0 0 #2F7CF6; }
+                        .wz-opt-code { background:#F2F5FB; color:#8C97B2; border-radius:6px; padding:2px 8px; font-family:Consolas,monospace; font-size:11px; font-weight:800; white-space:nowrap; }
+                        .wz-opt-body { min-width:0; display:flex; flex-direction:column; }
+                        .wz-opt-name { color:#101828; font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                        .wz-opt-meta { color:#98A2B3; font-size:11.5px; }
+                        .wz-opt-flow { background:#EEF6FF; color:#1756C1; border-radius:999px; padding:3px 10px; font-size:10.5px; font-weight:800; white-space:nowrap; }
+                        .wz-empty { padding:14px; color:#98A2B3; font-size:12.5px; text-align:center; }
+                        .wz-selected { display:flex; align-items:center; gap:14px; border:1px solid #BFD6FF; background:#F7FBFF; border-radius:10px; padding:14px 16px; margin:14px 0; }
+                        .wz-selected-ico { width:40px; height:40px; border-radius:10px; background:#DBEAFE; color:#2F7CF6; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+                        .wz-selected-title { font-size:14px; font-weight:800; color:#101828; }
+                        .wz-selected-detail { font-size:12px; color:#5A6787; margin-top:1px; }
+                        .wz-selected-flow { display:inline-block; margin-top:5px; background:#EEF6FF; color:#1756C1; border-radius:999px; padding:2px 10px; font-size:10.5px; font-weight:800; }
+                        .wz-subpicker { border:1px solid #D7DFEC; border-radius:12px; margin-bottom:14px; overflow:hidden; }
+                        .wz-subpicker-head { background:#F8FAFE; border-bottom:1px solid #E7ECF5; padding:9px 14px; font-size:12px; font-weight:800; color:#5A6787; }
+                        .wz-sub-row { display:flex; align-items:center; gap:10px; padding:9px 14px; border-bottom:1px solid #F1F4F9; cursor:pointer; font-size:12.5px; color:#17213A; }
+                        .wz-sub-row:last-child { border-bottom:none; }
+                        .wz-sub-row:hover { background:#F7FBFF; }
+                        .wz-sub-row input[type=radio] { width:16px; height:16px; accent-color:#2F7CF6; }
+                        .wz-sub-none { color:#5A6787; }
+                        .wz-sub-name { color:#101828; font-weight:600; }
+                    </style>
+
+                    @if (_wzStep == 1)
+                    {
+                        @if (_wzMode == "SERIE")
+                        {
+                            <div class="wz-info"><strong>Serie:</strong> crea una serie principal para esta TRD. No se requiere serie padre.</div>
+
+                            @if (_wzSerieCatId <= 0)
+                            {
+                                @* Buscador autocompletado contra el catalogo de series (paridad legacy). *@
+                                <div class="tx-ent-grid c2">
+                                    <div class="tx-ent-field">
+                                        <label>Código <span class="req">*</span></label>
+                                        <input class="tx-ent-input mono" value="" readonly placeholder="—" />
+                                        <div class="tx-ent-hint">Se llena al seleccionar la serie del catálogo</div>
+                                    </div>
+                                    <div class="tx-ent-field">
+                                        <label>Estado</label>
+                                        <input class="tx-ent-input" value="Activo" readonly />
+                                    </div>
+                                </div>
+                                <div class="tx-ent-field">
+                                    <label>Nombre <span class="req">*</span> <span class="wz-cat-badge"><i class="bi bi-link-45deg"></i> Catálogo serie/subserie</span></label>
+                                    <input class="tx-ent-input" placeholder="Escribe para buscar en el catálogo..." autocomplete="off"
+                                           value="@_wzSearch" @oninput="@(e => _wzSearch = e.Value?.ToString() ?? "")" />
+                                    <div class="tx-ent-hint">Autocompleta desde el módulo catálogo serie/subserie</div>
+                                    <div class="wz-results">
+                                        @foreach (var s in WizCatalogoFiltrado())
+                                        {
+                                            <button type="button" class="wz-opt" @onclick="@(() => WizSelectSerie(s))">
+                                                <span class="wz-opt-code">@s.Codigo</span>
+                                                <span class="wz-opt-body">
+                                                    <span class="wz-opt-name">@s.Nombre</span>
+                                                    <span class="wz-opt-meta">@s.ChildCount @(s.ChildCount == 1 ? "subserie" : "subseries")</span>
+                                                </span>
+                                                <span class="wz-opt-flow">@(s.ChildCount > 0 ? "Incluye subseries" : "Directa")</span>
+                                            </button>
+                                        }
+                                        @if (WizCatalogoFiltrado().Count == 0)
+                                        {
+                                            <div class="wz-empty">Sin series del catálogo disponibles para agregar.</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                @* Serie seleccionada del catalogo. *@
+                                <div class="tx-ent-grid c2">
+                                    <div class="tx-ent-field"><label>Código <span class="req">*</span></label><input class="tx-ent-input mono" value="@_wzCodigo" readonly /></div>
+                                    <div class="tx-ent-field"><label>Estado</label><input class="tx-ent-input" value="Activo" readonly /></div>
+                                </div>
+                                <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" value="@_wzNombre" readonly /></div>
+
+                                <div class="wz-selected">
+                                    <div class="wz-selected-ico"><i class="bi bi-folder2-open"></i></div>
+                                    <div style="flex:1;min-width:0">
+                                        <div class="wz-selected-title">@_wzNombre</div>
+                                        <div class="wz-selected-detail">Código @_wzCodigo · @_wzSelChildCount @(_wzSelChildCount == 1 ? "subserie" : "subseries")</div>
+                                        <div class="wz-selected-flow">@(_wzSelChildCount > 0 ? "Selecciona una subserie para caracterizarla (opcional)" : "Se asociará como serie directa")</div>
+                                    </div>
+                                    <button type="button" class="tx-ent-btn sm" @onclick="WizClearSerie">Cambiar</button>
+                                </div>
+
+                                @if (_wzSelChildren.Count > 0)
+                                {
+                                    <div class="wz-subpicker">
+                                        <div class="wz-subpicker-head">Subseries disponibles (@_wzSelChildren.Count)</div>
+                                        <label class="wz-sub-row">
+                                            <input type="radio" name="wzsub" checked="@(_wzSubCatId is null)" @onchange="@(() => _wzSubCatId = null)" />
+                                            <span class="wz-sub-none">Ninguna — asociar solo la serie</span>
+                                        </label>
+                                        @foreach (var sub in _wzSelChildren)
+                                        {
+                                            <label class="wz-sub-row">
+                                                <input type="radio" name="wzsub" checked="@(_wzSubCatId == sub.Id)" @onchange="@(() => _wzSubCatId = sub.Id)" />
+                                                <span class="wz-opt-code">@sub.Codigo</span><span class="wz-sub-name">@sub.Nombre</span>
+                                            </label>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="tx-ent-field"><label>Descripción <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_wzDescripcion" rows="2" maxlength="500"></textarea></div>
+                            }
                         }
                         else
                         {
-                            <div class="tx-ent-table-wrap" style="margin-top:12px">
-                                <table class="tx-ent-table">
-                                    <thead>
-                                        <tr>
-                                            <th>CCD</th><th>Serie</th><th>Gestión</th><th>Central</th>
-                                            <th>Disposición</th><th>Clasificación</th><th>Metadatos</th><th class="right">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var a in _asignaciones)
-                                        {
-                                            <tr class="@(a.IsArchived ? "archivada" : "")">
-                                                <td class="mono">@a.CodigoCcd</td>
-                                                <td>@a.SerieNombre @if (a.SerieEsSubserie) { <span class="tx-ent-badge sm">Subserie</span> }</td>
-                                                <td>@a.TiempoGestion a</td>
-                                                <td>@a.TiempoCentral a</td>
-                                                <td><span class="tx-ent-badge sm @DispClase(a.DisposicionFinal)">@DispCodigo(a.DisposicionFinal)</span></td>
-                                                <td><span class="tx-ent-badge sm violet">@a.NivelClasificacionNombre</span></td>
-                                                <td>
-                                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatos(a))">@a.Metadatos.Count(m => !m.IsArchived) campo(s)</button>
-                                                </td>
-                                                <td class="right">
-                                                    @if (_canEditEstructura && !a.IsArchived)
-                                                    {
-                                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenEditAsignacion(a))" disabled="@_busy">Editar</button>
-                                                    }
-                                                    @if (_canEliminar)
-                                                    {
-                                                        @if (a.IsArchived)
-                                                        {
-                                                            <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetArchived(a, false))" disabled="@_busy">Reactivar</button>
-                                                        }
-                                                        else
-                                                        {
-                                                            <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetArchived(a, true))" disabled="@_busy">Inactivar</button>
-                                                        }
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                            <div class="tx-ent-grid c2">
+                                <div class="tx-ent-field"><label>Código de la subserie <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzCodigo" maxlength="20" /></div>
+                                <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzNombre" maxlength="200" /></div>
+                            </div>
+                            <div class="tx-ent-field"><label>Descripción <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_wzDescripcion" rows="2" maxlength="500"></textarea></div>
+                        }
+                    }
+                    else if (_wzStep == 2)
+                    {
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Tiempo en Gestión (años) <span class="req">*</span></label><input type="number" min="0" class="tx-ent-input" @bind="_wzTG" /></div>
+                            <div class="tx-ent-field"><label>Tiempo en Central (años) <span class="req">*</span></label><input type="number" min="0" class="tx-ent-input" @bind="_wzTC" /></div>
+                        </div>
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Disposición final <span class="req">*</span></label>
+                                <select class="tx-ent-input" @bind="_wzDisp">
+                                    <option value="@DisposicionFinal.ConservacionTotal">CT — Conservación Total</option>
+                                    <option value="@DisposicionFinal.Seleccion">S — Selección</option>
+                                    <option value="@DisposicionFinal.Eliminacion">E — Eliminación</option>
+                                </select>
+                            </div>
+                            <div class="tx-ent-field"><label>Clasificación <span class="req">*</span></label>
+                                <select class="tx-ent-input" @bind="_wzNivelId">@foreach (var n in _niveles) { <option value="@n.Id">@n.Nombre</option> }</select>
+                            </div>
+                        </div>
+                        <div class="tx-ent-grid c2">
+                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzRepro" /> Reproducción técnica del papel (M/D)</label>
+                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzDdhh" /> Serie con documentos DD.HH / DIH</label>
+                        </div>
+                        <div class="tx-ent-field"><label>Procedimiento <span class="opt">(opcional)</span></label><textarea class="tx-ent-input" @bind="_wzProc" rows="2" maxlength="1000"></textarea></div>
+                    }
+                    else if (_wzStep == 3)
+                    {
+                        <p class="tx-ent-hint" style="margin-top:0">Se diligencian al crear un expediente bajo esta serie en esta dependencia.</p>
+                        @WizMetaList(_wzMetas)
+                        @if (!_wzMetaForm)
+                        {
+                            <button class="tx-ent-btn sm" @onclick="@(() => { _wzMetaForm = true; ResetWzMetaForm(); })"><i class="bi bi-plus-lg"></i> Agregar metadato</button>
+                        }
+                        else
+                        {
+                            <div class="tx-ent-card" style="padding:12px;margin-top:8px">
+                                <strong>Nuevo metadato del expediente</strong>
+                                <div class="tx-ent-grid c2" style="margin-top:8px">
+                                    <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzMetaNombre" maxlength="200" /></div>
+                                    <div class="tx-ent-field"><label>Tipo de dato</label><select class="tx-ent-input" @bind="_wzMetaTipo">@foreach (var tp in Enum.GetValues<TipoDatoMetadato>()) { <option value="@tp">@TipoLabel(tp)</option> }</select></div>
+                                </div>
+                                <div class="tx-ent-grid c2">
+                                    @if (_wzMetaTipo == TipoDatoMetadato.Lista)
+                                    {
+                                        <div class="tx-ent-field"><label>Lista <span class="req">*</span></label><select class="tx-ent-input" @bind="_wzMetaListaId"><option value="0">— Selecciona —</option>@foreach (var l in _listas) { <option value="@l.Id">@l.NombreLista</option> }</select></div>
+                                    }
+                                    <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzMetaOblig" /> Obligatorio</label>
+                                </div>
+                                <div style="margin-top:8px;display:flex;gap:8px"><button class="tx-ent-btn primary sm" @onclick="WzAddMeta">Agregar</button><button class="tx-ent-btn sm" @onclick="@(() => _wzMetaForm = false)">Cancelar</button></div>
                             </div>
                         }
+                    }
+                    else if (_wzStep == 4)
+                    {
+                        <p class="tx-ent-hint" style="margin-top:0">Tipos de documento que conforman esta serie, con sus metadatos de documento (opcional).</p>
+                        @if (_wzTips.Count > 0)
+                        {
+                            <div class="tx-ent-table-wrap"><table class="tx-ent-table"><thead><tr><th>Nombre</th><th>Soporte</th><th>Formato</th><th>Oblig.</th><th>Meta.</th><th class="right">Acciones</th></tr></thead><tbody>
+                                @foreach (var t in _wzTips)
+                                {
+                                    <tr><td>@t.Nombre</td><td>@SoporteLabel(t.Soporte)</td><td>@(t.Formato ?? "--")</td><td>@(t.Obligatorio ? "Sí" : "No")</td><td>@t.Metas.Count</td><td class="right"><button class="tx-ent-btn sm danger" @onclick="@(() => _wzTips.Remove(t))">Quitar</button></td></tr>
+                                }
+                            </tbody></table></div>
+                        }
+                        else { <div class="tx-ent-hint">Sin tipologías (opcional).</div> }
+                        @if (!_wzTipForm)
+                        {
+                            <button class="tx-ent-btn sm" @onclick="@(() => { _wzTipForm = true; ResetWzTipForm(); })"><i class="bi bi-plus-lg"></i> Agregar tipología</button>
+                        }
+                        else
+                        {
+                            <div class="tx-ent-card" style="padding:12px;margin-top:10px">
+                                <strong>Nueva tipología</strong>
+                                <div class="tx-ent-grid c2" style="margin-top:8px">
+                                    <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzTipNombre" maxlength="200" /></div>
+                                    <div class="tx-ent-field"><label>Soporte</label><select class="tx-ent-input" @bind="_wzTipSop"><option value="@SoporteTipologia.Electronico">Electrónico</option><option value="@SoporteTipologia.Fisico">Físico</option><option value="@SoporteTipologia.Hibrido">Híbrido</option></select></div>
+                                </div>
+                                <div class="tx-ent-grid c2">
+                                    <div class="tx-ent-field"><label>Formato <span class="opt">(opcional)</span></label><input class="tx-ent-input" @bind="_wzTipFmt" maxlength="100" placeholder="PDF, DOCX..." /></div>
+                                    <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzTipOblig" /> Obligatorio en el expediente</label>
+                                </div>
+                                <div style="margin-top:6px"><strong class="tx-ent-hint">Metadatos del documento</strong></div>
+                                @WizMetaList(_wzTipMetas)
+                                @if (!_wzTipMetaForm)
+                                {
+                                    <button class="tx-ent-btn sm" @onclick="@(() => { _wzTipMetaForm = true; ResetWzTipMetaForm(); })"><i class="bi bi-plus-lg"></i> Agregar metadato</button>
+                                }
+                                else
+                                {
+                                    <div class="tx-ent-card" style="padding:10px;margin-top:6px">
+                                        <div class="tx-ent-grid c2">
+                                            <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_wzTipMetaNombre" maxlength="200" /></div>
+                                            <div class="tx-ent-field"><label>Tipo de dato</label><select class="tx-ent-input" @bind="_wzTipMetaTipo">@foreach (var tp in Enum.GetValues<TipoDatoMetadato>()) { <option value="@tp">@TipoLabel(tp)</option> }</select></div>
+                                        </div>
+                                        <div class="tx-ent-grid c2">
+                                            @if (_wzTipMetaTipo == TipoDatoMetadato.Lista)
+                                            {
+                                                <div class="tx-ent-field"><label>Lista <span class="req">*</span></label><select class="tx-ent-input" @bind="_wzTipMetaListaId"><option value="0">— Selecciona —</option>@foreach (var l in _listas) { <option value="@l.Id">@l.NombreLista</option> }</select></div>
+                                            }
+                                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_wzTipMetaOblig" /> Obligatorio</label>
+                                        </div>
+                                        <div style="margin-top:6px;display:flex;gap:8px"><button class="tx-ent-btn primary sm" @onclick="WzAddTipMeta">Agregar</button><button class="tx-ent-btn sm" @onclick="@(() => _wzTipMetaForm = false)">Cancelar</button></div>
+                                    </div>
+                                }
+                                <div style="margin-top:10px;display:flex;gap:8px">
+                                    <button class="tx-ent-btn primary sm" @onclick="WzAddTip">Agregar tipología</button>
+                                    <button class="tx-ent-btn sm" @onclick="@(() => { _wzTipForm = false; ResetWzTipForm(); })">Cancelar</button>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-foot">
+                    <span class="tx-ent-hint" style="margin:0;margin-right:auto">Paso @_wzStep de 4</span>
+                    @if (_wzStep > 1) { <button class="tx-ent-btn" @onclick="WizBack" disabled="@_wzBusy">Atrás</button> }
+                    @if (_wzStep < 4) { <button class="tx-ent-btn primary" @onclick="WizNext" disabled="@_wzBusy">Siguiente</button> }
+                    else { <button class="tx-ent-btn primary" @onclick="WizardCrear" disabled="@_wzBusy">Crear</button> }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Wizard Tipologia (legacy pnlModalTipologia, 2 pasos) ===== *@
+    @if (_showTipWizard)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showTipWizard = false)">
+            <div class="modal-dialog" style="max-width:700px;width:96%" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>@(_twEditing is null ? "Nueva Tipología Documental" : "Editar Tipología Documental")</h3>
+                    <button class="modal-close" @onclick="@(() => _showTipWizard = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <div style="display:flex;gap:6px;margin-bottom:12px">
+                        <span class="tx-ent-badge sm @(_twStep == 1 ? "primary" : "ok")">1. Configuración</span>
+                        <span class="tx-ent-badge sm @(_twStep == 2 ? "primary" : "off")">2. Confirmar</span>
                     </div>
-                }
+                    @if (_twParent is not null) { <div class="tx-ent-alert"><i class="bi bi-diagram-3"></i><span>Sobre: <strong class="mono">@_twParent.CodigoCcd</strong> &middot; @_twParent.SerieNombre</span></div> }
+                    @if (_twError is not null) { <div class="tx-ent-fielderr">@_twError</div> }
+                    @if (_twStep == 1)
+                    {
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_twNombre" maxlength="200" placeholder="Ej: Acta de Reunión" /></div>
+                            <div class="tx-ent-field"><label>Soporte</label><select class="tx-ent-input" @bind="_twSop"><option value="@SoporteTipologia.Electronico">Electrónico</option><option value="@SoporteTipologia.Fisico">Físico</option><option value="@SoporteTipologia.Hibrido">Híbrido</option></select></div>
+                        </div>
+                        <div class="tx-ent-grid c2">
+                            <div class="tx-ent-field"><label>Formato <span class="opt">(opcional)</span></label><input class="tx-ent-input" @bind="_twFmt" maxlength="100" placeholder="PDF, DOCX..." /></div>
+                            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_twOblig" /> Obligatorio en el expediente</label>
+                        </div>
+                        @if (_twEditing is null)
+                        {
+                            <div style="margin-top:8px"><strong class="tx-ent-hint">Metadatos del documento</strong></div>
+                            @WizMetaList(_twMetas)
+                            @if (!_twMetaForm)
+                            {
+                                <button class="tx-ent-btn sm" @onclick="@(() => { _twMetaForm = true; ResetTwMetaForm(); })"><i class="bi bi-plus-lg"></i> Agregar metadato</button>
+                            }
+                            else
+                            {
+                                <div class="tx-ent-card" style="padding:10px;margin-top:6px">
+                                    <div class="tx-ent-grid c2">
+                                        <div class="tx-ent-field"><label>Nombre <span class="req">*</span></label><input class="tx-ent-input" @bind="_twMetaNombre" maxlength="200" /></div>
+                                        <div class="tx-ent-field"><label>Tipo de dato</label><select class="tx-ent-input" @bind="_twMetaTipo">@foreach (var tp in Enum.GetValues<TipoDatoMetadato>()) { <option value="@tp">@TipoLabel(tp)</option> }</select></div>
+                                    </div>
+                                    <div class="tx-ent-grid c2">
+                                        @if (_twMetaTipo == TipoDatoMetadato.Lista)
+                                        {
+                                            <div class="tx-ent-field"><label>Lista <span class="req">*</span></label><select class="tx-ent-input" @bind="_twMetaListaId"><option value="0">— Selecciona —</option>@foreach (var l in _listas) { <option value="@l.Id">@l.NombreLista</option> }</select></div>
+                                        }
+                                        <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" @bind="_twMetaOblig" /> Obligatorio</label>
+                                    </div>
+                                    <div style="margin-top:6px;display:flex;gap:8px"><button class="tx-ent-btn primary sm" @onclick="TwAddMeta">Agregar</button><button class="tx-ent-btn sm" @onclick="@(() => _twMetaForm = false)">Cancelar</button></div>
+                                </div>
+                            }
+                        }
+                        else { <div class="tx-ent-hint">Los metadatos del documento se gestionan desde el ícono <i class="bi bi-eye"></i> de la tipología.</div> }
+                    }
+                    else
+                    {
+                        <p class="tx-ent-hint" style="margin-top:0">Confirma el tipo documental:</p>
+                        <ul>
+                            <li>Nombre: <strong>@_twNombre</strong></li>
+                            <li>Soporte: @SoporteLabel(_twSop)</li>
+                            <li>Formato: @(_twFmt ?? "--")</li>
+                            <li>Obligatorio en expediente: @(_twOblig ? "Sí" : "No")</li>
+                            @if (_twEditing is null) { <li>Metadatos de documento: @_twMetas.Count</li> }
+                        </ul>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <span class="tx-ent-hint" style="margin:0;margin-right:auto">Paso @_twStep de 2</span>
+                    @if (_twStep == 2) { <button class="tx-ent-btn" @onclick="TwBack" disabled="@_twBusy">Atrás</button> }
+                    @if (_twStep == 1) { <button class="tx-ent-btn primary" @onclick="TwNext" disabled="@_twBusy">Siguiente</button> }
+                    else { <button class="tx-ent-btn primary" @onclick="TwCrear" disabled="@_twBusy">@(_twEditing is null ? "Crear" : "Guardar")</button> }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Modal publicar version TRD (activar) ===== *@
+    @if (_showPublicar && _version is not null)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showPublicar = false)">
+            <div class="modal-dialog" style="max-width:560px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>Publicar como versión TRD</h3>
+                    <button class="modal-close" @onclick="@(() => _showPublicar = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <p>Vas a publicar la versión <strong class="mono">@_version.CodigoVersion</strong> como <strong>Vigente</strong>.</p>
+                    <div class="tx-ent-alert"><i class="bi bi-info-circle"></i><span>La versión <strong>Vigente</strong> actual (si existe) pasará automáticamente a <strong>Histórica</strong>. Los expedientes ya creados conservan la versión bajo la que nacieron. A partir de aquí solo se podrán hacer cambios aditivos (no se editan tiempos/disposición/clasificación).</span></div>
+                    @if (_publicarError is not null)
+                    {
+                        <div class="tx-ent-fielderr">@_publicarError</div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showPublicar = false)" disabled="@_busy">Cancelar</button>
+                    <button class="tx-ent-btn ok" @onclick="Publicar" disabled="@_busy"><i class="bi bi-cloud-arrow-up"></i> Publicar</button>
+                </div>
             </div>
         </div>
     }
@@ -196,22 +649,29 @@
         <div class="modal-overlay" @onclick="@(() => _showAsignEditor = false)">
             <div class="modal-dialog" style="max-width:680px" @onclick:stopPropagation="true">
                 <div class="modal-head">
-                    <h3>@(_editingAsign is null ? "Agregar serie a la dependencia" : $"Editar {_editingAsign.CodigoCcd}")</h3>
+                    <h3>@(_editingAsign is not null ? $"Editar {_editingAsign.CodigoCcd}" : _addScopeParentNombre is not null ? $"Agregar subserie a {_addScopeParentNombre}" : "Agregar serie a la dependencia")</h3>
                     <button class="modal-close" @onclick="@(() => _showAsignEditor = false)">&times;</button>
                 </div>
                 <div class="modal-body tx-mod tx-trdc">
                     @if (_editingAsign is null)
                     {
                         <div class="tx-ent-field">
-                            <label>Serie del catálogo (activas) <span class="req">*</span></label>
+                            <label>@(_addScopeParentSerieId is not null ? "Subserie del catálogo (activas)" : "Serie del catálogo (activas)") <span class="req">*</span></label>
                             <select class="tx-ent-input" @bind="_fSerieId">
                                 <option value="0">— Selecciona —</option>
-                                @foreach (var s in _seriesActivas)
+                                @foreach (var s in SeriesParaAgregar())
                                 {
                                     <option value="@s.Id">@s.Codigo — @s.Nombre</option>
                                 }
                             </select>
-                            <div class="tx-ent-hint">El código CCD se generará como código de dependencia + código de serie.</div>
+                            @if (_addScopeParentSerieId is not null && SeriesParaAgregar().Count == 0)
+                            {
+                                <div class="tx-ent-hint">No hay subseries del catálogo disponibles para esta serie (créalas en el Catálogo de Series).</div>
+                            }
+                            else
+                            {
+                                <div class="tx-ent-hint">El código CCD se generará como código de dependencia + código de serie.</div>
+                            }
                         </div>
                     }
                     <div class="tx-ent-grid c2">
@@ -268,43 +728,75 @@
         </div>
     }
 
-    @* ===== Modal metadatos ===== *@
+    @* ===== Modal metadatos del EXPEDIENTE (RF04) ===== *@
     @if (_showMetadatos && _metaAsign is not null)
     {
         <div class="modal-overlay" @onclick="@(() => _showMetadatos = false)">
             <div class="modal-dialog" style="max-width:720px" @onclick:stopPropagation="true">
                 <div class="modal-head">
-                    <h3>Metadatos del expediente &middot; <span class="mono">@_metaAsign.CodigoCcd</span></h3>
+                    <h3>Metadatos del Expediente &middot; <span class="mono">@_metaAsign.CodigoCcd</span></h3>
                     <button class="modal-close" @onclick="@(() => _showMetadatos = false)">&times;</button>
                 </div>
                 <div class="modal-body tx-mod tx-trdc">
                     <p class="tx-ent-hint" style="margin-top:0">Se diligencian al crear un expediente bajo esta serie en esta dependencia.</p>
+                    @MetadatosTabla(_metaAsign.Metadatos, OpenMetaEditor, SetMetaArchived)
 
-                    @if (_metaAsign.Metadatos.Count > 0)
+                    @if (_canEditProcMeta)
+                    {
+                        <div class="tx-ent-card" style="margin-top:12px;padding:12px">
+                            <strong>@(_editingMeta is null ? "Nuevo metadato del expediente" : "Editar metadato")</strong>
+                            @MetadatoForm(false)
+                        </div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showMetadatos = false)">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Modal TIPOLOGIAS (RF05) ===== *@
+    @if (_showTipologias && _tipAsign is not null)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showTipologias = false)">
+            <div class="modal-dialog" style="max-width:820px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>Tipos documentales &middot; <span class="mono">@_tipAsign.CodigoCcd</span></h3>
+                    <button class="modal-close" @onclick="@(() => _showTipologias = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <p class="tx-ent-hint" style="margin-top:0">Tipos de documento que conforman esta serie en esta dependencia (RF05). Cada uno con su soporte, formato y metadatos de documento.</p>
+
+                    @if (_tipAsign.Tipologias.Count > 0)
                     {
                         <div class="tx-ent-table-wrap">
                             <table class="tx-ent-table">
-                                <thead><tr><th>Nombre</th><th>Tipo</th><th>Obligatorio</th><th>Lista</th><th>Estado</th><th class="right">Acciones</th></tr></thead>
+                                <thead><tr><th>Nombre</th><th>Soporte</th><th>Formato</th><th>Obligatorio</th><th>Meta. doc.</th><th>Estado</th><th class="right">Acciones</th></tr></thead>
                                 <tbody>
-                                    @foreach (var m in _metaAsign.Metadatos)
+                                    @foreach (var t in _tipAsign.Tipologias)
                                     {
-                                        <tr class="@(m.IsArchived ? "archivada" : "")">
-                                            <td>@m.Nombre</td>
-                                            <td>@TipoLabel(m.TipoDato)</td>
-                                            <td>@(m.Obligatorio ? "Sí" : "No")</td>
-                                            <td>@(m.ListaNombre ?? "--")</td>
-                                            <td><span class="tx-ent-badge sm @(m.IsArchived ? "off" : "ok")">@(m.IsArchived ? "Inactivo" : "Activo")</span></td>
+                                        <tr class="@(t.IsArchived ? "archivada" : "")">
+                                            <td>@t.Nombre</td>
+                                            <td>@SoporteLabel(t.Soporte)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(t.Formato) ? "--" : t.Formato)</td>
+                                            <td>@(t.ObligatorioEnExpediente ? "Sí" : "No")</td>
+                                            <td><button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatosDoc(t))">@t.Metadatos.Count(m => !m.IsArchived) campo(s)</button></td>
+                                            <td><span class="tx-ent-badge sm @(t.IsArchived ? "off" : "ok")">@(t.IsArchived ? "Inactivo" : "Activo")</span></td>
                                             <td class="right">
-                                                @if (_canEditProcMeta)
+                                                @if (_canEditProcMeta && !t.IsArchived)
                                                 {
-                                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenMetaEditor(m))" disabled="@_busy">Editar</button>
-                                                    @if (m.IsArchived)
+                                                    <button type="button" class="tx-ent-btn sm" @onclick="@(() => OpenTipEditor(t))" disabled="@_busy">Editar</button>
+                                                }
+                                                @if (_canEliminar)
+                                                {
+                                                    @if (t.IsArchived)
                                                     {
-                                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetMetaArchived(m, false))" disabled="@_busy">Reactivar</button>
+                                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => SetTipArchived(t, false))" disabled="@_busy">Reactivar</button>
                                                     }
                                                     else
                                                     {
-                                                        <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetMetaArchived(m, true))" disabled="@_busy">Inactivar</button>
+                                                        <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => SetTipArchived(t, true))" disabled="@_busy">Inactivar</button>
                                                     }
                                                 }
                                             </td>
@@ -316,62 +808,80 @@
                     }
                     else
                     {
-                        <div class="tx-ent-hint">Sin metadatos todavía.</div>
+                        <div class="tx-ent-hint">Sin tipos documentales todavía.</div>
                     }
 
                     @if (_canEditProcMeta)
                     {
                         <div class="tx-ent-card" style="margin-top:12px;padding:12px">
-                            <strong>@(_editingMeta is null ? "Nuevo metadato" : "Editar metadato")</strong>
+                            <strong>@(_editingTip is null ? "Nuevo tipo documental" : "Editar tipo documental")</strong>
                             <div class="tx-ent-grid c2" style="margin-top:8px">
                                 <div class="tx-ent-field">
                                     <label>Nombre <span class="req">*</span></label>
-                                    <input class="tx-ent-input" @bind="_fMetaNombre" maxlength="200" />
+                                    <input class="tx-ent-input" @bind="_fTipNombre" maxlength="200" placeholder="Ej: Acta de Reunión, Contrato" />
                                 </div>
                                 <div class="tx-ent-field">
-                                    <label>Tipo de dato <span class="req">*</span></label>
-                                    <select class="tx-ent-input" @bind="_fMetaTipo">
-                                        @foreach (var t in Enum.GetValues<TipoDatoMetadato>())
-                                        {
-                                            <option value="@t">@TipoLabel(t)</option>
-                                        }
+                                    <label>Soporte <span class="req">*</span></label>
+                                    <select class="tx-ent-input" @bind="_fTipSoporte">
+                                        <option value="@SoporteTipologia.Electronico">Electrónico</option>
+                                        <option value="@SoporteTipologia.Fisico">Físico</option>
+                                        <option value="@SoporteTipologia.Hibrido">Híbrido</option>
                                     </select>
                                 </div>
                             </div>
                             <div class="tx-ent-grid c2">
-                                @if (_fMetaTipo == TipoDatoMetadato.Lista)
-                                {
-                                    <div class="tx-ent-field">
-                                        <label>Lista <span class="req">*</span></label>
-                                        <select class="tx-ent-input" @bind="_fMetaListaId">
-                                            <option value="0">— Selecciona —</option>
-                                            @foreach (var l in _listas)
-                                            {
-                                                <option value="@l.Id">@l.NombreLista</option>
-                                            }
-                                        </select>
-                                    </div>
-                                }
+                                <div class="tx-ent-field">
+                                    <label>Formato <span class="opt">(opcional)</span></label>
+                                    <input class="tx-ent-input" @bind="_fTipFormato" maxlength="100" placeholder="PDF, XML, DOCX, Papel..." />
+                                </div>
                                 <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
-                                    <input type="checkbox" @bind="_fMetaObligatorio" /> Obligatorio
+                                    <input type="checkbox" @bind="_fTipObligatorio" /> Obligatorio en el expediente
                                 </label>
                             </div>
-                            @if (_metaError is not null)
+                            @if (_tipError is not null)
                             {
-                                <div class="tx-ent-fielderr">@_metaError</div>
+                                <div class="tx-ent-fielderr">@_tipError</div>
                             }
                             <div style="margin-top:8px;display:flex;gap:8px">
-                                <button class="tx-ent-btn primary sm" @onclick="SaveMetadato" disabled="@_busy">@(_editingMeta is null ? "Agregar" : "Guardar")</button>
-                                @if (_editingMeta is not null)
+                                <button class="tx-ent-btn primary sm" @onclick="SaveTipologia" disabled="@_busy">@(_editingTip is null ? "Agregar" : "Guardar")</button>
+                                @if (_editingTip is not null)
                                 {
-                                    <button class="tx-ent-btn sm" @onclick="ResetMetaEditor" disabled="@_busy">Cancelar edición</button>
+                                    <button class="tx-ent-btn sm" @onclick="ResetTipEditor" disabled="@_busy">Cancelar edición</button>
                                 }
                             </div>
                         </div>
                     }
                 </div>
                 <div class="modal-foot">
-                    <button class="tx-ent-btn" @onclick="@(() => _showMetadatos = false)">Cerrar</button>
+                    <button class="tx-ent-btn" @onclick="@(() => _showTipologias = false)">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===== Modal metadatos del DOCUMENTO (RF05) ===== *@
+    @if (_showMetaDoc && _docTip is not null)
+    {
+        <div class="modal-overlay" @onclick="@(() => _showMetaDoc = false)">
+            <div class="modal-dialog" style="max-width:720px" @onclick:stopPropagation="true">
+                <div class="modal-head">
+                    <h3>Metadatos del Documento &middot; <span class="mono">@_docTip.Nombre</span></h3>
+                    <button class="modal-close" @onclick="@(() => _showMetaDoc = false)">&times;</button>
+                </div>
+                <div class="modal-body tx-mod tx-trdc">
+                    <p class="tx-ent-hint" style="margin-top:0">Se diligencian al cargar cada documento de este tipo al expediente (RF05).</p>
+                    @MetadatosTabla(_docTip.Metadatos, OpenMetaEditor, SetMetaArchived)
+
+                    @if (_canEditProcMeta)
+                    {
+                        <div class="tx-ent-card" style="margin-top:12px;padding:12px">
+                            <strong>@(_editingMeta is null ? "Nuevo metadato del documento" : "Editar metadato")</strong>
+                            @MetadatoForm(true)
+                        </div>
+                    }
+                </div>
+                <div class="modal-foot">
+                    <button class="tx-ent-btn" @onclick="@(() => _showMetaDoc = false)">Cerrar</button>
                 </div>
             </div>
         </div>
@@ -385,19 +895,30 @@
 
     private bool _busy;
     private string _search = "";
+    private EstadoTrdDependencia? _estadoFilter;
     private string? _pageError;
     private string? _pageOk;
 
     private bool _permView, _permCreate, _permEdit, _permDelete;
-    private bool _canAgregar, _canEditEstructura, _canEditProcMeta, _canEliminar;
+    private bool _canAgregar, _canEditEstructura, _canEditProcMeta, _canEliminar, _canPublicar;
+
+    // ---- Publicar version (activar) ----
+    private bool _showPublicar;
+    private string? _publicarError;
 
     private TrdVersionCabeceraDto? _version;
     private IReadOnlyList<DependenciaTrdResumenDto> _dependencias = [];
-    private long? _selectedDepId;
-    private DependenciaTrdResumenDto? _selectedDep;
+
+    // Workspace
+    private DependenciaTrdResumenDto? _workspaceDep;
     private IReadOnlyList<TrdAsignacionDto> _asignaciones = [];
+    private readonly HashSet<long> _expanded = [];   // series/subseries expandidas por SerieId
+    private string _treeSearch = "";
+    private string _treeLevelFilter = "";   // "" | serie | subserie | tipologia
+    private string _treeEstadoFilter = "";  // "" | activo | inactivo
 
     private List<SerieNodeDto> _seriesActivas = [];
+    private readonly Dictionary<long, SerieNodeDto> _catalogById = [];   // catalogo por id (para el + contextual)
     private IReadOnlyList<NivelClasificacionDto> _niveles = [];
     private IReadOnlyList<ListaMaestraDto> _listas = [];
 
@@ -411,16 +932,30 @@
     private bool _fReproduccion, _fDdhh;
     private string? _fProcedimiento;
     private string? _asignError;
+    private long? _addScopeParentSerieId;   // != null cuando se agrega una SUBSERIE de esta serie (+ contextual)
+    private string? _addScopeParentNombre;
 
-    // ---- Metadatos ----
-    private bool _showMetadatos;
+    // ---- Metadatos (expediente y documento comparten editor) ----
+    private bool _showMetadatos;              // metadatos de expediente (de una asignacion)
     private TrdAsignacionDto? _metaAsign;
+    private bool _showMetaDoc;                // metadatos de documento (de una tipologia)
+    private TrdTipologiaDto? _docTip;
     private TrdMetadatoDto? _editingMeta;
     private string _fMetaNombre = "";
     private TipoDatoMetadato _fMetaTipo = TipoDatoMetadato.TextoCorto;
     private bool _fMetaObligatorio;
     private long _fMetaListaId;
     private string? _metaError;
+
+    // ---- Tipologias ----
+    private bool _showTipologias;
+    private TrdAsignacionDto? _tipAsign;
+    private TrdTipologiaDto? _editingTip;
+    private string _fTipNombre = "";
+    private SoporteTipologia _fTipSoporte = SoporteTipologia.Electronico;
+    private string? _fTipFormato;
+    private bool _fTipObligatorio;
+    private string? _tipError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -439,6 +974,7 @@
         _niveles = await NivelesSvc.ListAsync(soloActivos: true);
         var tree = await SeriesSvc.GetTreeAsync(includeInactivas: false);
         _seriesActivas = [];
+        _catalogById.Clear();
         Collect(tree);
         _listas = (await ListasSvc.ListAsync(includeInactivas: false))
             .Where(l => !l.EsInactiva).ToList();
@@ -448,46 +984,619 @@
 
     private void RecalcularPermisos()
     {
-        // Permiso del modulo Y estado de la version (RF01 3.1.3).
         var estado = _version!.Estado;
         _canAgregar = _permCreate && estado is TrdVersionEstado.EnConstruccion or TrdVersionEstado.Vigente;
         _canEditEstructura = _permEdit && estado == TrdVersionEstado.EnConstruccion;
         _canEditProcMeta = _permEdit && estado is TrdVersionEstado.EnConstruccion or TrdVersionEstado.Vigente;
         _canEliminar = _permDelete && estado == TrdVersionEstado.EnConstruccion;
+        // Publicar (activar) solo desde En Construccion; se reutiliza el flujo de RF01.
+        _canPublicar = _permEdit && estado == TrdVersionEstado.EnConstruccion;
     }
+
+    // ---- Publicar version TRD (reutiliza la activacion de RF01) ----
+
+    private async Task Publicar()
+    {
+        if (_version is null) { return; }
+        _busy = true; _publicarError = null;
+        try
+        {
+            var result = await VersionsSvc.ActivarAsync(_version.Id, Tenant.UserId ?? 0);
+            if (!result.IsOk) { _publicarError = result.Error; return; }
+            _showPublicar = false;
+            _version = await Svc.GetVersionAsync(_version.Id) ?? _version;
+            RecalcularPermisos();
+            await ReloadWorkspaceAsync();
+            _pageOk = $"Versión {_version.CodigoVersion} publicada como Vigente.";
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Exportar la TRD de la dependencia (XLS / XML) ----
+
+    private async Task ExportXls()
+    {
+        var html = new StringBuilder();
+        html.Append("<html><head><meta charset=\"utf-8\"></head><body>");
+        html.Append($"<h3>Tabla de Retención Documental · {Xml(_version!.CodigoVersion)} · {Xml(_workspaceDep!.Codigo)} {Xml(_workspaceDep!.Nombre)}</h3>");
+        html.Append("<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\">");
+        html.Append("<tr><th>Nivel</th><th>Serie / Subserie / Tipología</th><th>Código</th><th>T. Gestión</th><th>T. Central</th><th>Disposición</th><th>Formato / Conteo</th><th>Estado</th></tr>");
+        foreach (var f in FlattenParaExport())
+        {
+            html.Append("<tr>");
+            html.Append($"<td>{Xml(f.Nivel)}</td><td>{Xml(f.Nombre)}</td><td>{Xml(f.Codigo)}</td><td>{Xml(f.Gestion)}</td><td>{Xml(f.Central)}</td><td>{Xml(f.Disposicion)}</td><td>{Xml(f.FormatoConteo)}</td><td>{Xml(f.Estado)}</td>");
+            html.Append("</tr>");
+        }
+        html.Append("</table></body></html>");
+        await Descargar($"TRD_{_version!.CodigoVersion}_{_workspaceDep!.Codigo}.xls", "application/vnd.ms-excel", html.ToString());
+    }
+
+    private async Task ExportXml()
+    {
+        var raiz = new XElement("TablaRetencionDocumental",
+            new XAttribute("version", _version!.CodigoVersion),
+            new XAttribute("estadoVersion", _version.Estado.ToString()),
+            new XAttribute("dependenciaCodigo", _workspaceDep!.Codigo),
+            new XAttribute("dependenciaNombre", _workspaceDep.Nombre));
+
+        foreach (var serie in SeriesTop())
+        {
+            raiz.Add(SerieXml(serie, "Serie"));
+        }
+        var doc = new XDocument(new XDeclaration("1.0", "utf-8", null), raiz);
+        await Descargar($"TRD_{_version.CodigoVersion}_{_workspaceDep.Codigo}.xml", "application/xml", doc.Declaration + Environment.NewLine + doc);
+    }
+
+    private XElement SerieXml(TrdAsignacionDto a, string tag)
+    {
+        var el = new XElement(tag,
+            new XAttribute("codigo", a.SerieCodigo),
+            new XAttribute("nombre", a.SerieNombre),
+            new XAttribute("ccd", a.CodigoCcd),
+            new XAttribute("tiempoGestion", a.TiempoGestion),
+            new XAttribute("tiempoCentral", a.TiempoCentral),
+            new XAttribute("disposicion", DispCodigo(a.DisposicionFinal)),
+            new XAttribute("clasificacion", a.NivelClasificacionNombre),
+            new XAttribute("estado", a.IsArchived ? "Inactivo" : "Activo"));
+        foreach (var t in a.Tipologias)
+        {
+            el.Add(new XElement("Tipologia",
+                new XAttribute("nombre", t.Nombre),
+                new XAttribute("soporte", t.Soporte.ToString()),
+                new XAttribute("formato", t.Formato ?? ""),
+                new XAttribute("obligatorioEnExpediente", t.ObligatorioEnExpediente),
+                new XAttribute("estado", t.IsArchived ? "Inactivo" : "Activo")));
+        }
+        foreach (var sub in SubseriesDe(a))
+        {
+            el.Add(SerieXml(sub, "Subserie"));
+        }
+        return el;
+    }
+
+    private readonly record struct ExportRow(string Nivel, string Nombre, string Codigo, string Gestion, string Central, string Disposicion, string FormatoConteo, string Estado);
+
+    private List<ExportRow> FlattenParaExport()
+    {
+        var rows = new List<ExportRow>();
+        void AddSerie(TrdAsignacionDto a, string nivel)
+        {
+            var subs = SubseriesRaw(a).Count();
+            var tips = a.Tipologias.Count(t => !t.IsArchived);
+            rows.Add(new ExportRow(nivel, a.SerieNombre, a.SerieCodigo, $"{a.TiempoGestion} años",
+                $"{a.TiempoCentral} años", DispCodigo(a.DisposicionFinal), $"{subs} subs / {tips} tipos",
+                a.IsArchived ? "Inactivo" : "TRD"));
+            foreach (var t in a.Tipologias.OrderBy(x => x.Nombre))
+            {
+                var fmt = string.IsNullOrWhiteSpace(t.Formato) ? SoporteLabel(t.Soporte) : $"{SoporteLabel(t.Soporte)} / {t.Formato}";
+                rows.Add(new ExportRow("Tipología", t.Nombre, "", "— heredado —", "— heredado —", "—", fmt,
+                    t.IsArchived ? "Inactivo" : "Activo"));
+            }
+            foreach (var sub in SubseriesDe(a)) { AddSerie(sub, "Subserie"); }
+        }
+        foreach (var serie in SeriesTop()) { AddSerie(serie, "Serie"); }
+        return rows;
+    }
+
+    private async Task Descargar(string filename, string mime, string contenido)
+    {
+        var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(contenido));
+        await JS.InvokeVoidAsync("tronoxDownload", filename, base64, mime);
+    }
+
+    private static string Xml(string? s) => System.Security.SecurityElement.Escape(s ?? "") ?? "";
 
     private void Collect(IReadOnlyList<SerieNodeDto> nodes)
     {
-        foreach (var n in nodes) { _seriesActivas.Add(n); Collect(n.Children); }
+        foreach (var n in nodes) { _seriesActivas.Add(n); _catalogById[n.Id] = n; Collect(n.Children); }
     }
 
     private async Task LoadDependenciasAsync()
     {
         _dependencias = await Svc.GetDependenciasResumenAsync(_version!.Id);
-        if (_selectedDepId is long id) { await SelectDep(id); }
     }
 
     private List<DependenciaTrdResumenDto> DependenciasFiltradas()
     {
         var q = _search.Trim();
-        return _dependencias.Where(d => q.Length == 0
-            || d.Codigo.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || d.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        return _dependencias.Where(d =>
+            (_estadoFilter is null || d.Estado == _estadoFilter)
+            && (q.Length == 0
+                || d.Codigo.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || d.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase))).ToList();
     }
 
-    private async Task SelectDep(long depId)
+    // ---- Workspace ----
+
+    private async Task OpenWorkspace(DependenciaTrdResumenDto d, bool autoAdd)
     {
-        _selectedDepId = depId;
-        _selectedDep = _dependencias.FirstOrDefault(d => d.DependenciaId == depId);
-        _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, depId, includeArchived: true);
+        _workspaceDep = d;
+        _expanded.Clear();
+        _treeSearch = "";
+        _treeLevelFilter = "";
+        _treeEstadoFilter = "";
         _pageOk = null; _pageError = null;
+        _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, d.DependenciaId, includeArchived: true);
+        if (autoAdd && _canAgregar) { OpenWizard("SERIE", null); }
     }
+
+    private async Task BackToList()
+    {
+        _workspaceDep = null;
+        _asignaciones = [];
+        _expanded.Clear();
+        _treeSearch = "";
+        _treeLevelFilter = "";
+        _treeEstadoFilter = "";
+        _pageOk = null; _pageError = null;
+        await LoadDependenciasAsync();
+    }
+
+    private async Task ReloadWorkspaceAsync()
+    {
+        if (_workspaceDep is null) { return; }
+        _asignaciones = await Svc.GetAsignacionesAsync(_version!.Id, _workspaceDep.DependenciaId, includeArchived: true);
+    }
+
+    // ---- Arbol Serie / Subserie / Tipologia (rpSeries) ----
+
+    private bool TreeSearching => _treeSearch.Trim().Length > 0;
+    private bool TextMatch(string? s) => s is not null && s.Contains(_treeSearch.Trim(), StringComparison.OrdinalIgnoreCase);
+    private bool TipMatch(TrdTipologiaDto t) => TextMatch(t.Nombre) || TextMatch(t.Formato);
+
+    private IEnumerable<TrdAsignacionDto> SubseriesRaw(TrdAsignacionDto serie)
+        => _asignaciones.Where(x => x.SerieParentId == serie.SerieId);
+
+    private bool NodeMatch(TrdAsignacionDto a) =>
+        TextMatch(a.SerieNombre) || TextMatch(a.SerieCodigo) || a.Tipologias.Any(TipMatch)
+        || SubseriesRaw(a).Any(sub => TextMatch(sub.SerieNombre) || TextMatch(sub.SerieCodigo) || sub.Tipologias.Any(TipMatch));
+
+    private List<TrdAsignacionDto> SeriesTop()
+    {
+        var ids = _asignaciones.Select(a => a.SerieId).ToHashSet();
+        var tops = _asignaciones.Where(a => a.SerieParentId is null || !ids.Contains(a.SerieParentId.Value));
+        if (TreeSearching) { tops = tops.Where(NodeMatch); }
+        return tops.OrderBy(a => a.SerieCodigo, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private List<TrdAsignacionDto> SubseriesDe(TrdAsignacionDto serie)
+    {
+        var subs = SubseriesRaw(serie);
+        if (TreeSearching)
+        {
+            subs = subs.Where(sub => NodeMatch(serie) || TextMatch(sub.SerieNombre) || TextMatch(sub.SerieCodigo) || sub.Tipologias.Any(TipMatch));
+        }
+        return subs.OrderBy(a => a.SerieCodigo, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private List<TrdTipologiaDto> TipsVisibles(TrdAsignacionDto a)
+    {
+        IEnumerable<TrdTipologiaDto> tips = a.Tipologias;
+        if (TreeSearching) { tips = tips.Where(t => TipMatch(t) || TextMatch(a.SerieNombre) || TextMatch(a.SerieCodigo)); }
+        return tips.OrderBy(t => t.Nombre, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private int ContarSeries() => _asignaciones.Count(a => a.SerieParentId is null);
+    private int ContarSubseries() => _asignaciones.Count(a => a.SerieParentId is not null);
+
+    private bool Expandable(TrdAsignacionDto a) => SubseriesRaw(a).Any() || a.Tipologias.Any(t => !t.IsArchived);
+    private bool Filtering => TreeSearching || _treeLevelFilter.Length > 0 || _treeEstadoFilter.Length > 0;
+    private bool IsExpanded(TrdAsignacionDto a) => Filtering || _expanded.Contains(a.SerieId);
+    private void ToggleExpand(TrdAsignacionDto a) { if (!_expanded.Add(a.SerieId)) { _expanded.Remove(a.SerieId); } }
+    private void ExpandAll() { foreach (var a in _asignaciones) { _expanded.Add(a.SerieId); } }
+    private void CollapseAll() => _expanded.Clear();
+
+    private bool ShowNivel(string nivel) => _treeLevelFilter.Length == 0 || _treeLevelFilter == nivel;
+    private bool EstadoMatchAsig(TrdAsignacionDto a) => _treeEstadoFilter switch { "activo" => !a.IsArchived, "inactivo" => a.IsArchived, _ => true };
+    private bool EstadoMatchTip(TrdTipologiaDto t) => _treeEstadoFilter switch { "activo" => !t.IsArchived, "inactivo" => t.IsArchived, _ => true };
+
+    // El + contextual (legacy TIENE_SUBSERIES): en una serie con subseries en el catalogo agrega una
+    // SUBSERIE; en una serie hoja o en una subserie agrega una TIPOLOGIA.
+    private IReadOnlyList<SerieNodeDto> CatalogChildren(long serieId) => _catalogById.TryGetValue(serieId, out var n) ? n.Children : [];
+
+    private List<SerieNodeDto> SeriesParaAgregar()
+    {
+        if (_addScopeParentSerieId is long pid)
+        {
+            var asignados = _asignaciones.Select(a => a.SerieId).ToHashSet();
+            return CatalogChildren(pid).Where(c => !asignados.Contains(c.Id)).ToList();
+        }
+        return _seriesActivas;
+    }
+
+    // El + contextual (legacy: If TIENE_SUBSERIES -> NuevaSubserie else NuevaTipologia):
+    // en una subserie -> wizard de tipologia; en una serie contenedora -> wizard de subserie;
+    // en una serie hoja -> wizard de tipologia.
+    private void AgregarHijo(TrdAsignacionDto a)
+    {
+        if (a.SerieParentId is not null) { OpenTipWizard(a, null); }
+        else if (CatalogChildren(a.SerieId).Count > 0 || SubseriesRaw(a).Any()) { OpenWizard("SUBSERIE", a); }
+        else { OpenTipWizard(a, null); }
+    }
+
+    private void OpenAddSubserie(TrdAsignacionDto serie)
+    {
+        OpenAddAsignacion();
+        _addScopeParentSerieId = serie.SerieId;
+        _addScopeParentNombre = serie.SerieNombre;
+    }
+
+    private RenderFragment SerieRow(TrdAsignacionDto a, int level) => __builder =>
+    {
+        var subCount = SubseriesRaw(a).Count();
+        var tipCount = a.Tipologias.Count(t => !t.IsArchived);
+        <tr class="@(a.IsArchived ? "archivada" : "")">
+            <td>
+                <span style="display:inline-flex;align-items:center;gap:6px;padding-left:@(level * 22)px">
+                    @if (Expandable(a))
+                    {
+                        <button type="button" class="tx-ent-btn sm" style="padding:2px 7px" @onclick="@(() => ToggleExpand(a))"><i class="bi @(IsExpanded(a) ? "bi-chevron-down" : "bi-chevron-right")"></i></button>
+                    }
+                    else { <span style="display:inline-block;width:28px"></span> }
+                    <i class="bi @(level == 0 ? "bi-folder-fill" : "bi-file-earmark-text")"></i>
+                    <span>@a.SerieNombre</span>
+                </span>
+            </td>
+            <td class="mono">@a.SerieCodigo</td>
+            <td>@a.TiempoGestion años</td>
+            <td>@a.TiempoCentral años</td>
+            <td><span class="tx-ent-badge sm @DispClase(a.DisposicionFinal)">@DispCodigo(a.DisposicionFinal)</span></td>
+            <td><span class="tx-ent-badge sm">@subCount subs &middot; @tipCount tipos</span></td>
+            <td><span class="tx-ent-badge sm @(a.IsArchived ? "off" : "ok")">@(a.IsArchived ? "Inactivo" : "TRD")</span></td>
+            <td class="right">
+                <button type="button" title="Metadatos del expediente" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatos(a))"><i class="bi bi-eye"></i></button>
+                @if (_canEditEstructura && !a.IsArchived)
+                {
+                    <button type="button" title="Editar reglas TRD" class="tx-ent-btn sm" @onclick="@(() => OpenEditAsignacion(a))" disabled="@_busy"><i class="bi bi-pencil"></i></button>
+                }
+                @if (_canEditProcMeta)
+                {
+                    <button type="button" title="Agregar subserie o tipología" class="tx-ent-btn sm" @onclick="@(() => AgregarHijo(a))"><i class="bi bi-plus-lg"></i></button>
+                }
+                @if (_canEliminar)
+                {
+                    @if (a.IsArchived)
+                    {
+                        <button type="button" title="Reactivar" class="tx-ent-btn sm" @onclick="@(() => SetArchived(a, false))" disabled="@_busy"><i class="bi bi-arrow-counterclockwise"></i></button>
+                    }
+                    else
+                    {
+                        <button type="button" title="Quitar de la TRD" class="tx-ent-btn sm danger" @onclick="@(() => SetArchived(a, true))" disabled="@_busy"><i class="bi bi-trash"></i></button>
+                    }
+                }
+            </td>
+        </tr>
+    };
+
+    private RenderFragment TipologiaRow(TrdAsignacionDto parent, TrdTipologiaDto t) => __builder =>
+    {
+        var level = parent.SerieParentId is null ? 1 : 2;
+        <tr class="@(t.IsArchived ? "archivada" : "")">
+            <td>
+                <span style="display:inline-flex;align-items:center;gap:6px;padding-left:@(level * 22)px">
+                    <span style="display:inline-block;width:28px"></span>
+                    <i class="bi bi-file-text"></i>
+                    <span>@t.Nombre</span>
+                </span>
+            </td>
+            <td class="mono">&mdash;</td>
+            <td style="color:var(--kt-text-gray-600);font-size:11.5px">heredado</td>
+            <td style="color:var(--kt-text-gray-600);font-size:11.5px">heredado</td>
+            <td style="color:var(--kt-text-gray-600)">&mdash;</td>
+            <td>
+                <span class="tx-ent-badge sm">@SoporteLabel(t.Soporte)</span>
+                @if (!string.IsNullOrWhiteSpace(t.Formato))
+                {
+                    <span class="tx-ent-badge sm">@t.Formato</span>
+                }
+            </td>
+            <td><span class="tx-ent-badge sm @(t.IsArchived ? "off" : "ok")">@(t.IsArchived ? "Inactivo" : "Activo")</span></td>
+            <td class="right">
+                <button type="button" title="Metadatos del documento" class="tx-ent-btn sm" @onclick="@(() => OpenMetadatosDoc(t))"><i class="bi bi-eye"></i></button>
+                @if (_canEditProcMeta)
+                {
+                    <button type="button" title="Editar tipo documental" class="tx-ent-btn sm" @onclick="@(() => OpenTipWizard(parent, t))"><i class="bi bi-pencil"></i></button>
+                }
+            </td>
+        </tr>
+    };
+
+    // ==================== WIZARD Nueva Serie/Subserie (legacy pnlModalSubserie, 4 pasos) ====================
+    private bool _showWizard;
+    private string _wzMode = "SERIE";   // SERIE | SUBSERIE
+    private int _wzStep = 1;
+    private TrdAsignacionDto? _wzParent;
+    private string? _wzError;
+    private bool _wzBusy;
+    // Paso 1
+    private long _wzSerieCatId;
+    private string _wzCodigo = ""; private string _wzNombre = ""; private string? _wzDescripcion;
+    private string _wzSearch = "";                       // buscador autocompletado (modo SERIE)
+    private long? _wzSubCatId;                           // subserie del catalogo elegida (opcional)
+    private int _wzSelChildCount;                        // total de subseries de la serie elegida (display)
+    private List<SerieNodeDto> _wzSelChildren = [];      // subseries disponibles (no asignadas) para el picker
+    // Paso 2
+    private int _wzTG, _wzTC;
+    private DisposicionFinal _wzDisp = DisposicionFinal.ConservacionTotal;
+    private long _wzNivelId; private bool _wzDdhh, _wzRepro; private string? _wzProc;
+    // Paso 3 (metadatos de expediente)
+    private readonly List<WizMeta> _wzMetas = [];
+    private bool _wzMetaForm; private string _wzMetaNombre = ""; private TipoDatoMetadato _wzMetaTipo = TipoDatoMetadato.TextoCorto; private bool _wzMetaOblig; private long _wzMetaListaId;
+    // Paso 4 (tipologias)
+    private readonly List<WizTip> _wzTips = [];
+    private bool _wzTipForm; private string _wzTipNombre = ""; private SoporteTipologia _wzTipSop = SoporteTipologia.Electronico; private string? _wzTipFmt; private bool _wzTipOblig;
+    private readonly List<WizMeta> _wzTipMetas = [];
+    private bool _wzTipMetaForm; private string _wzTipMetaNombre = ""; private TipoDatoMetadato _wzTipMetaTipo = TipoDatoMetadato.TextoCorto; private bool _wzTipMetaOblig; private long _wzTipMetaListaId;
+
+    private sealed record WizMeta(string Nombre, TipoDatoMetadato Tipo, bool Obligatorio, long? ListaId);
+    private sealed class WizTip { public string Nombre = ""; public SoporteTipologia Soporte; public string? Formato; public bool Obligatorio; public List<WizMeta> Metas = []; }
+
+    private static readonly string[] _wzPasos = ["Datos básicos", "Caracterización", "Metadatos", "Tipologías"];
+
+    private List<SerieNodeDto> WizSeriesCatalogo()
+    {
+        var asignados = _asignaciones.Select(a => a.SerieId).ToHashSet();
+        return _seriesActivas.Where(s => s.ParentId is null && !asignados.Contains(s.Id)).ToList();
+    }
+
+    // Series del catalogo filtradas por el buscador (codigo o nombre), max 8 (paridad legacy).
+    private List<SerieNodeDto> WizCatalogoFiltrado()
+    {
+        var q = _wzSearch.Trim();
+        var baseList = WizSeriesCatalogo();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            baseList = baseList.Where(s =>
+                s.Codigo.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || s.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        return baseList.Take(8).ToList();
+    }
+
+    private void WizSelectSerie(SerieNodeDto s)
+    {
+        _wzSerieCatId = s.Id;
+        _wzCodigo = s.Codigo;
+        _wzNombre = s.Nombre;
+        _wzSelChildCount = s.ChildCount;
+        var asignados = _asignaciones.Select(a => a.SerieId).ToHashSet();
+        _wzSelChildren = s.Children.Where(c => !c.EsInactiva && !asignados.Contains(c.Id)).ToList();
+        _wzSubCatId = null;
+        _wzSearch = "";
+        _wzError = null;
+    }
+
+    private void WizClearSerie()
+    {
+        _wzSerieCatId = 0; _wzCodigo = ""; _wzNombre = "";
+        _wzSelChildCount = 0; _wzSelChildren = []; _wzSubCatId = null; _wzSearch = "";
+    }
+
+    private void OpenWizard(string mode, TrdAsignacionDto? parent)
+    {
+        _wzMode = mode; _wzParent = parent; _wzStep = 1; _wzError = null;
+        _wzSerieCatId = 0; _wzCodigo = ""; _wzNombre = ""; _wzDescripcion = null;
+        _wzSearch = ""; _wzSubCatId = null; _wzSelChildCount = 0; _wzSelChildren = [];
+        _wzTG = 0; _wzTC = 0; _wzDisp = DisposicionFinal.ConservacionTotal;
+        _wzNivelId = _niveles.FirstOrDefault(n => n.Codigo == "02")?.Id ?? _niveles.FirstOrDefault()?.Id ?? 0;
+        _wzDdhh = false; _wzRepro = false; _wzProc = null;
+        _wzMetas.Clear(); _wzMetaForm = false; ResetWzMetaForm();
+        _wzTips.Clear(); _wzTipForm = false; ResetWzTipForm();
+        _pageOk = null; _pageError = null;
+        _showWizard = true;
+    }
+
+    private void WizSerieChanged(ChangeEventArgs e)
+    {
+        _wzSerieCatId = long.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        var n = _seriesActivas.FirstOrDefault(s => s.Id == _wzSerieCatId);
+        if (n is not null) { _wzCodigo = n.Codigo; _wzNombre = n.Nombre; }
+    }
+
+    private string? WizValidateStep(int step)
+    {
+        if (step == 1)
+        {
+            if (_wzMode == "SERIE") { if (_wzSerieCatId <= 0) { return "Selecciona una serie del catálogo."; } }
+            else { if (string.IsNullOrWhiteSpace(_wzCodigo)) { return "El código es obligatorio."; } if (string.IsNullOrWhiteSpace(_wzNombre)) { return "El nombre es obligatorio."; } }
+        }
+        else if (step == 2)
+        {
+            if (_wzTG < 0 || _wzTC < 0) { return "Los tiempos no pueden ser negativos."; }
+        }
+        return null;
+    }
+
+    private void WizNext()
+    {
+        var err = WizValidateStep(_wzStep);
+        if (err is not null) { _wzError = err; return; }
+        _wzError = null; if (_wzStep < 4) { _wzStep++; }
+    }
+    private void WizBack() { _wzError = null; if (_wzStep > 1) { _wzStep--; } }
+
+    private void ResetWzMetaForm() { _wzMetaNombre = ""; _wzMetaTipo = TipoDatoMetadato.TextoCorto; _wzMetaOblig = false; _wzMetaListaId = 0; }
+    private void WzAddMeta()
+    {
+        if (string.IsNullOrWhiteSpace(_wzMetaNombre)) { _wzError = "El nombre del metadato es obligatorio."; return; }
+        long? lista = _wzMetaTipo == TipoDatoMetadato.Lista ? (_wzMetaListaId > 0 ? _wzMetaListaId : null) : null;
+        _wzMetas.Add(new WizMeta(_wzMetaNombre.Trim(), _wzMetaTipo, _wzMetaOblig, lista));
+        ResetWzMetaForm(); _wzMetaForm = false; _wzError = null;
+    }
+
+    private void ResetWzTipForm() { _wzTipNombre = ""; _wzTipSop = SoporteTipologia.Electronico; _wzTipFmt = null; _wzTipOblig = false; _wzTipMetas.Clear(); _wzTipMetaForm = false; ResetWzTipMetaForm(); }
+    private void ResetWzTipMetaForm() { _wzTipMetaNombre = ""; _wzTipMetaTipo = TipoDatoMetadato.TextoCorto; _wzTipMetaOblig = false; _wzTipMetaListaId = 0; }
+    private void WzAddTipMeta()
+    {
+        if (string.IsNullOrWhiteSpace(_wzTipMetaNombre)) { _wzError = "El nombre del metadato es obligatorio."; return; }
+        long? lista = _wzTipMetaTipo == TipoDatoMetadato.Lista ? (_wzTipMetaListaId > 0 ? _wzTipMetaListaId : null) : null;
+        _wzTipMetas.Add(new WizMeta(_wzTipMetaNombre.Trim(), _wzTipMetaTipo, _wzTipMetaOblig, lista));
+        ResetWzTipMetaForm(); _wzTipMetaForm = false; _wzError = null;
+    }
+    private void WzAddTip()
+    {
+        if (string.IsNullOrWhiteSpace(_wzTipNombre)) { _wzError = "El nombre de la tipología es obligatorio."; return; }
+        _wzTips.Add(new WizTip { Nombre = _wzTipNombre.Trim(), Soporte = _wzTipSop, Formato = string.IsNullOrWhiteSpace(_wzTipFmt) ? null : _wzTipFmt!.Trim(), Obligatorio = _wzTipOblig, Metas = [.. _wzTipMetas] });
+        ResetWzTipForm(); _wzTipForm = false; _wzError = null;
+    }
+
+    private async Task WizardCrear()
+    {
+        var errAll = WizValidateStep(1) ?? WizValidateStep(2);
+        if (errAll is not null) { _wzError = errAll; _wzStep = string.IsNullOrEmpty(WizValidateStep(1)) ? 2 : 1; return; }
+        _wzBusy = true; _wzError = null;
+        try
+        {
+            var actor = Tenant.UserId ?? 0;
+            long serieId;
+            if (_wzMode == "SUBSERIE")
+            {
+                var cr = await SeriesSvc.CreateAsync(new SaveSerieRequest(_wzCodigo.Trim(), _wzNombre.Trim(), _wzDescripcion, _wzParent!.SerieId), actor);
+                if (!cr.IsOk) { _wzError = cr.Error; return; }
+                serieId = cr.Value!.Id;
+            }
+            else { serieId = _wzSerieCatId; }
+
+            var ar = await Svc.AddAsignacionAsync(_version!.Id, new AddAsignacionRequest(
+                _workspaceDep!.DependenciaId, serieId, _wzTG, _wzTC, _wzDisp, _wzNivelId, _wzRepro, _wzDdhh, _wzProc), actor);
+            if (!ar.IsOk) { _wzError = ar.Error; return; }
+
+            // Modo SERIE: si se eligio una subserie del catalogo, se asocia tambien (misma
+            // caracterizacion) y los metadatos/tipologias van a la fila de la subserie (paridad legacy).
+            var asigId = ar.Value!.Id;
+            if (_wzMode == "SERIE" && _wzSubCatId is long subId)
+            {
+                var sr = await Svc.AddAsignacionAsync(_version!.Id, new AddAsignacionRequest(
+                    _workspaceDep!.DependenciaId, subId, _wzTG, _wzTC, _wzDisp, _wzNivelId, _wzRepro, _wzDdhh, _wzProc), actor);
+                if (sr.IsOk) { asigId = sr.Value!.Id; }
+            }
+
+            foreach (var m in _wzMetas) { await Svc.AddMetadatoAsync(asigId, new SaveMetadatoRequest(m.Nombre, m.Tipo, m.Obligatorio, m.ListaId), actor); }
+            foreach (var t in _wzTips)
+            {
+                var tr = await Svc.AddTipologiaAsync(asigId, new SaveTipologiaRequest(t.Nombre, t.Soporte, t.Formato, t.Obligatorio), actor);
+                if (tr.IsOk) { foreach (var dm in t.Metas) { await Svc.AddMetadatoDocumentoAsync(tr.Value!.Id, new SaveMetadatoRequest(dm.Nombre, dm.Tipo, dm.Obligatorio, dm.ListaId), actor); } }
+            }
+            _showWizard = false;
+            _pageOk = _wzMode == "SUBSERIE" ? "Subserie agregada a la TRD."
+                : (_wzSubCatId is not null ? "Serie y subserie agregadas a la TRD." : "Serie agregada a la TRD.");
+            if (_wzParent is not null) { _expanded.Add(_wzParent.SerieId); }
+            if (_wzMode == "SERIE" && _wzSubCatId is not null) { _expanded.Add(_wzSerieCatId); }
+            await ReloadWorkspaceAsync();
+        }
+        finally { _wzBusy = false; }
+    }
+
+    // ==================== WIZARD Tipologia (legacy pnlModalTipologia, 2 pasos) ====================
+    private bool _showTipWizard;
+    private int _twStep = 1;
+    private TrdAsignacionDto? _twParent;
+    private TrdTipologiaDto? _twEditing;
+    private string? _twError; private bool _twBusy;
+    private string _twNombre = ""; private SoporteTipologia _twSop = SoporteTipologia.Electronico; private string? _twFmt; private bool _twOblig;
+    private readonly List<WizMeta> _twMetas = [];
+    private bool _twMetaForm; private string _twMetaNombre = ""; private TipoDatoMetadato _twMetaTipo = TipoDatoMetadato.TextoCorto; private bool _twMetaOblig; private long _twMetaListaId;
+
+    private void OpenTipWizard(TrdAsignacionDto parent, TrdTipologiaDto? editing)
+    {
+        _twParent = parent; _twEditing = editing; _twStep = 1; _twError = null;
+        _twNombre = editing?.Nombre ?? ""; _twSop = editing?.Soporte ?? SoporteTipologia.Electronico;
+        _twFmt = editing?.Formato; _twOblig = editing?.ObligatorioEnExpediente ?? false;
+        _twMetas.Clear();
+        _twMetaForm = false; ResetTwMetaForm();
+        _pageOk = null; _pageError = null;
+        _showTipWizard = true;
+    }
+    private void ResetTwMetaForm() { _twMetaNombre = ""; _twMetaTipo = TipoDatoMetadato.TextoCorto; _twMetaOblig = false; _twMetaListaId = 0; }
+    private void TwAddMeta()
+    {
+        if (string.IsNullOrWhiteSpace(_twMetaNombre)) { _twError = "El nombre del metadato es obligatorio."; return; }
+        long? lista = _twMetaTipo == TipoDatoMetadato.Lista ? (_twMetaListaId > 0 ? _twMetaListaId : null) : null;
+        _twMetas.Add(new WizMeta(_twMetaNombre.Trim(), _twMetaTipo, _twMetaOblig, lista));
+        ResetTwMetaForm(); _twMetaForm = false; _twError = null;
+    }
+    private void TwNext() { if (string.IsNullOrWhiteSpace(_twNombre)) { _twError = "El nombre de la tipología es obligatorio."; return; } _twError = null; _twStep = 2; }
+    private void TwBack() { _twError = null; _twStep = 1; }
+    private async Task TwCrear()
+    {
+        if (string.IsNullOrWhiteSpace(_twNombre)) { _twError = "El nombre es obligatorio."; _twStep = 1; return; }
+        _twBusy = true; _twError = null;
+        try
+        {
+            var actor = Tenant.UserId ?? 0;
+            if (_twEditing is not null)
+            {
+                var ur = await Svc.UpdateTipologiaAsync(_twEditing.Id, new SaveTipologiaRequest(_twNombre.Trim(), _twSop, _twFmt, _twOblig), actor);
+                if (!ur.IsOk) { _twError = ur.Error; return; }
+            }
+            else
+            {
+                var cr = await Svc.AddTipologiaAsync(_twParent!.Id, new SaveTipologiaRequest(_twNombre.Trim(), _twSop, _twFmt, _twOblig), actor);
+                if (!cr.IsOk) { _twError = cr.Error; return; }
+                foreach (var m in _twMetas) { await Svc.AddMetadatoDocumentoAsync(cr.Value!.Id, new SaveMetadatoRequest(m.Nombre, m.Tipo, m.Obligatorio, m.ListaId), actor); }
+            }
+            _showTipWizard = false;
+            _pageOk = _twEditing is null ? "Tipología agregada." : "Tipología actualizada.";
+            if (_twParent is not null) { _expanded.Add(_twParent.SerieId); }
+            await ReloadWorkspaceAsync();
+        }
+        finally { _twBusy = false; }
+    }
+
+    private RenderFragment WizMetaList(List<WizMeta> metas) => __builder =>
+    {
+        if (metas.Count == 0)
+        {
+            <div class="tx-ent-hint">Sin metadatos.</div>
+        }
+        else
+        {
+            <div class="tx-ent-table-wrap">
+                <table class="tx-ent-table">
+                    <thead><tr><th>Nombre</th><th>Tipo</th><th>Oblig.</th><th>Lista</th><th class="right">Acciones</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in metas)
+                        {
+                            <tr>
+                                <td>@m.Nombre</td>
+                                <td>@TipoLabel(m.Tipo)</td>
+                                <td>@(m.Obligatorio ? "Sí" : "No")</td>
+                                <td>@(m.ListaId is long lid ? (_listas.FirstOrDefault(l => l.Id == lid)?.NombreLista ?? "--") : "--")</td>
+                                <td class="right"><button class="tx-ent-btn sm danger" @onclick="@(() => metas.Remove(m))">Quitar</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    };
 
     // ---- Asignacion ----
 
     private void OpenAddAsignacion()
     {
         _editingAsign = null;
+        _addScopeParentSerieId = null; _addScopeParentNombre = null;
         _fSerieId = 0; _fTiempoGestion = 0; _fTiempoCentral = 0;
         _fDisposicion = DisposicionFinal.ConservacionTotal;
         _fNivelId = _niveles.FirstOrDefault(n => n.Codigo == "02")?.Id ?? _niveles.FirstOrDefault()?.Id ?? 0;
@@ -517,7 +1626,7 @@
             {
                 if (_fSerieId <= 0) { _asignError = "Selecciona una serie."; return; }
                 result = await Svc.AddAsignacionAsync(_version!.Id, new AddAsignacionRequest(
-                    _selectedDepId!.Value, _fSerieId, _fTiempoGestion, _fTiempoCentral, _fDisposicion,
+                    _workspaceDep!.DependenciaId, _fSerieId, _fTiempoGestion, _fTiempoCentral, _fDisposicion,
                     _fNivelId, _fReproduccion, _fDdhh, _fProcedimiento), actor);
             }
             else
@@ -528,7 +1637,7 @@
             if (!result.IsOk) { _asignError = result.Error; return; }
             _showAsignEditor = false;
             _pageOk = _editingAsign is null ? "Serie asignada a la TRD." : "Asignación actualizada.";
-            await ReloadAsync();
+            await ReloadWorkspaceAsync();
         }
         finally { _busy = false; }
     }
@@ -542,18 +1651,27 @@
                 motivo: archived ? "Inactivacion de asignacion TRD (RF04)" : "Reactivacion (RF04)");
             if (!result.IsOk) { _pageError = result.Error; return; }
             _pageOk = archived ? "Asignación inactivada." : "Asignación reactivada.";
-            await ReloadAsync();
+            await ReloadWorkspaceAsync();
         }
         finally { _busy = false; }
     }
 
-    // ---- Metadatos ----
+    // ---- Metadatos (expediente) ----
 
     private void OpenMetadatos(TrdAsignacionDto a)
     {
         _metaAsign = a;
         ResetMetaEditor();
         _showMetadatos = true;
+    }
+
+    // ---- Metadatos (documento) ----
+
+    private void OpenMetadatosDoc(TrdTipologiaDto t)
+    {
+        _docTip = t;
+        ResetMetaEditor();
+        _showMetaDoc = true;
     }
 
     private void OpenMetaEditor(TrdMetadatoDto m)
@@ -570,21 +1688,30 @@
         _metaError = null;
     }
 
-    private async Task SaveMetadato()
+    private async Task SaveMetadato(bool documento)
     {
-        if (_metaAsign is null) { return; }
         _busy = true; _metaError = null;
         try
         {
             long? listaId = _fMetaTipo == TipoDatoMetadato.Lista ? (_fMetaListaId > 0 ? _fMetaListaId : null) : null;
             var request = new SaveMetadatoRequest(_fMetaNombre, _fMetaTipo, _fMetaObligatorio, listaId);
             var actor = Tenant.UserId ?? 0;
-            var result = _editingMeta is null
-                ? await Svc.AddMetadatoAsync(_metaAsign.Id, request, actor)
-                : await Svc.UpdateMetadatoAsync(_editingMeta.Id, request, actor);
+            TrdResult<TrdMetadatoDto> result;
+            if (_editingMeta is not null)
+            {
+                result = await Svc.UpdateMetadatoAsync(_editingMeta.Id, request, actor);
+            }
+            else if (documento)
+            {
+                result = await Svc.AddMetadatoDocumentoAsync(_docTip!.Id, request, actor);
+            }
+            else
+            {
+                result = await Svc.AddMetadatoAsync(_metaAsign!.Id, request, actor);
+            }
             if (!result.IsOk) { _metaError = result.Error; return; }
-            await ReloadAsync();
-            _metaAsign = _asignaciones.FirstOrDefault(x => x.Id == _metaAsign.Id) ?? _metaAsign;
+            await ReloadWorkspaceAsync();
+            RefreshOpenMetaContext();
             ResetMetaEditor();
         }
         finally { _busy = false; }
@@ -597,21 +1724,176 @@
         {
             var result = await Svc.SetMetadatoArchivedAsync(m.Id, archived, Tenant.UserId ?? 0);
             if (!result.IsOk) { _metaError = result.Error; return; }
-            await ReloadAsync();
-            if (_metaAsign is not null) { _metaAsign = _asignaciones.FirstOrDefault(x => x.Id == _metaAsign.Id) ?? _metaAsign; }
+            await ReloadWorkspaceAsync();
+            RefreshOpenMetaContext();
         }
         finally { _busy = false; }
     }
 
-    private async Task ReloadAsync()
+    /// <summary>Reengancha los objetos abiertos (asignacion/tipologia) a la lista recargada.</summary>
+    private void RefreshOpenMetaContext()
     {
-        _dependencias = await Svc.GetDependenciasResumenAsync(_version!.Id);
-        _selectedDep = _dependencias.FirstOrDefault(d => d.DependenciaId == _selectedDepId);
-        if (_selectedDepId is long id)
+        if (_metaAsign is not null)
         {
-            _asignaciones = await Svc.GetAsignacionesAsync(_version.Id, id, includeArchived: true);
+            _metaAsign = _asignaciones.FirstOrDefault(x => x.Id == _metaAsign.Id) ?? _metaAsign;
+        }
+        if (_tipAsign is not null)
+        {
+            _tipAsign = _asignaciones.FirstOrDefault(x => x.Id == _tipAsign.Id) ?? _tipAsign;
+        }
+        if (_docTip is not null)
+        {
+            _docTip = _asignaciones.SelectMany(a => a.Tipologias).FirstOrDefault(t => t.Id == _docTip.Id) ?? _docTip;
         }
     }
+
+    // ---- Tipologias ----
+
+    private void OpenTipologias(TrdAsignacionDto a)
+    {
+        _tipAsign = a;
+        ResetTipEditor();
+        _showTipologias = true;
+    }
+
+    private void OpenTipEditor(TrdTipologiaDto t)
+    {
+        _editingTip = t;
+        _fTipNombre = t.Nombre; _fTipSoporte = t.Soporte; _fTipFormato = t.Formato; _fTipObligatorio = t.ObligatorioEnExpediente;
+        _tipError = null;
+    }
+
+    private void ResetTipEditor()
+    {
+        _editingTip = null;
+        _fTipNombre = ""; _fTipSoporte = SoporteTipologia.Electronico; _fTipFormato = null; _fTipObligatorio = false;
+        _tipError = null;
+    }
+
+    private async Task SaveTipologia()
+    {
+        if (_tipAsign is null) { return; }
+        _busy = true; _tipError = null;
+        try
+        {
+            var request = new SaveTipologiaRequest(_fTipNombre, _fTipSoporte, _fTipFormato, _fTipObligatorio);
+            var actor = Tenant.UserId ?? 0;
+            var result = _editingTip is null
+                ? await Svc.AddTipologiaAsync(_tipAsign.Id, request, actor)
+                : await Svc.UpdateTipologiaAsync(_editingTip.Id, request, actor);
+            if (!result.IsOk) { _tipError = result.Error; return; }
+            await ReloadWorkspaceAsync();
+            _tipAsign = _asignaciones.FirstOrDefault(x => x.Id == _tipAsign.Id) ?? _tipAsign;
+            ResetTipEditor();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetTipArchived(TrdTipologiaDto t, bool archived)
+    {
+        _busy = true; _tipError = null;
+        try
+        {
+            var result = await Svc.SetTipologiaArchivedAsync(t.Id, archived, Tenant.UserId ?? 0,
+                motivo: archived ? "Inactivacion de tipologia (RF05)" : "Reactivacion (RF05)");
+            if (!result.IsOk) { _tipError = result.Error; return; }
+            await ReloadWorkspaceAsync();
+            if (_tipAsign is not null) { _tipAsign = _asignaciones.FirstOrDefault(x => x.Id == _tipAsign.Id) ?? _tipAsign; }
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Fragmentos reutilizables ----
+
+    private RenderFragment MetadatosTabla(IReadOnlyList<TrdMetadatoDto> metas, Action<TrdMetadatoDto> onEdit, Func<TrdMetadatoDto, bool, Task> onArchive) => __builder =>
+    {
+        if (metas.Count > 0)
+        {
+            <div class="tx-ent-table-wrap">
+                <table class="tx-ent-table">
+                    <thead><tr><th>Nombre</th><th>Tipo</th><th>Obligatorio</th><th>Lista</th><th>Estado</th><th class="right">Acciones</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in metas)
+                        {
+                            <tr class="@(m.IsArchived ? "archivada" : "")">
+                                <td>@m.Nombre</td>
+                                <td>@TipoLabel(m.TipoDato)</td>
+                                <td>@(m.Obligatorio ? "Sí" : "No")</td>
+                                <td>@(m.ListaNombre ?? "--")</td>
+                                <td><span class="tx-ent-badge sm @(m.IsArchived ? "off" : "ok")">@(m.IsArchived ? "Inactivo" : "Activo")</span></td>
+                                <td class="right">
+                                    @if (_canEditProcMeta)
+                                    {
+                                        <button type="button" class="tx-ent-btn sm" @onclick="@(() => onEdit(m))" disabled="@_busy">Editar</button>
+                                        @if (m.IsArchived)
+                                        {
+                                            <button type="button" class="tx-ent-btn sm" @onclick="@(() => onArchive(m, false))" disabled="@_busy">Reactivar</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="tx-ent-btn sm danger" @onclick="@(() => onArchive(m, true))" disabled="@_busy">Inactivar</button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="tx-ent-hint">Sin metadatos todavía.</div>
+        }
+    };
+
+    private RenderFragment MetadatoForm(bool documento) => __builder =>
+    {
+        <div class="tx-ent-grid c2" style="margin-top:8px">
+            <div class="tx-ent-field">
+                <label>Nombre <span class="req">*</span></label>
+                <input class="tx-ent-input" @bind="_fMetaNombre" maxlength="200" />
+            </div>
+            <div class="tx-ent-field">
+                <label>Tipo de dato <span class="req">*</span></label>
+                <select class="tx-ent-input" @bind="_fMetaTipo">
+                    @foreach (var t in Enum.GetValues<TipoDatoMetadato>())
+                    {
+                        <option value="@t">@TipoLabel(t)</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="tx-ent-grid c2">
+            @if (_fMetaTipo == TipoDatoMetadato.Lista)
+            {
+                <div class="tx-ent-field">
+                    <label>Lista <span class="req">*</span></label>
+                    <select class="tx-ent-input" @bind="_fMetaListaId">
+                        <option value="0">— Selecciona —</option>
+                        @foreach (var l in _listas)
+                        {
+                            <option value="@l.Id">@l.NombreLista</option>
+                        }
+                    </select>
+                </div>
+            }
+            <label class="tx-ent-hint" style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" @bind="_fMetaObligatorio" /> Obligatorio
+            </label>
+        </div>
+        @if (_metaError is not null)
+        {
+            <div class="tx-ent-fielderr">@_metaError</div>
+        }
+        <div style="margin-top:8px;display:flex;gap:8px">
+            <button class="tx-ent-btn primary sm" @onclick="@(() => SaveMetadato(documento))" disabled="@_busy">@(_editingMeta is null ? "Agregar" : "Guardar")</button>
+            @if (_editingMeta is not null)
+            {
+                <button class="tx-ent-btn sm" @onclick="ResetMetaEditor" disabled="@_busy">Cancelar edición</button>
+            }
+        </div>
+    };
 
     // ---- Labels ----
 
@@ -627,6 +1909,21 @@
     {
         TrdVersionEstado.EnConstruccion => "violet",
         TrdVersionEstado.Vigente => "ok",
+        _ => "off"
+    };
+    private static string EstadoDepLabel(EstadoTrdDependencia e) => e switch
+    {
+        EstadoTrdDependencia.SinTrd => "Sin TRD",
+        EstadoTrdDependencia.EnConstruccion => "En construcción",
+        EstadoTrdDependencia.Activa => "Activa",
+        EstadoTrdDependencia.Historica => "Histórica",
+        EstadoTrdDependencia.Inactiva => "Inactiva",
+        _ => e.ToString()
+    };
+    private static string EstadoDepClase(EstadoTrdDependencia e) => e switch
+    {
+        EstadoTrdDependencia.EnConstruccion => "violet",
+        EstadoTrdDependencia.Activa => "ok",
         _ => "off"
     };
     private static string DispCodigo(DisposicionFinal d) => d switch
@@ -651,6 +1948,14 @@
         TipoDatoMetadato.Fecha => "Fecha",
         TipoDatoMetadato.Lista => "Lista",
         TipoDatoMetadato.Booleano => "Booleano",
+        TipoDatoMetadato.Moneda => "Moneda",
         _ => t.ToString()
+    };
+    private static string SoporteLabel(SoporteTipologia s) => s switch
+    {
+        SoporteTipologia.Fisico => "Físico",
+        SoporteTipologia.Electronico => "Electrónico",
+        SoporteTipologia.Hibrido => "Híbrido",
+        _ => s.ToString()
     };
 }

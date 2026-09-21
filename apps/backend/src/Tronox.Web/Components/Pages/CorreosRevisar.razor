@@ -1,0 +1,330 @@
+@page "/modulo/radicacion-correos"
+@attribute [Authorize(Policy = "Perm:modulo/radicacion-correos:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@inject IRadicacionCorreosService CorreosSvc
+
+@* RQ09 - RF04 (Correos por Revisar, port de rad_correos). Bandeja de dos paneles: lista de correos
+   capturados (Pendientes/Descartados) + panel de lectura con acciones. Radicar-desde-correo crea un
+   Radicado (RadicadorService). Captura IMAP diferida: "Simular correo" siembra uno de prueba (dev). *@
+
+<PageTitle>Correos por Revisar - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Workspace</a><span class="sep">/</span>
+    <span>Gestion y Tramite</span><span class="sep">/</span>
+    <span>Ventanilla Unica / Radicacion</span><span class="sep">/</span>
+    <span class="cur">Correos por Revisar</span>
+</nav>
+
+<div class="rb-head">
+    <div>
+        <h1 class="page-title" style="margin:0;">Correos por Revisar</h1>
+        <p class="page-sub" style="margin:4px 0 0;">Correos capturados de los buzones, pendientes de radicar.</p>
+    </div>
+    <div class="rb-head-acts">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="SimularAsync" disabled="@_busy">Simular correo entrante</button>
+    </div>
+</div>
+
+@if (_flash is not null) { <div class="mc-flash @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+<div class="cr-grid">
+    <div class="cr-list">
+        <div class="cr-tabs">
+            <button class="cr-tab @(_tab == "pendientes" ? "on" : "")" @onclick="@(() => SetTabAsync("pendientes"))">Pendientes <span class="rb-badge">@_pend</span></button>
+            <button class="cr-tab @(_tab == "descartados" ? "on" : "")" @onclick="@(() => SetTabAsync("descartados"))">Descartados <span class="rb-badge">@_desc</span></button>
+        </div>
+        <div class="cr-items">
+            @if (_lista.Count == 0)
+            {
+                <div class="cr-empty">No hay correos en esta bandeja.</div>
+            }
+            else
+            {
+                @foreach (var c in _lista)
+                {
+                    <div class="cr-item @(_selReg == c.Reg ? "on" : "")" @onclick="@(() => SelectAsync(c.Reg))">
+                        <div class="cr-item-r1"><span class="cr-item-nombre">@c.Nombre</span><span class="cr-item-hora">@c.Hora</span></div>
+                        <div class="cr-item-asunto">@(c.Asunto ?? "(Sin asunto)")</div>
+                        <div class="cr-item-r3">
+                            <span style="color:@(c.TipoColor ?? "#405189")">@(c.TipoNombre ?? "(sin tipo)")</span>
+                            @if (c.Adjuntos > 0) { <span class="cr-adj-n">@c.Adjuntos adj.</span> }
+                            @if (c.Segundos is int s && s > 0) { <span class="cr-timer">auto en @(s / 60)m</span> }
+                            else if (c.Modo == "Manual") { <span class="cr-modo">Manual</span> }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="cr-view">
+        @if (_detalle is null)
+        {
+            <div class="cr-view-empty">Seleccione un correo de la lista.</div>
+        }
+        else
+        {
+            var d = _detalle;
+            <div class="cr-vhead">
+                <h3>@(d.Asunto ?? "(Sin asunto)")</h3>
+                <div class="cr-de">De: <b>@d.Nombre</b> @(string.IsNullOrEmpty(d.Email) ? "" : $"<{d.Email}>")</div>
+            </div>
+            <div class="cr-meta">
+                <span><b>Buzon:</b> @(d.Buzon ?? "-")</span>
+                <span><b>Recibido:</b> @d.Recibido</span>
+                <span><b>Tipo:</b> <span style="color:@(d.TipoColor ?? "#405189")">@(d.TipoNombre ?? "(sin tipo)")</span></span>
+                <span class="cr-conf @ConfClass(d.Confianza)"><b>Confianza:</b> @d.Confianza% (@ConfLabel(d.Confianza))</span>
+                <span><b>Adjuntos:</b> @(d.Adjuntos.Count == 0 ? "Sin adjuntos" : $"{d.Adjuntos.Count} archivo(s)")</span>
+            </div>
+
+            @if (d.Estado == "Descartado" && !string.IsNullOrEmpty(d.Causal))
+            {
+                <div class="cr-alert err">Descartado. Causal: @d.Causal</div>
+            }
+            @if (d.Estado == "Pendiente" && !string.IsNullOrEmpty(d.RadicadoRef))
+            {
+                <div class="cr-alert ref">
+                    Este correo referencia el radicado <b>@d.RadicadoRef</b>.
+                    <button class="btn btn-sm btn-success" @onclick="@(() => RadicarAsync(true))" disabled="@_busy">Vincular como respuesta</button>
+                </div>
+            }
+            @if (d.Estado == "Pendiente" && !string.IsNullOrEmpty(d.DuplicadoNumero))
+            {
+                <div class="cr-alert warn">Posible duplicado del radicado @d.DuplicadoNumero (ultimos 30 dias).</div>
+            }
+            @if (d.Estado == "Radicado" && !string.IsNullOrEmpty(d.RadicadoNumero))
+            {
+                <div class="cr-alert ok">Radicado: <b>@d.RadicadoNumero</b></div>
+            }
+
+            <div class="cr-msg">@(d.Cuerpo ?? "(sin contenido)")</div>
+
+            @if (d.Adjuntos.Count > 0)
+            {
+                <div class="cr-adjs">
+                    @foreach (var a in d.Adjuntos)
+                    {
+                        <div class="cr-adj"><span class="cr-adj-ico">@(a.Ext?.ToUpper() ?? "?")</span> @a.Nombre <span class="cr-sub">@a.Kb KB @(a.EsCuerpoHtml ? "(HTML original)" : a.EsHilo ? "(hilo completo)" : "")</span></div>
+                    }
+                    <p class="cr-sub">La descarga/visor de adjuntos se habilita con la captura IMAP (worker).</p>
+                </div>
+            }
+
+            @if (d.Estado == "Pendiente")
+            {
+                <div class="cr-actions">
+                    <div class="field" style="margin:0;max-width:280px;">
+                        <label class="form-label">Tipo para radicar</label>
+                        <select class="form-control form-control-sm" @bind="_radicarTipoId">
+                            <option value="">@(d.TipoDetectadoId is null ? "Selecciona..." : d.TipoNombre)</option>
+                            @foreach (var t in _tipos) { <option value="@t.Id">@t.Nombre</option> }
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" @onclick="@(() => RadicarAsync(false))" disabled="@_busy">Radicar</button>
+                    <button class="btn btn-outline-secondary" @onclick="OpenEditar" disabled="@_busy">Editar</button>
+                    <button class="btn btn-outline-danger" @onclick="@(() => _showDescartar = true)" disabled="@_busy">Descartar</button>
+                </div>
+            }
+            else if (d.Estado == "Descartado")
+            {
+                <div class="cr-actions">
+                    <button class="btn btn-primary" @onclick="RecuperarAsync" disabled="@_busy">Recuperar</button>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@* Modal Editar *@
+@if (_showEditar && _detalle is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showEditar = false)">
+        <div class="modal-dialog" style="max-width:560px;" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Editar pre-radicado</h3><button class="modal-close" @onclick="@(() => _showEditar = false)">&times;</button></div>
+            <div class="modal-body">
+                <div class="field"><label class="form-label">Tipo</label>
+                    <select class="form-control" @bind="_edTipoId"><option value="">(sin tipo)</option>
+                        @foreach (var t in _tipos) { <option value="@t.Id">@t.Nombre</option> }
+                    </select>
+                </div>
+                <div class="field"><label class="form-label">Asunto</label><input class="form-control" @bind="_edAsunto" maxlength="500" /></div>
+                <div class="field"><label class="form-label">Remitente</label><input class="form-control" @bind="_edNombre" maxlength="300" /></div>
+                <div class="field"><label class="form-label">Correo</label><input class="form-control" @bind="_edEmail" maxlength="200" /></div>
+                <div class="field"><label class="form-label">Contenido</label><textarea class="form-control" rows="4" @bind="_edDesc"></textarea></div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="@(() => _showEditar = false)">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarEditarAsync" disabled="@_busy">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal Descartar *@
+@if (_showDescartar && _detalle is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _showDescartar = false)">
+        <div class="modal-dialog" style="max-width:480px;" @onclick:stopPropagation="true">
+            <div class="modal-head"><h3>Descartar correo</h3><button class="modal-close" @onclick="@(() => _showDescartar = false)">&times;</button></div>
+            <div class="modal-body">
+                <div class="field"><label class="form-label">Causal *</label>
+                    <textarea class="form-control" rows="3" @bind="_causal" maxlength="1000" placeholder="Motivo del descarte (obligatorio)"></textarea>
+                </div>
+                @if (_descError is not null) { <div class="tk-field-error">@_descError</div> }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="@(() => _showDescartar = false)">Cancelar</button>
+                <button class="btn btn-outline-danger" @onclick="ConfirmDescartarAsync" disabled="@_busy">Descartar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .cr-grid { display:grid; grid-template-columns:400px 1fr; gap:16px; align-items:start; }
+    .cr-list { background:var(--tx-surface,#fff); border:1px solid var(--tx-border,#e2e8f0); border-radius:12px; overflow:hidden; }
+    .cr-tabs { display:flex; border-bottom:1px solid var(--tx-border,#e2e8f0); }
+    .cr-tab { flex:1; border:none; background:none; padding:12px; font-size:.82rem; color:var(--ink-3,#64748b); cursor:pointer; border-bottom:2px solid transparent; }
+    .cr-tab.on { color:#405189; border-bottom-color:#405189; font-weight:600; }
+    .cr-items { max-height:70vh; overflow:auto; }
+    .cr-empty, .cr-view-empty { padding:40px 16px; text-align:center; color:var(--ink-3,#94a3b8); font-size:.85rem; }
+    .cr-item { padding:12px 14px; border-bottom:1px solid var(--tx-muted,#f1f5f9); cursor:pointer; border-left:3px solid transparent; }
+    .cr-item:hover { background:var(--tx-muted,#f8fafc); }
+    .cr-item.on { background:var(--tx-muted,#eef2ff); border-left-color:#405189; }
+    .cr-item-r1 { display:flex; justify-content:space-between; font-size:.82rem; }
+    .cr-item-nombre { font-weight:600; color:var(--ink-1,#0f172a); }
+    .cr-item-hora { color:var(--ink-3,#94a3b8); font-size:.74rem; }
+    .cr-item-asunto { font-size:.8rem; color:var(--ink-2,#334155); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin:2px 0; }
+    .cr-item-r3 { display:flex; gap:8px; font-size:.72rem; align-items:center; }
+    .cr-adj-n, .cr-timer, .cr-modo { color:var(--ink-3,#94a3b8); }
+    .cr-timer { color:#D97706; }
+    .cr-view { background:var(--tx-surface,#fff); border:1px solid var(--tx-border,#e2e8f0); border-radius:12px; padding:18px; min-height:300px; }
+    .cr-vhead h3 { margin:0 0 4px; font-size:1.05rem; }
+    .cr-de { font-size:.82rem; color:var(--ink-3,#64748b); }
+    .cr-meta { display:flex; gap:14px; flex-wrap:wrap; font-size:.78rem; color:var(--ink-2,#334155); margin:12px 0; padding:10px 0; border-top:1px solid var(--tx-muted,#f1f5f9); border-bottom:1px solid var(--tx-muted,#f1f5f9); }
+    .cr-conf.alta { color:#065F46; } .cr-conf.media { color:#92400E; } .cr-conf.baja { color:#991B1B; }
+    .cr-alert { padding:10px 12px; border-radius:8px; font-size:.82rem; margin:10px 0; display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .cr-alert.err { background:#FEE2E2; color:#991B1B; } .cr-alert.ref { background:#EFF6FF; color:#1E40AF; }
+    .cr-alert.warn { background:#FEF3C7; color:#92400E; } .cr-alert.ok { background:#D1FAE5; color:#065F46; }
+    .cr-msg { white-space:pre-wrap; font-size:.86rem; color:var(--ink-2,#334155); line-height:1.5; margin:12px 0; }
+    .cr-adjs { margin-top:12px; }
+    .cr-adj { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:.8rem; }
+    .cr-adj-ico { width:30px; height:30px; line-height:30px; text-align:center; background:var(--tx-muted,#f1f5f9); border-radius:6px; font-size:.64rem; font-weight:700; }
+    .cr-sub { font-size:.74rem; color:var(--ink-3,#94a3b8); }
+    .cr-actions { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--tx-muted,#f1f5f9); }
+    @@media (max-width:900px){ .cr-grid { grid-template-columns:1fr; } }
+</style>
+
+@code {
+    private string _tab = "pendientes";
+    private IReadOnlyList<CorreoItemDto> _lista = Array.Empty<CorreoItemDto>();
+    private int _pend, _desc;
+    private long? _selReg;
+    private CorreoDetalleDto? _detalle;
+    private IReadOnlyList<OpcionDto> _tipos = Array.Empty<OpcionDto>();
+    private bool _busy;
+    private string? _flash; private bool _flashOk;
+
+    private string _radicarTipoId = "";
+    private bool _showEditar; private string _edTipoId = "", _edAsunto = "", _edDesc = "", _edNombre = "", _edEmail = "";
+    private bool _showDescartar; private string _causal = ""; private string? _descError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tipos = await CorreosSvc.TiposEntradaAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var res = await CorreosSvc.ListarAsync(_tab);
+        _lista = res.Lista; _pend = res.Pendientes; _desc = res.Descartados;
+    }
+
+    private async Task SetTabAsync(string tab) { _tab = tab; _selReg = null; _detalle = null; await LoadAsync(); }
+
+    private async Task SelectAsync(long reg)
+    {
+        _selReg = reg; _radicarTipoId = "";
+        _detalle = await CorreosSvc.DetalleAsync(reg);
+    }
+
+    private async Task RadicarAsync(bool vincular)
+    {
+        if (_detalle is null) { return; }
+        _busy = true;
+        try
+        {
+            long? tipoId = long.TryParse(_radicarTipoId, out var t) ? t : null;
+            var res = await CorreosSvc.RadicarAsync(_detalle.Reg, tipoId, vincular);
+            if (!res.Ok) { Flash(res.Error ?? "No se pudo radicar.", false); return; }
+            Flash($"Radicado {res.Numero}.", true);
+            _selReg = null; _detalle = null;
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private void OpenEditar()
+    {
+        if (_detalle is null) { return; }
+        _edTipoId = _detalle.TipoDetectadoId?.ToString() ?? "";
+        _edAsunto = _detalle.Asunto ?? ""; _edDesc = _detalle.Cuerpo ?? "";
+        _edNombre = _detalle.Nombre; _edEmail = _detalle.Email ?? "";
+        _showEditar = true;
+    }
+
+    private async Task GuardarEditarAsync()
+    {
+        if (_detalle is null) { return; }
+        _busy = true;
+        try
+        {
+            var req = new EditarCorreoRequest(_detalle.Reg,
+                long.TryParse(_edTipoId, out var t) ? t : null, _edAsunto, _edDesc, _edNombre, _edEmail);
+            var res = await CorreosSvc.EditarAsync(req);
+            if (!res.Ok) { Flash(res.Error ?? "No se pudo guardar.", false); return; }
+            _showEditar = false;
+            await SelectAsync(_detalle.Reg); await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ConfirmDescartarAsync()
+    {
+        if (_detalle is null) { return; }
+        _descError = null;
+        if (string.IsNullOrWhiteSpace(_causal)) { _descError = "La causal es obligatoria."; return; }
+        _busy = true;
+        try
+        {
+            var res = await CorreosSvc.DescartarAsync(_detalle.Reg, _causal);
+            if (!res.Ok) { _descError = res.Error; return; }
+            _showDescartar = false; _causal = "";
+            _selReg = null; _detalle = null;
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RecuperarAsync()
+    {
+        if (_detalle is null) { return; }
+        _busy = true;
+        try { await CorreosSvc.RecuperarAsync(_detalle.Reg); _selReg = null; _detalle = null; await LoadAsync(); }
+        finally { _busy = false; }
+    }
+
+    private async Task SimularAsync()
+    {
+        _busy = true;
+        try { var res = await CorreosSvc.SimularAsync(); Flash(res.Ok ? "Correo de prueba generado." : (res.Error ?? "Error."), res.Ok); _tab = "pendientes"; await LoadAsync(); }
+        finally { _busy = false; }
+    }
+
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+    private static string ConfClass(int c) => c >= 85 ? "alta" : c >= 70 ? "media" : "baja";
+    private static string ConfLabel(int c) => c >= 85 ? "Alta" : c >= 70 ? "Media" : "Baja";
+}

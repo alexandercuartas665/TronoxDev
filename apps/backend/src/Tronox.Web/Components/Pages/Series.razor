@@ -94,6 +94,48 @@
         </div>
     </div>
 
+    @* ===== Panel de detalle del nodo seleccionado (paridad legacy: aqui se agrega subserie) ===== *@
+    @if (Selected is SerieNodeDto sel)
+    {
+        <div class="tx-ent-card sr-detail">
+            <div class="sr-detail-body">
+                <div class="sr-code-box mono">@sel.Codigo</div>
+                <div class="sr-detail-info">
+                    <div class="sr-detail-name">@sel.Nombre</div>
+                    <div class="sr-detail-meta">
+                        <span class="tx-ent-badge sm @(sel.EsSerie ? "violet" : "")">@NivelTexto(sel)</span>
+                        <span class="tx-ent-badge sm @(sel.EsInactiva ? "off" : "ok")">@(sel.EsInactiva ? "Inactiva" : "Activa")</span>
+                        <span class="tx-ent-hint" style="margin:0">Subseries directas: <strong>@sel.ChildCount</strong></span>
+                    </div>
+                </div>
+                <div class="sr-detail-actions">
+                    @if (_canCreate && !sel.EsInactiva)
+                    {
+                        <button type="button" class="tx-ent-btn primary" @onclick="@(() => OpenEditor(null, sel.Id))">
+                            <i class="bi bi-plus-lg"></i> Agregar subserie
+                        </button>
+                    }
+                    @if (_canEdit)
+                    {
+                        <button type="button" class="tx-ent-btn" @onclick="@(() => OpenEditor(sel, null))">Editar</button>
+                    }
+                    @if (_canDelete)
+                    {
+                        @if (sel.EsInactiva)
+                        {
+                            <button type="button" class="tx-ent-btn" @onclick="@(() => SetEstadoAsync(sel, true))" disabled="@_busy">Reactivar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="tx-ent-btn danger" @onclick="@(() => SetEstadoAsync(sel, false))" disabled="@_busy">Inactivar</button>
+                        }
+                    }
+                    <button type="button" class="tx-ent-btn sm" title="Cerrar detalle" @onclick="@(() => _selectedId = null)">&times;</button>
+                </div>
+            </div>
+        </div>
+    }
+
     @if (_loading)
     {
         <div class="tx-ent-card"><div class="tx-ent-card-body"><em>Cargando catálogo...</em></div></div>
@@ -149,9 +191,16 @@
                        filtrado el usuario pierde la referencia de donde esta cada nodo. *@
                     @foreach (var node in Buscar())
                     {
-                        <div class="tx-dep-node @(node.EsInactiva ? "archivada" : "")">
+                        <div class="tx-dep-node @(node.EsInactiva ? "archivada" : "") @(_selectedId == node.Id ? "sel" : "")">
                             <span class="tx-dep-chev ph"></span>
                             @NodoInterior(node)
+                            @if (_canCreate && !node.EsInactiva)
+                            {
+                                <button type="button" class="tx-ent-btn sm sr-add-sub" title="Agregar subserie dentro de esta"
+                                        @onclick="@(() => OpenEditor(null, node.Id))" @onclick:stopPropagation="true">
+                                    <i class="bi bi-plus-lg"></i> Subserie
+                                </button>
+                            }
                         </div>
                     }
                     @if (Buscar().Count == 0)
@@ -164,7 +213,7 @@
                     @foreach (var row in FlattenTree())
                     {
                         var node = row.Node;
-                        <div class="tx-dep-node @(node.EsInactiva ? "archivada" : "")" style="margin-left:@(row.Depth * 22)px">
+                        <div class="tx-dep-node @(node.EsInactiva ? "archivada" : "") @(_selectedId == node.Id ? "sel" : "")" style="margin-left:@(row.Depth * 22)px">
                             @if (node.ChildCount > 0)
                             {
                                 <button type="button" class="tx-dep-chev @(_collapsed.Contains(node.Id) ? "" : "open")"
@@ -180,8 +229,10 @@
                             @NodoInterior(node)
                             @if (_canCreate && !node.EsInactiva)
                             {
-                                <button type="button" class="tx-dep-add" title="Agregar subserie"
-                                        @onclick="@(() => OpenEditor(null, node.Id))">+</button>
+                                <button type="button" class="tx-ent-btn sm sr-add-sub" title="Agregar subserie dentro de esta"
+                                        @onclick="@(() => OpenEditor(null, node.Id))" @onclick:stopPropagation="true">
+                                    <i class="bi bi-plus-lg"></i> Subserie
+                                </button>
                             }
                         </div>
                     }
@@ -203,14 +254,15 @@
         <div class="modal-overlay" @onclick="@(() => _showEditor = false)">
             <div class="modal-dialog" style="max-width:600px" @onclick:stopPropagation="true">
                 <div class="modal-head">
-                    <h3>@(_editing is null ? (_parentNombre is null ? "Nueva serie" : $"Nueva subserie de {_parentNombre}") : $"Editar {_editing.Nombre}")</h3>
+                    <h3>@(_editing is null ? (_parentId is null ? "Nueva Serie" : "Nueva Subserie") : "Editar Serie / Subserie")</h3>
                     <button class="modal-close" @onclick="@(() => _showEditor = false)">&times;</button>
                 </div>
                 <div class="modal-body tx-mod tx-series">
                     @if (_parentNombre is not null)
                     {
-                        <div class="tx-ent-hint" style="margin-bottom:12px">
-                            <i class="bi bi-diagram-2"></i> Subserie de <strong>@_parentNombre</strong>
+                        <div class="tx-ent-alert" style="margin-bottom:12px">
+                            <i class="bi bi-diagram-2"></i>
+                            <span>Subserie de: <strong class="mono">@_parentCodigo</strong> &mdash; <strong>@_parentNombre</strong></span>
                         </div>
                     }
                     <div class="tx-ent-grid c2">
@@ -239,13 +291,26 @@
                 <div class="modal-foot">
                     <button class="tx-ent-btn" @onclick="@(() => _showEditor = false)" disabled="@_busy">Cancelar</button>
                     <button class="tx-ent-btn primary" @onclick="SaveAsync" disabled="@_busy">
-                        @(_editing is null ? "Crear" : "Guardar")
+                        @(_editing is null ? (_parentId is null ? "Crear Serie" : "Crear Subserie") : "Guardar Cambios")
                     </button>
                 </div>
             </div>
         </div>
     }
 </div>
+
+<style>
+    .tx-mod.tx-series .tx-dep-node-main { display: inline-flex; align-items: center; gap: 10px; }
+    .tx-mod.tx-series .tx-dep-node.sel { background: #eef4ff; border-color: #bcd3ff; }
+    .tx-mod.tx-series .sr-add-sub { margin-left: 8px; white-space: nowrap; }
+    .tx-mod.tx-series .sr-detail { border: 1px solid var(--kt-primary, #405189); box-shadow: 0 1px 4px rgba(64,81,137,.12); margin-bottom: 14px; }
+    .tx-mod.tx-series .sr-detail-body { display: flex; align-items: center; gap: 16px; padding: 16px 20px; flex-wrap: wrap; }
+    .tx-mod.tx-series .sr-code-box { font-size: 18px; font-weight: 800; color: #405189; background: #eef4ff; border: 1px solid #dbe6ff; border-radius: 10px; padding: 10px 16px; letter-spacing: .02em; }
+    .tx-mod.tx-series .sr-detail-info { flex: 1; min-width: 180px; }
+    .tx-mod.tx-series .sr-detail-name { font-size: 15px; font-weight: 700; color: #0f172a; }
+    .tx-mod.tx-series .sr-detail-meta { display: flex; align-items: center; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
+    .tx-mod.tx-series .sr-detail-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+</style>
 
 @code {
     private const string ModuleKey = "modulo/series-subseries";
@@ -267,11 +332,17 @@
     private SerieKpisDto? _kpis;
     private readonly HashSet<long> _collapsed = [];
 
+    // ---- Seleccion (panel de detalle, paridad legacy) ----
+    private long? _selectedId;
+    private SerieNodeDto? Selected => _selectedId is long id ? _flat.FirstOrDefault(n => n.Id == id) : null;
+    private void Select(SerieNodeDto node) { _selectedId = node.Id; _pageOk = null; _pageError = null; }
+
     // ---- Editor ----
     private bool _showEditor;
     private SerieNodeDto? _editing;
     private long? _parentId;
     private string? _parentNombre;
+    private string? _parentCodigo;
     private string _fCodigo = "";
     private string _fNombre = "";
     private string? _fDescripcion;
@@ -353,7 +424,9 @@
     {
         _editing = serie;
         _parentId = serie?.ParentId ?? parentId;
-        _parentNombre = _parentId is long pid ? _flat.FirstOrDefault(n => n.Id == pid)?.Nombre : null;
+        var padre = _parentId is long pid ? _flat.FirstOrDefault(n => n.Id == pid) : null;
+        _parentNombre = padre?.Nombre;
+        _parentCodigo = padre?.Codigo;
         _fCodigo = serie?.Codigo ?? "";
         _fNombre = serie?.Nombre ?? "";
         _fDescripcion = serie?.Descripcion;
@@ -369,6 +442,10 @@
         _editorError = null;
         try
         {
+            var esSubserieNueva = _editing is null && _parentId is not null;
+            var codigoCreado = _fCodigo.Trim();
+            var padreCreado = _parentId;
+
             var request = new SaveSerieRequest(_fCodigo, _fNombre, _fDescripcion, _parentId);
             var actor = Tenant.UserId ?? 0;
             var result = _editing is null
@@ -381,8 +458,17 @@
                 return;
             }
             _showEditor = false;
-            _pageOk = _editing is null ? "Serie creada." : "Serie actualizada.";
+            _pageOk = _editing is null ? (padreCreado is null ? "Serie creada." : "Subserie creada.") : "Cambios guardados.";
             await LoadAsync();
+
+            // Paridad legacy: al crear una subserie, expandir el padre y seleccionar la recien creada.
+            if (esSubserieNueva && padreCreado is long pid)
+            {
+                _collapsed.Remove(pid);
+                var nuevo = _flat.FirstOrDefault(n => n.ParentId == pid
+                    && string.Equals(n.Codigo, codigoCreado, StringComparison.OrdinalIgnoreCase));
+                _selectedId = nuevo?.Id ?? pid;
+            }
         }
         finally { _busy = false; }
     }
@@ -408,10 +494,31 @@
         finally { _busy = false; }
     }
 
+    private int NivelDe(SerieNodeDto n)
+    {
+        var lvl = 1;
+        var cur = n;
+        var guard = 0;
+        while (cur?.ParentId is long pid && guard++ < 50)
+        {
+            lvl++;
+            cur = _flat.FirstOrDefault(x => x.Id == pid);
+        }
+        return lvl;
+    }
+
+    private string NivelTexto(SerieNodeDto n)
+    {
+        var lvl = NivelDe(n);
+        return lvl <= 1 ? "Serie principal" : lvl == 2 ? "Subserie (nivel 2)" : $"Sub-subserie (nivel {lvl})";
+    }
+
     private RenderFragment NodoInterior(SerieNodeDto node) => __builder =>
     {
-        <span class="tx-dep-node-code">@node.Codigo</span>
-        <span class="tx-dep-node-name">@node.Nombre</span>
+        <span class="tx-dep-node-main" style="cursor:pointer" @onclick="@(() => Select(node))" @onclick:stopPropagation="true">
+            <span class="tx-dep-node-code">@node.Codigo</span>
+            <span class="tx-dep-node-name">@node.Nombre</span>
+        </span>
         <span class="tx-dep-node-right">
             <span class="tx-ent-badge sm @(node.EsSerie ? "violet" : "")">@(node.EsSerie ? "Serie" : "Subserie")</span>
             <span class="tx-ent-badge sm @(node.EsInactiva ? "off" : "ok")">@(node.EsInactiva ? "Inactiva" : "Activa")</span>

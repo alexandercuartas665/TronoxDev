@@ -1,0 +1,389 @@
+@page "/modulo/radicacion"
+@attribute [Authorize(Policy = "Perm:modulo/radicacion:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@using Tronox.Domain.Enums
+@inject IRadicacionBandejaService BandejaSvc
+@inject IRadicacionDistribucionService DistSvc
+@inject IJSRuntime JS
+
+@* RQ09 - RF11 (Bandeja de radicados, port de rad_bandeja). Lista unificada E/S/I con 6 tabs,
+   filtros, contadores, export y acciones por fila. Ver -> drawer de detalle (RadDetalle); Distribuir
+   -> modal (funcional). Responder / Registrar envio / + Nuevo Radicado quedan como marcadores hasta
+   portar rad_radicar / rad_salida. Visibilidad fail-closed en el servicio. *@
+
+<PageTitle>Radicacion - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Workspace</a><span class="sep">/</span>
+    <span>Gestion y Tramite</span><span class="sep">/</span>
+    <span>Ventanilla Unica / Radicacion</span><span class="sep">/</span>
+    <span class="cur">Radicacion</span>
+</nav>
+
+<div class="rb-head">
+    <div>
+        <h1 class="page-title" style="margin:0;">Radicacion</h1>
+        <p class="page-sub" style="margin:4px 0 0;">Bandeja de radicados de la entidad.</p>
+    </div>
+    <div class="rb-head-acts">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ExportCsvAsync" disabled="@_busy">Exportar CSV</button>
+        <button class="btn btn-primary btn-sm" @onclick="NuevoRadicado">+ Nuevo Radicado</button>
+    </div>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="mc-flash @(_flashOk ? "ok" : "err")">@_flash</div>
+}
+
+<div class="rb-tabs">
+    @foreach (var (key, label, count) in Tabs)
+    {
+        <button class="rb-tab @(_filtro.Tab == key ? "on" : "")" @onclick="@(() => SetTabAsync(key))" disabled="@_busy">
+            @label <span class="rb-badge">@count</span>
+        </button>
+    }
+    <button class="rb-filtro-toggle" @onclick="@(() => _showFilters = !_showFilters)">
+        @(_showFilters ? "Ocultar filtros" : "Filtros")
+    </button>
+</div>
+
+@if (_showFilters)
+{
+    <div class="rb-filtros">
+        <input class="form-control form-control-sm" placeholder="Buscar numero / remitente / asunto..." @bind="_buscar" @bind:event="oninput" style="min-width:220px;" />
+        <input type="date" class="form-control form-control-sm" @bind="_desde" title="Desde" />
+        <input type="date" class="form-control form-control-sm" @bind="_hasta" title="Hasta" />
+        <select class="form-control form-control-sm" @bind="_dir">
+            <option value="">Direccion</option>
+            <option value="Entrada">Entrada</option><option value="Salida">Salida</option><option value="Interno">Interno</option>
+        </select>
+        <select class="form-control form-control-sm" @bind="_tipoId">
+            <option value="">Tipo</option>
+            @foreach (var t in _tipos) { <option value="@t.Id">@t.Nombre</option> }
+        </select>
+        <select class="form-control form-control-sm" @bind="_estado">
+            <option value="">Estado</option>
+            @foreach (var e in Enum.GetValues<RadicadoEstado>()) { <option value="@e">@e</option> }
+        </select>
+        <select class="form-control form-control-sm" @bind="_canal">
+            <option value="">Canal</option>
+            @foreach (var c in Enum.GetValues<RadicadoCanal>()) { <option value="@c">@c</option> }
+        </select>
+        <select class="form-control form-control-sm" @bind="_depId">
+            <option value="">Dependencia</option>
+            @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+        </select>
+        <select class="form-control form-control-sm" @bind="_sla">
+            <option value="">SLA</option>
+            <option value="VIGENTE">Vigente</option><option value="PROXIMO">Proximo</option><option value="VENCIDO">Vencido</option>
+        </select>
+        <select class="form-control form-control-sm" @bind="_top">
+            <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+        </select>
+        <button class="btn btn-primary btn-sm" @onclick="AplicarAsync" disabled="@_busy">Aplicar</button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="LimpiarAsync" disabled="@_busy">Limpiar</button>
+    </div>
+}
+
+<div class="rb-card">
+    @if (_loading)
+    {
+        <p style="padding:20px;"><em>Cargando bandeja...</em></p>
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="rb-empty">No hay radicados que coincidan con el filtro.</div>
+    }
+    else
+    {
+        <div style="overflow-x:auto;">
+            <table class="rb-tabla">
+                <thead>
+                    <tr>
+                        <th>Radicado</th><th>Doc</th><th>Fecha</th><th>Tipo</th><th>Canal</th>
+                        <th>Remitente</th><th>Asunto</th><th>Dependencia</th><th>Estado</th><th>SLA</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _items)
+                    {
+                        <tr>
+                            <td>
+                                <button class="rb-num" @onclick="@(() => OpenDetalle(r.Reg))">@r.Numero</button>
+                                @if (r.EsPqrsd) { <span class="rb-star" title="PQRSD">*</span> }
+                                @if (!string.IsNullOrEmpty(r.RespondeA)) { <div class="rb-sub">responde a @r.RespondeA</div> }
+                                @if (r.NumSalidas > 0) { <div class="rb-sub">@r.NumSalidas respuesta(s)</div> }
+                            </td>
+                            <td><span class="rb-doc rb-doc-@r.Tipo">@DocLetra(r.Tipo)</span></td>
+                            <td>@r.Fecha</td>
+                            <td><span class="rb-dot" style="background:@(r.TipoColor ?? "#405189")"></span>@(r.TipoNombre ?? "-")</td>
+                            <td>@r.Canal</td>
+                            <td>@r.Remitente</td>
+                            <td class="rb-asunto" title="@r.Asunto">@(r.Asunto ?? "-")</td>
+                            <td>
+                                @r.DependenciaNombre
+                                @if (!string.IsNullOrEmpty(r.FuncionarioNombre)) { <div class="rb-sub">@r.FuncionarioNombre</div> }
+                            </td>
+                            <td>@EstadoLabel(r.Estado)</td>
+                            <td>@SlaPill(r.Dias)</td>
+                            <td class="rb-acts">
+                                <button class="rb-act" title="Ver" @onclick="@(() => OpenDetalle(r.Reg))">Ver</button>
+                                @if (r.Tipo != RadicadoTipo.Salida && !EsCerrado(r.Estado))
+                                {
+                                    <button class="rb-act" title="Distribuir" @onclick="@(() => OpenDistribuirAsync(r))">Distribuir</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="rb-foot">Mostrando @_items.Count de @_total radicados (TOP @_top).</div>
+    }
+</div>
+
+@* ============ Modal Distribuir ============ *@
+@if (_distItem is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _distItem = null)">
+        <div class="modal-dialog" style="max-width:520px;" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Distribuir @_distItem.Numero</h3>
+                <button class="modal-close" @onclick="@(() => _distItem = null)">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="field">
+                    <label class="form-label">Dependencia destino *</label>
+                    <select class="form-control" @bind="_distDepId" @bind:after="OnDistDepChangedAsync">
+                        <option value="">Selecciona...</option>
+                        @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="form-label">Funcionario (opcional)</label>
+                    <select class="form-control" @bind="_distFuncId">
+                        <option value="">Pendiente de asignar (jefe)</option>
+                        @foreach (var fu in _distFuncs) { <option value="@fu.Id">@fu.Nombre</option> }
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="form-label">Prioridad</label>
+                    <select class="form-control" @bind="_distPrio">
+                        @foreach (var p in Enum.GetValues<RadicadoPrioridad>()) { <option value="@p">@p</option> }
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="form-label">Instrucciones</label>
+                    <textarea class="form-control" rows="2" @bind="_distInstr" maxlength="1000"></textarea>
+                </div>
+                @if (_distEsReasignacion)
+                {
+                    <div class="field">
+                        <label class="form-label">Justificacion de reasignacion *</label>
+                        <textarea class="form-control" rows="2" @bind="_distJustif" maxlength="1000"></textarea>
+                        <small class="text-muted">Este radicado ya tiene una tarea activa; reasignar exige justificacion (RF07-2).</small>
+                    </div>
+                }
+                @if (_distError is not null) { <div class="tk-field-error">@_distError</div> }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="@(() => _distItem = null)">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmDistribuirAsync" disabled="@_busy">Distribuir</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Drawer Detalle ============ *@
+@if (_detalleReg is long reg)
+{
+    <div class="modal-overlay rb-detalle-overlay" @onclick="@(() => _detalleReg = null)">
+        <div class="rb-detalle-panel" @onclick:stopPropagation="true">
+            <RadDetalle Reg="reg" OnClose="@(() => _detalleReg = null)"
+                        OnResponder="Responder"
+                        OnDistribuir="OpenDistribuirDesdeDetalleAsync" />
+        </div>
+    </div>
+}
+
+<style>
+    .rb-head { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+    .rb-head-acts { display:flex; gap:8px; }
+    .rb-tabs { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .rb-tab { border:1px solid var(--tx-border,#e2e8f0); background:var(--tx-surface,#fff); color:var(--ink-2,#334155); border-radius:8px; padding:6px 12px; font-size:.82rem; cursor:pointer; display:flex; align-items:center; gap:6px; }
+    .rb-tab.on { background:#405189; border-color:#405189; color:#fff; }
+    .rb-badge { background:rgba(0,0,0,.08); border-radius:10px; padding:0 7px; font-size:.72rem; font-weight:600; }
+    .rb-tab.on .rb-badge { background:rgba(255,255,255,.25); }
+    .rb-filtro-toggle { margin-left:auto; border:none; background:none; color:#405189; font-size:.82rem; cursor:pointer; }
+    .rb-filtros { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; padding:12px; background:var(--tx-muted,#f8fafc); border:1px solid var(--tx-border,#e2e8f0); border-radius:10px; }
+    .rb-card { background:var(--tx-surface,#fff); border:1px solid var(--tx-border,#e2e8f0); border-radius:12px; }
+    .rb-empty { padding:40px; text-align:center; color:var(--ink-3,#94a3b8); }
+    .rb-tabla { width:100%; border-collapse:collapse; font-size:.82rem; }
+    .rb-tabla th { text-align:left; color:var(--ink-3,#64748b); font-weight:600; padding:10px 10px; border-bottom:1px solid var(--tx-border,#e2e8f0); white-space:nowrap; }
+    .rb-tabla td { padding:9px 10px; border-bottom:1px solid var(--tx-muted,#f1f5f9); color:var(--ink-2,#334155); vertical-align:top; }
+    .rb-num { background:none; border:none; color:#405189; font-weight:600; cursor:pointer; padding:0; font-size:.82rem; }
+    .rb-star { color:#D97706; font-weight:700; margin-left:4px; }
+    .rb-sub { font-size:.72rem; color:var(--ink-3,#94a3b8); }
+    .rb-doc { display:inline-block; width:20px; height:20px; line-height:20px; text-align:center; border-radius:5px; font-weight:700; font-size:.72rem; color:#fff; }
+    .rb-doc-Entrada { background:#0891B2; } .rb-doc-Salida { background:#7C3AED; } .rb-doc-Interno { background:#0ab39c; }
+    .rb-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+    .rb-asunto { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rb-pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:.72rem; font-weight:600; }
+    .rb-acts { white-space:nowrap; }
+    .rb-act { border:1px solid var(--tx-border,#e2e8f0); background:var(--tx-surface,#fff); color:#405189; border-radius:6px; padding:3px 8px; font-size:.74rem; cursor:pointer; margin-left:4px; }
+    .rb-foot { padding:10px 12px; font-size:.76rem; color:var(--ink-3,#94a3b8); }
+    .rb-detalle-overlay { justify-content:flex-end; }
+    .rb-detalle-panel { background:var(--tx-surface,#fff); width:min(920px,96vw); height:100%; box-shadow:-8px 0 24px rgba(2,6,23,.18); overflow:auto; }
+</style>
+
+@code {
+    private bool _loading = true, _busy;
+    private string? _flash; private bool _flashOk;
+
+    private BandejaFiltro _filtro = new();
+    private IReadOnlyList<BandejaItemDto> _items = Array.Empty<BandejaItemDto>();
+    private int _total;
+    private BandejaContadoresDto _cont = new(0, 0, 0, 0, 0, 0);
+    private IReadOnlyList<OpcionDto> _tipos = Array.Empty<OpcionDto>();
+    private IReadOnlyList<OpcionDto> _deps = Array.Empty<OpcionDto>();
+
+    // Filtros (form).
+    private bool _showFilters;
+    private string _buscar = ""; private DateOnly? _desde, _hasta;
+    private string _dir = "", _tipoId = "", _estado = "", _canal = "", _depId = "", _sla = "";
+    private int _top = 50;
+
+    // Distribuir.
+    private BandejaItemDto? _distItem; private string _distDepId = "", _distFuncId = "";
+    private RadicadoPrioridad _distPrio = RadicadoPrioridad.Normal; private string _distInstr = "", _distJustif = "";
+    private IReadOnlyList<OpcionDto> _distFuncs = Array.Empty<OpcionDto>();
+    private bool _distEsReasignacion; private string? _distError;
+
+    // Detalle.
+    private long? _detalleReg;
+
+    private (string key, string label, int count)[] Tabs => new[]
+    {
+        ("todos", "Todos", _cont.Todos), ("pqrsd", "PQRSD", _cont.Pqrsd), ("tutelas", "Tutelas", _cont.Tutelas),
+        ("sindist", "Sin distribuir", _cont.SinDistribuir), ("prox", "Proximos", _cont.Prox), ("venc", "Vencidos", _cont.Venc)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tipos = await BandejaSvc.TiposAsync();
+        _deps = await BandejaSvc.DependenciasAsync();
+        await LoadAsync();
+    }
+
+    private BandejaFiltro BuildFiltro() => new(
+        Tab: _filtro.Tab,
+        Buscar: string.IsNullOrWhiteSpace(_buscar) ? null : _buscar,
+        Desde: _desde, Hasta: _hasta,
+        Direccion: Enum.TryParse<RadicadoTipo>(_dir, out var d) ? d : null,
+        TipoComunicacionId: long.TryParse(_tipoId, out var t) ? t : null,
+        Estado: Enum.TryParse<RadicadoEstado>(_estado, out var e) ? e : null,
+        Canal: Enum.TryParse<RadicadoCanal>(_canal, out var c) ? c : null,
+        DependenciaId: long.TryParse(_depId, out var dep) ? dep : null,
+        Sla: string.IsNullOrEmpty(_sla) ? null : _sla,
+        Funcionario: null,
+        Top: _top);
+
+    private async Task LoadAsync()
+    {
+        _loading = true; _busy = true;
+        try
+        {
+            _filtro = BuildFiltro();
+            var res = await BandejaSvc.ListarAsync(_filtro);
+            _items = res.Items; _total = res.Total;
+            _cont = await BandejaSvc.ContadoresAsync(_filtro);
+        }
+        finally { _loading = false; _busy = false; }
+    }
+
+    private async Task SetTabAsync(string tab) { _filtro = _filtro with { Tab = tab }; await LoadAsync(); }
+    private async Task AplicarAsync() => await LoadAsync();
+    private async Task LimpiarAsync()
+    {
+        _buscar = ""; _desde = _hasta = null; _dir = _tipoId = _estado = _canal = _depId = _sla = ""; _top = 50;
+        await LoadAsync();
+    }
+
+    private void OpenDetalle(long reg) => _detalleReg = reg;
+
+    private async Task OpenDistribuirAsync(BandejaItemDto item)
+    {
+        _distItem = item; _distDepId = ""; _distFuncId = ""; _distInstr = ""; _distJustif = "";
+        _distPrio = RadicadoPrioridad.Normal; _distError = null;
+        _distFuncs = await BandejaSvc.FuncionariosAsync(null);
+        // Reasignacion si el item ya tiene funcionario/dependencia asignada.
+        _distEsReasignacion = !string.IsNullOrEmpty(item.FuncionarioNombre) || item.DependenciaNombre != "Sin asignar";
+    }
+
+    private async Task OpenDistribuirDesdeDetalleAsync(long reg)
+    {
+        var item = _items.FirstOrDefault(i => i.Reg == reg);
+        if (item is not null) { _detalleReg = null; await OpenDistribuirAsync(item); }
+    }
+
+    private async Task OnDistDepChangedAsync()
+        => _distFuncs = await BandejaSvc.FuncionariosAsync(long.TryParse(_distDepId, out var d) ? d : null);
+
+    private async Task ConfirmDistribuirAsync()
+    {
+        if (_distItem is null) { return; }
+        if (!long.TryParse(_distDepId, out var depId)) { _distError = "La dependencia destino es obligatoria."; return; }
+        _busy = true; _distError = null;
+        try
+        {
+            var req = new DistribuirRequest(_distItem.Reg, depId,
+                long.TryParse(_distFuncId, out var fu) ? fu : null,
+                _distInstr, _distPrio, _distJustif);
+            var res = await DistSvc.DistribuirAsync(req);
+            if (!res.Ok) { _distError = res.Error; return; }
+            _distItem = null;
+            Flash($"Radicado distribuido ({res.Estado}).", true);
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private void Responder(string numero)
+        => Flash($"Responder {numero}: el asistente de salida (rad_radicar) se habilita al portar ese modulo.", true);
+
+    private void NuevoRadicado()
+        => Flash("Nuevo radicado: el asistente (rad_radicar) se habilita al portar ese modulo.", true);
+
+    private async Task ExportCsvAsync()
+    {
+        var f = BuildFiltro() with { Top = 0 };
+        var res = await BandejaSvc.ListarAsync(f);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Radicado;Doc;Fecha;Tipo;Canal;Remitente;Asunto;Dependencia;Funcionario;Estado;SLA");
+        foreach (var r in res.Items)
+        {
+            string q(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
+            sb.AppendLine(string.Join(";", q(r.Numero), q(DocLetra(r.Tipo)), q(r.Fecha), q(r.TipoNombre), q(r.Canal),
+                q(r.Remitente), q(r.Asunto), q(r.DependenciaNombre), q(r.FuncionarioNombre), q(r.Estado),
+                q(r.Dias?.ToString())));
+        }
+        await JS.InvokeVoidAsync("tronoxMenuConfig.downloadText", "radicados.csv", sb.ToString(), "text/csv");
+    }
+
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+    private static string DocLetra(RadicadoTipo t) => t switch { RadicadoTipo.Entrada => "E", RadicadoTipo.Salida => "S", _ => "I" };
+    private static string EstadoLabel(string e) => e == "EnTramite" ? "En tramite" : e;
+    private static bool EsCerrado(string e) => e is "Respondido" or "Archivado" or "Anulado" or "Borrador";
+
+    private RenderFragment SlaPill(int? dias) => __builder =>
+    {
+        if (dias is null) { <span>-</span> return; }
+        var d = dias.Value;
+        var (bg, fg, txt) = d < 0 ? ("#FEE2E2", "#991B1B", $"{Math.Abs(d)}d vencido")
+            : d <= 3 ? ("#FEF3C7", "#92400E", $"{d}d restantes")
+            : ("#D1FAE5", "#065F46", $"{d}d restantes");
+        <span class="rb-pill" style="background:@bg;color:@fg">@txt</span>
+    };
+}

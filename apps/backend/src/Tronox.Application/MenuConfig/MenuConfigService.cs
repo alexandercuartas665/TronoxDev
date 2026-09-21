@@ -178,6 +178,7 @@ public sealed class MenuConfigService : IMenuConfigService
             Route = n.Route,
             Description = n.Description,
             HelpText = n.HelpText,
+            OrigenMigracion = n.OrigenMigracion,
             State = n.State,
             IsVisible = n.IsVisible,
             SortOrder = n.SortOrder,
@@ -349,7 +350,7 @@ public sealed class MenuConfigService : IMenuConfigService
                 .OrderBy(n => n.SortOrder).ThenBy(n => n.Name, StringComparer.Ordinal)
                 .Select(n => new MenuEditorNodeDto(
                     n.Id, n.ParentId, n.Kind, n.Name, n.IconKey, n.LegacyCode, n.Route,
-                    n.Description, n.HelpText, n.State, n.IsVisible, n.SortOrder, n.IsProcessGroup, BuildLevel(n.Id)))
+                    n.Description, n.HelpText, n.OrigenMigracion, n.State, n.IsVisible, n.SortOrder, n.IsProcessGroup, BuildLevel(n.Id)))
                 .ToList();
         }
 
@@ -449,6 +450,7 @@ public sealed class MenuConfigService : IMenuConfigService
         if (edit.Route is not null) { node.Route = string.IsNullOrWhiteSpace(edit.Route) ? null : edit.Route.Trim(); }
         if (edit.Description is not null) { node.Description = string.IsNullOrWhiteSpace(edit.Description) ? null : edit.Description.Trim(); }
         if (edit.HelpText is not null) { node.HelpText = string.IsNullOrWhiteSpace(edit.HelpText) ? null : edit.HelpText.Trim(); }
+        if (edit.OrigenMigracion is not null) { node.OrigenMigracion = string.IsNullOrWhiteSpace(edit.OrigenMigracion) ? null : edit.OrigenMigracion.Trim(); }
         if (edit.State is MenuNodeState s) { node.State = s; }
         if (edit.IsProcessGroup is bool ipg) { node.IsProcessGroup = ipg; }
 
@@ -664,7 +666,7 @@ public sealed class MenuConfigService : IMenuConfigService
                 .OrderBy(n => n.SortOrder).ThenBy(n => n.Name, StringComparer.Ordinal)
                 .Select(n => new MenuExportNode(
                     n.Kind.ToString(), n.Name, n.IconKey, n.LegacyCode, n.Route,
-                    n.Description, n.HelpText, n.State.ToString(), n.IsVisible, n.SortOrder,
+                    n.Description, n.HelpText, n.OrigenMigracion, n.State.ToString(), n.IsVisible, n.SortOrder,
                     BuildLevel(n.Id), n.IsProcessGroup))
                 .ToList();
         }
@@ -739,6 +741,7 @@ public sealed class MenuConfigService : IMenuConfigService
                     Route = n.Route,
                     Description = n.Description,
                     HelpText = n.HelpText,
+                    OrigenMigracion = n.OrigenMigracion,
                     State = state,
                     IsVisible = n.IsVisible,
                     SortOrder = order++,
@@ -780,7 +783,7 @@ public sealed class MenuConfigService : IMenuConfigService
 
     private static MenuEditorNodeDto ToEditorDto(MenuNode n) => new(
         n.Id, n.ParentId, n.Kind, n.Name, n.IconKey, n.LegacyCode, n.Route,
-        n.Description, n.HelpText, n.State, n.IsVisible, n.SortOrder, n.IsProcessGroup,
+        n.Description, n.HelpText, n.OrigenMigracion, n.State, n.IsVisible, n.SortOrder, n.IsProcessGroup,
         Array.Empty<MenuEditorNodeDto>());
 
     /// <summary>true si candidateId esta dentro del subarbol de ancestorId (para detectar ciclos).</summary>

@@ -1,0 +1,139 @@
+@page "/modulo/portal-abrir"
+@attribute [Authorize(Policy = "Perm:modulo/portal-abrir:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@inject IConfiguracionPqrService PqrSvc
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* RQ06/RQ09 - Acceso directo al Portal Ciudadano publico. El portal (/portal/{slug}) es un canal
+   EXTERNO sin login para que el ciudadano radique PQR; por eso no cuelga como pagina interna. Esta
+   pantalla resuelve el slug del tenant y ofrece el enlace para abrirlo en una pestana nueva, mas el
+   codigo de insercion. La configuracion del portal vive en Configuracion de Radicacion -> Portal Web. *@
+
+<PageTitle>Portal Ciudadano - TRONOX SGDEA</PageTitle>
+
+<nav class="tronox-breadcrumb" aria-label="Ruta de navegacion">
+    <a href="/inicio">Inicio</a><span class="sep">/</span>
+    <span>Ventanilla Unica / Radicacion</span><span class="sep">/</span>
+    <span class="cur">Portal Ciudadano</span>
+</nav>
+
+<div class="pa-wrap">
+    <div class="pa-head">
+        <h1 class="pa-title">Portal Ciudadano</h1>
+        <div class="pa-sub">Canal externo publico para que el ciudadano radique PQR y consulte el estado de su solicitud.</div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="pa-card"><em>Cargando...</em></div>
+    }
+    else if (string.IsNullOrWhiteSpace(_slug))
+    {
+        <div class="pa-card pa-warn">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <div>
+                <strong>El portal aun no tiene una URL publica configurada.</strong><br />
+                Define el <em>slug</em> (URL publica) en
+                <a href="/modulo/config-radicacion?sec=portalweb">Configuracion de Radicacion &rarr; Portal Web</a>
+                y luego vuelve aqui.
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="pa-card">
+            <div class="pa-portal-ico"><i class="bi bi-globe"></i></div>
+            <div class="pa-portal-info">
+                <div class="pa-portal-name">@(_nombre ?? "Portal de radicacion")</div>
+                <div class="pa-portal-url mono">@PortalUrl</div>
+            </div>
+            <div class="pa-portal-actions">
+                <a class="pa-btn primary" href="@PortalUrl" target="_blank" rel="noopener">
+                    <i class="bi bi-box-arrow-up-right"></i> Abrir portal en pestana nueva
+                </a>
+                <button type="button" class="pa-btn soft" @onclick="CopiarUrlAsync">
+                    <i class="bi bi-clipboard"></i> Copiar enlace
+                </button>
+                @if (_copiado)
+                {
+                    <span class="pa-ok"><i class="bi bi-check-circle"></i> Copiado</span>
+                }
+            </div>
+        </div>
+
+        <div class="pa-card pa-embed">
+            <div class="pa-embed-head">Codigo de insercion (iframe)</div>
+            <p class="pa-embed-sub">Pega este codigo en el sitio web de la entidad para exponer el portal:</p>
+            <pre class="pa-code">@EmbedSnippet</pre>
+            <button type="button" class="pa-btn soft" @onclick="CopiarEmbedAsync">
+                <i class="bi bi-clipboard"></i> Copiar codigo
+            </button>
+        </div>
+
+        <div class="pa-hint">
+            <i class="bi bi-info-circle"></i>
+            El portal es <strong>publico</strong> (sin login). La configuracion (nombre, tipos publicados,
+            captcha, anonimo) se administra en <a href="/modulo/config-radicacion?sec=portalweb">Configuracion de Radicacion &rarr; Portal Web</a>.
+        </div>
+    }
+</div>
+
+<style>
+    .pa-wrap { padding: 8px 0 40px; font-family: Poppins, sans-serif; color: #0f172a; }
+    .pa-head { margin: 6px 0 16px; }
+    .pa-title { font-size: 20px; font-weight: 800; margin: 0; }
+    .pa-sub { font-size: 12.5px; color: #94a3b8; margin-top: 3px; }
+    .pa-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .pa-card.pa-warn { color: #92400e; background: #fffbeb; border-color: #fde68a; align-items: flex-start; }
+    .pa-card.pa-warn i { font-size: 18px; margin-top: 2px; }
+    .pa-portal-ico { width: 46px; height: 46px; border-radius: 10px; background: #eef4ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .pa-portal-info { flex: 1; min-width: 200px; }
+    .pa-portal-name { font-size: 15px; font-weight: 700; }
+    .pa-portal-url { font-size: 13px; color: #2563eb; margin-top: 2px; word-break: break-all; }
+    .pa-portal-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .pa-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; text-decoration: none !important; font-family: Poppins, sans-serif; }
+    .pa-btn.primary { background: #2563eb; color: #fff !important; }
+    .pa-btn.primary:hover { background: #1d4ed8; }
+    .pa-btn.soft { background: #eef2f7; color: #475569 !important; }
+    .pa-btn.soft:hover { background: #e2e8f0; }
+    .pa-ok { color: #15803d; font-size: 12.5px; }
+    .pa-embed { display: block; }
+    .pa-embed-head { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .pa-embed-sub { font-size: 12.5px; color: #64748b; margin: 0 0 10px; }
+    .pa-code { background: #1e2433; color: #c5cbe3; padding: 14px 16px; border-radius: 8px; font-size: 12.5px; font-family: Consolas, monospace; overflow-x: auto; margin: 0 0 12px; white-space: pre-wrap; line-height: 1.6; }
+    .pa-hint { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .pa-hint i { margin-right: 5px; }
+</style>
+
+@code {
+    private bool _loading = true;
+    private bool _copiado;
+    private string? _slug;
+    private string? _nombre;
+
+    private string PortalUrl => $"{Nav.BaseUri.TrimEnd('/')}/portal/{_slug}";
+    private string EmbedSnippet =>
+        $"<iframe\n  src=\"{PortalUrl}\"\n  width=\"100%\" height=\"720\"\n  style=\"border:0;border-radius:12px\"\n  title=\"Portal de Radicacion\">\n</iframe>";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var pc = await PqrSvc.GetPortalConfigAsync();
+        _slug = pc.Slug;
+        _nombre = pc.NombreEntidad;
+        _loading = false;
+    }
+
+    private async Task CopiarUrlAsync()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", PortalUrl); _copiado = true; }
+        catch { _copiado = false; }
+    }
+
+    private async Task CopiarEmbedAsync()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", EmbedSnippet); }
+        catch { }
+    }
+}

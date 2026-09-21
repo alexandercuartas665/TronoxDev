@@ -60,6 +60,34 @@ public static class TrdConstruccionRules
         return null;
     }
 
+    /// <summary>
+    /// Validacion de un tipo documental (RF05 3.5.2): nombre obligatorio (<=200) y formato acotado
+    /// (<=100). El soporte es un enum, no requiere validacion de rango aqui.
+    /// </summary>
+    public static string? ValidateTipologia(string? nombre, string? formato)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) { return "El nombre del tipo documental es obligatorio."; }
+        if (nombre.Trim().Length > 200) { return "El nombre del tipo documental no puede superar 200 caracteres."; }
+        if (formato is not null && formato.Trim().Length > 100) { return "El formato no puede superar 100 caracteres."; }
+        return null;
+    }
+
+    /// <summary>
+    /// Estado DERIVADO de la TRD de una dependencia (badge del legacy) SIN una entidad por
+    /// dependencia (ADR-007): "Sin TRD" si no hay series activas; en otro caso refleja el estado de
+    /// la version (En Construccion / Vigente=Activa / Historico / Inactivo).
+    /// </summary>
+    public static EstadoTrdDependencia EstadoDependencia(int seriesActivas, TrdVersionEstado estadoVersion)
+        => seriesActivas <= 0
+            ? EstadoTrdDependencia.SinTrd
+            : estadoVersion switch
+            {
+                TrdVersionEstado.EnConstruccion => EstadoTrdDependencia.EnConstruccion,
+                TrdVersionEstado.Vigente => EstadoTrdDependencia.Activa,
+                TrdVersionEstado.Historico => EstadoTrdDependencia.Historica,
+                _ => EstadoTrdDependencia.Inactiva
+            };
+
     // ---- Maquina de permisos de edicion (RF01 3.1.3) ----
 
     /// <summary>Crear/agregar asignaciones: no permitido si la version es Historico o Inactivo (RF04 3.4.4-1).</summary>

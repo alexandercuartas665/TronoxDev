@@ -1,0 +1,176 @@
+@* Compartir documento (RF07), calca el modal pnlModalCompartir del legacy: buscador de destinatarios
+   (usuarios + roles), permisos Ver(siempre)/Editar metadatos/Descargar, otorgar por destino, y lista
+   de accesos actuales con Revocar. Compartir a un rol expande a sus usuarios (snapshot). *@
+@using Tronox.Application.Documentos
+@inject IDocumentoService Svc
+@inject Tronox.Application.Common.ITenantContext Tenant
+@implements IAsyncDisposable
+
+<div class="cmp-ov" @onclick="Cerrar">
+    <div class="cmp-card" @onclick:stopPropagation="true">
+        <div class="cmp-head">
+            <div><i class="bi bi-share"></i> Compartir documento</div>
+            <button class="cmp-x" @onclick="Cerrar">&times;</button>
+        </div>
+        <div class="cmp-doc"><i class="bi bi-file-earmark-text"></i> <strong>@Nombre</strong></div>
+
+        @if (_msg is not null) { <div class="tx-ent-alert ok" style="margin:0 16px"><i class="bi bi-check-circle"></i><span>@_msg</span></div> }
+        @if (_err is not null) { <div class="tx-ent-fielderr" style="margin:0 16px">@_err</div> }
+
+        <div class="cmp-body">
+            @* Buscador *@
+            <div class="cmp-search">
+                <input class="tx-ent-input" placeholder="Buscar usuario o rol..." @bind="_criterio" @bind:event="oninput" @onkeyup="OnKey" />
+                <button class="tx-ent-btn" @onclick="Buscar" disabled="@_busy"><i class="bi bi-search"></i></button>
+            </div>
+
+            @* Permisos a otorgar *@
+            <div class="cmp-perms">
+                <label class="cmp-chk"><input type="checkbox" checked disabled /> Ver</label>
+                <label class="cmp-chk"><input type="checkbox" @bind="_puedeEditar" /> Editar metadatos</label>
+                <label class="cmp-chk"><input type="checkbox" @bind="_puedeDescargar" /> Descargar</label>
+                <span class="cmp-hint">El permiso Ver se incluye siempre.</span>
+            </div>
+
+            @* Resultados *@
+            @if (_resultados is not null)
+            {
+                <div class="cmp-sec">Resultados</div>
+                @if (_resultados.Count == 0) { <div class="cmp-empty">Sin coincidencias.</div> }
+                else
+                {
+                    <div class="cmp-list">
+                        @foreach (var r in _resultados)
+                        {
+                            var rr = r;
+                            <div class="cmp-row">
+                                <i class="bi @(rr.Tipo == "R" ? "bi-people" : "bi-person")"></i>
+                                <div class="cmp-row-txt"><span>@rr.Nombre</span><span class="cmp-sub">@(rr.Tipo == "R" ? "Rol" : rr.Sub)</span></div>
+                                <button class="tx-ent-btn sm primary" @onclick="@(() => Otorgar(rr))" disabled="@_busy">Compartir</button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @* Accesos actuales *@
+            <div class="cmp-sec">Accesos actuales</div>
+            @if (_activos is null) { <div class="cmp-empty">Cargando...</div> }
+            else if (_activos.Count == 0) { <div class="cmp-empty">Este documento no se ha compartido con nadie.</div> }
+            else
+            {
+                <div class="cmp-list">
+                    @foreach (var a in _activos)
+                    {
+                        var aa = a;
+                        <div class="cmp-row">
+                            <i class="bi bi-person-check"></i>
+                            <div class="cmp-row-txt">
+                                <span>@aa.Nombre @(aa.DesdeRol ? "· (via rol)" : "")</span>
+                                <span class="cmp-sub">
+                                    <span class="cmp-badge">Ver</span>
+                                    @if (aa.PuedeEditarMetadatos) { <span class="cmp-badge">Editar metadatos</span> }
+                                    @if (aa.PuedeDescargar) { <span class="cmp-badge">Descargar</span> }
+                                </span>
+                            </div>
+                            <button class="tx-ent-btn sm danger" @onclick="@(() => Revocar(aa.BeneficiarioPlatformUserId))" disabled="@_busy">Revocar</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="cmp-ext" title="Disponible con el Portal Externo (RQ-PE)">
+                <i class="bi bi-link-45deg"></i> Compartir externo (link seguro) <span class="cmp-soon">Proximamente</span>
+            </div>
+        </div>
+
+        <div class="cmp-foot"><button class="tx-ent-btn" @onclick="Cerrar">Cerrar</button></div>
+    </div>
+</div>
+
+<style>
+    .cmp-ov { position:fixed; inset:0; z-index:1000009; background:rgba(15,23,42,.5); display:flex; align-items:flex-start; justify-content:center; padding:70px 16px 20px; }
+    .cmp-card { background:#fff; border-radius:14px; width:100%; max-width:520px; max-height:calc(100vh - 100px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(15,23,42,.25); }
+    .cmp-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #E2E8F0; font-weight:600; font-size:16px; }
+    .cmp-head i { color:#2563EB; }
+    .cmp-x { border:none; background:none; font-size:24px; color:#64748B; cursor:pointer; }
+    .cmp-doc { padding:10px 16px; color:#0F172A; font-size:13px; background:#F8FAFC; border-bottom:1px solid #EEF2F6; }
+    .cmp-body { padding:12px 16px; overflow:auto; }
+    .cmp-search { display:flex; gap:8px; margin-bottom:10px; }
+    .cmp-search .tx-ent-input { flex:1; }
+    .cmp-perms { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:8px 0; }
+    .cmp-chk { display:flex; align-items:center; gap:6px; font-size:13px; color:#334155; }
+    .cmp-hint { font-size:12px; color:#94A3B8; }
+    .cmp-sec { font-size:12px; font-weight:600; color:#64748B; text-transform:uppercase; margin:14px 0 6px; }
+    .cmp-empty { font-size:13px; color:#94A3B8; padding:6px 0; }
+    .cmp-list { display:flex; flex-direction:column; gap:6px; }
+    .cmp-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #E2E8F0; border-radius:8px; }
+    .cmp-row > i { font-size:18px; color:#64748B; }
+    .cmp-row-txt { flex:1; display:flex; flex-direction:column; min-width:0; }
+    .cmp-row-txt > span:first-child { font-size:13px; color:#0F172A; font-weight:500; }
+    .cmp-sub { font-size:12px; color:#94A3B8; display:flex; gap:6px; flex-wrap:wrap; }
+    .cmp-badge { background:#EFF6FF; color:#2563EB; border-radius:6px; padding:1px 7px; font-size:11px; }
+    .cmp-ext { margin-top:14px; padding:10px; border:1px dashed #CBD5E1; border-radius:8px; color:#94A3B8; font-size:13px; opacity:.7; }
+    .cmp-soon { float:right; font-size:11px; background:#F1F5F9; border-radius:6px; padding:1px 7px; }
+    .cmp-foot { display:flex; justify-content:flex-end; padding:12px 16px; border-top:1px solid #E2E8F0; background:#F8FAFC; }
+    .tx-ent-btn.danger { color:#DC2626; border-color:#FECACA; }
+</style>
+
+@code {
+    [Parameter] public long DocId { get; set; }
+    [Parameter] public string Nombre { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private string _criterio = "";
+    private IReadOnlyList<DestinoBusquedaDto>? _resultados;
+    private IReadOnlyList<CompartidoActivoDto>? _activos;
+    private bool _puedeEditar, _puedeDescargar, _busy;
+    private string? _msg, _err;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync() => await CargarActivos();
+
+    private async Task CargarActivos() => _activos = await Svc.ListarActivosComparticionAsync(DocId, Actor);
+
+    private async Task OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") { await Buscar(); } }
+
+    private async Task Buscar()
+    {
+        _err = null; _busy = true;
+        try { _resultados = await Svc.BuscarDestinosCompartirAsync(DocId, _criterio, Actor); }
+        finally { _busy = false; }
+    }
+
+    private async Task Otorgar(DestinoBusquedaDto destino)
+    {
+        _err = null; _msg = null; _busy = true;
+        try
+        {
+            var req = new CompartirRequest(DocId, [new DestinoInput(destino.Tipo, destino.Id)], _puedeEditar, _puedeDescargar);
+            var res = await Svc.CompartirAsync(req, Actor);
+            if (!res.IsOk) { _err = res.Error ?? "No se pudo compartir."; return; }
+            _msg = res.Value > 0 ? $"Compartido con {res.Value} destinatario(s)." : "Ese destino ya tenia los permisos seleccionados.";
+            await CargarActivos();
+            await Buscar();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Revocar(long beneficiario)
+    {
+        _err = null; _msg = null; _busy = true;
+        try
+        {
+            var res = await Svc.RevocarComparticionAsync(DocId, beneficiario, Actor);
+            if (!res.IsOk) { _err = res.Error ?? "No se pudo revocar."; return; }
+            _msg = "Acceso revocado.";
+            await CargarActivos();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cerrar() => await OnCerrar.InvokeAsync();
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

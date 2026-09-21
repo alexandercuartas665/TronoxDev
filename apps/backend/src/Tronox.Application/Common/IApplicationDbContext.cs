@@ -71,9 +71,90 @@ public interface IApplicationDbContext
     // Construccion de la TRD (RF04): cruce Dependencia x Serie con reglas y metadatos de expediente.
     DbSet<TrdAsignacion> TrdAsignaciones { get; }
     DbSet<TrdMetadato> TrdMetadatos { get; }
+    // Tipologias documentales (RF05): tipos de documento por asignacion + metadatos de documento.
+    DbSet<TrdTipologia> TrdTipologias { get; }
     // Topografia fisica (RF06): niveles configurables + arbol de elementos fisicos.
     DbSet<TopografiaNivel> TopografiaNiveles { get; }
     DbSet<TopografiaElemento> TopografiaElementos { get; }
+
+    // Gestion integral de expedientes (base de RQ03): el contenedor archivistico y sus metadatos
+    // dinamicos (EAV sobre el motor de RQ02, DAT-04). El consecutivo del codigo usa TenantSequences.
+    DbSet<Expediente> Expedientes { get; }
+    DbSet<ExpedienteMetadato> ExpedienteMetadatos { get; }
+    DbSet<ExpedienteCierre> ExpedienteCierres { get; }
+    DbSet<ExpedienteUbicacion> ExpedienteUbicaciones { get; }
+    DbSet<ExpedienteVinculo> ExpedienteVinculos { get; }
+
+    // Gestion integral de documentos (base de RQ04): el contenido. Binario en object storage (ADR-009,
+    // nunca BLOB); metadatos EAV sobre el motor de RQ02 (DAT-04, contexto Documento).
+    DbSet<Documento> Documentos { get; }
+    DbSet<DocumentoMetadato> DocumentoMetadatos { get; }
+    DbSet<DocumentoCompartido> DocumentosCompartidos { get; }
+    // Tareas de validacion (RQ04 - RF11/RF12): revision/aprobacion. Flujo de metadatos paralelo que NO
+    // cambia el estado del documento.
+    DbSet<DocumentoValidacion> DocumentoValidaciones { get; }
+    // Firmas electronicas (RQ05 - RF05): dimension de firma independiente del archivado. Slice 1: firma
+    // directa (auto-firma). Solicitud a otro + stepper OTP quedan para el modulo RQ05 completo.
+    DbSet<Firma> Firmas { get; }
+    // Codigos OTP de un solo uso para la verificacion de identidad al firmar (RQ05 - RF08).
+    DbSet<FirmaOtp> FirmaOtps { get; }
+    // Circuitos de firma multi-firmante (RQ05 - RF07): cabecera + firmantes ordenados.
+    DbSet<FirmaCircuito> FirmaCircuitos { get; }
+    DbSet<FirmaCircuitoFirmante> FirmaCircuitoFirmantes { get; }
+    // Plantillas documentales (RQ04 - RF09): documento parametrizado con variables, asociado N:N a
+    // tipologias. Configuracion que se consume al crear documentos (RF10).
+    DbSet<Plantilla> Plantillas { get; }
+    DbSet<PlantillaTipo> PlantillaTipos { get; }
+
+    // Motor de formularios dinamicos (RQ08, port ECOREX): definicion con arbol contenedores ->
+    // preguntas; respuestas como documento JSON (no EAV por fila).
+    DbSet<FormDefinition> FormDefinitions { get; }
+    DbSet<FormContainer> FormContainers { get; }
+    DbSet<FormQuestion> FormQuestions { get; }
+    DbSet<FormResponse> FormResponses { get; }
+    // Formularios avanzados (fidelidad): tokens de publicacion, condiciones autocontenidas,
+    // maestro-detalle, vinculo a nodo de flujo y enlace respuesta<->paso.
+    DbSet<FormToken> FormTokens { get; }
+    DbSet<FormFieldCondition> FormFieldConditions { get; }
+    DbSet<FormRecordLink> FormRecordLinks { get; }
+    DbSet<WorkflowNodeForm> WorkflowNodeForms { get; }
+    DbSet<FormFlowLink> FormFlowLinks { get; }
+
+    // Motor de flujos BPMN (RQ11, port del motor BPMN de ECOREX): definicion (XML BPMN) con
+    // nodos/aristas materializados; instancias con historial append-only; asignacion por nodo.
+    DbSet<WorkflowDefinition> WorkflowDefinitions { get; }
+    DbSet<WorkflowNode> WorkflowNodes { get; }
+    DbSet<WorkflowEdge> WorkflowEdges { get; }
+    DbSet<WorkflowInstance> WorkflowInstances { get; }
+    DbSet<WorkflowStepHistory> WorkflowStepHistories { get; }
+    DbSet<WorkflowNodePolicy> WorkflowNodePolicies { get; }
+
+    // Configuracion de Radicacion (RQ09 RF01): consecutivos + SLA (singleton), catalogo de tipos de
+    // comunicacion, buzones de correo, notificaciones por evento y bitacora de migracion historica.
+    DbSet<RadicacionConfig> RadicacionConfigs { get; }
+    DbSet<TipoComunicacion> TiposComunicacion { get; }
+    DbSet<BuzonCorreo> BuzonesCorreo { get; }
+    DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion { get; }
+    DbSet<MigracionRadicadosLog> MigracionesRadicados { get; }
+    DbSet<Radicado> Radicados { get; }
+    DbSet<RadicadoTrazabilidad> RadicadosTrazabilidad { get; }
+    DbSet<CorreoRecibido> CorreosRecibidos { get; }
+    DbSet<RadicadoTarea> RadicadosTareas { get; }
+    DbSet<RadicadoArchivo> RadicadosArchivos { get; }
+    DbSet<RadicadoComunicacion> RadicadosComunicaciones { get; }
+    DbSet<RadicadoVisibilidadPermiso> RadicadosVisibilidad { get; }
+    DbSet<DiaFestivo> DiasFestivos { get; }
+    DbSet<CalendarioHabilConfig> CalendariosHabiles { get; }
+    DbSet<CorreoRecibidoAdjunto> CorreosRecibidosAdjuntos { get; }
+    DbSet<CorreoDescartado> CorreosDescartados { get; }
+    DbSet<RadPrioridad> RadPrioridades { get; }
+    DbSet<RadPortalConfig> RadPortalConfigs { get; }
+    DbSet<ParametrosSeguridad> ParametrosSeguridad { get; }
+    DbSet<FirmaConfig> FirmaConfigs { get; }
+    DbSet<FirmaGrafo> FirmaGrafos { get; }
+    DbSet<FirmaPlantilla> FirmaPlantillas { get; }
+    DbSet<AlmacenamientoConfig> AlmacenamientosConfig { get; }
+    DbSet<OcrConfig> OcrConfigs { get; }
 
     // Gateway de IA multi-proveedor y consumo (base de RQ16).
     DbSet<AiProviderConfig> AiProviderConfigs { get; }

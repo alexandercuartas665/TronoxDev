@@ -1,11 +1,29 @@
 ---
 type: ADR
-status: accepted
+status: superseded
 date: 2026-07-28
+superseded_by: reversion 2026-08-11 (decision del cliente)
 ---
 # ADR-006: El "modo de codigo de serie" del legacy no se incorpora a RQ02
 
 ## Estatus
+
+**REVERTIDO (2026-08-11).** Originalmente **Aceptado** (2026-07-28) al construir RF04. Por decision
+explicita del cliente durante el ajuste milimetrico de "Versiones de TRD", `modo_codigo_serie` SE
+REINCORPORA a TRONOX para paridad con el legacy `doc_versionesTRD`.
+
+- Se agrega `ModoCodigoSerie` (enum `CalcularCodigo`/`EditarCodigo`) a la entidad `TrdVersion`
+  (migracion EF), al DTO/request, al modal (selector) y a la grilla (columna badge
+  "Codigo serie/subserie").
+- `CalcularCodigo` (default): el sistema autogenera `codigo_version = TRD-<anio>-v<consecutivo>`
+  (campo de solo lectura en el modal). `EditarCodigo`: el usuario lo escribe.
+- Se conserva la unicidad de `codigo_version` por tenant (RF01 3.1.4-1) en ambos modos.
+
+El resto de este ADR se conserva como registro historico del razonamiento original.
+
+---
+
+## Estatus original (2026-07-28)
 
 **Aceptado.** Decision tomada al construir RF04 (Construccion de la TRD), tras analizar el legacy
 `doc_versionesTRD` / `doc_tablaRetencionDocumental`.

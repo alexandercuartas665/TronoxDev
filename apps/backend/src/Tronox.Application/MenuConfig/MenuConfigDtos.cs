@@ -53,6 +53,7 @@ public sealed record MenuEditorNodeDto(
     string? Route,
     string? Description,
     string? HelpText,
+    string? OrigenMigracion,
     MenuNodeState State,
     bool IsVisible,
     int SortOrder,
@@ -77,6 +78,7 @@ public sealed record MenuNodeEditDto(
     string? Route = null,
     string? Description = null,
     string? HelpText = null,
+    string? OrigenMigracion = null,
     MenuNodeState? State = null,
     bool? IsProcessGroup = null);
 
@@ -99,6 +101,7 @@ public sealed record MenuExportNode(
     string? Route,
     string? Description,
     string? HelpText,
+    string? OrigenMigracion,
     string State,
     bool IsVisible,
     int SortOrder,
