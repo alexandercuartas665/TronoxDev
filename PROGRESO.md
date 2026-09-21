@@ -643,6 +643,27 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 27. Deploy a prod de Fase C.1 + C.2 (certificado + PDF/A via LibreOffice) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `6edbdf6`) el certificado/acta de firma (C.1, ADR-026) y el
+archivado PDF/A-2b via LibreOffice (C.2, ADR-027) en un solo deploy.
+
+- **0 migraciones nuevas** (prod sigue en 45): ninguna de las dos slices persiste esquema. Backup previo
+  `tronox_prod_20260921_095107_pre_faseC.sql.gz`.
+- **Cambio de infra**: la imagen ahora incluye LibreOffice (`libreoffice-writer` + `libreoffice-draw`,
+  soffice en /usr/bin/soffice, env TRONOX_SOFFICE_PATH). La imagen crecio de ~596MB a **1.29GB**.
+- Verificado EN LA IMAGEN antes de desplegar: soffice 24.2.7.2 presente y convierte PDF -> PDF/A-2b real
+  (marcador pdfaid:part>2). Verificado vs postgres desechable (/login 200, /dev/login 404, 45 migraciones
+  sin cambio, sin appsettings local, TRONOX_SOFFICE_PATH puesto).
+- Runbook: build tronox-web:prod (con LibreOffice) -> verificaciones -> save|gzip|ssh docker load ->
+  `docker compose -p tronox up -d --force-recreate --no-deps app`.
+- Verificacion prod: /login 200, /dev/login 404; migraciones 45; **postgres-prod NO recreado**
+  (created 2026-07-23, restarts=0); **29 contenedores** (vecinos sin bajar); **soffice presente en
+  tronox-app** (LibreOffice 24.2.7.2). A partir de ahora cada firma nueva se archiva en PDF/A-2b
+  (best-effort: si la conversion fallara, se conserva el PDF sellado sin convertir).
+
+---
+
 ## 26. Deploy a prod de Fase B.4 (alertas de firma pendiente RF11 Inc.2) (2026-09-08)
 
 Desplegado a prod (host 10.0.0.3, commit `a409d7b`) las alertas de firma pendiente (Fase B.4, ADR-025):
