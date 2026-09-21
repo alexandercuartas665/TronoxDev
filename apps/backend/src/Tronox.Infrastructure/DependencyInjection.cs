@@ -87,6 +87,7 @@ public static class DependencyInjection
         services.AddScoped<Application.Common.IReceiptPdfRenderer, Pdf.QuestPdfReceiptRenderer>();
         services.AddScoped<Application.Common.IRotuloExportador, Pdf.QuestPdfRotuloExportador>();
         services.AddScoped<Application.Common.IActaFirmaRenderer, Pdf.QuestPdfActaRenderer>();
+        services.AddSingleton<Application.Common.IPdfAConverter, Pdf.LibreOfficePdfAConverter>();
 
         // HTML -> PDF con Chromium headless (PuppeteerSharp) para el editor de texto interno (RF08).
         // Reemplaza a SelectPdf (comercial, solo Windows) por un motor cross-platform (contenedor Linux).

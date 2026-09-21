@@ -22,13 +22,14 @@ public sealed class FirmaService : IFirmaService
     private readonly IEmailSender _email;
     private readonly Notifications.INotificationService _notif;
     private readonly IActaFirmaRenderer _acta;
+    private readonly IPdfAConverter _pdfa;
 
     private const int OtpVigenciaMinutos = 5;
 
     public FirmaService(
         IApplicationDbContext db, ITenantContext tenant, IObjectStorage storage,
         IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email,
-        Notifications.INotificationService notif, IActaFirmaRenderer acta)
+        Notifications.INotificationService notif, IActaFirmaRenderer acta, IPdfAConverter pdfa)
     {
         _db = db;
         _tenant = tenant;
@@ -38,6 +39,7 @@ public sealed class FirmaService : IFirmaService
         _email = email;
         _notif = notif;
         _acta = acta;
+        _pdfa = pdfa;
     }
 
     /// <summary>
@@ -1080,6 +1082,10 @@ public sealed class FirmaService : IFirmaService
             ahora.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), $"verificar.tronox.co/v/{doc.Id}", indiceCajita,
             TextoConfig: cfg.FirmaTextoDefault, MostrarNombre: cfg.FirmaMostrarNombre, GrafoBase64: grafo);
         var sellado = _stamper.EstamparCajita(original, cajita);
+        // Archivado PDF/A-2b (RF02, Decreto 2364): convierte el PDF sellado con LibreOffice. Best-effort:
+        // si no hay soffice (p. ej. en local) o falla, se conserva el sellado sin convertir.
+        var pdfa = await _pdfa.ConvertirPdfAAsync(sellado, cancellationToken);
+        if (pdfa is not null) { sellado = pdfa; }
         var hash = DocumentoRules.HashSha256(sellado);
         var nuevaKey = $"{_tenant.TenantId!.Value}/{Guid.NewGuid():N}.pdf";
         using (var ms = new MemoryStream(sellado, writable: false))

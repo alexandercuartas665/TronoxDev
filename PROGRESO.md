@@ -1179,9 +1179,20 @@ migraciones 45, ver secciones 23-26).
   Sin migracion ni infra. Verificado: harness de render (layout fiel) + e2e endpoint (doc 106 -> 200 PDF,
   sin errores).
 
-Sigue Fase C: (C.2) NTP hora legal (FirmaConfig.NtpActivo/NtpServidor ya existen; portable, fallback
-seguro); y con cambio de infra: PDF/A+XMP+byte-range (LibreOffice/soffice en la imagen) y portal
-verificador publico (Caddy). Detalles del legacy en la memoria fase-c-sellado-fidelidad-hallazgos.
+- **Fase C.2 - Archivado PDF/A-2b via LibreOffice (RQ05 - RF02)** [ADR-027]: port de PdfAConverter.vb.
+  Se anade LibreOffice (`libreoffice-writer` + `libreoffice-draw`) a la imagen de la app (unico cambio de
+  infra; soffice en /usr/bin/soffice via env TRONOX_SOFFICE_PATH). `IPdfAConverter` /
+  `LibreOfficePdfAConverter`: `soffice --headless --norestore -env:UserInstallation=file://<perfil>
+  --convert-to pdf:writer_pdf_Export:{SelectPdfVersion long 2} --outdir <out> <entrada>`, perfil
+  temporal por conversion, timeout 120s, valida pdfaid:part (chequeo debil como el legacy). Enganche en
+  SellarPdfEnSitioAsync: tras estampar la cajita, convierte el PDF sellado a PDF/A-2b (orden estampar->
+  convertir para garantizar conformidad) y hashea el resultado. BEST-EFFORT: sin soffice (local) o si
+  falla, se conserva el PDF sellado sin convertir (la firma no se frena). Sin migracion. Diferido: XMP
+  byte-range length-neutral, veraPDF estricto, NTP, portal verificador.
+
+Sigue Fase C: (C.3) NTP hora legal (FirmaConfig.NtpActivo/NtpServidor ya existen; portable, fallback
+seguro); XMP byte-range (sobre el PDF/A de C.2); portal verificador publico (Caddy). Detalles del legacy
+en la memoria fase-c-sellado-fidelidad-hallazgos.
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.

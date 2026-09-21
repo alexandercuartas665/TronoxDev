@@ -27,12 +27,17 @@ WORKDIR /app
 
 # Chromium + fuentes para el editor de texto interno (RF08). PuppeteerSharp usa este binario
 # (PUPPETEER_EXECUTABLE_PATH) para convertir HTML a PDF, sin descargar Chromium en runtime.
+# LibreOffice (writer+draw) para la conversion a PDF/A-2b de la firma (RQ05 - RF02, ADR-027):
+# soffice headless en /usr/bin/soffice; draw provee el import de PDF y el export PDF/A.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium \
         fonts-liberation \
         fonts-dejavu-core \
+        libreoffice-writer \
+        libreoffice-draw \
     && rm -rf /var/lib/apt/lists/*
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV TRONOX_SOFFICE_PATH=/usr/bin/soffice
 
 COPY --from=build /app/publish ./
 
