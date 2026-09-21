@@ -1211,9 +1211,21 @@ migraciones 45, ver secciones 23-26).
   falla, se conserva el PDF sellado sin convertir (la firma no se frena). Sin migracion. Diferido: XMP
   byte-range length-neutral, veraPDF estricto, NTP, portal verificador.
 
-Sigue Fase C: (C.3) NTP hora legal (FirmaConfig.NtpActivo/NtpServidor ya existen; portable, fallback
-seguro); XMP byte-range (sobre el PDF/A de C.2); portal verificador publico (Caddy). Detalles del legacy
-en la memoria fase-c-sellado-fidelidad-hallazgos.
+- **Ola 1 - Fidelidad de sellado de firma (RQ05)** [ADR-028]: cierra el cumplimiento PAdES sobre el PDF/A.
+  (1) **NTP hora legal** (RF02): INtpTimeProvider/NtpTimeProvider (SNTP UDP/123, cache offset, fallback),
+  usado en el timestamp del sellado si FirmaConfig.NtpActivo (default false). (2) **QR de verificacion**
+  (RF03): QRCoder en el acta/certificado (verificar.tronox.co/v/{id}). (3) **Sellado XMP byte-range**
+  (RF02/RF03): IPdfXmpSealer/PdfXmpSealer inserta el bloque tronox: en el xpacket del PDF/A consumiendo el
+  padding (length-neutral) y calcula el SHA-256 excluyendo el paquete XMP; RecalcularHash lo reproduce.
+  (4) **Portal verificador publico** (RF04): pagina /v/{docId} AllowAnonymous + IVerificacionFirmaService
+  cross-tenant que muestra entidad/estado/hash/firmantes sin exponer el binario. Sin migracion; paquete
+  nuevo QRCoder. Verificado: SNTP contra pool.ntp.org, sellado XMP sobre PDF/A real (neutral, hash
+  sellado==recalc, reabre), verificador e2e sin login (/v/107 -> Firma verificada). **Ola 1 COMPLETA.**
+
+Sigue por olas: Ola 2 (consola de firma: auditoria con filtros, metricas, plantillas, presets), Ola 3
+(incorporacion RQ04: digitalizar, fuente externa, auto-OCR), Ola 4 (ECD + deuda). veraPDF estricto y el
+DNS/Caddy de verificar.tronox.co quedan diferidos. Plan por olas en el vault (PLAN DE TRABAJO,
+ACTUALIZACION 2026-09-21).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
