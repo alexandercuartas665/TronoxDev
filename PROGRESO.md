@@ -643,6 +643,24 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 29. Deploy a prod de Ola 2 (consola de firma: auditoria + metricas + plantillas + presets) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `3742492`) la Ola 2 completa (ADR-029).
+
+- **1 migracion nueva** (prod 45 -> 46): `FirmaPlantillas` (tabla `firma_plantillas`, aditiva). Backup
+  previo `tronox_prod_20260921_112927_pre_ola2.sql.gz`.
+- Runbook: build tronox-web:prod (capa LibreOffice cacheada) -> verificado vs postgres desechable
+  (/login 200, /dev/login 404, /v/1 200, 46 migraciones con ultima FirmaPlantillas, tabla firma_plantillas
+  creada) -> save|gzip|ssh docker load -> `docker compose -p tronox up -d --force-recreate --no-deps app`.
+  (El primer intento de la verificacion desechable fallo por agotamiento de recursos LOCALES -fork- no de
+  la imagen; se limpio el build cache -~20GB- y contenedores tmp y se reintento OK.)
+- Verificacion prod: /login 200, /dev/login 404, /v/1 200; migraciones 46 (ultima FirmaPlantillas); tabla
+  firma_plantillas creada; **postgres-prod NO recreado** (restarts=0); **29 contenedores**. Ahora en prod:
+  auditoria de firma con filtros (/modulo/firmas-auditoria), consumo y metricas (/modulo/firmas-metricas),
+  plantillas de firmante y presets {{firma}} en el modal de circuito.
+
+---
+
 ## 28. Deploy a prod de Ola 1 (fidelidad de sellado: NTP + QR + XMP byte-range + verificador) (2026-09-21)
 
 Desplegado a prod (host 10.0.0.3, commit `4ca96a0`) la Ola 1 completa (ADR-028).
