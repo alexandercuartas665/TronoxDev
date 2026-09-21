@@ -93,6 +93,7 @@ public static class DependencyInjection
         services.AddScoped<Documentos.IDocumentoService, Documentos.DocumentoService>();
         services.AddScoped<Firmas.IFirmaService, Firmas.FirmaService>();
         services.AddScoped<Firmas.IFirmaAlertaService, Firmas.FirmaAlertaService>();
+        services.AddScoped<Firmas.IVerificacionFirmaService, Firmas.VerificacionFirmaService>();
         // Tareas de validacion (RQ04 - RF11/RF12): solicitar revision/aprobacion + bandeja Mis Tareas.
         // La logica pura (comentario obligatorio, dias restantes) vive en ValidacionRules.
         services.AddScoped<Validaciones.IValidacionService, Validaciones.ValidacionService>();
