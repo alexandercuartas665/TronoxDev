@@ -1,3 +1,4 @@
+using QRCoder;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -66,15 +67,27 @@ public sealed class QuestPdfActaRenderer : IActaFirmaRenderer
             col.Item().PaddingTop(2).Text(d.Completado ? "Documento firmado electronicamente." : "Proceso de firma en curso.")
                 .FontSize(10).FontColor(d.Completado ? OkGreen : Muted);
 
-            // Resumen probatorio.
-            col.Item().PaddingTop(16).Background("#F8FAFC").Border(1).BorderColor(Line).Padding(14).Column(box =>
+            // Resumen probatorio (datos a la izquierda, QR de verificacion a la derecha).
+            col.Item().PaddingTop(16).Background("#F8FAFC").Border(1).BorderColor(Line).Padding(14).Row(row =>
             {
-                Kv(box, "Estado de firma", d.EstadoFirma);
-                Kv(box, "ID de transaccion", d.IdTransaccion);
-                Kv(box, "Hash SHA-256", string.IsNullOrWhiteSpace(d.HashSha256) ? "-" : d.HashSha256!);
-                Kv(box, "Creado por", d.CreadoPor);
-                Kv(box, "Fecha de creacion", $"{d.FechaCreacion.ToLocalTime():dd MMM yyyy HH:mm} GMT");
-                Kv(box, "Verificacion", d.VerificarUrl);
+                row.RelativeItem().Column(box =>
+                {
+                    Kv(box, "Estado de firma", d.EstadoFirma);
+                    Kv(box, "ID de transaccion", d.IdTransaccion);
+                    Kv(box, "Hash SHA-256", string.IsNullOrWhiteSpace(d.HashSha256) ? "-" : d.HashSha256!);
+                    Kv(box, "Creado por", d.CreadoPor);
+                    Kv(box, "Fecha de creacion", $"{d.FechaCreacion.ToLocalTime():dd MMM yyyy HH:mm} GMT");
+                    Kv(box, "Verificacion", d.VerificarUrl);
+                });
+                var qr = QrPng(d.VerificarUrl);
+                if (qr is not null)
+                {
+                    row.ConstantItem(96).AlignRight().AlignTop().Column(c =>
+                    {
+                        c.Item().Width(88).Image(qr);
+                        c.Item().PaddingTop(3).AlignCenter().Text("Escanea para verificar").FontSize(7).FontColor(Muted);
+                    });
+                }
             });
 
             // Historial de eventos.
@@ -123,6 +136,23 @@ public sealed class QuestPdfActaRenderer : IActaFirmaRenderer
                 "La integridad del documento se verifica recalculando su hash SHA-256 y comparandolo con el valor registrado.")
                 .FontSize(8).FontColor(Muted).Italic();
         });
+    }
+
+    /// <summary>QR PNG de la URL de verificacion (QRCoder, ECC nivel M como el legacy). null si falla o URL vacia.</summary>
+    private static byte[]? QrPng(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) { return null; }
+        try
+        {
+            var destino = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? url : "https://" + url;
+            using var gen = new QRCodeGenerator();
+            using var data = gen.CreateQrCode(destino, QRCodeGenerator.ECCLevel.M);
+            return new PngByteQRCode(data).GetGraphic(10);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static void Kv(ColumnDescriptor col, string k, string v)
