@@ -1266,9 +1266,18 @@ migraciones 45, ver secciones 23-26).
   correo/nombre) + precarga en el modal. Verificado e2e (metricas, filtro de auditoria, preset precarga 2
   firmantes, guardar/usar plantilla). **Ola 2 COMPLETA.** Diferido: resolucion por cargo/grupo.
 
-Sigue por olas: Ola 3 (incorporacion RQ04: digitalizar RF18, fuente externa RF20/21, auto-OCR), Ola 4
-(ECD + deuda). veraPDF estricto y el DNS/Caddy de verificar.tronox.co quedan diferidos. Plan por olas en
-el vault (PLAN DE TRABAJO, ACTUALIZACION 2026-09-21).
+- **Ola 3 - Incorporacion de documentos (RQ04)** [ADR-030]: (1) **Digitalizar** (RF18): DigitalizarModal
+  + js/camara.js (getUserMedia camara trasera) -> captura JPG -> borrador. (2) **Fuente externa - SFTP**
+  (RF20/21): IFuenteExternaService/SftpFuenteExternaService (SSH.NET, clave de un solo uso) +
+  FuenteExternaModal; cloud (OneDrive/GDrive/SharePoint) diferido (OAuth). (3) **Auto-OCR** (RF04):
+  OcrAutoHostedService (BackgroundService, cada 5 min) procesa los Pendiente por tenant configurado
+  (Azure via OcrService), reemplaza el Reprocesar manual como via por defecto. Todos sobre
+  CrearBorradorBinarioAsync. Sin migracion; paquete SSH.NET. Verificado e2e (SFTP test.rebex.net, modal
+  Digitalizar con fallback sin camara, auto-OCR Pendiente 7->5). **Ola 3 COMPLETA.**
+
+Sigue Ola 4 (ECD + estampa en imagenes + deuda de visor). ECD requiere definir el proveedor con el
+cliente. veraPDF estricto, cloud OAuth y el DNS/Caddy de verificar.tronox.co quedan diferidos. Plan por
+olas en el vault (PLAN DE TRABAJO, ACTUALIZACION 2026-09-21).
 
 Nota entorno (local): se crearon usuarios de prueba en tenant 2 para RF07: Rita (revisor@, rol admin) y
 Carlos (carlos@alcaldiademo.gov.co, rol admin). Solo datos locales.
