@@ -643,6 +643,22 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 31. Deploy a prod de Ola 4 (estampa en imagenes + marca de agua de visor + full-text compartidos) (2026-09-21)
+
+Desplegado a prod (host 10.0.0.3, commit `d0df9cb`) la Ola 4 (ADR-031).
+
+- **Pure image swap, 0 migraciones** (prod sigue en 46, ultima FirmaPlantillas). Backup previo
+  `tronox_prod_20260921_125452_pre_ola4.sql.gz`. Sin paquetes nuevos (SkiaSharp/PdfSharpCore ya estaban).
+- Verificado vs postgres desechable: /login 200, /dev/login 404, /v/1 200, 46 migraciones (ultima
+  FirmaPlantillas), tablas firma_* completas, sin appsettings.*.local.json real en la imagen.
+- Verificacion prod: /login 200, /dev/login 404, /v/1 200; **postgres-prod NO recreado** (creado
+  2026-07-23, restarts=0); **29 contenedores** (ningun stack hermano cayo). Ahora en prod: firma de
+  documentos IMAGEN con cajita al pie (RF03-B), marca de agua de seguridad Usuario/Fecha/IP al visualizar
+  Reservado/Clasificado (RF04) y busqueda full-text por contenido en "Compartidos conmigo". ECD diferida
+  (placeholder en el legacy; requiere proveedor por definir con el cliente).
+
+---
+
 ## 30. Deploy a prod de Ola 3 (incorporacion: digitalizar + fuente externa SFTP + auto-OCR) (2026-09-21)
 
 Desplegado a prod (host 10.0.0.3, commit `dd9ac23`) la Ola 3 completa (ADR-030).
