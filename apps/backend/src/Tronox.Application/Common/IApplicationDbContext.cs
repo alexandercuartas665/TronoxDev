@@ -152,6 +152,7 @@ public interface IApplicationDbContext
     DbSet<ParametrosSeguridad> ParametrosSeguridad { get; }
     DbSet<FirmaConfig> FirmaConfigs { get; }
     DbSet<FirmaGrafo> FirmaGrafos { get; }
+    DbSet<FirmaPlantilla> FirmaPlantillas { get; }
     DbSet<AlmacenamientoConfig> AlmacenamientosConfig { get; }
     DbSet<OcrConfig> OcrConfigs { get; }
 

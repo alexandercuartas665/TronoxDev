@@ -693,6 +693,138 @@ public sealed class FirmaService : IFirmaService
         return new FirmaMetricasDto(total, firmadas, pendientes, canceladas, circuitos, sla, meses);
     }
 
+    // ---- Plantillas de firma (TRON-20) ----
+
+    public async Task<DocumentoResult<long>> GuardarPlantillaAsync(
+        GuardarPlantillaRequest r, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(r.Nombre)) { return DocumentoResult<long>.Invalid("La plantilla necesita un nombre."); }
+        if (r.Firmantes is null || r.Firmantes.Count == 0) { return DocumentoResult<long>.Invalid("La plantilla necesita al menos un firmante."); }
+
+        var cfg = new
+        {
+            modo = r.Modo.ToString(),
+            otp = r.Otp,
+            firmantes = r.Firmantes.Select(f => new { uid = f.PlatformUserId, nombre = f.Nombre, tipo = f.TipoFirma.ToString() })
+        };
+        var plantilla = new FirmaPlantilla
+        {
+            TenantId = _tenant.TenantId!.Value,
+            Nombre = r.Nombre.Trim(),
+            Descripcion = string.IsNullOrWhiteSpace(r.Descripcion) ? null : r.Descripcion.Trim(),
+            Modo = r.Modo.ToString(),
+            OtpRequerido = r.Otp,
+            TotalFirmantes = r.Firmantes.Count,
+            Resumen = Trunc300(string.Join(", ", r.Firmantes.Select(f => f.Nombre))),
+            ConfigJson = System.Text.Json.JsonSerializer.Serialize(cfg),
+            Activo = true
+        };
+        _db.FirmaPlantillas.Add(plantilla);
+        await _db.SaveChangesAsync(cancellationToken);
+        return DocumentoResult<long>.Ok(plantilla.Id);
+    }
+
+    public async Task<IReadOnlyList<PlantillaResumenDto>> ListarPlantillasAsync(
+        long actorUserId, CancellationToken cancellationToken = default)
+        => await _db.FirmaPlantillas.AsNoTracking()
+            .Where(p => p.Activo)
+            .OrderByDescending(p => p.Id)
+            .Select(p => new PlantillaResumenDto(p.Id, p.Nombre, p.Descripcion, p.Modo, p.TotalFirmantes, p.Resumen))
+            .ToListAsync(cancellationToken);
+
+    public async Task<DocumentoResult<PlantillaConfigDto>> ObtenerPlantillaAsync(
+        long plantillaId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var p = await _db.FirmaPlantillas.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == plantillaId && x.Activo, cancellationToken);
+        if (p is null) { return DocumentoResult<PlantillaConfigDto>.NotFound("La plantilla no existe."); }
+
+        try
+        {
+            using var jd = System.Text.Json.JsonDocument.Parse(p.ConfigJson);
+            var root = jd.RootElement;
+            var modo = root.TryGetProperty("modo", out var mo) && mo.GetString() == "Paralelo"
+                ? ModoCircuito.Paralelo : ModoCircuito.Secuencial;
+            var otp = root.TryGetProperty("otp", out var ot) && ot.ValueKind == System.Text.Json.JsonValueKind.True;
+            var firmantes = new List<PlantillaFirmanteConfig>();
+            if (root.TryGetProperty("firmantes", out var fs) && fs.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var f in fs.EnumerateArray())
+                {
+                    var uid = f.TryGetProperty("uid", out var u) ? u.GetInt64() : 0;
+                    var nombre = f.TryGetProperty("nombre", out var n) ? n.GetString() ?? "" : "";
+                    var tipo = f.TryGetProperty("tipo", out var t) && t.GetString() == "DigitalCertificada"
+                        ? TipoFirma.DigitalCertificada : TipoFirma.Electronica;
+                    if (uid > 0) { firmantes.Add(new PlantillaFirmanteConfig(uid, nombre, tipo)); }
+                }
+            }
+            return DocumentoResult<PlantillaConfigDto>.Ok(new PlantillaConfigDto(modo, otp, firmantes));
+        }
+        catch
+        {
+            return DocumentoResult<PlantillaConfigDto>.Invalid("La configuracion de la plantilla no es valida.");
+        }
+    }
+
+    public async Task<DocumentoResult<bool>> EliminarPlantillaAsync(
+        long plantillaId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var p = await _db.FirmaPlantillas.FirstOrDefaultAsync(x => x.Id == plantillaId && x.Activo, cancellationToken);
+        if (p is null) { return DocumentoResult<bool>.NotFound("La plantilla no existe."); }
+        p.Activo = false;
+        await _db.SaveChangesAsync(cancellationToken);
+        return DocumentoResult<bool>.Ok(true);
+    }
+
+    // ---- Presets de circuito desde tokens {{firma}} (RF13) ----
+
+    public async Task<IReadOnlyList<PresetFirmanteDto>> ResolverPresetAsync(
+        long docId, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        var html = await _db.Documentos.AsNoTracking()
+            .Where(d => d.Id == docId && !d.EsVersionHistorica)
+            .Select(d => d.ContenidoHtml).FirstOrDefaultAsync(cancellationToken);
+        var tokens = FirmaPlantillaParser.Parse(html);
+        if (tokens.Count == 0) { return []; }
+
+        var tenantId = _tenant.TenantId!.Value;
+        var usuarios = await (
+            from tu in _db.TenantUsers.AsNoTracking()
+            join pu in _db.PlatformUsers.AsNoTracking() on tu.PlatformUserId equals pu.Id
+            where tu.TenantId == tenantId && tu.Status == PlatformUserStatus.Active
+            select new { pu.Id, Nombre = pu.DisplayName ?? pu.Email, Email = pu.Email ?? "" })
+            .ToListAsync(cancellationToken);
+
+        var resultado = new List<PresetFirmanteDto>();
+        foreach (var t in tokens.OrderBy(x => x.Orden))
+        {
+            long? uid = null;
+            var nombre = t.Destino;
+            var resuelto = false;
+            if (!string.IsNullOrWhiteSpace(t.Destino))
+            {
+                // Correo -> por email; si no, por nombre exacto (cargo/rol se difiere). Ambiguo -> generica.
+                var match = t.EsCorreo
+                    ? usuarios.Where(u => string.Equals(u.Email, t.Destino, StringComparison.OrdinalIgnoreCase)).ToList()
+                    : usuarios.Where(u => string.Equals(u.Nombre, t.Destino, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (match.Count == 1)
+                {
+                    uid = match[0].Id;
+                    nombre = match[0].Nombre;
+                    resuelto = true;
+                }
+            }
+            resultado.Add(new PresetFirmanteDto(
+                t.Orden, uid,
+                string.IsNullOrWhiteSpace(nombre) ? "(sin asignar)" : nombre,
+                TipoFirma.Electronica, t.Opcional, resuelto, t.Raw));
+        }
+        return resultado;
+    }
+
+    private static string? Trunc300(string? s)
+        => string.IsNullOrEmpty(s) ? s : (s.Length <= 300 ? s : s[..297] + "...");
+
     private static string EventoLabel(string accion) => accion switch
     {
         "documento.firmar" => "Firma directa",

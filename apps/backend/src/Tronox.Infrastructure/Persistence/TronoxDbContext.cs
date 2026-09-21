@@ -142,6 +142,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<ParametrosSeguridad> ParametrosSeguridad => Set<ParametrosSeguridad>();
     public DbSet<FirmaConfig> FirmaConfigs => Set<FirmaConfig>();
     public DbSet<FirmaGrafo> FirmaGrafos => Set<FirmaGrafo>();
+    public DbSet<FirmaPlantilla> FirmaPlantillas => Set<FirmaPlantilla>();
     public DbSet<AlmacenamientoConfig> AlmacenamientosConfig => Set<AlmacenamientoConfig>();
     public DbSet<OcrConfig> OcrConfigs => Set<OcrConfig>();
     public DbSet<OrgUnitMember> OrgUnitMembers => Set<OrgUnitMember>();
@@ -1601,6 +1602,17 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.ImagenBase64).IsRequired();
             b.Property(x => x.ContentType).HasMaxLength(30).IsRequired();
             b.HasIndex(x => new { x.TenantId, x.PlatformUserId }).IsUnique();
+        });
+
+        // Plantillas de firma reutilizables (TRON-20, legacy FIR_PLANTILLAS).
+        modelBuilder.Entity<FirmaPlantilla>(b =>
+        {
+            b.Property(x => x.Nombre).HasMaxLength(150).IsRequired();
+            b.Property(x => x.Descripcion).HasMaxLength(400);
+            b.Property(x => x.Modo).HasMaxLength(20).IsRequired();
+            b.Property(x => x.Resumen).HasMaxLength(300);
+            b.Property(x => x.ConfigJson).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.Activo });
         });
 
         // Almacenamiento Azure Blob por entidad (ADR-012). La cadena de conexion se guarda CIFRADA.

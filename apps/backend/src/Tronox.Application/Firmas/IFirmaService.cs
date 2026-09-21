@@ -76,6 +76,25 @@ public interface IFirmaService
     /// <summary>RF20: consumo y metricas de firma del tenant (KPIs + volumen por mes).</summary>
     Task<FirmaMetricasDto> GetMetricasAsync(long actorUserId, CancellationToken cancellationToken = default);
 
+    // ---- Plantillas de firma (TRON-20) ----
+
+    /// <summary>Guarda el disenador del circuito como plantilla reutilizable. Devuelve el id.</summary>
+    Task<DocumentoResult<long>> GuardarPlantillaAsync(GuardarPlantillaRequest request, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Plantillas de firma activas del tenant (mas recientes primero).</summary>
+    Task<IReadOnlyList<PlantillaResumenDto>> ListarPlantillasAsync(long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Config de una plantilla para precargar el disenador.</summary>
+    Task<DocumentoResult<PlantillaConfigDto>> ObtenerPlantillaAsync(long plantillaId, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Baja logica de una plantilla (invariante 8).</summary>
+    Task<DocumentoResult<bool>> EliminarPlantillaAsync(long plantillaId, long actorUserId, CancellationToken cancellationToken = default);
+
+    // ---- Presets de circuito desde tokens {{firma}} (RF13) ----
+
+    /// <summary>Resuelve los tokens {{firma}} del contenido del documento a firmantes concretos, para precargar el circuito.</summary>
+    Task<IReadOnlyList<PresetFirmanteDto>> ResolverPresetAsync(long docId, long actorUserId, CancellationToken cancellationToken = default);
+
     // ---- Firma directa (slice 1, calca FirmaDirectaHelper: sin stepper, sin OTP) ----
 
     /// <summary>Identidad del firmante (snapshot) para la pantalla de confirmacion de la firma directa.</summary>

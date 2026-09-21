@@ -199,3 +199,34 @@ public sealed record FirmaMetricasDto(
 
 /// <summary>Firmas ejecutadas en un mes (para la barra de volumen).</summary>
 public sealed record MetricaMesDto(string Etiqueta, int Firmadas);
+
+// ---- Plantillas de firma (TRON-20) ----
+
+/// <summary>Un firmante dentro de la config de una plantilla.</summary>
+public sealed record PlantillaFirmanteConfig(long PlatformUserId, string Nombre, TipoFirma TipoFirma);
+
+/// <summary>Peticion para guardar una plantilla desde el disenador de circuito.</summary>
+public sealed record GuardarPlantillaRequest(
+    string Nombre,
+    string? Descripcion,
+    ModoCircuito Modo,
+    bool Otp,
+    IReadOnlyList<PlantillaFirmanteConfig> Firmantes);
+
+/// <summary>Fila de la lista de plantillas de firma.</summary>
+public sealed record PlantillaResumenDto(long Id, string Nombre, string? Descripcion, string Modo, int TotalFirmantes, string? Resumen);
+
+/// <summary>Config completa de una plantilla, para precargar el disenador.</summary>
+public sealed record PlantillaConfigDto(ModoCircuito Modo, bool Otp, IReadOnlyList<PlantillaFirmanteConfig> Firmantes);
+
+// ---- Presets de circuito desde tokens {{firma}} (RF13) ----
+
+/// <summary>Un firmante precargado desde un token {{firma}} del contenido del documento.</summary>
+public sealed record PresetFirmanteDto(
+    int Orden,
+    long? PlatformUserId,
+    string Nombre,
+    TipoFirma TipoFirma,
+    bool Opcional,
+    bool Resuelto,
+    string TokenRaw);
