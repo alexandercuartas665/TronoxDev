@@ -24,6 +24,7 @@ public sealed class FirmaService : IFirmaService
     private readonly IActaFirmaRenderer _acta;
     private readonly IPdfAConverter _pdfa;
     private readonly INtpTimeProvider _ntp;
+    private readonly IPdfXmpSealer _xmp;
 
     private const int OtpVigenciaMinutos = 5;
 
@@ -31,7 +32,7 @@ public sealed class FirmaService : IFirmaService
         IApplicationDbContext db, ITenantContext tenant, IObjectStorage storage,
         IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email,
         Notifications.INotificationService notif, IActaFirmaRenderer acta, IPdfAConverter pdfa,
-        INtpTimeProvider ntp)
+        INtpTimeProvider ntp, IPdfXmpSealer xmp)
     {
         _db = db;
         _tenant = tenant;
@@ -43,6 +44,7 @@ public sealed class FirmaService : IFirmaService
         _acta = acta;
         _pdfa = pdfa;
         _ntp = ntp;
+        _xmp = xmp;
     }
 
     /// <summary>
@@ -1089,8 +1091,22 @@ public sealed class FirmaService : IFirmaService
         // Archivado PDF/A-2b (RF02, Decreto 2364): convierte el PDF sellado con LibreOffice. Best-effort:
         // si no hay soffice (p. ej. en local) o falla, se conserva el sellado sin convertir.
         var pdfa = await _pdfa.ConvertirPdfAAsync(sellado, cancellationToken);
-        if (pdfa is not null) { sellado = pdfa; }
-        var hash = DocumentoRules.HashSha256(sellado);
+        string hash;
+        if (pdfa is not null)
+        {
+            // Sellado XMP length-neutral con hash byte-range (RF02/RF03): inserta el bloque tronox: y calcula
+            // el hash excluyendo el paquete XMP. Best-effort: si no se puede sellar, hash del PDF/A completo.
+            var datos = new DatosSellado(
+                _tenant.TenantId!.Value, doc.Id, snap.Nombre, TotalFirmantes: 1, ahora, "Electronica",
+                $"verificar.tronox.co/v/{doc.Id}");
+            var xmp = _xmp.Sellar(pdfa, datos);
+            if (xmp is not null) { sellado = xmp.Pdf; hash = xmp.Hash; }
+            else { sellado = pdfa; hash = DocumentoRules.HashSha256(pdfa); }
+        }
+        else
+        {
+            hash = DocumentoRules.HashSha256(sellado);
+        }
         var nuevaKey = $"{_tenant.TenantId!.Value}/{Guid.NewGuid():N}.pdf";
         using (var ms = new MemoryStream(sellado, writable: false))
         {
