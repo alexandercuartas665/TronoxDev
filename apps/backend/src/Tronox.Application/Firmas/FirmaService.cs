@@ -23,13 +23,15 @@ public sealed class FirmaService : IFirmaService
     private readonly Notifications.INotificationService _notif;
     private readonly IActaFirmaRenderer _acta;
     private readonly IPdfAConverter _pdfa;
+    private readonly INtpTimeProvider _ntp;
 
     private const int OtpVigenciaMinutos = 5;
 
     public FirmaService(
         IApplicationDbContext db, ITenantContext tenant, IObjectStorage storage,
         IAuditWriter audit, IPdfSignatureStamper stamper, IEmailSender email,
-        Notifications.INotificationService notif, IActaFirmaRenderer acta, IPdfAConverter pdfa)
+        Notifications.INotificationService notif, IActaFirmaRenderer acta, IPdfAConverter pdfa,
+        INtpTimeProvider ntp)
     {
         _db = db;
         _tenant = tenant;
@@ -40,6 +42,7 @@ public sealed class FirmaService : IFirmaService
         _notif = notif;
         _acta = acta;
         _pdfa = pdfa;
+        _ntp = ntp;
     }
 
     /// <summary>
@@ -1072,8 +1075,9 @@ public sealed class FirmaService : IFirmaService
             await stream.DisposeAsync();
             original = ms.ToArray();
         }
-        var ahora = DateTimeOffset.UtcNow;
         var cfg = await GetFirmaConfigAsync(cancellationToken);
+        // Hora legal del sellado (RF02): NTP si la entidad lo activo, si no la del servidor (best-effort).
+        var ahora = await _ntp.ObtenerAsync(cfg.NtpActivo, cfg.NtpServidor, cancellationToken);
         // Grafo (firma manuscrita) del firmante para pintarlo en la cajita (RF03 3.3.3). null si no registro.
         var grafo = await _db.FirmaGrafos.AsNoTracking()
             .Where(g => g.PlatformUserId == snap.UserId && g.Activo)
