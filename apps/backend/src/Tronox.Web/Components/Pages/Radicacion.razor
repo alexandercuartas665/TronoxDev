@@ -5,6 +5,7 @@
 @using Tronox.Domain.Enums
 @inject IRadicacionBandejaService BandejaSvc
 @inject IRadicacionDistribucionService DistSvc
+@inject IRadicadorService RadSvc
 @inject IJSRuntime JS
 
 @* RQ09 - RF11 (Bandeja de radicados, port de rad_bandeja). Lista unificada E/S/I con 6 tabs,
@@ -196,6 +197,204 @@
     </div>
 }
 
+@* ============ Asistente Nuevo Radicado (rad_radicar, Fase 1: Entrada + Interna) ============ *@
+@if (_wzOpen)
+{
+    <div class="modal-overlay" @onclick="WzCerrar">
+        <div class="modal-dialog" style="max-width:640px;" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Nuevo Radicado</h3>
+                <button class="modal-close" @onclick="WzCerrar">&times;</button>
+            </div>
+
+            @if (_wzNumero is not null)
+            {
+                <div class="modal-body">
+                    <div class="rad-ok">
+                        <div class="rad-ok-ico">&#10003;</div>
+                        <div class="rad-ok-num">@_wzNumero</div>
+                        <p>Radicado creado correctamente@(string.IsNullOrEmpty(_wzDepDestId) ? " (sin distribuir; puedes distribuirlo desde la bandeja)." : " y distribuido.")</p>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button class="btn btn-primary" @onclick="WzCerrar">Cerrar</button>
+                </div>
+            }
+            else
+            {
+                <div class="rad-steps">
+                    @foreach (var (n, lbl) in WzPasos)
+                    {
+                        <div class="rad-step @(_wzStep == n ? "on" : "") @(_wzStep > n ? "done" : "")">
+                            <span class="rad-step-n">@n</span><span class="rad-step-l">@lbl</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-body">
+                    @if (_wzStep == 1)
+                    {
+                        <div class="field">
+                            <label class="form-label">Comunicacion *</label>
+                            <div class="rad-chips">
+                                <button type="button" class="rad-chip @(_wzDir == RadicadoTipo.Entrada ? "on" : "")" @onclick="@(() => WzSetDir(RadicadoTipo.Entrada))">Externa (entrada)</button>
+                                <button type="button" class="rad-chip @(_wzDir == RadicadoTipo.Interno ? "on" : "")" @onclick="@(() => WzSetDir(RadicadoTipo.Interno))">Interna</button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Tipo de comunicacion *</label>
+                            <select class="form-control" @bind="_wzTipoId" @bind:after="WzOnTipoChanged">
+                                <option value="">Selecciona...</option>
+                                @foreach (var t in WzTiposFiltrados) { <option value="@t.Id">@t.Nombre</option> }
+                            </select>
+                            @if (WzTipoSel is { } ts)
+                            {
+                                <div class="rad-badges">
+                                    @if (ts.EsPqrsd) { <span class="rad-badge pqrsd">PQRSD</span> }
+                                    @if (ts.EsTutela) { <span class="rad-badge tutela">TUTELA - Control estricto</span> }
+                                </div>
+                            }
+                        </div>
+                        <div class="rad-2col">
+                            <div class="field">
+                                <label class="form-label">Nivel de clasificacion</label>
+                                <select class="form-control" @bind="_wzNivelId">
+                                    <option value="">(por defecto del tipo)</option>
+                                    @foreach (var n in _wzNiveles) { <option value="@n.Id">@n.Nombre</option> }
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label class="form-label">Canal de recepcion</label>
+                                <select class="form-control" @bind="_wzCanal">
+                                    @foreach (var c in Enum.GetValues<RadicadoCanal>()) { <option value="@c">@c</option> }
+                                </select>
+                            </div>
+                        </div>
+                    }
+                    else if (_wzStep == 2)
+                    {
+                        @if (_wzDir == RadicadoTipo.Entrada)
+                        {
+                            <div class="field">
+                                <label class="form-label">Tipo de tercero *</label>
+                                <div class="rad-chips">
+                                    @foreach (var tt in new[] { "Natural", "Juridica", "Publica", "Anonimo" })
+                                    {
+                                        var dis = tt == "Anonimo" && !(WzTipoSel?.PermiteAnonimo ?? false);
+                                        <button type="button" class="rad-chip @(_wzTerTipo == tt ? "on" : "")" disabled="@dis" @onclick="@(() => _wzTerTipo = tt)">@tt</button>
+                                    }
+                                </div>
+                                @if (WzTipoSel is { PermiteAnonimo: false }) { <small class="text-muted">Este tipo de comunicacion no permite radicacion anonima.</small> }
+                            </div>
+                            @if (_wzTerTipo != "Anonimo")
+                            {
+                                <div class="rad-2col">
+                                    <div class="field">
+                                        <label class="form-label">Tipo de documento</label>
+                                        <select class="form-control" @bind="_wzRemTipoDoc">
+                                            @foreach (var td in new[] { "CC", "NIT", "CE", "Pasaporte", "TI", "NUIP", "PEP", "PPT" }) { <option value="@td">@td</option> }
+                                        </select>
+                                    </div>
+                                    <div class="field">
+                                        <label class="form-label">Numero de documento *</label>
+                                        <input class="form-control" @bind="_wzRemDoc" maxlength="30" />
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="form-label">Nombre / Razon social *</label>
+                                    <input class="form-control" @bind="_wzRemNombre" maxlength="200" />
+                                </div>
+                                <div class="rad-2col">
+                                    <div class="field"><label class="form-label">Correo electronico</label><input type="email" class="form-control" @bind="_wzRemEmail" maxlength="150" /></div>
+                                    <div class="field"><label class="form-label">Telefono</label><input class="form-control" @bind="_wzRemTel" maxlength="30" /></div>
+                                </div>
+                            }
+                            else { <p class="text-muted">Radicacion anonima: no se capturan datos del remitente.</p> }
+                        }
+                        else
+                        {
+                            <div class="field">
+                                <label class="form-label">Dependencia de origen *</label>
+                                <select class="form-control" @bind="_wzDepOrigenId" @bind:after="WzOnDepOrigenChanged">
+                                    <option value="">Selecciona...</option>
+                                    @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label class="form-label">Funcionario de origen</label>
+                                <select class="form-control" @bind="_wzFuncOrigenId">
+                                    <option value="">(sin especificar)</option>
+                                    @foreach (var f in _wzFuncsOrigen) { <option value="@f.Id">@f.Nombre</option> }
+                                </select>
+                            </div>
+                        }
+                    }
+                    else if (_wzStep == 3)
+                    {
+                        <div class="field">
+                            <label class="form-label">Tipo de soporte *</label>
+                            <div class="rad-chips">
+                                <button type="button" class="rad-chip @(_wzSoporte == "Fisico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Fisico")">Fisico</button>
+                                <button type="button" class="rad-chip @(_wzSoporte == "Electronico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Electronico")">Electronico</button>
+                            </div>
+                            @if (_wzSoporte == "Electronico") { <small class="text-muted">La carga de documentos electronicos se habilita en la Fase 2.</small> }
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Asunto *</label>
+                            <textarea class="form-control" rows="2" maxlength="500" @bind="_wzAsunto"></textarea>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Descripcion</label>
+                            <textarea class="form-control" rows="2" @bind="_wzDescripcion"></textarea>
+                        </div>
+                        <div class="rad-2col">
+                            <div class="field"><label class="form-label">Numero de folios</label><input type="number" min="0" class="form-control" @bind="_wzFolios" /></div>
+                            <div class="field"><label class="form-label">Numero de anexos</label><input type="number" min="0" class="form-control" @bind="_wzAnexos" /></div>
+                        </div>
+                    }
+                    else if (_wzStep == 4)
+                    {
+                        <p class="text-muted" style="margin-top:0;">Asigna la dependencia que tramitara el radicado. Es opcional: puedes distribuirlo despues desde la bandeja.</p>
+                        <div class="field">
+                            <label class="form-label">Dependencia destino</label>
+                            <select class="form-control" @bind="_wzDepDestId" @bind:after="WzOnDepDestChanged">
+                                <option value="">Sin distribuir</option>
+                                @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Funcionario (opcional)</label>
+                            <select class="form-control" @bind="_wzFuncDestId">
+                                <option value="">Pendiente de asignar (jefe)</option>
+                                @foreach (var f in _wzFuncsDest) { <option value="@f.Id">@f.Nombre</option> }
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label class="form-label">Prioridad</label>
+                            <select class="form-control" @bind="_wzPrio">
+                                @foreach (var p in Enum.GetValues<RadicadoPrioridad>()) { <option value="@p">@p</option> }
+                            </select>
+                        </div>
+                    }
+                    @if (_wzError is not null) { <div class="tk-field-error">@_wzError</div> }
+                </div>
+
+                <div class="modal-foot">
+                    <button class="btn btn-outline-secondary" @onclick="WzAtras" disabled="@(_wzStep == 1 || _wzBusy)">Atras</button>
+                    @if (_wzStep < 4)
+                    {
+                        <button class="btn btn-primary" @onclick="WzSiguiente" disabled="@_wzBusy">Siguiente</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-primary" @onclick="WzRadicarAsync" disabled="@_wzBusy">Radicar</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @* ============ Drawer Detalle ============ *@
 @if (_detalleReg is long reg)
 {
@@ -236,6 +435,28 @@
     .rb-foot { padding:10px 12px; font-size:.76rem; color:var(--ink-3,#94a3b8); }
     .rb-detalle-overlay { justify-content:flex-end; }
     .rb-detalle-panel { background:var(--tx-surface,#fff); width:min(920px,96vw); height:100%; box-shadow:-8px 0 24px rgba(2,6,23,.18); overflow:auto; }
+
+    /* Asistente Nuevo Radicado */
+    .rad-steps { display:flex; gap:4px; padding:12px 16px 0; flex-wrap:wrap; }
+    .rad-step { display:flex; align-items:center; gap:6px; font-size:.76rem; color:var(--ink-3,#94a3b8); padding:4px 8px; border-radius:8px; }
+    .rad-step.on { color:#405189; font-weight:600; background:rgba(64,81,137,.08); }
+    .rad-step.done { color:#0ab39c; }
+    .rad-step-n { display:inline-flex; width:20px; height:20px; align-items:center; justify-content:center; border-radius:50%; background:var(--tx-muted,#f1f5f9); font-weight:700; font-size:.72rem; }
+    .rad-step.on .rad-step-n { background:#405189; color:#fff; }
+    .rad-step.done .rad-step-n { background:#0ab39c; color:#fff; }
+    .rad-chips { display:flex; gap:8px; flex-wrap:wrap; }
+    .rad-chip { border:1px solid var(--tx-border,#e2e8f0); background:var(--tx-surface,#fff); color:var(--ink-2,#334155); border-radius:8px; padding:7px 14px; font-size:.82rem; cursor:pointer; }
+    .rad-chip.on { background:#405189; border-color:#405189; color:#fff; }
+    .rad-chip:disabled { opacity:.45; cursor:not-allowed; }
+    .rad-badges { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+    .rad-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:.72rem; font-weight:600; }
+    .rad-badge.pqrsd { background:#DBEAFE; color:#1E40AF; }
+    .rad-badge.tutela { background:#FEE2E2; color:#991B1B; }
+    .rad-2col { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    @@media (max-width:520px){ .rad-2col { grid-template-columns:1fr; } }
+    .rad-ok { text-align:center; padding:16px 8px; }
+    .rad-ok-ico { width:56px; height:56px; margin:0 auto 10px; border-radius:50%; background:#D1FAE5; color:#065F46; font-size:1.8rem; display:flex; align-items:center; justify-content:center; }
+    .rad-ok-num { font-size:1.3rem; font-weight:700; color:#405189; letter-spacing:.5px; }
 </style>
 
 @code {
@@ -353,8 +574,151 @@
     private void Responder(string numero)
         => Flash($"Responder {numero}: el asistente de salida (rad_radicar) se habilita al portar ese modulo.", true);
 
-    private void NuevoRadicado()
-        => Flash("Nuevo radicado: el asistente (rad_radicar) se habilita al portar ese modulo.", true);
+    // ===== Asistente Nuevo Radicado (rad_radicar, Fase 1: Entrada + Interna) =====
+    private bool _wzOpen, _wzBusy;
+    private int _wzStep = 1;
+    private string? _wzError, _wzNumero;
+    private IReadOnlyList<TipoRadicacionDto> _wzTipos = Array.Empty<TipoRadicacionDto>();
+    private IReadOnlyList<OpcionDto> _wzNiveles = Array.Empty<OpcionDto>();
+    private IReadOnlyList<OpcionDto> _wzFuncsOrigen = Array.Empty<OpcionDto>();
+    private IReadOnlyList<OpcionDto> _wzFuncsDest = Array.Empty<OpcionDto>();
+    // Paso 1 - clasificacion.
+    private RadicadoTipo _wzDir = RadicadoTipo.Entrada;
+    private string _wzTipoId = "", _wzNivelId = "";
+    private RadicadoCanal _wzCanal = RadicadoCanal.Presencial;
+    // Paso 2 - remitente (entrada) / origen (interna).
+    private string _wzTerTipo = "Natural", _wzRemTipoDoc = "CC";
+    private string _wzRemDoc = "", _wzRemNombre = "", _wzRemEmail = "", _wzRemTel = "";
+    private string _wzDepOrigenId = "", _wzFuncOrigenId = "";
+    // Paso 3 - documento.
+    private string _wzSoporte = "Fisico", _wzAsunto = "", _wzDescripcion = "";
+    private int _wzFolios = 1, _wzAnexos;
+    // Paso 4 - destino.
+    private string _wzDepDestId = "", _wzFuncDestId = "";
+    private RadicadoPrioridad _wzPrio = RadicadoPrioridad.Normal;
+
+    private (int n, string lbl)[] WzPasos => new[]
+    {
+        (1, "Clasificacion"), (2, _wzDir == RadicadoTipo.Entrada ? "Remitente" : "Origen"), (3, "Documento"), (4, "Destino")
+    };
+
+    private RadicacionDireccion WzDireccionSel => _wzDir == RadicadoTipo.Entrada
+        ? RadicacionDireccion.Entrada : RadicacionDireccion.Interno;
+    private IEnumerable<TipoRadicacionDto> WzTiposFiltrados => _wzTipos.Where(t => t.Direccion == WzDireccionSel);
+    private TipoRadicacionDto? WzTipoSel => _wzTipos.FirstOrDefault(t => t.Id.ToString() == _wzTipoId);
+
+    private async Task NuevoRadicado()
+    {
+        _wzOpen = true; _wzStep = 1; _wzError = null; _wzNumero = null; _wzBusy = false;
+        _wzDir = RadicadoTipo.Entrada; _wzTipoId = ""; _wzNivelId = ""; _wzCanal = RadicadoCanal.Presencial;
+        _wzTerTipo = "Natural"; _wzRemTipoDoc = "CC"; _wzRemDoc = _wzRemNombre = _wzRemEmail = _wzRemTel = "";
+        _wzDepOrigenId = _wzFuncOrigenId = ""; _wzSoporte = "Fisico"; _wzAsunto = _wzDescripcion = "";
+        _wzFolios = 1; _wzAnexos = 0; _wzDepDestId = _wzFuncDestId = ""; _wzPrio = RadicadoPrioridad.Normal;
+        _wzFuncsOrigen = _wzFuncsDest = Array.Empty<OpcionDto>();
+        _wzTipos = await BandejaSvc.TiposAsistenteAsync();
+        _wzNiveles = await BandejaSvc.NivelesReservaAsync();
+    }
+
+    private void WzCerrar() { _wzOpen = false; }
+
+    private void WzSetDir(RadicadoTipo dir)
+    {
+        _wzDir = dir; _wzTipoId = ""; _wzNivelId = ""; _wzTerTipo = "Natural"; _wzError = null;
+    }
+
+    private void WzOnTipoChanged()
+    {
+        var t = WzTipoSel;
+        if (t is null) { return; }
+        // Autollenar el nivel de reserva por defecto del tipo (calca onTipo del legacy).
+        if (t.NivelReservaDefaultId is long nv) { _wzNivelId = nv.ToString(); }
+        // Si el tipo no permite anonimo y estaba seleccionado, revertir.
+        if (!t.PermiteAnonimo && _wzTerTipo == "Anonimo") { _wzTerTipo = "Natural"; }
+    }
+
+    private async Task WzOnDepOrigenChanged()
+        => _wzFuncsOrigen = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDepOrigenId, out var d) ? d : null);
+
+    private async Task WzOnDepDestChanged()
+    {
+        _wzFuncDestId = "";
+        _wzFuncsDest = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDepDestId, out var d) ? d : null);
+    }
+
+    private string? WzValidarPaso(int step) => step switch
+    {
+        1 => WzTipoSel is null ? "Selecciona el tipo de comunicacion." : null,
+        2 when _wzDir == RadicadoTipo.Entrada && _wzTerTipo != "Anonimo" =>
+            string.IsNullOrWhiteSpace(_wzRemNombre) || string.IsNullOrWhiteSpace(_wzRemDoc)
+                ? "Nombre y numero de documento del remitente son obligatorios." : null,
+        2 when _wzDir == RadicadoTipo.Interno =>
+            string.IsNullOrWhiteSpace(_wzDepOrigenId) ? "La dependencia de origen es obligatoria." : null,
+        3 => string.IsNullOrWhiteSpace(_wzAsunto) ? "El asunto es obligatorio." : null,
+        _ => null
+    };
+
+    private void WzSiguiente()
+    {
+        _wzError = WzValidarPaso(_wzStep);
+        if (_wzError is null && _wzStep < 4) { _wzStep++; }
+    }
+
+    private void WzAtras() { _wzError = null; if (_wzStep > 1) { _wzStep--; } }
+
+    private async Task WzRadicarAsync()
+    {
+        // Revalidar todos los pasos por si se salto con navegacion.
+        for (var s = 1; s <= 3; s++)
+        {
+            var err = WzValidarPaso(s);
+            if (err is not null) { _wzError = err; _wzStep = s; return; }
+        }
+        var tipo = WzTipoSel!;
+        var anonimo = _wzDir == RadicadoTipo.Entrada && _wzTerTipo == "Anonimo";
+        var esEntrada = _wzDir == RadicadoTipo.Entrada;
+        _wzBusy = true; _wzError = null;
+        try
+        {
+            var req = new RadicarNuevoRequest(
+                Tipo: _wzDir,
+                TipoComunicacionId: tipo.Id,
+                Asunto: _wzAsunto.Trim(),
+                Descripcion: string.IsNullOrWhiteSpace(_wzDescripcion) ? null : _wzDescripcion.Trim(),
+                Canal: _wzCanal,
+                Anonimo: anonimo,
+                RemitenteNombre: esEntrada && !anonimo ? _wzRemNombre.Trim() : null,
+                RemitenteEmail: esEntrada && !anonimo && !string.IsNullOrWhiteSpace(_wzRemEmail) ? _wzRemEmail.Trim() : null,
+                RemitenteTipoDoc: esEntrada && !anonimo ? _wzRemTipoDoc : null,
+                RemitenteDocumento: esEntrada && !anonimo ? _wzRemDoc.Trim() : null,
+                RemitenteTelefono: esEntrada && !anonimo && !string.IsNullOrWhiteSpace(_wzRemTel) ? _wzRemTel.Trim() : null,
+                NivelReservaId: long.TryParse(_wzNivelId, out var nvId) ? nvId : null,
+                RadicadoRelacionadoId: null,
+                Soporte: _wzSoporte,
+                Prioridad: _wzPrio,
+                Adjuntos: null,
+                Folios: _wzFolios,
+                NumAnexos: _wzAnexos,
+                DependenciaOrigenId: !esEntrada && long.TryParse(_wzDepOrigenId, out var doId) ? doId : null,
+                FuncionarioOrigenId: !esEntrada && long.TryParse(_wzFuncOrigenId, out var foId) ? foId : null);
+
+            var res = await RadSvc.RadicarAsync(req);
+            if (!res.Ok) { _wzError = res.Error ?? "No se pudo radicar."; return; }
+
+            // Radicar + distribuir en un paso (calca el legacy): si se eligio dependencia destino, distribuir.
+            if (long.TryParse(_wzDepDestId, out var depDest) && res.RadicadoId is long rid)
+            {
+                var dreq = new DistribuirRequest(rid, depDest,
+                    long.TryParse(_wzFuncDestId, out var fd) ? fd : null,
+                    "", _wzPrio, "");
+                await DistSvc.DistribuirAsync(dreq);
+            }
+
+            _wzNumero = res.Numero;
+            Flash($"Radicado {res.Numero} creado.", true);
+            await LoadAsync();
+        }
+        finally { _wzBusy = false; }
+    }
 
     private async Task ExportCsvAsync()
     {

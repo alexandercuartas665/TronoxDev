@@ -74,3 +74,9 @@ public sealed record DistribuirResult(bool Ok, string? Error = null, RadicadoEst
 
 /// <summary>Opcion de un combo (dependencias/funcionarios/tipos) para los filtros y el modal.</summary>
 public sealed record OpcionDto(long Id, string Nombre);
+
+/// <summary>Tipo de comunicacion con sus banderas, para alimentar el asistente de "Nuevo Radicado"
+/// (rad_radicar): filtrar por direccion, mostrar badges PQRSD/Tutela, gatear "Anonimo" y autollenar el
+/// nivel de reserva por defecto. Calca el catalogo que el legacy lee en el paso 1 del wizard.</summary>
+public sealed record TipoRadicacionDto(long Id, string Nombre, RadicacionDireccion Direccion,
+    bool EsPqrsd, bool EsTutela, bool PermiteAnonimo, long? NivelReservaDefaultId, string? Color);

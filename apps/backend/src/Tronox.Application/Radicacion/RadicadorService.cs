@@ -91,6 +91,10 @@ public sealed class RadicadorService : IRadicadorService
             NivelReservaId = req.NivelReservaId ?? tipo.NivelReservaDefaultId,
             RadicadoRelacionadoId = req.RadicadoRelacionadoId,
             Soporte = req.Soporte,
+            Folios = req.Folios,
+            NumAnexos = req.NumAnexos,
+            DependenciaOrigenId = req.DependenciaOrigenId,
+            FuncionarioOrigenId = req.FuncionarioOrigenId,
             FechaRadicacion = DateTime.UtcNow,
             FechaVencimiento = vencimiento,
             UsuarioRadicaId = _tenant.UserId

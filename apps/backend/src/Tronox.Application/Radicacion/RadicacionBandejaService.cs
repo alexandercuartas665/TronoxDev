@@ -89,6 +89,17 @@ public sealed class RadicacionBandejaService : IRadicacionBandejaService
         => await _db.TiposComunicacion.AsNoTracking().Where(t => t.Activo)
             .OrderBy(t => t.Nombre).Select(t => new OpcionDto(t.Id, t.Nombre)).ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TipoRadicacionDto>> TiposAsistenteAsync(CancellationToken ct = default)
+        => await _db.TiposComunicacion.AsNoTracking().Where(t => t.Activo)
+            .OrderBy(t => t.Nombre)
+            .Select(t => new TipoRadicacionDto(t.Id, t.Nombre, t.Direccion, t.EsPqrsd, t.EsTutela,
+                t.PermiteAnonimo, t.NivelReservaDefaultId, t.Color))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<OpcionDto>> NivelesReservaAsync(CancellationToken ct = default)
+        => await _db.NivelesClasificacion.AsNoTracking().Where(n => n.Activo)
+            .OrderBy(n => n.NivelOrden).Select(n => new OpcionDto(n.Id, n.Nombre)).ToListAsync(ct);
+
     public async Task<IReadOnlyList<OpcionDto>> DependenciasAsync(CancellationToken ct = default)
         => await _db.OrgUnits.AsNoTracking()
             .Where(o => o.Classifier == OrgUnitClassifier.Dependencia && !o.IsArchived)

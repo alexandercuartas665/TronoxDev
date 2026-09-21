@@ -29,7 +29,11 @@ public sealed record RadicarNuevoRequest(
     long? RadicadoRelacionadoId = null,
     string Soporte = "Electronico",
     RadicadoPrioridad Prioridad = RadicadoPrioridad.Normal,
-    IReadOnlyList<RadicarAdjunto>? Adjuntos = null);
+    IReadOnlyList<RadicarAdjunto>? Adjuntos = null,
+    int? Folios = null,
+    int? NumAnexos = null,
+    long? DependenciaOrigenId = null,
+    long? FuncionarioOrigenId = null);
 
 /// <summary>Referencia a un adjunto ya subido a object storage, para colgarlo del radicado.</summary>
 public sealed record RadicarAdjunto(string Nombre, string? Extension, string? MimeType, long TamanoBytes,

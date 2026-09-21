@@ -643,6 +643,28 @@ Lote grande de Gestion Integral de Expedientes, calcado del legacy `exp_bandeja.
 
 ---
 
+## 32. Asistente "Nuevo Radicado" (rad_radicar) - Fase 1 (RQ09 RF02) (2026-09-21)
+
+Se porto el asistente de creacion de radicados del legacy VB.NET (`rad_radicar.aspx` + `rad_op.ashx.vb`),
+que estaba como placeholder en la bandeja (`NuevoRadicado()` solo mostraba un flash). Ver ADR-032.
+
+- **Hallazgo:** el backend de radicar ya existia completo (`RadicadorService.RadicarAsync`: consecutivo
+  transaccional por tenant/tipo/anio, vencimiento SLA con calendario habil, trazas); ya lo usaban correos
+  y el portal ciudadano. El port fue UI cableada a ese servicio.
+- **Fase 1:** wizard de 4 pasos (Clasificacion / Remitente-u-Origen / Documento / Destino) para **Entrada
+  e Interna**. Tipo filtrado por direccion con badges PQRSD/Tutela, "Anonimo" gateado por el tipo, nivel
+  autollenado. Remitente **inline** (RQ07 Terceros pendiente). **Radicar + distribuir en un paso**
+  (encadena `DistribuirAsync` si hay destino). Diferido a Fase 2: documentos electronicos/estampa,
+  digitalizacion, salida/"Responder", autocompletar tercero, acuse imprimible.
+- **Cambios:** solo UI (Radicacion.razor) + `TiposAsistenteAsync`/`NivelesReservaAsync` y extension
+  **aditiva** de `RadicarNuevoRequest` (Folios/NumAnexos/DependenciaOrigenId/FuncionarioOrigenId; columnas
+  ya existen). **Sin migracion**, sin paquetes nuevos.
+- **Verificado:** build verde; 581 tests (incl. aislamiento). E2e en dev: creo ALCPRU-E-2026-000002
+  (Entrada/PQRSD, remitente inline, folios 3), distribuido a Gestion Documental en un paso (Distribuido),
+  bandeja + contadores refrescados (Todos 37->38, PQRSD 21->22). **No desplegado aun.**
+
+---
+
 ## 31. Deploy a prod de Ola 4 (estampa en imagenes + marca de agua de visor + full-text compartidos) (2026-09-21)
 
 Desplegado a prod (host 10.0.0.3, commit `d0df9cb`) la Ola 4 (ADR-031).
