@@ -127,6 +127,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     public DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion => Set<NotificacionRadicacionConfig>();
     public DbSet<MigracionRadicadosLog> MigracionesRadicados => Set<MigracionRadicadosLog>();
     public DbSet<Radicado> Radicados => Set<Radicado>();
+    public DbSet<Tercero> Terceros => Set<Tercero>();
     public DbSet<RadicadoTrazabilidad> RadicadosTrazabilidad => Set<RadicadoTrazabilidad>();
     public DbSet<CorreoRecibido> CorreosRecibidos => Set<CorreoRecibido>();
     public DbSet<RadicadoTarea> RadicadosTareas => Set<RadicadoTarea>();
@@ -413,6 +414,7 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
         configurationBuilder.Properties<TerceroTipo>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TerceroEstado>().HaveConversion<string>().HaveMaxLength(40);
         configurationBuilder.Properties<TerceroIdTipo>().HaveConversion<string>().HaveMaxLength(40);
+        configurationBuilder.Properties<TerceroSubtipo>().HaveConversion<string>().HaveMaxLength(30);
         // Campos configurables por ficha (000232): el tipo del campo se guarda como texto legible.
         configurationBuilder.Properties<TerceroFieldType>().HaveConversion<string>().HaveMaxLength(40);
         // Configuracion de la entidad (000615): naturaleza de la entidad (Sede/Area) como texto.
@@ -1461,11 +1463,43 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasForeignKey(x => x.NivelReservaId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne(x => x.RadicadoRelacionado).WithMany()
                 .HasForeignKey(x => x.RadicadoRelacionadoId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.RemitenteTercero).WithMany()
+                .HasForeignKey(x => x.RemitenteTerceroId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TenantId, x.NumeroRadicado }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.RemitenteTerceroId });
             b.HasIndex(x => new { x.TenantId, x.Estado });
             b.HasIndex(x => new { x.TenantId, x.FechaRadicacion });
             b.HasIndex(x => new { x.TenantId, x.FechaVencimiento });
             b.HasIndex(x => new { x.TenantId, x.RadicadoRelacionadoId });
+        });
+
+        modelBuilder.Entity<Tercero>(b =>
+        {
+            b.Property(x => x.TipoDocumento).HasMaxLength(10).IsRequired();
+            b.Property(x => x.NumeroDocumento).HasMaxLength(30).IsRequired();
+            b.Property(x => x.DigitoVerificador).HasMaxLength(1);
+            b.Property(x => x.RazonSocial).HasMaxLength(300);
+            b.Property(x => x.Nombre).HasMaxLength(150);
+            b.Property(x => x.Apellidos).HasMaxLength(150);
+            b.Property(x => x.NombreComercial).HasMaxLength(200);
+            b.Property(x => x.Email).HasMaxLength(200);
+            b.Property(x => x.Telefono).HasMaxLength(50);
+            b.Property(x => x.Direccion).HasMaxLength(300);
+            b.Property(x => x.SitioWeb).HasMaxLength(200);
+            b.Property(x => x.SectorEconomico).HasMaxLength(100);
+            b.Property(x => x.RegimenTributario).HasMaxLength(100);
+            b.Property(x => x.SectorAdministrativo).HasMaxLength(100);
+            b.Property(x => x.OrdenEntidad).HasMaxLength(20);
+            b.Property(x => x.NaturalezaJuridica).HasMaxLength(100);
+            b.Property(x => x.Observaciones).HasMaxLength(2000);
+            b.Property(x => x.MotivoInactivacion).HasMaxLength(500);
+            b.Property(x => x.Origen).HasMaxLength(20).IsRequired();
+            b.HasOne(x => x.Municipio).WithMany().HasForeignKey(x => x.MunicipioId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Pais).WithMany().HasForeignKey(x => x.PaisId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.RepresentanteLegal).WithMany().HasForeignKey(x => x.RepresentanteLegalId).OnDelete(DeleteBehavior.Restrict);
+            // DAT-02 / RF01: un documento no se duplica dentro del tenant.
+            b.HasIndex(x => new { x.TenantId, x.TipoDocumento, x.NumeroDocumento }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Estado });
         });
 
         modelBuilder.Entity<RadicadoTrazabilidad>(b =>

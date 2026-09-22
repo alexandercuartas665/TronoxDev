@@ -1,0 +1,408 @@
+@page "/modulo/terceros"
+@attribute [Authorize(Policy = "Perm:modulo/terceros:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Terceros
+@using Tronox.Application.Archivistica
+@using Tronox.Domain.Enums
+@inject ITerceroService Svc
+@inject IDivipolaService DivSvc
+
+@* RQ07 RF01 - Catalogo de Terceros: directorio maestro unico de actores externos (DAT-02). Bandeja con
+   busqueda inteligente desde el 3er caracter + filtros; ficha dinamica por subtipo; inactivacion con
+   motivo (sin eliminacion). Contactos multiples, etiquetas, metadatos y vista 360 completa: fases siguientes. *@
+
+<PageTitle>Catalogo de Terceros - TRONOX</PageTitle>
+
+<div class="tr-wrap">
+    <div class="tr-head">
+        <div>
+            <h1>Catalogo de Terceros</h1>
+            <p>Directorio maestro unico de personas y empresas externas (RQ07 - DAT-02).</p>
+        </div>
+        <button class="btn btn-primary" @onclick="NuevoTercero">+ Nuevo Tercero</button>
+    </div>
+
+    @if (_flash is not null) { <div class="tr-alert @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+    <div class="tr-tools">
+        <input class="tr-search" @bind="_buscar" @bind:event="oninput" @bind:after="BuscarAsync"
+               placeholder="Buscar por documento, nombre, razon social o correo (min. 3 caracteres)..." />
+    </div>
+    <div class="tr-chips">
+        @foreach (var (val, lbl) in new[] { ("", "Todos"), ("natural", "Persona Natural"), ("juridica", "Persona Juridica") })
+        {
+            <button class="tr-chip @(_grupo == val ? "on" : "")" @onclick="@(() => SetGrupo(val))">@lbl</button>
+        }
+        <span class="tr-sep"></span>
+        @foreach (var (val, lbl) in new[] { ("", "Activos + Inactivos"), ("activo", "Activos"), ("inactivo", "Inactivos"), ("incompleto", "Incompletos") })
+        {
+            <button class="tr-chip @(_estadoFiltro == val ? "on" : "")" @onclick="@(() => SetEstado(val))">@lbl</button>
+        }
+    </div>
+
+    <div class="tr-card">
+        @if (_items.Count == 0)
+        {
+            <div class="tr-empty">Sin terceros que coincidan. @(_buscar.Length is > 0 and < 3 ? "Escribe al menos 3 caracteres." : "")</div>
+        }
+        else
+        {
+            <table class="tr-table">
+                <thead>
+                    <tr>
+                        <th>Nombre / Razon social</th><th>Subtipo</th><th>Documento</th>
+                        <th>Contacto</th><th>Estado</th><th>Perfil</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _items)
+                    {
+                        <tr>
+                            <td><button class="tr-link" @onclick="@(() => Editar(t.Id))">@t.Nombre</button></td>
+                            <td>@t.SubtipoLabel</td>
+                            <td><span class="tr-mono">@t.TipoDocumento @t.NumeroDocumento</span></td>
+                            <td>@(t.Contacto ?? "-")</td>
+                            <td><span class="tr-pill @(t.Estado == TerceroEstado.Activo ? "act" : "ina")">@t.Estado</span></td>
+                            <td>@(t.PerfilCompleto ? "Completo" : "Incompleto")</td>
+                            <td class="tr-acts">
+                                <button class="tr-act" @onclick="@(() => Editar(t.Id))">Editar</button>
+                                @if (t.Estado == TerceroEstado.Activo)
+                                {
+                                    <button class="tr-act red" @onclick="@(() => AbrirMotivo(t, false))">Inactivar</button>
+                                }
+                                else
+                                {
+                                    <button class="tr-act" @onclick="@(() => AbrirMotivo(t, true))">Reactivar</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="tr-foot">Mostrando @_items.Count de @_total terceros.</div>
+        }
+    </div>
+</div>
+
+@* ---------- Ficha crear/editar ---------- *@
+@if (_ficha is not null)
+{
+    <div class="modal-overlay" @onclick="Cerrar">
+        <div class="tr-modal" @onclick:stopPropagation="true">
+            <div class="tr-modal-head">
+                <h3>@(_ficha.Id > 0 ? "Editar tercero" : "Nuevo tercero")</h3>
+                <button class="x" @onclick="Cerrar">&#10005;</button>
+            </div>
+            <div class="tr-modal-body">
+                <div class="tr-field">
+                    <label>Subtipo <span class="req">*</span></label>
+                    <select class="tr-in" @bind="_fSubtipo" @bind:after="OnSubtipoChanged">
+                        @foreach (var s in Enum.GetValues<TerceroSubtipo>())
+                        {
+                            <option value="@s">@TerceroService.SubtipoLabel(s)</option>
+                        }
+                    </select>
+                </div>
+                <div class="tr-grid2">
+                    <div class="tr-field">
+                        <label>Tipo de documento <span class="req">*</span></label>
+                        <select class="tr-in" @bind="_fTipoDoc">
+                            @foreach (var td in TiposDoc) { <option value="@td">@td</option> }
+                        </select>
+                    </div>
+                    <div class="tr-field">
+                        <label>Numero de documento <span class="req">*</span></label>
+                        <input class="tr-in" @bind="_fNumDoc" maxlength="30" />
+                    </div>
+                </div>
+                @if (EsJuridica)
+                {
+                    <div class="tr-field"><label>Razon social <span class="req">*</span></label><input class="tr-in" @bind="_fRazon" maxlength="300" /></div>
+                    <div class="tr-field"><label>Nombre comercial / Sigla</label><input class="tr-in" @bind="_fComercial" maxlength="200" /></div>
+                }
+                else
+                {
+                    <div class="tr-grid2">
+                        <div class="tr-field"><label>Nombres <span class="req">*</span></label><input class="tr-in" @bind="_fNombre" maxlength="150" /></div>
+                        <div class="tr-field"><label>Apellidos <span class="req">*</span></label><input class="tr-in" @bind="_fApellidos" maxlength="150" /></div>
+                    </div>
+                }
+                <div class="tr-grid2">
+                    <div class="tr-field"><label>Correo electronico <span class="req">*</span></label><input class="tr-in" @bind="_fEmail" maxlength="200" placeholder="correo@@ejemplo.com" /></div>
+                    <div class="tr-field"><label>Telefono</label><input class="tr-in" @bind="_fTelefono" maxlength="50" /></div>
+                </div>
+                <div class="tr-field"><label>Direccion</label><input class="tr-in" @bind="_fDireccion" maxlength="300" /></div>
+                <div class="tr-grid2">
+                    <div class="tr-field">
+                        <label>Departamento (DIVIPOLA)</label>
+                        <select class="tr-in" @bind="_fDeptoSel" @bind:after="OnDeptoChanged">
+                            <option value="">&mdash; Departamento &mdash;</option>
+                            @foreach (var d in _deptos) { <option value="@d.Id">@d.Nombre</option> }
+                        </select>
+                    </div>
+                    <div class="tr-field">
+                        <label>Municipio</label>
+                        <select class="tr-in" @bind="_fMunicipioId" disabled="@(string.IsNullOrEmpty(_fDeptoSel))">
+                            <option value="">@(string.IsNullOrEmpty(_fDeptoSel) ? "Primero seleccione departamento" : "— Municipio —")</option>
+                            @foreach (var m in _munis) { <option value="@m.Id">@m.Nombre</option> }
+                        </select>
+                    </div>
+                </div>
+                @if (EsJuridica)
+                {
+                    <div class="tr-grid2">
+                        <div class="tr-field"><label>Sitio web</label><input class="tr-in" @bind="_fSitioWeb" maxlength="200" /></div>
+                        <div class="tr-field"><label>Sector economico</label><input class="tr-in" @bind="_fSectorEco" maxlength="100" /></div>
+                    </div>
+                    @if (_fSubtipo == TerceroSubtipo.JuridicaPublica)
+                    {
+                        <div class="tr-grid2">
+                            <div class="tr-field"><label>Sector administrativo</label><input class="tr-in" @bind="_fSectorAdmin" maxlength="100" /></div>
+                            <div class="tr-field">
+                                <label>Orden de la entidad</label>
+                                <select class="tr-in" @bind="_fOrden">
+                                    <option value="">&mdash;</option><option value="Nacional">Nacional</option><option value="Territorial">Territorial</option>
+                                </select>
+                            </div>
+                        </div>
+                    }
+                }
+                <div class="tr-field"><label>Observaciones</label><textarea class="tr-in" rows="2" @bind="_fObs"></textarea></div>
+                @if (_fichaError is not null) { <div class="tr-alert err">@_fichaError</div> }
+            </div>
+            <div class="tr-modal-foot">
+                <button class="btn btn-light" @onclick="Cerrar">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarAsync" disabled="@_busy">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ---------- Motivo inactivar / reactivar ---------- *@
+@if (_motivoItem is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => _motivoItem = null)">
+        <div class="tr-modal sm" @onclick:stopPropagation="true">
+            <div class="tr-modal-head">
+                <h3>@(_motivoReactivar ? "Reactivar" : "Inactivar") tercero</h3>
+                <button class="x" @onclick="@(() => _motivoItem = null)">&#10005;</button>
+            </div>
+            <div class="tr-modal-body">
+                <p style="font-size:13px;color:#566980;">@_motivoItem.Nombre &mdash; <span class="tr-mono">@_motivoItem.TipoDocumento @_motivoItem.NumeroDocumento</span></p>
+                <div class="tr-field">
+                    <label>Motivo <span class="req">*</span></label>
+                    <textarea class="tr-in" rows="3" @bind="_motivo" placeholder="Motivo obligatorio (queda en la trazabilidad)..."></textarea>
+                </div>
+                @if (_motivoError is not null) { <div class="tr-alert err">@_motivoError</div> }
+            </div>
+            <div class="tr-modal-foot">
+                <button class="btn btn-light" @onclick="@(() => _motivoItem = null)">Cancelar</button>
+                <button class="btn @(_motivoReactivar ? "btn-primary" : "btn-danger")" @onclick="ConfirmarMotivoAsync" disabled="@_busy">
+                    @(_motivoReactivar ? "Reactivar" : "Inactivar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .tr-wrap { padding:20px 24px; }
+    .tr-head { display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:14px; }
+    .tr-head h1 { font-size:20px; font-weight:800; color:#0F172A; margin:0; }
+    .tr-head p { font-size:12px; color:#94A3B8; margin:2px 0 0; }
+    .tr-alert { border-radius:8px; padding:9px 12px; font-size:13px; margin-bottom:12px; }
+    .tr-alert.ok { background:#D1FAE5; color:#065F46; } .tr-alert.err { background:#FEE2E2; color:#991B1B; }
+    .tr-tools { margin-bottom:10px; }
+    .tr-search { width:100%; padding:10px 14px; border:1px solid #D5DDE9; border-radius:8px; font-size:13px; }
+    .tr-search:focus { border-color:#405189; outline:none; }
+    .tr-chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+    .tr-chip { border:1px solid #E2E8F0; background:#fff; color:#566980; border-radius:18px; padding:5px 12px; font-size:12px; cursor:pointer; }
+    .tr-chip.on { background:#405189; border-color:#405189; color:#fff; font-weight:600; }
+    .tr-sep { width:1px; height:20px; background:#E2E8F0; margin:0 4px; }
+    .tr-card { background:#fff; border:1px solid #E2E8F0; border-radius:12px; overflow:hidden; }
+    .tr-empty { padding:40px; text-align:center; color:#94A3B8; font-size:13px; }
+    .tr-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .tr-table th { text-align:left; color:#64748B; font-weight:600; padding:10px 12px; border-bottom:1px solid #E2E8F0; white-space:nowrap; }
+    .tr-table td { padding:9px 12px; border-bottom:1px solid #F1F5F9; color:#334155; }
+    .tr-link { border:none; background:none; color:#405189; font-weight:600; cursor:pointer; padding:0; font-size:13px; }
+    .tr-mono { font-family:Consolas,monospace; font-size:12px; }
+    .tr-pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+    .tr-pill.act { background:#D1FAE5; color:#065F46; } .tr-pill.ina { background:#F1F5F9; color:#64748B; }
+    .tr-acts { white-space:nowrap; text-align:right; }
+    .tr-act { border:1px solid #E2E8F0; background:#fff; color:#405189; border-radius:6px; padding:3px 8px; font-size:12px; cursor:pointer; margin-left:4px; }
+    .tr-act.red { color:#DC2626; }
+    .tr-foot { padding:10px 12px; font-size:12px; color:#94A3B8; }
+    .tr-modal { background:#fff; width:min(620px,96vw); max-height:92vh; border-radius:12px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(2,6,23,.3); }
+    .tr-modal.sm { width:min(440px,96vw); }
+    .tr-modal-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #E2E8F0; }
+    .tr-modal-head h3 { margin:0; font-size:15px; color:#212529; }
+    .tr-modal-head .x { border:none; background:none; font-size:18px; color:#878a99; cursor:pointer; }
+    .tr-modal-body { padding:16px 18px; overflow:auto; display:flex; flex-direction:column; gap:12px; }
+    .tr-modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid #E2E8F0; background:#F8FAFC; }
+    .tr-field { display:flex; flex-direction:column; gap:4px; }
+    .tr-field label { font-size:12px; font-weight:600; color:#1A2B3C; }
+    .tr-field .req { color:#EF4444; }
+    .tr-in { padding:9px 12px; border:1px solid #D5DDE9; border-radius:7px; font-size:13px; width:100%; }
+    .tr-in:focus { border-color:#405189; outline:none; }
+    .tr-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    @@media (max-width:600px){ .tr-grid2 { grid-template-columns:1fr; } }
+</style>
+
+@code {
+    private static readonly string[] TiposDoc = { "CC", "CE", "PA", "TI", "RC", "PEP", "PPT", "NIT", "DE" };
+
+    private List<TerceroListItemDto> _items = new();
+    private int _total;
+    private string _buscar = "", _grupo = "", _estadoFiltro = "";
+    private string? _flash; private bool _flashOk;
+    private bool _busy;
+
+    // Ficha.
+    private TerceroFichaDto? _ficha;
+    private TerceroSubtipo _fSubtipo = TerceroSubtipo.PersonaNatural;
+    private string _fTipoDoc = "CC", _fNumDoc = "", _fRazon = "", _fComercial = "", _fNombre = "", _fApellidos = "";
+    private string _fEmail = "", _fTelefono = "", _fDireccion = "", _fSitioWeb = "", _fSectorEco = "", _fSectorAdmin = "", _fOrden = "", _fObs = "";
+    private string _fDeptoSel = "", _fMunicipioId = "";
+    private string? _fichaError;
+    private long? _fPaisId, _fRepLegalId, _fFichaMunicipioActual;
+    private IReadOnlyList<DepartamentoDto> _deptos = Array.Empty<DepartamentoDto>();
+    private IReadOnlyList<MunicipioDto> _munis = Array.Empty<MunicipioDto>();
+    private long? _paisId;
+
+    // Motivo.
+    private TerceroListItemDto? _motivoItem; private bool _motivoReactivar; private string _motivo = ""; private string? _motivoError;
+
+    private bool EsJuridica => _fSubtipo is TerceroSubtipo.JuridicaPrivada or TerceroSubtipo.JuridicaPublica
+        or TerceroSubtipo.JuridicaMixta or TerceroSubtipo.ExtranjeraJuridica;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RecargarAsync();
+        var paises = await DivSvc.ListPaisesAsync();
+        _paisId = (paises.FirstOrDefault(p => p.CodigoIso3 == "COL") ?? paises.FirstOrDefault())?.Id;
+        _deptos = _paisId is long pid ? await DivSvc.ListDepartamentosAsync(pid) : Array.Empty<DepartamentoDto>();
+    }
+
+    private async Task RecargarAsync()
+    {
+        TerceroEstado? est = _estadoFiltro switch { "activo" => TerceroEstado.Activo, "inactivo" => TerceroEstado.Inactivo, _ => null };
+        var res = await Svc.ListarAsync(new TerceroFiltro(
+            Buscar: string.IsNullOrWhiteSpace(_buscar) ? null : _buscar,
+            Grupo: string.IsNullOrEmpty(_grupo) ? null : _grupo,
+            Estado: est,
+            SoloIncompletos: _estadoFiltro == "incompleto" ? true : null));
+        _items = res.Items.ToList(); _total = res.Total;
+    }
+
+    private async Task BuscarAsync()
+    {
+        if (_buscar.Length is 0 or >= 3) { await RecargarAsync(); }
+    }
+
+    private async Task SetGrupo(string g) { _grupo = g; await RecargarAsync(); }
+    private async Task SetEstado(string e) { _estadoFiltro = e; await RecargarAsync(); }
+
+    private void NuevoTercero()
+    {
+        _ficha = new TerceroFichaDto(0, TerceroSubtipo.PersonaNatural, "CC", "", null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null, null, null, null, null, TerceroEstado.Activo, false);
+        _fSubtipo = TerceroSubtipo.PersonaNatural; _fTipoDoc = "CC"; _fNumDoc = "";
+        _fRazon = _fComercial = _fNombre = _fApellidos = _fEmail = _fTelefono = _fDireccion = "";
+        _fSitioWeb = _fSectorEco = _fSectorAdmin = _fOrden = _fObs = "";
+        _fDeptoSel = ""; _fMunicipioId = ""; _munis = Array.Empty<MunicipioDto>();
+        _fPaisId = _fRepLegalId = _fFichaMunicipioActual = null; _fichaError = null;
+    }
+
+    private async Task Editar(long id)
+    {
+        var f = await Svc.ObtenerAsync(id);
+        if (f is null) { Flash("Tercero no encontrado.", false); return; }
+        _ficha = f;
+        _fSubtipo = f.Subtipo; _fTipoDoc = f.TipoDocumento; _fNumDoc = f.NumeroDocumento;
+        _fRazon = f.RazonSocial ?? ""; _fComercial = f.NombreComercial ?? "";
+        _fNombre = f.Nombre ?? ""; _fApellidos = f.Apellidos ?? "";
+        _fEmail = f.Email ?? ""; _fTelefono = f.Telefono ?? ""; _fDireccion = f.Direccion ?? "";
+        _fSitioWeb = f.SitioWeb ?? ""; _fSectorEco = f.SectorEconomico ?? ""; _fSectorAdmin = f.SectorAdministrativo ?? "";
+        _fOrden = f.OrdenEntidad ?? ""; _fObs = f.Observaciones ?? "";
+        _fPaisId = f.PaisId; _fRepLegalId = f.RepresentanteLegalId; _fFichaMunicipioActual = f.MunicipioId;
+        _fMunicipioId = f.MunicipioId?.ToString() ?? ""; _fichaError = null;
+        // Resuelve el departamento del municipio guardado para precargar el cascade.
+        _fDeptoSel = ""; _munis = Array.Empty<MunicipioDto>();
+        if (f.MunicipioId is long muni)
+        {
+            var m = await DivSvc.GetMunicipioAsync(muni);
+            if (m is not null)
+            {
+                _fDeptoSel = m.DepartamentoId.ToString();
+                _munis = await DivSvc.ListMunicipiosAsync(m.DepartamentoId);
+                _fMunicipioId = muni.ToString();
+            }
+        }
+    }
+
+    private void OnSubtipoChanged() { /* el markup se redibuja segun EsJuridica */ }
+
+    private async Task OnDeptoChanged()
+    {
+        _fMunicipioId = "";
+        _munis = long.TryParse(_fDeptoSel, out var d) ? await DivSvc.ListMunicipiosAsync(d) : Array.Empty<MunicipioDto>();
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_ficha is null) { return; }
+        _busy = true; _fichaError = null;
+        try
+        {
+            var ficha = _ficha with
+            {
+                Subtipo = _fSubtipo,
+                TipoDocumento = _fTipoDoc,
+                NumeroDocumento = _fNumDoc.Trim(),
+                RazonSocial = _fRazon,
+                NombreComercial = _fComercial,
+                Nombre = _fNombre,
+                Apellidos = _fApellidos,
+                Email = _fEmail,
+                Telefono = _fTelefono,
+                Direccion = _fDireccion,
+                MunicipioId = long.TryParse(_fMunicipioId, out var mid) ? mid : null,
+                PaisId = _fPaisId,
+                SitioWeb = _fSitioWeb,
+                SectorEconomico = _fSectorEco,
+                SectorAdministrativo = _fSectorAdmin,
+                OrdenEntidad = string.IsNullOrEmpty(_fOrden) ? null : _fOrden,
+                RepresentanteLegalId = _fRepLegalId,
+                Observaciones = _fObs
+            };
+            var res = await Svc.GuardarAsync(ficha);
+            if (!res.Ok) { _fichaError = res.Error; return; }
+            _ficha = null;
+            Flash("Tercero guardado.", true);
+            await RecargarAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private void AbrirMotivo(TerceroListItemDto t, bool reactivar) { _motivoItem = t; _motivoReactivar = reactivar; _motivo = ""; _motivoError = null; }
+
+    private async Task ConfirmarMotivoAsync()
+    {
+        if (_motivoItem is null) { return; }
+        _busy = true; _motivoError = null;
+        try
+        {
+            var res = _motivoReactivar
+                ? await Svc.ReactivarAsync(_motivoItem.Id, _motivo)
+                : await Svc.InactivarAsync(_motivoItem.Id, _motivo);
+            if (!res.Ok) { _motivoError = res.Error; return; }
+            _motivoItem = null;
+            Flash(_motivoReactivar ? "Tercero reactivado." : "Tercero inactivado.", true);
+            await RecargarAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cerrar() => _ficha = null;
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+}

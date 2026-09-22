@@ -49,8 +49,11 @@ public class Radicado : TenantEntity
     public long? NivelReservaId { get; set; }
     public NivelClasificacion? NivelReserva { get; set; }
 
-    // ---- Remitente (inline, espejo de RAD_RADICADOS.REMITENTE_*). Cuando exista RQ07 Terceros se
-    // agrega RemitenteTerceroId como fuente unica (invariante 2, DAT-02); por ahora snapshot. ----
+    // ---- Remitente. Fuente unica = RQ07 Terceros (DAT-02): RemitenteTerceroId apunta al tercero; los
+    // campos inline se conservan como snapshot del momento de la radicacion (el legacy los guardaba asi). ----
+    /// <summary>Tercero (RQ07) que es el remitente (entrada) o destinatario (salida). Fuente unica, DAT-02. NO ACTION.</summary>
+    public long? RemitenteTerceroId { get; set; }
+    public Tercero? RemitenteTercero { get; set; }
     public string? RemitenteNombre { get; set; }
     public bool Anonimo { get; set; }
     public string? RemitenteTipoDoc { get; set; }

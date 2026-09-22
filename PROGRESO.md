@@ -1430,3 +1430,28 @@ radicados_comunicaciones y la columna estado_envio existentes).
 Verificado e2e (dev): salida ALCPRU-S-2026-000001 -> registrar envio PERSONAL (recibe "Maria Gomez")
 -> estado_envio=Enviado, comunicacion PERSONAL/Enviado, traza ENVIO; pestana Comunicaciones muestra el
 registro; constancia genera HTML sin error. 585 tests en verde.
+
+## 36. RQ07 Catalogo de Terceros (nucleo) + integracion DAT-02 con Radicacion (2026-09-22)
+
+Directorio maestro unico de actores externos (RQ07 RF01) e integracion con Radicacion (invariante DAT-02).
+El legacy NO tiene pantalla de terceros (RAD_TERCEROS era solo puente/snapshot); RQ07 es green-field
+guiado por la spec del vault (REQ007). Migraciones 48 (terceros) y 49 (radicados.remitente_tercero_id).
+
+- **Entidad `Tercero`** (TenantEntity, DAT-02): subtipo (6 valores spec), tipo/numero de documento (unico por
+  tenant), digito verificador (NIT), razon social / nombre / apellidos / nombre comercial, contacto principal
+  inline (email/telefono/direccion/municipio DIVIPOLA), datos juridicos (sitio web, sector, regimen, publica),
+  representante legal (autorreferencia), estado (Activo/Inactivo), perfil_completo, origen, motivo inactivacion.
+  Contactos multiples, etiquetas (roles), metadatos dinamicos y auditoria propia: fases siguientes.
+- **TerceroService**: catalogo con busqueda inteligente desde el 3er caracter (documento/nombre/razon/comercial/
+  correo) + filtros (natural/juridica, activos/inactivos/incompletos); crear/editar con dedup por documento;
+  inactivar/reactivar con motivo obligatorio (SIN eliminacion, RF01-5); creacion rapida (upsert) desde otros modulos.
+- **Pagina Catalogo de Terceros** (`/modulo/terceros`): bandeja + ficha dinamica por subtipo (cascade DIVIPOLA)
+  + modal de motivo para inactivar/reactivar.
+- **Integracion DAT-02 (Radicacion)**: `radicados.remitente_tercero_id` FK a terceros. Al radicar entrada/salida
+  no anonima con documento, el RadicadorService hace upsert del tercero (Incompleto, origen Radicacion/Salida)
+  y enlaza. El autocompletado del asistente ahora consulta el catalogo de terceros (fuente unica) y cae al
+  interino desde radicados solo si el tercero aun no existe.
+
+Verificado e2e (dev): tercero manual (Pedro Ramirez CN-1001, Completo); radicar con doc nuevo CN-2002 crea el
+tercero (Incompleto, origen Radicacion) y el radicado ALCPRU-E-2026-000006 enlaza remitente_tercero_id=2.
+585 tests en verde. Diferido: RF02 import/export, RF03 vista 360 completa, etiquetas/contactos multiples, RUES/DIAN.
