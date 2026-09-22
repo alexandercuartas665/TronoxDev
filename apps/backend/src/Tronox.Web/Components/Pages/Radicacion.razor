@@ -9,6 +9,7 @@
 @inject IRadicacionDistribucionService DistSvc
 @inject IRadicadorService RadSvc
 @inject IRadicacionEnvioService EnvioSvc
+@inject Tronox.Application.Terceros.ITerceroService TerceroSvc
 @inject Tronox.Application.Archivistica.IDivipolaService DivSvc
 @inject IJSRuntime JS
 
@@ -1559,29 +1560,33 @@
         _wzFuncsDest = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDepDestId, out var d) ? d : null);
     }
 
-    // Autocompletado del tercero por documento (RF01-3). No pisa lo que el operador ya escribio (solo rellena vacios).
+    // Autocompletado desde el Catalogo de Terceros (RQ07, fuente unica DAT-02). Fallback: radicados previos
+    // (interino) si el tercero aun no esta en el directorio. No pisa lo que el operador ya escribio.
     private async Task WzAutocompletarTercero()
     {
         _wzTerceroSugerido = false;
-        var sug = await BandejaSvc.BuscarTerceroPorDocumentoAsync(_wzRemDoc ?? "");
+        var doc = (_wzRemDoc ?? "").Trim();
+        if (doc.Length < 3) { return; }
+
+        var terc = await TerceroSvc.BuscarPorDocumentoAsync(_wzRemTipoDoc, doc);
+        if (terc is not null)
+        {
+            var nombre = string.IsNullOrWhiteSpace(terc.RazonSocial) ? $"{terc.Nombre} {terc.Apellidos}".Trim() : terc.RazonSocial!;
+            if (string.IsNullOrWhiteSpace(_wzRemNombre) && !string.IsNullOrWhiteSpace(nombre)) { _wzRemNombre = nombre; }
+            if (string.IsNullOrWhiteSpace(_wzRemEmail) && !string.IsNullOrWhiteSpace(terc.Email)) { _wzRemEmail = terc.Email!; }
+            if (string.IsNullOrWhiteSpace(_wzRemTel) && !string.IsNullOrWhiteSpace(terc.Telefono)) { _wzRemTel = terc.Telefono!; }
+            _wzRemTipoDoc = terc.TipoDocumento;
+            _wzTerceroSugerido = true;
+            return;
+        }
+
+        // Interino: si no esta en el directorio aun, sugiere desde el ultimo radicado con ese documento.
+        var sug = await BandejaSvc.BuscarTerceroPorDocumentoAsync(doc);
         if (sug is null) { return; }
         if (string.IsNullOrWhiteSpace(_wzRemNombre) && !string.IsNullOrWhiteSpace(sug.Nombre)) { _wzRemNombre = sug.Nombre!; }
         if (string.IsNullOrWhiteSpace(_wzRemEmail) && !string.IsNullOrWhiteSpace(sug.Email)) { _wzRemEmail = sug.Email!; }
         if (string.IsNullOrWhiteSpace(_wzRemTel) && !string.IsNullOrWhiteSpace(sug.Telefono)) { _wzRemTel = sug.Telefono!; }
         if (!string.IsNullOrWhiteSpace(sug.TipoDoc)) { _wzRemTipoDoc = sug.TipoDoc!; }
-        // El municipio se autocompleta buscando su departamento en el catalogo cargado (entrada).
-        if (string.IsNullOrWhiteSpace(_wzRemMunicipio) && !string.IsNullOrWhiteSpace(sug.Municipio))
-        {
-            foreach (var d in _wzDeptos)
-            {
-                var munis = await DivSvc.ListMunicipiosAsync(d.Id);
-                if (munis.Any(m => m.Nombre == sug.Municipio))
-                {
-                    _wzDeptoSel = d.Id.ToString(); _wzMunis = munis; _wzRemMunicipio = sug.Municipio!;
-                    break;
-                }
-            }
-        }
         _wzTerceroSugerido = true;
     }
 

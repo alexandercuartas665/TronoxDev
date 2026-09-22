@@ -137,6 +137,7 @@ public interface IApplicationDbContext
     DbSet<NotificacionRadicacionConfig> NotificacionesRadicacion { get; }
     DbSet<MigracionRadicadosLog> MigracionesRadicados { get; }
     DbSet<Radicado> Radicados { get; }
+    DbSet<Tercero> Terceros { get; }
     DbSet<RadicadoTrazabilidad> RadicadosTrazabilidad { get; }
     DbSet<CorreoRecibido> CorreosRecibidos { get; }
     DbSet<RadicadoTarea> RadicadosTareas { get; }

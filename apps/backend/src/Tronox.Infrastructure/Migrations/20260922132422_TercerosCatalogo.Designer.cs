@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Tronox.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Tronox.Infrastructure.Persistence;
 namespace Tronox.Infrastructure.Migrations
 {
     [DbContext(typeof(TronoxDbContext))]
-    partial class TronoxDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922132422_TercerosCatalogo")]
+    partial class TercerosCatalogo
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -6127,10 +6130,6 @@ namespace Tronox.Infrastructure.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("remitente_telefono");
 
-                    b.Property<long?>("RemitenteTerceroId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("remitente_tercero_id");
-
                     b.Property<string>("RemitenteTipoDoc")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -6187,9 +6186,6 @@ namespace Tronox.Infrastructure.Migrations
                     b.HasIndex("RadicadoRelacionadoId")
                         .HasDatabaseName("ix_radicados_radicado_relacionado_id");
 
-                    b.HasIndex("RemitenteTerceroId")
-                        .HasDatabaseName("ix_radicados_remitente_tercero_id");
-
                     b.HasIndex("TipoComunicacionId")
                         .HasDatabaseName("ix_radicados_tipo_comunicacion_id");
 
@@ -6208,9 +6204,6 @@ namespace Tronox.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "RadicadoRelacionadoId")
                         .HasDatabaseName("ix_radicados_tenant_id_radicado_relacionado_id");
-
-                    b.HasIndex("TenantId", "RemitenteTerceroId")
-                        .HasDatabaseName("ix_radicados_tenant_id_remitente_tercero_id");
 
                     b.ToTable("radicados", (string)null);
                 });
@@ -9894,12 +9887,6 @@ namespace Tronox.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_radicados_radicados_radicado_relacionado_id");
 
-                    b.HasOne("Tronox.Domain.Entities.Tercero", "RemitenteTercero")
-                        .WithMany()
-                        .HasForeignKey("RemitenteTerceroId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_radicados_terceros_remitente_tercero_id");
-
                     b.HasOne("Tronox.Domain.Entities.TipoComunicacion", "TipoComunicacion")
                         .WithMany()
                         .HasForeignKey("TipoComunicacionId")
@@ -9913,8 +9900,6 @@ namespace Tronox.Infrastructure.Migrations
                     b.Navigation("NivelReserva");
 
                     b.Navigation("RadicadoRelacionado");
-
-                    b.Navigation("RemitenteTercero");
 
                     b.Navigation("TipoComunicacion");
                 });

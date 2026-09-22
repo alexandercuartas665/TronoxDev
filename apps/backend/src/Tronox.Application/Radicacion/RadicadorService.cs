@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tronox.Application.Common;
 using Tronox.Application.Documentos;
 using Tronox.Application.Tenancy;
+using Tronox.Application.Terceros;
 using Tronox.Domain.Entities;
 using Tronox.Domain.Enums;
 
@@ -20,9 +21,11 @@ public sealed class RadicadorService : IRadicadorService
     private readonly ICalendarioHabilService _calendario;
     private readonly IObjectStorage _storage;
     private readonly IRadicadoEstampador _estampador;
+    private readonly ITerceroService _terceros;
 
     public RadicadorService(IApplicationDbContext db, ITenantContext tenant, ISequenceService sequences,
-        ICalendarioHabilService calendario, IObjectStorage storage, IRadicadoEstampador estampador)
+        ICalendarioHabilService calendario, IObjectStorage storage, IRadicadoEstampador estampador,
+        ITerceroService terceros)
     {
         _db = db;
         _tenant = tenant;
@@ -30,6 +33,7 @@ public sealed class RadicadorService : IRadicadorService
         _calendario = calendario;
         _storage = storage;
         _estampador = estampador;
+        _terceros = terceros;
     }
 
     public async Task<RadicarResult> RadicarAsync(RadicarNuevoRequest req, CancellationToken ct = default)
@@ -77,6 +81,24 @@ public sealed class RadicadorService : IRadicadorService
             : new[] { sigla, cod, consec };
         var numero = string.Join(separador, partes);
 
+        // DAT-02: el remitente (entrada) / destinatario (salida) es un tercero del catalogo unico RQ07.
+        // Si trae documento y no es anonimo, se hace upsert en terceros y se enlaza; nunca se crea una
+        // tabla propia de personas externas (invariante 2). La interna no tiene tercero externo.
+        long? remitenteTerceroId = null;
+        if (!req.Anonimo && req.Tipo != RadicadoTipo.Interno && !string.IsNullOrWhiteSpace(req.RemitenteDocumento))
+        {
+            var esJuridica = string.Equals(req.RemitenteTipoDoc, "NIT", StringComparison.OrdinalIgnoreCase);
+            var subtipo = esJuridica ? TerceroSubtipo.JuridicaPrivada : TerceroSubtipo.PersonaNatural;
+            var terc = await _terceros.CrearRapidoAsync(new CrearRapidoRequest(
+                subtipo, req.RemitenteTipoDoc ?? "CC", req.RemitenteDocumento!.Trim(),
+                Nombre: esJuridica ? null : req.RemitenteNombre?.Trim(),
+                Apellidos: null,
+                RazonSocial: esJuridica ? req.RemitenteNombre?.Trim() : null,
+                Email: req.RemitenteEmail, Telefono: req.RemitenteTelefono, MunicipioId: null,
+                Origen: req.Tipo == RadicadoTipo.Salida ? "Salida" : "Radicacion"), ct);
+            if (terc.Ok) { remitenteTerceroId = terc.Id; }
+        }
+
         var radicado = new Radicado
         {
             TenantId = tenantId.Value,
@@ -89,6 +111,7 @@ public sealed class RadicadorService : IRadicadorService
             Asunto = req.Asunto,
             Descripcion = req.Descripcion,
             Anonimo = req.Anonimo,
+            RemitenteTerceroId = remitenteTerceroId,
             RemitenteNombre = req.Anonimo ? null : req.RemitenteNombre,
             RemitenteEmail = req.RemitenteEmail,
             RemitenteTipoDoc = req.RemitenteTipoDoc,
