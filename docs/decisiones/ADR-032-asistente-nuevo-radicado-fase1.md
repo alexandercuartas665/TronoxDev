@@ -105,3 +105,23 @@ Nuevo en Application (aditivo, sin migracion): `AsistenteEsquemaAsync` (sigla/se
 entidad/NIT para la vista previa y el numero placeholder) y `TipoRadicacionDto` extendido con
 RequiereRespuesta/DiasRespuesta/TipoDia (texto de "Fecha vencimiento"). Verificado: build verde, 582 tests;
 render del asistente de dos paneles con vista previa que se actualiza en vivo al elegir el tipo.
+
+## Fase 4 - Digitalizacion, circular interna y Salida (2026-09-22)
+
+El motor de pasos se hizo dinamico (`WzPasos` por direccion; "Paso X de N"; Digitalizacion como paso
+final post-radicado). Sin migracion (la entidad Radicado ya tenia los campos).
+
+- **Digitalizacion (RF06-3):** paso final tras radicar (banner de exito + numero, dropzone del soporte
+  fisico, "Imprimir sticker", "Captura TWAIN" inerte igual que el legacy, Finalizar).
+  `RadicadorService.AdjuntarAsync` sube los escaneos a object storage y los cuelga del radicado con traza.
+- **Circular interna (RF06-2):** paso Destinatarios con "Agregar destinatario" (lista de tarjetas, sin
+  duplicar dependencia, banner cuando N>1). `DistribuirCircularAsync`: UN radicado + N tareas; cabecera =
+  primer destino; funcionario de cabecera solo si es unico destino.
+- **Salida / "Responder" (RF05):** 6 pasos (Origen/Clasificacion/Destinatario/Informacion/Documento/
+  Confirmacion). "Responder" abre el asistente en modo Salida con la entrada precargada. El destinatario
+  persiste en columnas `remitente_*`; el canal de envio nace `Pendiente`; la respuesta DEFINITIVA cierra
+  el termino de la entrada (Estado -> Respondido + traza RF05-5).
+
+Pendientes fieles al legacy: TWAIN real, estampa arrastrable RF02-5 (paso 'documentos' electronico),
+selector de documentos RQ04 y autocomplete de terceros RQ07. Verificado e2e en dev (tenant 2): circular
+1 radicado + 2 tareas; salida con destinatario/canal/definitiva/vinculo y entrada padre a Respondido.
