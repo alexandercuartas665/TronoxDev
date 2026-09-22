@@ -81,3 +81,27 @@ CargaArchivosModal): PDF/DOCX/XLSX/imagenes/XML, max 50 MB c/u, con lista y quit
 - Verificado e2e (Chrome + file_upload): ALCPRU-E-2026-000003 con adjunto radicado_prueba.pdf subido a
   object storage (storage_key + sha256 de 64 hex) y **folios=2 auto-calculados** del PDF de 2 paginas.
   582 tests verdes.
+
+## Correccion - diseno milimetrico del asistente (calcar rad_radicar)
+
+Primera version se hizo como un modal reducido de 640px: **incorrecto**. La regla del proyecto es calcar
+el legacy al milimetro, no reinterpretarlo con la plantilla nueva ([[ports-visual-calcar-legacy]]). Se
+reconstruyo el asistente como el legacy `rad_radicar.aspx`: **pantalla completa de dos paneles** con las
+clases y colores exactos del legacy (Poppins/Consolas; navy #405189, verde #0ab39c, rojo NTP #DC2626):
+
+- **Barra de titulo** "NUEVO RADICADO - PRESENCIAL" + barra de contexto (Sede / Usuario / Fecha-Hora NTP
+  en rojo "No editable" / Tipo ENTRADA-PRESENCIAL).
+- **Stepper** de pasos con circulos 28px y lineas conectoras (pendiente #E2E8F0, actual navy, hecho verde
+  con check).
+- Panel **izquierdo 58%** con el formulario del paso (chips `.wz-chip`, inputs `.wz-in`, `.wz-ro`).
+- Panel **derecho 42%** con la **VISTA PREVIA EN TIEMPO REAL** (`.pv-card`: cabecera Entidad-SGDEA + NIT,
+  badge del tipo con su color, "Numero se asignara al radicar", y las filas Canal/Tipo/Remitente/Documento
+  /Asunto/Folios/Dependencia/Funcionario/Fecha vencimiento que se llenan en vivo) + el **STICKER ADHESIVO**
+  (`.pv-stk`: borde punteado, numero placeholder monospace, fecha|tipo, dependencia + folios, QR
+  conic-gradient), calcados 1:1.
+- Pie con Cancelar / "Paso X de N" / Anterior / Siguiente / Radicar.
+
+Nuevo en Application (aditivo, sin migracion): `AsistenteEsquemaAsync` (sigla/separador/digitos/anio +
+entidad/NIT para la vista previa y el numero placeholder) y `TipoRadicacionDto` extendido con
+RequiereRespuesta/DiasRespuesta/TipoDia (texto de "Fecha vencimiento"). Verificado: build verde, 582 tests;
+render del asistente de dos paneles con vista previa que se actualiza en vivo al elegir el tipo.

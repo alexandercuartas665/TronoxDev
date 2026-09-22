@@ -93,12 +93,24 @@ public sealed class RadicacionBandejaService : IRadicacionBandejaService
         => await _db.TiposComunicacion.AsNoTracking().Where(t => t.Activo)
             .OrderBy(t => t.Nombre)
             .Select(t => new TipoRadicacionDto(t.Id, t.Nombre, t.Direccion, t.EsPqrsd, t.EsTutela,
-                t.PermiteAnonimo, t.NivelReservaDefaultId, t.Color))
+                t.PermiteAnonimo, t.NivelReservaDefaultId, t.Color,
+                t.RequiereRespuesta, t.DiasRespuesta, t.TipoDia))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<OpcionDto>> NivelesReservaAsync(CancellationToken ct = default)
         => await _db.NivelesClasificacion.AsNoTracking().Where(n => n.Activo)
             .OrderBy(n => n.NivelOrden).Select(n => new OpcionDto(n.Id, n.Nombre)).ToListAsync(ct);
+
+    public async Task<EsquemaRadicacionDto> AsistenteEsquemaAsync(CancellationToken ct = default)
+    {
+        var cfg = await _db.RadicacionConfigs.AsNoTracking().FirstOrDefaultAsync(ct);
+        var ent = await _db.Entidades.AsNoTracking()
+            .Select(e => new { e.Sigla, e.RazonSocial, e.Nit }).FirstOrDefaultAsync(ct);
+        var sigla = (string.IsNullOrWhiteSpace(cfg?.SiglaRadicacion) ? ent?.Sigla : cfg!.SiglaRadicacion) ?? "RAD";
+        return new EsquemaRadicacionDto(
+            sigla, cfg?.Separador ?? "-", cfg?.DigitosConsecutivo ?? 6, cfg?.IncluirAnio ?? true,
+            ent?.Sigla ?? ent?.RazonSocial ?? "Entidad", ent?.Nit ?? "");
+    }
 
     public async Task<IReadOnlyList<OpcionDto>> DependenciasAsync(CancellationToken ct = default)
         => await _db.OrgUnits.AsNoTracking()

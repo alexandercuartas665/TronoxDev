@@ -79,4 +79,10 @@ public sealed record OpcionDto(long Id, string Nombre);
 /// (rad_radicar): filtrar por direccion, mostrar badges PQRSD/Tutela, gatear "Anonimo" y autollenar el
 /// nivel de reserva por defecto. Calca el catalogo que el legacy lee en el paso 1 del wizard.</summary>
 public sealed record TipoRadicacionDto(long Id, string Nombre, RadicacionDireccion Direccion,
-    bool EsPqrsd, bool EsTutela, bool PermiteAnonimo, long? NivelReservaDefaultId, string? Color);
+    bool EsPqrsd, bool EsTutela, bool PermiteAnonimo, long? NivelReservaDefaultId, string? Color,
+    bool RequiereRespuesta, int? DiasRespuesta, RadicacionTipoDia? TipoDia);
+
+/// <summary>Esquema del consecutivo + datos de la entidad para el asistente rad_radicar: arma el numero
+/// placeholder ("SIGLA-COD-ANIO-XXXXXX") del sticker y la cabecera de la vista previa (entidad, NIT).</summary>
+public sealed record EsquemaRadicacionDto(string Sigla, string Separador, int Digitos, bool IncluirAnio,
+    string EntidadNombre, string Nit);

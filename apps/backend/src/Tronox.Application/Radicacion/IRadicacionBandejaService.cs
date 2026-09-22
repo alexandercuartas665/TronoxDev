@@ -14,6 +14,8 @@ public interface IRadicacionBandejaService
     Task<IReadOnlyList<TipoRadicacionDto>> TiposAsistenteAsync(CancellationToken ct = default);
     /// <summary>Niveles de clasificacion activos para el selector de reserva del asistente.</summary>
     Task<IReadOnlyList<OpcionDto>> NivelesReservaAsync(CancellationToken ct = default);
+    /// <summary>Esquema del consecutivo + datos de la entidad para la vista previa/sticker del asistente.</summary>
+    Task<EsquemaRadicacionDto> AsistenteEsquemaAsync(CancellationToken ct = default);
     Task<IReadOnlyList<OpcionDto>> DependenciasAsync(CancellationToken ct = default);
     Task<IReadOnlyList<OpcionDto>> FuncionariosAsync(long? dependenciaId, CancellationToken ct = default);
 }
