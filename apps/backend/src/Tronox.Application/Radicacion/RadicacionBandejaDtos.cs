@@ -49,7 +49,8 @@ public sealed record RadicadoInfoDto(
     string Fecha, bool Anonimo, string? Remitente, string? RemTipoDoc, string? RemDocumento,
     string? RemEmail, string? RemTelefono, string? Nivel, string? DepNombre, string? DepOrigenNombre,
     string? FuncOrigen, string? Funcionario, string Prioridad, int? Folios, int? Anexos, string? Soporte,
-    string? Relacionado, string? Operador, string? Vence, string? FechaDist, int? Dias, int? DiasTermino, string? TipoDia);
+    string? Relacionado, string? Operador, string? Vence, string? FechaDist, int? Dias, int? DiasTermino, string? TipoDia,
+    string? CanalEnvio = null, string? EstadoEnvio = null);
 
 public sealed record RadicadoDocDto(long Reg, string Nombre, string? Ext, long Kb, string? Fecha, bool Previsualizable);
 public sealed record RadicadoTrazaDto(string Fecha, string? Usuario, string Accion, string? Detalle);

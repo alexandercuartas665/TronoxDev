@@ -34,7 +34,7 @@ public sealed class RadicadoDetalleService : IRadicadoDetalleService
                 x.Id, x.NumeroRadicado, x.Tipo, x.Estado, x.Canal, x.Asunto, x.Descripcion, x.FechaRadicacion,
                 x.Anonimo, x.RemitenteNombre, x.RemitenteTipoDoc, x.RemitenteDocumento, x.RemitenteEmail, x.RemitenteTelefono,
                 x.Prioridad, x.Folios, x.NumAnexos, x.Soporte, x.FechaVencimiento, x.FechaDistribucion,
-                x.RadicadoRelacionadoId,
+                x.RadicadoRelacionadoId, x.CanalEnvio, x.EstadoEnvio,
                 TipoNombre = x.TipoComunicacion != null ? x.TipoComunicacion.Nombre : null,
                 TipoColor = x.TipoComunicacion != null ? x.TipoComunicacion.Color : null,
                 EsPqrsd = x.TipoComunicacion != null && x.TipoComunicacion.EsPqrsd,
@@ -63,7 +63,7 @@ public sealed class RadicadoDetalleService : IRadicadoDetalleService
             r.Nivel, r.DepNombre, r.DepOrigenNombre, r.FuncOrigen, r.FuncNombre, r.Prioridad.ToString(),
             r.Folios, r.NumAnexos, r.Soporte, r.RelNumero, r.Operador,
             r.FechaVencimiento?.ToString("dd/MM/yyyy"), r.FechaDistribucion?.ToString("dd/MM/yyyy HH:mm"),
-            dias, r.DiasTermino, r.TipoDia);
+            dias, r.DiasTermino, r.TipoDia, r.CanalEnvio, r.EstadoEnvio);
 
         var docs = await _db.RadicadosArchivos.AsNoTracking().Where(a => a.RadicadoId == radicadoId)
             .OrderBy(a => a.FechaCarga)

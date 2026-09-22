@@ -48,6 +48,14 @@ else
                     @(_d.TareasActivas > 0 ? "Redirigir" : "Distribuir")
                 </button>
             }
+            @if (i.Tipo == RadicadoTipo.Salida)
+            {
+                @if (!string.Equals(i.EstadoEnvio, "Enviado", StringComparison.OrdinalIgnoreCase))
+                {
+                    <button class="btn btn-sm btn-success" @onclick="@(() => OnRegistrarEnvio.InvokeAsync(i))">&#128233; Registrar envio</button>
+                }
+                <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => OnConstancia.InvokeAsync(i.Reg))">&#128424; Constancia</button>
+            }
         </div>
         <div class="dt-tabs">
             @foreach (var (key, label) in _tabs)
@@ -211,6 +219,8 @@ else
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<string> OnResponder { get; set; }
     [Parameter] public EventCallback<long> OnDistribuir { get; set; }
+    [Parameter] public EventCallback<RadicadoInfoDto> OnRegistrarEnvio { get; set; }
+    [Parameter] public EventCallback<long> OnConstancia { get; set; }
 
     private RadicadoDetalleDto? _d;
     private bool _loading = true;

@@ -8,6 +8,7 @@
 @inject IRadicacionBandejaService BandejaSvc
 @inject IRadicacionDistribucionService DistSvc
 @inject IRadicadorService RadSvc
+@inject IRadicacionEnvioService EnvioSvc
 @inject Tronox.Application.Archivistica.IDivipolaService DivSvc
 @inject IJSRuntime JS
 
@@ -899,10 +900,78 @@
         <div class="rb-detalle-panel" @onclick:stopPropagation="true">
             <RadDetalle Reg="reg" OnClose="@(() => _detalleReg = null)"
                         OnResponder="Responder"
-                        OnDistribuir="OpenDistribuirDesdeDetalleAsync" />
+                        OnDistribuir="OpenDistribuirDesdeDetalleAsync"
+                        OnRegistrarEnvio="OpenRegistrarEnvio"
+                        OnConstancia="ImprimirConstanciaAsync" />
         </div>
     </div>
 }
+
+@* ============ Modal Registrar envio (salida) ============ *@
+@if (_envioCtx is { } ec)
+{
+    <div class="modal-overlay" @onclick="@(() => _envioCtx = null)">
+        <div class="env-modal" @onclick:stopPropagation="true">
+            <div class="env-head">
+                <h3>&#128233; Registrar envio &mdash; <span style="font-family:Consolas,monospace;">@ec.Numero</span></h3>
+                <button type="button" class="x" @onclick="@(() => _envioCtx = null)">&#10005;</button>
+            </div>
+            <div class="env-body">
+                <div class="wz-field">
+                    <label>Canal de envio</label>
+                    <select class="wz-in" @bind="_envioCanal">
+                        <option value="EMAIL">Email</option>
+                        <option value="FISICO">Correo fisico</option>
+                        <option value="PERSONAL">Entrega personal</option>
+                        <option value="JUDICIAL">Notificacion judicial</option>
+                    </select>
+                </div>
+                @if (_envioCanal == "EMAIL")
+                {
+                    <div class="wz-field">
+                        <label>Correo de destino <span class="req">*</span></label>
+                        <input class="wz-in" @bind="_envioCorreo" placeholder="correo@@ejemplo.com" />
+                        <span class="hint">El sistema envia el documento principal como adjunto (SMTP).</span>
+                    </div>
+                }
+                else if (_envioCanal == "FISICO")
+                {
+                    <div class="wz-field">
+                        <label>Numero de guia <span class="req">*</span></label>
+                        <input class="wz-in" @bind="_envioGuia" placeholder="Ej: 999123456789" />
+                    </div>
+                }
+                else if (_envioCanal == "PERSONAL")
+                {
+                    <div class="wz-field">
+                        <label>Nombre de quien recibe <span class="req">*</span></label>
+                        <input class="wz-in" @bind="_envioRecibe" placeholder="Nombre completo" />
+                    </div>
+                }
+                else if (_envioCanal == "JUDICIAL")
+                {
+                    <div class="wz-field"><label>Juzgado <span class="req">*</span></label><input class="wz-in" @bind="_envioJuzgado" placeholder="Juzgado" /></div>
+                    <div class="wz-field"><label>Expediente <span class="req">*</span></label><input class="wz-in" @bind="_envioExpediente" placeholder="Numero de expediente" /></div>
+                    <div class="wz-field"><label>Fecha de notificacion <span class="req">*</span></label><input type="date" class="wz-in" @bind="_envioFecha" /></div>
+                }
+                @if (_envioError is not null) { <div class="wz-err">@_envioError</div> }
+            </div>
+            <div class="env-foot">
+                <button type="button" class="wz-btn" @onclick="@(() => _envioCtx = null)">Cancelar</button>
+                <button type="button" class="wz-btn green" @onclick="ConfirmRegistrarEnvioAsync" disabled="@_envioBusy">&#10003; Registrar envio</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .env-modal { background:#fff; width:min(460px,96vw); border-radius:12px; overflow:hidden; box-shadow:0 20px 60px rgba(2,6,23,.3); }
+    .env-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #E2E8F0; }
+    .env-head h3 { margin:0; font-size:15px; color:#212529; }
+    .env-head .x { border:none; background:none; font-size:18px; color:#878a99; cursor:pointer; }
+    .env-body { padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+    .env-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid #E2E8F0; background:#F8FAFC; }
+</style>
 
 <style>
     .rb-head { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
@@ -1121,6 +1190,52 @@
     }
 
     private void OpenDetalle(long reg) => _detalleReg = reg;
+
+    // ---- Registrar envio / constancia de una salida (RF05-6). ----
+    private RadicadoInfoDto? _envioCtx;
+    private string _envioCanal = "EMAIL", _envioCorreo = "", _envioGuia = "", _envioRecibe = "", _envioJuzgado = "", _envioExpediente = "";
+    private DateOnly? _envioFecha;
+    private bool _envioBusy;
+    private string? _envioError;
+
+    private void OpenRegistrarEnvio(RadicadoInfoDto i)
+    {
+        _envioCtx = i;
+        _envioCanal = string.IsNullOrWhiteSpace(i.CanalEnvio) ? "EMAIL" : i.CanalEnvio!.ToUpperInvariant();
+        _envioCorreo = i.RemEmail ?? "";
+        _envioGuia = _envioRecibe = _envioJuzgado = _envioExpediente = "";
+        _envioFecha = null; _envioError = null;
+    }
+
+    private async Task ConfirmRegistrarEnvioAsync()
+    {
+        if (_envioCtx is not { } i) { return; }
+        _envioBusy = true; _envioError = null;
+        try
+        {
+            var req = new RegistrarEnvioRequest(i.Reg, _envioCanal,
+                Correo: string.IsNullOrWhiteSpace(_envioCorreo) ? null : _envioCorreo.Trim(),
+                Guia: string.IsNullOrWhiteSpace(_envioGuia) ? null : _envioGuia.Trim(),
+                Recibe: string.IsNullOrWhiteSpace(_envioRecibe) ? null : _envioRecibe.Trim(),
+                Juzgado: string.IsNullOrWhiteSpace(_envioJuzgado) ? null : _envioJuzgado.Trim(),
+                Expediente: string.IsNullOrWhiteSpace(_envioExpediente) ? null : _envioExpediente.Trim(),
+                FechaNotificacion: _envioFecha);
+            var res = await EnvioSvc.RegistrarEnvioAsync(req);
+            if (!res.Ok) { _envioError = res.Error ?? "No se pudo registrar el envio."; return; }
+            _envioCtx = null;
+            _detalleReg = null; // el detalle se reabre desde la bandeja con el estado actualizado
+            Flash($"Envio registrado ({res.EstadoEnvio}).", true);
+            await LoadAsync();
+        }
+        finally { _envioBusy = false; }
+    }
+
+    private async Task ImprimirConstanciaAsync(long reg)
+    {
+        var html = await EnvioSvc.ConstanciaHtmlAsync(reg);
+        if (string.IsNullOrEmpty(html)) { Flash("No se pudo generar la constancia.", false); return; }
+        await JS.InvokeVoidAsync("tronoxMenuConfig.printHtml", "Constancia de envio", html);
+    }
 
     private async Task OpenDistribuirAsync(BandejaItemDto item)
     {

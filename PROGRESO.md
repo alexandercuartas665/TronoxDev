@@ -1411,3 +1411,22 @@ Tres mejoras del asistente Nuevo Radicado. Sin migracion (reusan catalogos y obj
   original).
 
 Nota: el autocompletado de municipio y RQ07 real quedan para cuando exista el modulo de Terceros.
+
+## 35. Salida: registrar envio, envio por Email y constancia/acta (2026-09-22)
+
+Cierre del ciclo de envio de las salidas (RF05-6, port de rad_salida). Sin migracion (reusa la tabla
+radicados_comunicaciones y la columna estado_envio existentes).
+
+- **Registrar envio** (desde el detalle de una salida no enviada): modal por canal
+  (EMAIL: correo / FISICO: guia / PERSONAL: recibe / JUDICIAL: juzgado+expediente+fecha). Marca
+  estado_envio=Enviado, crea un radicados_comunicaciones (canal/destino/detalle/estado) y traza ENVIO.
+- **Envio por Email:** en canal EMAIL envia el documento principal como adjunto via IEmailSender
+  (SMTP). Best-effort: si el correo falla, el envio queda Fallido y se puede reintentar.
+- **Constancia / Acta de notificacion judicial:** boton "Constancia" genera HTML autonomo imprimible
+  (RadicacionEnvioService.ConstanciaHtmlAsync + printHtml), con acta judicial si el canal es JUDICIAL.
+- El detalle ya mostraba la pestana Comunicaciones (ahora poblada) y oculta "Registrar envio" cuando
+  ya se envio. RadicadoInfoDto expone CanalEnvio/EstadoEnvio.
+
+Verificado e2e (dev): salida ALCPRU-S-2026-000001 -> registrar envio PERSONAL (recibe "Maria Gomez")
+-> estado_envio=Enviado, comunicacion PERSONAL/Enviado, traza ENVIO; pestana Comunicaciones muestra el
+registro; constancia genera HTML sin error. 585 tests en verde.
