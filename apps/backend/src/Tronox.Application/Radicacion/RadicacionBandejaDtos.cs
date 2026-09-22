@@ -65,6 +65,17 @@ public sealed record DistribuirRequest(
     long RadicadoId, long DependenciaId, long? FuncionarioId,
     string? Instrucciones, RadicadoPrioridad Prioridad, string? Justificacion);
 
+/// <summary>Un destino de una circular interna: dependencia obligatoria, funcionario opcional (si es null
+/// lo asigna el jefe de la dependencia). Espejo de cada elemento de F.destinos del legacy rad_interna_wizard.</summary>
+public sealed record DestinoCircular(long DependenciaId, long? FuncionarioId);
+
+/// <summary>Distribucion circular (rad_interna_wizard): UN radicado, N tareas (una por dependencia). No
+/// aplica la guarda de reasignacion porque el radicado nace sin tareas. La cabecera toma el primer destino;
+/// el funcionario de cabecera solo si hay un unico destino (fiel al legacy AccRadicar interno).</summary>
+public sealed record DistribuirCircularRequest(
+    long RadicadoId, IReadOnlyList<DestinoCircular> Destinos,
+    RadicadoPrioridad Prioridad, string? Instrucciones);
+
 /// <summary>Resultado tipado de distribuir (Ok/estado o error controlado, sin fuga de excepciones).</summary>
 public sealed record DistribuirResult(bool Ok, string? Error = null, RadicadoEstado? Estado = null)
 {

@@ -16,6 +16,11 @@ public interface IRadicadorService
     /// folios totales se derivan de los archivos si el request no trae folios.</summary>
     Task<RadicarResult> RadicarConArchivosAsync(RadicarNuevoRequest request,
         IReadOnlyList<AdjuntoBytes> archivos, CancellationToken ct = default);
+
+    /// <summary>Adjunta documentos escaneados/electronicos a un radicado YA existente (paso Digitalizacion del
+    /// asistente, RF06-3 / rad_op.ashx?action=adjuntar): sube cada archivo a object storage (invariante 9) y lo
+    /// cuelga del radicado con traza. Se usa despues de radicar para digitalizar el soporte fisico.</summary>
+    Task<RadicarResult> AdjuntarAsync(long radicadoId, IReadOnlyList<AdjuntoBytes> archivos, CancellationToken ct = default);
 }
 
 /// <summary>Archivo crudo (bytes en memoria) que el asistente sube al radicar. La subida a object storage
@@ -46,7 +51,10 @@ public sealed record RadicarNuevoRequest(
     long? FuncionarioOrigenId = null,
     DateOnly? FechaDocumento = null,
     string? Observaciones = null,
-    string? RemitenteMunicipio = null);
+    string? RemitenteMunicipio = null,
+    // ---- Solo salidas (rad_salida_wizard): canal de envio y marca de respuesta definitiva. ----
+    string? CanalEnvio = null,
+    bool EsRespuestaDefinitiva = false);
 
 /// <summary>Referencia a un adjunto ya subido a object storage, para colgarlo del radicado.</summary>
 public sealed record RadicarAdjunto(string Nombre, string? Extension, string? MimeType, long TamanoBytes,

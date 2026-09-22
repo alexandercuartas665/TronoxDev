@@ -102,6 +102,10 @@ public sealed class RadicadorService : IRadicadorService
             Observaciones = req.Observaciones,
             DependenciaOrigenId = req.DependenciaOrigenId,
             FuncionarioOrigenId = req.FuncionarioOrigenId,
+            // ---- Bloque de envio: solo en salidas. Nace Pendiente (el envio se registra desde la bandeja). ----
+            CanalEnvio = req.Tipo == RadicadoTipo.Salida ? req.CanalEnvio : null,
+            EstadoEnvio = req.Tipo == RadicadoTipo.Salida ? "Pendiente" : null,
+            EsRespuestaDefinitiva = req.Tipo == RadicadoTipo.Salida && req.EsRespuestaDefinitiva,
             FechaRadicacion = DateTime.UtcNow,
             FechaVencimiento = vencimiento,
             UsuarioRadicaId = _tenant.UserId
@@ -136,8 +140,80 @@ public sealed class RadicadorService : IRadicadorService
         });
 
         _db.Radicados.Add(radicado);
+
+        // RF05-5: la respuesta DEFINITIVA cierra el termino del radicado de entrada vinculado (Estado -> Respondido).
+        // La salida parcial NO cambia el estado de la entrada. Todo en la misma transaccion que la salida.
+        if (req.Tipo == RadicadoTipo.Salida && req.EsRespuestaDefinitiva && req.RadicadoRelacionadoId is long entradaId)
+        {
+            var entrada = await _db.Radicados.FirstOrDefaultAsync(
+                r => r.Id == entradaId && r.Tipo == RadicadoTipo.Entrada, ct);
+            if (entrada is not null && entrada.Estado != RadicadoEstado.Anulado)
+            {
+                entrada.Estado = RadicadoEstado.Respondido;
+                entrada.Trazas.Add(new RadicadoTrazabilidad
+                {
+                    TenantId = tenantId.Value,
+                    Accion = "RESPONDIDO",
+                    Fecha = DateTime.UtcNow,
+                    UsuarioId = _tenant.UserId,
+                    Detalle = $"Respuesta definitiva con radicado de salida {numero} - termino cerrado (RF05-5)."
+                });
+            }
+        }
+
         await _db.SaveChangesAsync(ct);
         return RadicarResult.Success(radicado.Id, numero);
+    }
+
+    public async Task<RadicarResult> AdjuntarAsync(long radicadoId, IReadOnlyList<AdjuntoBytes> archivos,
+        CancellationToken ct = default)
+    {
+        var tenantId = _tenant.TenantId;
+        if (tenantId is null) { return RadicarResult.Fail("Sesion no valida."); }
+        if (archivos is not { Count: > 0 }) { return RadicarResult.Fail("No hay archivos para adjuntar."); }
+
+        var radicado = await _db.Radicados.Include(r => r.Archivos)
+            .FirstOrDefaultAsync(r => r.Id == radicadoId, ct);
+        if (radicado is null) { return RadicarResult.Fail("Radicado no encontrado."); }
+
+        var agregados = 0;
+        foreach (var a in archivos)
+        {
+            if (a.Contenido is not { Length: > 0 }) { continue; }
+            var ext = System.IO.Path.GetExtension(a.Nombre).TrimStart('.').ToLowerInvariant();
+            var contentType = a.MimeType ?? DocumentoRules.ContentType(a.Nombre);
+            var hash = DocumentoRules.HashSha256(a.Contenido);
+            var key = $"{tenantId.Value}/{Guid.NewGuid():N}" + (string.IsNullOrEmpty(ext) ? "" : $".{ext}");
+            using (var ms = new MemoryStream(a.Contenido, writable: false))
+            {
+                await _storage.PutAsync(key, ms, contentType, ct);
+            }
+            radicado.Archivos.Add(new RadicadoArchivo
+            {
+                TenantId = tenantId.Value,
+                Nombre = a.Nombre,
+                Extension = string.IsNullOrEmpty(ext) ? null : ext,
+                MimeType = contentType,
+                TamanoBytes = a.Contenido.LongLength,
+                StorageKey = key,
+                Sha256 = hash,
+                FechaCarga = DateTime.UtcNow
+            });
+            agregados++;
+        }
+        if (agregados == 0) { return RadicarResult.Fail("No se adjunto ningun archivo valido."); }
+
+        radicado.Trazas.Add(new RadicadoTrazabilidad
+        {
+            TenantId = tenantId.Value,
+            Accion = "DIGITALIZAR",
+            Fecha = DateTime.UtcNow,
+            UsuarioId = _tenant.UserId,
+            Detalle = $"Digitalizacion: {agregados} documento(s) adjuntado(s) al radicado {radicado.NumeroRadicado}."
+        });
+
+        await _db.SaveChangesAsync(ct);
+        return RadicarResult.Success(radicado.Id, radicado.NumeroRadicado);
     }
 
     public async Task<RadicarResult> RadicarConArchivosAsync(RadicarNuevoRequest request,

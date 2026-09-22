@@ -209,26 +209,6 @@
                 <button type="button" class="x" @onclick="WzCerrar" title="Cerrar">&#10005;</button>
             </div>
 
-            @if (_wzNumero is not null)
-            {
-                <div class="wz-body">
-                    <div class="wz-left" style="flex:1 1 100%;border-right:none;display:flex;align-items:center;justify-content:center;">
-                        <div class="wz-ok">
-                            <div class="wz-ok-ico">&#10003;</div>
-                            <div class="wz-ok-num">@_wzNumero</div>
-                            <p>Radicado creado correctamente@(string.IsNullOrEmpty(_wzDepDestId) ? " (sin distribuir; puedes distribuirlo desde la bandeja)." : $" y distribuido a {WzDepNombre(_wzDepDestId)}.")</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="wz-foot">
-                    <div></div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <button type="button" class="wz-btn green" @onclick="WzCerrar">&#10003; Cerrar</button>
-                    </div>
-                </div>
-            }
-            else
-            {
                 <div class="wz-head">
                     <div class="wz-ctx">
                         <div><span class="l">Sede: </span><strong>@(_wzEsq?.EntidadNombre ?? "-")</strong></div>
@@ -448,11 +428,68 @@
                                 <span class="hint">Nota interna &mdash; nunca visible al ciudadano</span>
                             </div>
                         }
+                        else if (_wzStep == 4 && _wzDir == RadicadoTipo.Interno)
+                        {
+                            <h2 class="wz-h2">Paso 4 &mdash; Destinatarios (dentro de la entidad)</h2>
+                            <div class="wz-sub">Dependencia y/o funcionario destinatario. Agregue varias dependencias para una circular interna.</div>
+                            <div class="wz-grid2">
+                                <div class="wz-field">
+                                    <label>Dependencia destino</label>
+                                    <select class="wz-in" @bind="_wzDestDepSel" @bind:after="WzOnDestDepChanged">
+                                        <option value="">&mdash; Seleccione la dependencia &mdash;</option>
+                                        @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+                                    </select>
+                                </div>
+                                <div class="wz-field">
+                                    <label>Funcionario destinatario</label>
+                                    <select class="wz-in" @bind="_wzDestFuncSel" disabled="@(string.IsNullOrEmpty(_wzDestDepSel))">
+                                        <option value="">@(string.IsNullOrEmpty(_wzDestDepSel) ? "Primero seleccione dependencia" : "— Opcional: el jefe lo asigna despues (RF07) —")</option>
+                                        @foreach (var f in _wzDestFuncs) { <option value="@f.Id">@f.Nombre</option> }
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="button" class="wz-btn navy" style="font-size:13px;" @onclick="WzAgregarDestino">+ Agregar destinatario</button>
+                            @if (_wzDestinos.Count > 0)
+                            {
+                                <div class="wz-dests">
+                                    @for (var i = 0; i < _wzDestinos.Count; i++)
+                                    {
+                                        var idx = i; var d = _wzDestinos[i];
+                                        <div class="wz-dest">
+                                            <div>
+                                                <div class="dep">@d.DepNombre</div>
+                                                <div class="fun">@(string.IsNullOrEmpty(d.FuncNombre) ? "\U0001F464 Sin funcionario - lo asigna el jefe de la dependencia" : "\U0001F464 " + d.FuncNombre)</div>
+                                            </div>
+                                            <button type="button" class="qx" title="Quitar" @onclick="@(() => _wzDestinos.RemoveAt(idx))">&times;</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (_wzDestinos.Count > 1)
+                            {
+                                <div class="wz-circular">&#128226; Circular interna: el sistema genera UN numero de radicado y UNA tarea por cada una de las @_wzDestinos.Count dependencias destinatarias (RF06-2).</div>
+                            }
+                            <div class="wz-field" style="margin-top:12px;">
+                                <label>Instrucciones para el destinatario</label>
+                                <textarea class="wz-in" rows="2" @bind="_wzInstrucciones" placeholder="Instrucciones opcionales..."></textarea>
+                            </div>
+                            <div class="wz-field">
+                                <label>Prioridad</label>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    @foreach (var p in Enum.GetValues<RadicadoPrioridad>())
+                                    {
+                                        var ico = p == RadicadoPrioridad.Urgente ? "\U0001F534" : p == RadicadoPrioridad.Alta ? "\U0001F7E0" : "\U0001F535";
+                                        <button type="button" class="wz-chip @(_wzPrio == p ? "on" : "")" @onclick="@(() => _wzPrio = p)">@ico @p</button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="wz-ok-note">&#10003; <strong>Listo para radicar</strong> &mdash; al hacer clic en "Radicar" se asignara el numero consecutivo. La fecha y hora las impone el servidor.</div>
+                        }
                         else if (_wzStep == 4)
                         {
                             <h2 class="wz-h2">Paso 4 &mdash; Destinatario (dependencia interna)</h2>
-                            <div class="wz-sub">Comunicacion @(_wzDir == RadicadoTipo.Interno ? "Interna" : "Externa (entrada)"): el destinatario es una dependencia interna de la entidad.</div>
-                            <div class="wz-info">&#127963; @(_wzDir == RadicadoTipo.Interno ? "Seleccione la dependencia destino que tramitara la comunicacion." : "Seleccione la dependencia destino (y opcionalmente el funcionario responsable).") Es opcional: puede distribuirlo despues desde la bandeja.</div>
+                            <div class="wz-sub">Comunicacion Externa (entrada): el destinatario es una dependencia interna de la entidad.</div>
+                            <div class="wz-info">&#127963; Seleccione la dependencia destino (y opcionalmente el funcionario responsable). Es opcional: puede distribuirlo despues desde la bandeja.</div>
                             <div class="wz-field">
                                 <label>Dependencia</label>
                                 <select class="wz-in" @bind="_wzDepDestId" @bind:after="WzOnDepDestChanged">
@@ -486,6 +523,45 @@
                             </div>
                             <div class="wz-ok-note">&#10003; <strong>Listo para radicar</strong> &mdash; al hacer clic en "Radicar" se asignara el numero consecutivo. La fecha y hora las impone el servidor.</div>
                         }
+                        else if (WzEsDigital)
+                        {
+                            <h2 class="wz-h2">Paso @_wzStep &mdash; Documentos Digitalizados</h2>
+                            <div class="wz-ok2">
+                                <div>
+                                    <div class="t">&#10003; Radicado generado exitosamente</div>
+                                    <div class="n">@_wzNumero</div>
+                                </div>
+                                <button type="button" class="wz-btn" @onclick="WzImprimirSticker">&#128424; Imprimir sticker</button>
+                            </div>
+                            <label class="wz-drop">
+                                <InputFile OnChange="WzOnDigFiles" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" />
+                                <span class="ico" style="font-size:32px;">&#128193;</span>
+                                <span style="font-weight:600;color:#212529;">Arrastrar archivos aqui o hacer clic</span>
+                                <span class="hint">PDF, JPG, PNG, TIFF &mdash; Max. 50 MB por archivo</span>
+                                <div style="margin-top:12px;display:flex;justify-content:center;gap:8px;">
+                                    <span class="wz-btn navy" style="font-size:13px;">&#128194; Seleccionar archivos</span>
+                                    <span class="wz-btn" style="font-size:13px;" title="Integracion de escaner TWAIN pendiente">&#128424; Captura TWAIN</span>
+                                </div>
+                            </label>
+                            @if (_wzDigItems.Count > 0)
+                            {
+                                <div class="wz-files" style="margin-top:14px;">
+                                    @foreach (var it in _wzDigItems)
+                                    {
+                                        <div class="wz-file">
+                                            <span class="ext">@(string.IsNullOrEmpty(it.Ext) ? "?" : it.Ext.ToUpperInvariant())</span>
+                                            <span class="nom" title="@it.Nombre">@it.Nombre</span>
+                                            <span class="tam">@WzTam(it.Tamano)</span>
+                                            <span class="est" style="color:@(it.Estado == "Adjuntado" ? "#0a7d6f" : it.Estado == "Error" ? "#DC2626" : "#94A3B8");font-size:11px;font-weight:600;">
+                                                @(it.Estado == "Adjuntado" ? "✓ Adjuntado" : it.Estado == "Error" ? "✕ Error" : "Subiendo...")
+                                            </span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (_wzFileError is not null) { <span class="hint" style="color:#DC2626;">@_wzFileError</span> }
+                            <div class="wz-warn" style="margin-top:16px;">&#128161; El radicado puede quedar sin archivo adjunto. Podra adjuntar desde la bandeja o el detalle en cualquier momento posterior.</div>
+                        }
                         @if (_wzError is not null) { <div class="wz-err">@_wzError</div> }
                     </div>
 
@@ -501,7 +577,7 @@
                                 <div class="pv-tag" style="@(WzTipoSel is { } tg && !string.IsNullOrEmpty(tg.Color) ? $"background:{tg.Color};color:#fff" : "")">@(WzTipoSel?.Nombre ?? "TIPO")</div>
                             </div>
                             <div class="pv-num">
-                                <div class="ph">Numero se asignara al radicar</div>
+                                <div class="ph" style="@(_wzNumero is not null ? "color:#0ab39c;font-weight:800;letter-spacing:.04em;" : "")">@(_wzNumero ?? "Numero se asignara al radicar")</div>
                                 <div class="f">@_wzFechaCtx</div>
                             </div>
                             @foreach (var (k, v) in WzPreviewRows())
@@ -514,10 +590,10 @@
                             <div style="display:flex;justify-content:space-between;align-items:center;">
                                 <span class="t">&#127991; Sticker adhesivo</span>
                             </div>
-                            <div class="num">@WzNumeroPlaceholder()</div>
+                            <div class="num">@(_wzNumero ?? WzNumeroPlaceholder())</div>
                             <div class="m">@_wzFechaCtx | @(WzTipoSel?.Nombre ?? "-")</div>
                             <div style="display:flex;justify-content:space-between;font-size:11px;color:#94A3B8;">
-                                <span>@(string.IsNullOrEmpty(_wzDepDestId) ? "Dependencia destino" : WzDepNombre(_wzDepDestId))</span>
+                                <span>@WzStickerDestino</span>
                                 <span>@WzFoliosPreview folio(s)</span>
                             </div>
                             <div class="qr"></div>
@@ -527,22 +603,31 @@
 
                 <div class="wz-foot">
                     <div style="display:flex;gap:8px;">
-                        <button type="button" class="wz-btn" @onclick="WzCerrar">&#10005; Cancelar</button>
+                        @if (!WzEsDigital)
+                        {
+                            <button type="button" class="wz-btn" @onclick="WzCerrar">&#10005; Cancelar</button>
+                        }
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;">
-                        <span class="paso">Paso @_wzStep de 4</span>
-                        @if (_wzStep > 1) { <button type="button" class="wz-btn" @onclick="WzAtras" disabled="@_wzBusy">&#8592; Anterior</button> }
-                        @if (_wzStep < 4)
+                        <span class="paso">Paso @_wzStep de @WzPasos.Length</span>
+                        @if (WzEsDigital)
                         {
-                            <button type="button" class="wz-btn navy" @onclick="WzSiguiente" disabled="@_wzBusy">Siguiente &#8594;</button>
+                            <button type="button" class="wz-btn green" @onclick="WzCerrar" disabled="@_wzBusy">&#10003; Finalizar</button>
                         }
                         else
                         {
-                            <button type="button" class="wz-btn green" @onclick="WzRadicarAsync" disabled="@_wzBusy">&#10003; Radicar</button>
+                            @if (_wzStep > 1) { <button type="button" class="wz-btn" @onclick="WzAtras" disabled="@_wzBusy">&#8592; Anterior</button> }
+                            @if (_wzStep < WzRadicarStep)
+                            {
+                                <button type="button" class="wz-btn navy" @onclick="WzSiguiente" disabled="@_wzBusy">Siguiente &#8594;</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="wz-btn green" @onclick="WzRadicarAsync" disabled="@_wzBusy">&#10003; @WzRadicarLabel</button>
+                            }
                         }
                     </div>
                 </div>
-            }
         </div>
     </div>
 }
@@ -673,6 +758,17 @@
     .wz-ok { text-align:center; }
     .wz-ok-ico { width:64px; height:64px; margin:0 auto 12px; border-radius:50%; background:#D1FAE5; color:#065F46; font-size:2rem; display:flex; align-items:center; justify-content:center; }
     .wz-ok-num { font-size:22px; font-weight:800; color:#405189; letter-spacing:.05em; font-family:Consolas,monospace; }
+    .wz-ok2 { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:8px; padding:12px 14px; }
+    .wz-ok2 .t { font-size:13px; font-weight:700; color:#166534; margin-bottom:2px; }
+    .wz-ok2 .n { font-size:16px; font-weight:800; color:#405189; letter-spacing:.04em; font-family:Consolas,monospace; }
+    .wz-warn { background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; border-radius:8px; padding:10px 12px; font-size:12px; }
+    .wz-file .est { margin-left:auto; }
+    .wz-dests { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+    .wz-dest { display:flex; justify-content:space-between; align-items:center; border:1px solid #E2E8F0; border-radius:8px; padding:9px 14px; background:#F8FAFC; }
+    .wz-dest .dep { font-size:13px; font-weight:700; color:#212529; }
+    .wz-dest .fun { font-size:11px; color:#566980; margin-top:2px; }
+    .wz-dest .qx { border:none; background:none; color:#DC2626; font-size:18px; line-height:1; cursor:pointer; }
+    .wz-circular { margin-top:12px; background:#eef4ff; border:1px solid #d9e5fb; color:#1d4ed8; border-radius:8px; padding:10px 12px; font-size:12px; }
     @@media (max-width:900px){ .wz-body { flex-direction:column; } .wz-left,.wz-right { flex:1 1 auto; border-right:none; } }
 </style>
 
@@ -813,25 +909,42 @@
     private string _wzSoporte = "Fisico", _wzAsunto = "", _wzDescripcion = "", _wzObservaciones = "";
     private DateOnly? _wzFechaDoc;
     private int _wzFolios = 1, _wzAnexos;
-    // Paso 4 - destino.
+    // Paso 4 - destino (entrada: un solo destino).
     private string _wzDepDestId = "", _wzFuncDestId = "", _wzRelacionado = "";
     private RadicadoPrioridad _wzPrio = RadicadoPrioridad.Normal;
+    // Paso 4 - destinatarios (interna: circular, N destinos). Se agregan uno por uno a una lista.
+    private sealed class WzDestino { public long DepId; public long? FuncId; public string DepNombre = ""; public string FuncNombre = ""; }
+    private readonly List<WzDestino> _wzDestinos = new();
+    private string _wzDestDepSel = "", _wzDestFuncSel = "", _wzInstrucciones = "";
+    private IReadOnlyList<OpcionDto> _wzDestFuncs = Array.Empty<OpcionDto>();
     // Adjuntos (Fase 2): documentos electronicos subidos al radicar.
     private const long WzMaxBytes = 50L * 1024 * 1024;
     private static readonly string[] WzExts = ["pdf", "docx", "xlsx", "pptx", "jpg", "jpeg", "png", "tif", "tiff", "gif", "bmp", "xml", "txt"];
     private sealed class WzArchivo { public byte[] Bytes = Array.Empty<byte>(); public string Nombre = ""; public long Tamano; public string Ext = ""; }
     private readonly List<WzArchivo> _wzArchivos = new();
     private string? _wzFileError;
+    // Paso Digitalizacion (post-radicado): archivos escaneados del soporte fisico, subidos al radicado existente.
+    private sealed class WzDigItem { public string Nombre = ""; public long Tamano; public string Ext = ""; public string Estado = "Subiendo"; }
+    private readonly List<WzDigItem> _wzDigItems = new();
+    private long? _wzDigRadicadoId;
     // Contexto para la vista previa / sticker (calca el boot del legacy).
     [CascadingParameter] private Task<AuthenticationState>? _authTask { get; set; }
     private EsquemaRadicacionDto? _wzEsq;
     private string _wzUsuario = "Operador";
     private string _wzFechaCtx = "";
 
-    private (int n, string lbl)[] WzPasos => new[]
+    private (int n, string lbl)[] WzPasos => _wzDir switch
     {
-        (1, "Clasificacion"), (2, _wzDir == RadicadoTipo.Entrada ? "Remitente" : "Origen"), (3, "Documento"), (4, "Destinatario")
+        RadicadoTipo.Interno => new[] { (1, "Clasificacion"), (2, "Origen"), (3, "Documento"), (4, "Destinatarios"), (5, "Digitalizacion") },
+        _ => new[] { (1, "Clasificacion"), (2, "Remitente"), (3, "Documento"), (4, "Destinatario"), (5, "Digitalizacion") }
     };
+
+    // El ultimo paso de datos (donde el boton es "Radicar") es el previo a Digitalizacion; Digitalizacion
+    // es siempre el ultimo paso (post-radicado, calca flow() del legacy que empuja 'digital' al final).
+    private int WzDigitalStep => WzPasos.Length;
+    private int WzRadicarStep => WzPasos.Length - 1;
+    private bool WzEsDigital => _wzNumero is not null && _wzStep == WzDigitalStep;
+    private string WzRadicarLabel => _wzDir == RadicadoTipo.Salida ? "Radicar salida" : "Radicar";
 
     private RadicacionDireccion WzDireccionSel => _wzDir == RadicadoTipo.Entrada
         ? RadicacionDireccion.Entrada : RadicacionDireccion.Interno;
@@ -847,7 +960,9 @@
         _wzDepOrigenId = _wzFuncOrigenId = ""; _wzSoporte = "Fisico"; _wzAsunto = _wzDescripcion = "";
         _wzFolios = 1; _wzAnexos = 0; _wzDepDestId = _wzFuncDestId = ""; _wzPrio = RadicadoPrioridad.Normal;
         _wzArchivos.Clear(); _wzFileError = null;
-        _wzFuncsOrigen = _wzFuncsDest = Array.Empty<OpcionDto>();
+        _wzDigItems.Clear(); _wzDigRadicadoId = null;
+        _wzDestinos.Clear(); _wzDestDepSel = _wzDestFuncSel = _wzInstrucciones = "";
+        _wzFuncsOrigen = _wzFuncsDest = _wzDestFuncs = Array.Empty<OpcionDto>();
         _wzTipos = await BandejaSvc.TiposAsistenteAsync();
         _wzNiveles = await BandejaSvc.NivelesReservaAsync();
         _wzEsq = await BandejaSvc.AsistenteEsquemaAsync();
@@ -872,6 +987,11 @@
         : "";
 
     private string WzDepNombre(string id) => _deps.FirstOrDefault(x => x.Id.ToString() == id)?.Nombre ?? "—";
+
+    private string WzStickerDestino => _wzDir == RadicadoTipo.Interno
+        ? (_wzDestinos.Count == 0 ? "Dependencia destino"
+            : _wzDestinos.Count == 1 ? _wzDestinos[0].DepNombre : $"{_wzDestinos.Count} dependencias")
+        : (string.IsNullOrEmpty(_wzDepDestId) ? "Dependencia destino" : WzDepNombre(_wzDepDestId));
 
     private string WzFoliosPreview => _wzSoporte == "Electronico" && _wzArchivos.Count > 0 ? "auto" : _wzFolios.ToString();
 
@@ -898,17 +1018,22 @@
             : (string.IsNullOrWhiteSpace(_wzDepOrigenId) ? em : WzDepNombre(_wzDepOrigenId));
         var doc = esEntrada && !anon && !string.IsNullOrWhiteSpace(_wzRemDoc) ? $"{_wzRemTipoDoc} {_wzRemDoc}" : em;
         var asunto = string.IsNullOrWhiteSpace(_wzAsunto) ? em : (_wzAsunto.Length > 45 ? _wzAsunto[..45] + "…" : _wzAsunto);
-        var dep = string.IsNullOrWhiteSpace(_wzDepDestId) ? em : WzDepNombre(_wzDepDestId);
-        var func = string.IsNullOrWhiteSpace(_wzFuncDestId)
-            ? "(sin asignar)"
-            : (_wzFuncsDest.FirstOrDefault(f => f.Id.ToString() == _wzFuncDestId)?.Nombre ?? "(sin asignar)");
+        var esInterna = _wzDir == RadicadoTipo.Interno;
+        var dep = esInterna
+            ? (_wzDestinos.Count == 0 ? em : (_wzDestinos.Count == 1 ? _wzDestinos[0].DepNombre : $"{_wzDestinos.Count} dependencias (circular)"))
+            : (string.IsNullOrWhiteSpace(_wzDepDestId) ? em : WzDepNombre(_wzDepDestId));
+        var func = esInterna
+            ? (_wzDestinos.Count == 1 && !string.IsNullOrEmpty(_wzDestinos[0].FuncNombre) ? _wzDestinos[0].FuncNombre : "(sin asignar)")
+            : (string.IsNullOrWhiteSpace(_wzFuncDestId)
+                ? "(sin asignar)"
+                : (_wzFuncsDest.FirstOrDefault(f => f.Id.ToString() == _wzFuncDestId)?.Nombre ?? "(sin asignar)"));
         yield return ("Canal", canal);
         yield return ("Tipo comunicacion", WzTipoSel?.Nombre ?? em);
         yield return (remLabel, remValor);
         yield return ("Documento", doc);
         yield return ("Asunto", asunto);
         yield return ("Folios", WzFoliosPreview);
-        yield return ("Dependencia", dep);
+        yield return (esInterna ? "Destinatarios" : "Dependencia", dep);
         yield return ("Funcionario", func);
         yield return ("Fecha vencimiento", string.IsNullOrEmpty(WzVenceTxt) ? em : WzVenceTxt);
     }
@@ -939,6 +1064,30 @@
         _wzFuncsDest = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDepDestId, out var d) ? d : null);
     }
 
+    // Multi-destinatario (circular interna): al cambiar la dependencia del formulario de entrada recarga sus funcionarios.
+    private async Task WzOnDestDepChanged()
+    {
+        _wzDestFuncSel = "";
+        _wzDestFuncs = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDestDepSel, out var d) ? d : null);
+    }
+
+    // Agrega el destino del formulario a la lista, sin duplicar dependencia (fiel al legacy addDestino).
+    private void WzAgregarDestino()
+    {
+        _wzError = null;
+        if (!long.TryParse(_wzDestDepSel, out var depId)) { _wzError = "Seleccione la dependencia destino."; return; }
+        if (_wzDestinos.Any(x => x.DepId == depId)) { _wzError = "Esa dependencia ya esta en la lista."; return; }
+        long? funcId = long.TryParse(_wzDestFuncSel, out var fid) ? fid : null;
+        _wzDestinos.Add(new WzDestino
+        {
+            DepId = depId,
+            FuncId = funcId,
+            DepNombre = WzDepNombre(_wzDestDepSel),
+            FuncNombre = funcId is null ? "" : (_wzDestFuncs.FirstOrDefault(f => f.Id == funcId)?.Nombre ?? "")
+        });
+        _wzDestDepSel = ""; _wzDestFuncSel = ""; _wzDestFuncs = Array.Empty<OpcionDto>();
+    }
+
     private async Task WzOnFiles(InputFileChangeEventArgs e)
     {
         _wzFileError = null;
@@ -959,6 +1108,49 @@
 
     private static string WzTam(long b) => b < 1024 ? $"{b} B" : b < 1048576 ? $"{b / 1024.0:0.#} KB" : $"{b / 1048576.0:0.#} MB";
 
+    // Paso Digitalizacion: sube cada archivo escaneado al radicado ya creado (AdjuntarAsync), con estado por item.
+    private async Task WzOnDigFiles(InputFileChangeEventArgs e)
+    {
+        _wzFileError = null;
+        if (_wzDigRadicadoId is not long rid) { _wzFileError = "El radicado aun no esta disponible."; return; }
+        var nuevos = new List<AdjuntoBytes>();
+        var items = new List<WzDigItem>();
+        foreach (var f in e.GetMultipleFiles(20))
+        {
+            var ext = System.IO.Path.GetExtension(f.Name).TrimStart('.').ToLowerInvariant();
+            if (!WzExts.Contains(ext)) { _wzFileError = $"'{f.Name}': extension no permitida."; continue; }
+            if (f.Size <= 0 || f.Size > WzMaxBytes) { _wzFileError = $"'{f.Name}': tamano invalido (max 50 MB)."; continue; }
+            byte[] bytes;
+            using (var ms = new MemoryStream())
+            {
+                await f.OpenReadStream(WzMaxBytes).CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+            var item = new WzDigItem { Nombre = f.Name, Tamano = bytes.LongLength, Ext = ext, Estado = "Subiendo" };
+            _wzDigItems.Add(item);
+            items.Add(item);
+            nuevos.Add(new AdjuntoBytes(f.Name, bytes));
+        }
+        if (nuevos.Count == 0) { return; }
+        StateHasChanged();
+        var res = await RadSvc.AdjuntarAsync(rid, nuevos);
+        var estado = res.Ok ? "Adjuntado" : "Error";
+        foreach (var it in items) { it.Estado = estado; }
+        if (!res.Ok) { _wzFileError = res.Error; }
+    }
+
+    // Sticker imprimible del radicado (calca wzImprimirSticker del legacy: ventana propia + window.print).
+    private async Task WzImprimirSticker()
+    {
+        var html = "<div style=\"font-family:Poppins,sans-serif;border:2px dashed #405189;border-radius:8px;"
+            + "padding:14px 18px;width:260px;\">"
+            + "<div style=\"font-size:10px;color:#94A3B8;letter-spacing:.08em;\">TRONOX &middot; RADICADO</div>"
+            + $"<div style=\"font-size:18px;font-weight:800;color:#405189;font-family:Consolas,monospace;margin:4px 0;\">{_wzNumero}</div>"
+            + $"<div style=\"font-size:11px;color:#566980;\">{_wzFechaCtx} | {WzTipoSel?.Nombre}</div>"
+            + $"<div style=\"font-size:11px;color:#94A3B8;margin-top:4px;\">{WzFoliosPreview} folio(s)</div></div>";
+        await JS.InvokeVoidAsync("tronoxMenuConfig.printHtml", "Sticker de radicado", html);
+    }
+
     private string? WzValidarPaso(int step) => step switch
     {
         1 => WzTipoSel is null ? "Selecciona el tipo de comunicacion." : null,
@@ -975,10 +1167,10 @@
     private void WzSiguiente()
     {
         _wzError = WzValidarPaso(_wzStep);
-        if (_wzError is null && _wzStep < 4) { _wzStep++; }
+        if (_wzError is null && _wzStep < WzRadicarStep) { _wzStep++; }
     }
 
-    private void WzAtras() { _wzError = null; if (_wzStep > 1) { _wzStep--; } }
+    private void WzAtras() { _wzError = null; if (_wzStep > 1 && _wzNumero is null) { _wzStep--; } }
 
     private async Task WzRadicarAsync()
     {
@@ -987,6 +1179,15 @@
         {
             var err = WzValidarPaso(s);
             if (err is not null) { _wzError = err; _wzStep = s; return; }
+        }
+        // Interna: auto-agrega el destino pendiente del formulario (fiel al legacy) y exige al menos uno.
+        if (_wzDir == RadicadoTipo.Interno)
+        {
+            if (!string.IsNullOrEmpty(_wzDestDepSel) && !_wzDestinos.Any(x => x.DepId.ToString() == _wzDestDepSel))
+            {
+                WzAgregarDestino();
+            }
+            if (_wzDestinos.Count == 0) { _wzError = "Agregue al menos una dependencia destinataria."; _wzStep = 4; return; }
         }
         var tipo = WzTipoSel!;
         var anonimo = _wzDir == RadicadoTipo.Entrada && _wzTerTipo == "anonimo";
@@ -1027,16 +1228,29 @@
                 : await RadSvc.RadicarAsync(req);
             if (!res.Ok) { _wzError = res.Error ?? "No se pudo radicar."; return; }
 
-            // Radicar + distribuir en un paso (calca el legacy): si se eligio dependencia destino, distribuir.
-            if (long.TryParse(_wzDepDestId, out var depDest) && res.RadicadoId is long rid)
+            // Radicar + distribuir en un paso (calca el legacy).
+            if (res.RadicadoId is long rid)
             {
-                var dreq = new DistribuirRequest(rid, depDest,
-                    long.TryParse(_wzFuncDestId, out var fd) ? fd : null,
-                    "", _wzPrio, "");
-                await DistSvc.DistribuirAsync(dreq);
+                if (_wzDir == RadicadoTipo.Interno && _wzDestinos.Count > 0)
+                {
+                    // Circular interna: UN radicado, N tareas (una por dependencia destinataria).
+                    var creq = new DistribuirCircularRequest(rid,
+                        _wzDestinos.Select(x => new DestinoCircular(x.DepId, x.FuncId)).ToList(),
+                        _wzPrio, string.IsNullOrWhiteSpace(_wzInstrucciones) ? null : _wzInstrucciones.Trim());
+                    await DistSvc.DistribuirCircularAsync(creq);
+                }
+                else if (long.TryParse(_wzDepDestId, out var depDest))
+                {
+                    var dreq = new DistribuirRequest(rid, depDest,
+                        long.TryParse(_wzFuncDestId, out var fd) ? fd : null,
+                        "", _wzPrio, "");
+                    await DistSvc.DistribuirAsync(dreq);
+                }
             }
 
             _wzNumero = res.Numero;
+            _wzDigRadicadoId = res.RadicadoId;
+            _wzStep = WzDigitalStep; // avanza al paso final de Digitalizacion (adjuntar el soporte fisico).
             Flash($"Radicado {res.Numero} creado.", true);
             await LoadAsync();
         }
