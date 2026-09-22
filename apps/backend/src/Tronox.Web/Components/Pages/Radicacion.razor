@@ -867,7 +867,8 @@
                     <div style="display:flex;gap:8px;">
                         @if (!WzEsDigital)
                         {
-                            <button type="button" class="wz-btn" @onclick="WzCerrar">&#10005; Cancelar</button>
+                            <button type="button" class="wz-btn" @onclick="WzCerrar" disabled="@_wzBusy">&#10005; Cancelar</button>
+                            <button type="button" class="wz-btn" @onclick="WzGuardarBorradorAsync" disabled="@_wzBusy" title="Guarda lo capturado como borrador para retomarlo despues">&#128190; Guardar borrador</button>
                         }
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;">
@@ -878,7 +879,7 @@
                         }
                         else
                         {
-                            @if (_wzStep > 1) { <button type="button" class="wz-btn" @onclick="WzAtras" disabled="@_wzBusy">&#8592; Anterior</button> }
+                            <button type="button" class="wz-btn" @onclick="WzAtras" disabled="@(_wzStep == 1 || _wzBusy)">&#8592; Anterior</button>
                             @if (_wzStep < WzRadicarStep)
                             {
                                 <button type="button" class="wz-btn navy" @onclick="WzSiguiente" disabled="@_wzBusy">Siguiente &#8594;</button>
@@ -1005,6 +1006,9 @@
 
     /* Asistente Nuevo Radicado (calca rad_radicar.aspx: pantalla completa, 2 paneles + vista previa) */
     .wz-page { position:fixed; inset:0; z-index:1090; background:#F1F5F9; font-family:Poppins,'Segoe UI',sans-serif; }
+    /* Oculta el selector de tema flotante (#tx-theme-fab, z-index 9998) mientras el asistente esta abierto,
+       para que no se encime sobre el boton "Cancelar" del pie. */
+    body:has(.wz-page) #tx-theme-fab, body:has(.wz-page) #tx-theme-panel { display:none !important; }
     .wz-shell { display:flex; flex-direction:column; height:100vh; background:#fff; }
     .wz-titlebar { padding:10px 24px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; }
     .wz-titlebar h1 { font-size:14px; font-weight:800; color:#212529; margin:0; letter-spacing:.04em; }
@@ -1717,6 +1721,48 @@
     }
 
     private void WzAtras() { _wzError = null; if (_wzStep > 1 && _wzNumero is null) { _wzStep--; } }
+
+    // Guarda el asistente en curso como BORRADOR (calca "Guardar borrador" del legacy): persiste lo capturado
+    // sin consumir consecutivo. No exige validaciones; permite retomarlo despues desde la bandeja.
+    private async Task WzGuardarBorradorAsync()
+    {
+        _wzBusy = true; _wzError = null;
+        try
+        {
+            var anonimo = _wzDir == RadicadoTipo.Entrada && _wzTerTipo == "anonimo";
+            var esEntrada = _wzDir == RadicadoTipo.Entrada;
+            var conTercero = (esEntrada && !anonimo) || _wzDir == RadicadoTipo.Salida;
+            var req = new RadicarNuevoRequest(
+                Tipo: _wzDir,
+                TipoComunicacionId: WzTipoSel?.Id ?? 0,
+                Asunto: string.IsNullOrWhiteSpace(_wzAsunto) ? null : _wzAsunto.Trim(),
+                Descripcion: string.IsNullOrWhiteSpace(_wzDescripcion) ? null : _wzDescripcion.Trim(),
+                Canal: _wzCanal,
+                Anonimo: anonimo,
+                RemitenteNombre: conTercero && !string.IsNullOrWhiteSpace(_wzRemNombre) ? _wzRemNombre.Trim() : null,
+                RemitenteEmail: conTercero && !string.IsNullOrWhiteSpace(_wzRemEmail) ? _wzRemEmail.Trim() : null,
+                RemitenteTipoDoc: conTercero ? _wzRemTipoDoc : null,
+                RemitenteDocumento: conTercero && !string.IsNullOrWhiteSpace(_wzRemDoc) ? _wzRemDoc.Trim() : null,
+                RemitenteTelefono: conTercero && !string.IsNullOrWhiteSpace(_wzRemTel) ? _wzRemTel.Trim() : null,
+                NivelReservaId: long.TryParse(_wzNivelId, out var nvId) ? nvId : null,
+                Soporte: _wzSoporte,
+                Prioridad: _wzPrio,
+                Folios: _wzFolios,
+                NumAnexos: _wzAnexos,
+                DependenciaOrigenId: _wzDir == RadicadoTipo.Interno && long.TryParse(_wzDepOrigenId, out var doId) ? doId : null,
+                FuncionarioOrigenId: _wzDir == RadicadoTipo.Interno && long.TryParse(_wzFuncOrigenId, out var foId) ? foId : null,
+                FechaDocumento: _wzFechaDoc,
+                Observaciones: string.IsNullOrWhiteSpace(_wzObservaciones) ? null : _wzObservaciones.Trim(),
+                RemitenteMunicipio: esEntrada && !anonimo && !string.IsNullOrWhiteSpace(_wzRemMunicipio) ? _wzRemMunicipio : null,
+                CanalEnvio: _wzDir == RadicadoTipo.Salida && !string.IsNullOrEmpty(_wzSalCanal) ? _wzSalCanal : null);
+            var res = await RadSvc.GuardarBorradorAsync(req);
+            if (!res.Ok) { _wzError = res.Error ?? "No se pudo guardar el borrador."; return; }
+            _wzOpen = false;
+            Flash("Borrador guardado. Puedes retomarlo desde la bandeja (estado Borrador).", true);
+            await LoadAsync();
+        }
+        finally { _wzBusy = false; }
+    }
 
     private async Task WzRadicarAsync()
     {

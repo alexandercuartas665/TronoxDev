@@ -18,6 +18,11 @@ public interface IRadicadorService
         IReadOnlyList<AdjuntoBytes> archivos, bool estampar = false, double estampaX = 62, double estampaY = 6,
         CancellationToken ct = default);
 
+    /// <summary>Guarda el asistente en curso como BORRADOR (calca "Guardar borrador" del legacy): persiste lo
+    /// capturado sin consumir consecutivo (numero temporal) ni calcular SLA, con estado Borrador para
+    /// retomarlo despues. Validacion minima: no exige asunto/remitente completos.</summary>
+    Task<RadicarResult> GuardarBorradorAsync(RadicarNuevoRequest request, CancellationToken ct = default);
+
     /// <summary>Adjunta documentos escaneados/electronicos a un radicado YA existente (paso Digitalizacion del
     /// asistente, RF06-3 / rad_op.ashx?action=adjuntar): sube cada archivo a object storage (invariante 9) y lo
     /// cuelga del radicado con traza. Se usa despues de radicar para digitalizar el soporte fisico.</summary>

@@ -190,6 +190,57 @@ public sealed class RadicadorService : IRadicadorService
         return RadicarResult.Success(radicado.Id, numero);
     }
 
+    public async Task<RadicarResult> GuardarBorradorAsync(RadicarNuevoRequest req, CancellationToken ct = default)
+    {
+        var tenantId = _tenant.TenantId;
+        if (tenantId is null) { return RadicarResult.Fail("Sesion no valida."); }
+
+        // Numero temporal: el borrador NO consume consecutivo (el numero oficial se asigna al radicar).
+        var numero = $"BORRADOR-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var radicado = new Radicado
+        {
+            TenantId = tenantId.Value,
+            NumeroRadicado = numero,
+            Tipo = req.Tipo,
+            Estado = RadicadoEstado.Borrador,
+            Canal = req.Canal,
+            Prioridad = req.Prioridad,
+            // Borrador sin tipo aun: null (0 violaria el FK a tipos_comunicacion).
+            TipoComunicacionId = req.TipoComunicacionId > 0 ? req.TipoComunicacionId : null,
+            Asunto = req.Asunto,
+            Descripcion = req.Descripcion,
+            Anonimo = req.Anonimo,
+            RemitenteNombre = req.Anonimo ? null : req.RemitenteNombre,
+            RemitenteEmail = req.RemitenteEmail,
+            RemitenteTipoDoc = req.RemitenteTipoDoc,
+            RemitenteDocumento = req.RemitenteDocumento,
+            RemitenteTelefono = req.RemitenteTelefono,
+            RemitenteMunicipio = req.Anonimo ? null : req.RemitenteMunicipio,
+            NivelReservaId = req.NivelReservaId > 0 ? req.NivelReservaId : null,
+            Soporte = req.Soporte,
+            Folios = req.Folios,
+            NumAnexos = req.NumAnexos,
+            FechaDocumento = req.FechaDocumento,
+            Observaciones = req.Observaciones,
+            DependenciaOrigenId = req.DependenciaOrigenId,
+            FuncionarioOrigenId = req.FuncionarioOrigenId,
+            CanalEnvio = req.Tipo == RadicadoTipo.Salida ? req.CanalEnvio : null,
+            FechaRadicacion = DateTime.UtcNow,
+            UsuarioRadicaId = _tenant.UserId
+        };
+        radicado.Trazas.Add(new RadicadoTrazabilidad
+        {
+            TenantId = tenantId.Value,
+            Accion = "BORRADOR",
+            Fecha = DateTime.UtcNow,
+            UsuarioId = _tenant.UserId,
+            Detalle = "Borrador guardado desde el asistente."
+        });
+        _db.Radicados.Add(radicado);
+        await _db.SaveChangesAsync(ct);
+        return RadicarResult.Success(radicado.Id, numero);
+    }
+
     public async Task<RadicarResult> AdjuntarAsync(long radicadoId, IReadOnlyList<AdjuntoBytes> archivos,
         CancellationToken ct = default)
     {
