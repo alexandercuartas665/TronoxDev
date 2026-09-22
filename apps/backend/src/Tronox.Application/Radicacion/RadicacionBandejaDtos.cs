@@ -65,6 +65,10 @@ public sealed record DistribuirRequest(
     long RadicadoId, long DependenciaId, long? FuncionarioId,
     string? Instrucciones, RadicadoPrioridad Prioridad, string? Justificacion);
 
+/// <summary>Sugerencia de autocompletado de un tercero (remitente/destinatario) por documento. Interino
+/// desde radicados previos; futura fuente: RQ07 Terceros.</summary>
+public sealed record TerceroSugeridoDto(string? TipoDoc, string? Nombre, string? Email, string? Telefono, string? Municipio);
+
 /// <summary>Un destino de una circular interna: dependencia obligatoria, funcionario opcional (si es null
 /// lo asigna el jefe de la dependencia). Espejo de cada elemento de F.destinos del legacy rad_interna_wizard.</summary>
 public sealed record DestinoCircular(long DependenciaId, long? FuncionarioId);

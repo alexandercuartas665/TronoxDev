@@ -18,4 +18,9 @@ public interface IRadicacionBandejaService
     Task<EsquemaRadicacionDto> AsistenteEsquemaAsync(CancellationToken ct = default);
     Task<IReadOnlyList<OpcionDto>> DependenciasAsync(CancellationToken ct = default);
     Task<IReadOnlyList<OpcionDto>> FuncionariosAsync(long? dependenciaId, CancellationToken ct = default);
+
+    /// <summary>Autocompletado del remitente/destinatario por numero de documento (RF01-3). Interino: mientras
+    /// no exista RQ07 Terceros, sugiere los datos del ultimo radicado de este tenant con ese documento.
+    /// Cuando RQ07 exista, esta consulta se reapunta a la tabla terceros (fuente unica, DAT-02).</summary>
+    Task<TerceroSugeridoDto?> BuscarTerceroPorDocumentoAsync(string documento, CancellationToken ct = default);
 }

@@ -1390,3 +1390,24 @@ Pendientes fieles al legacy: TWAIN real, estampa arrastrable RF02-5 (paso 'docum
 selector de documentos RQ04 y autocomplete de terceros RQ07. Nota entorno (dev, tenant 2): se
 sembraron 2 tipos con direccion Salida para probar el flujo (Oficio de Respuesta, Comunicacion
 Oficial de Salida). Solo datos locales.
+
+## 34. Asistente: DIVIPOLA real, autocompletado de tercero y estampa arrastrable (2026-09-22)
+
+Tres mejoras del asistente Nuevo Radicado. Sin migracion (reusan catalogos y object storage existentes).
+
+- **DIVIPOLA real (RQ01):** el municipio del remitente ya no sale de una lista hardcoded; ahora es una
+  cascada Departamento -> Municipio desde el catalogo DANE (DivipolaService: 33 deptos, capital primero).
+  Verificado: Antioquia -> Medellin.
+- **Autocompletado de tercero por documento (RF01-3, interino):** al escribir el documento del remitente se
+  sugieren nombre/correo/telefono/tipoDoc/municipio del ULTIMO radicado del tenant con ese documento
+  (BuscarTerceroPorDocumentoAsync). Solo rellena vacios (no pisa lo escrito). Cuando exista RQ07 Terceros,
+  la consulta se reapunta a esa tabla (fuente unica, DAT-02). Verificado: doc 12345678 -> "Prueba Campos Completos".
+- **Estampa arrastrable (RF02-5):** en el paso Documento (electronico) con un PDF, checkbox "Estampar
+  radicado" + chip arrastrable sobre una vista previa del PDF; la posicion (x,y en %) se captura por arrastre
+  (JS delegado global) y se lee al radicar. El servidor estampa el numero real + fecha en esa posicion con
+  PdfSharpCore (PdfSharpRadicadoEstampador, IRadicadoEstampador), best-effort. RadicarConArchivosAsync radica
+  primero (para tener el numero) y luego estampa/sube/adjunta. Verificado: arrastre mueve el chip y estampaPos
+  lo lee; 3 tests del estampador en verde (estampa PDF valido, acota posicion fuera de rango, PDF invalido ->
+  original).
+
+Nota: el autocompletado de municipio y RQ07 real quedan para cuando exista el modulo de Terceros.

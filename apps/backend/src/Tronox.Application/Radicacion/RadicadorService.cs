@@ -19,15 +19,17 @@ public sealed class RadicadorService : IRadicadorService
     private readonly ISequenceService _sequences;
     private readonly ICalendarioHabilService _calendario;
     private readonly IObjectStorage _storage;
+    private readonly IRadicadoEstampador _estampador;
 
     public RadicadorService(IApplicationDbContext db, ITenantContext tenant, ISequenceService sequences,
-        ICalendarioHabilService calendario, IObjectStorage storage)
+        ICalendarioHabilService calendario, IObjectStorage storage, IRadicadoEstampador estampador)
     {
         _db = db;
         _tenant = tenant;
         _sequences = sequences;
         _calendario = calendario;
         _storage = storage;
+        _estampador = estampador;
     }
 
     public async Task<RadicarResult> RadicarAsync(RadicarNuevoRequest req, CancellationToken ct = default)
@@ -217,36 +219,74 @@ public sealed class RadicadorService : IRadicadorService
     }
 
     public async Task<RadicarResult> RadicarConArchivosAsync(RadicarNuevoRequest request,
-        IReadOnlyList<AdjuntoBytes> archivos, CancellationToken ct = default)
+        IReadOnlyList<AdjuntoBytes> archivos, bool estampar = false, double estampaX = 62, double estampaY = 6,
+        CancellationToken ct = default)
     {
         var tenantId = _tenant.TenantId;
         if (tenantId is null) { return RadicarResult.Fail("Sesion no valida."); }
         if (archivos is not { Count: > 0 }) { return await RadicarAsync(request, ct); }
 
-        // Sube cada documento electronico a object storage (invariante 9: nunca BLOB en BD). La key es
-        // opaca y tenant-scoped, igual que en Documentos: "{tenant}/{guid}.{ext}".
-        var adjuntos = new List<RadicarAdjunto>(archivos.Count);
+        // Folios totales por conteo de paginas (para fijar Folios en la cabecera antes de radicar).
         var totalFolios = 0;
+        foreach (var a in archivos)
+        {
+            if (a.Contenido is not { Length: > 0 }) { continue; }
+            var ext0 = System.IO.Path.GetExtension(a.Nombre).TrimStart('.').ToLowerInvariant();
+            totalFolios += ext0 == "pdf" ? ContarPaginasPdf(a.Contenido) : 1;
+        }
+
+        // 1) Radica PRIMERO (sin archivos) para obtener el numero real, necesario para la estampa (RF02-5).
+        var res = await RadicarAsync(request with { Adjuntos = null, Folios = request.Folios ?? totalFolios }, ct);
+        if (!res.Ok || res.RadicadoId is not long rid) { return res; }
+
+        // 2) Estampa cada PDF con el numero real en la posicion elegida por el operador, sube a object
+        //    storage (invariante 9) y cuelga los archivos del radicado. Key opaca tenant-scoped.
+        var fecha = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        var radicado = await _db.Radicados.Include(r => r.Archivos).FirstOrDefaultAsync(r => r.Id == rid, ct);
+        if (radicado is null) { return res; }
+        var agregados = 0;
         foreach (var a in archivos)
         {
             if (a.Contenido is not { Length: > 0 }) { continue; }
             var ext = System.IO.Path.GetExtension(a.Nombre).TrimStart('.').ToLowerInvariant();
             var contentType = a.MimeType ?? DocumentoRules.ContentType(a.Nombre);
-            var hash = DocumentoRules.HashSha256(a.Contenido);
-            var folios = ext == "pdf" ? ContarPaginasPdf(a.Contenido) : 1;
-            totalFolios += folios;
+            var bytes = estampar && ext == "pdf"
+                ? _estampador.EstamparRadicado(a.Contenido, res.Numero ?? "", fecha, estampaX, estampaY)
+                : a.Contenido;
+            var hash = DocumentoRules.HashSha256(bytes);
             var key = $"{tenantId.Value}/{Guid.NewGuid():N}" + (string.IsNullOrEmpty(ext) ? "" : $".{ext}");
-            using (var ms = new MemoryStream(a.Contenido, writable: false))
+            using (var ms = new MemoryStream(bytes, writable: false))
             {
                 await _storage.PutAsync(key, ms, contentType, ct);
             }
-            adjuntos.Add(new RadicarAdjunto(a.Nombre, string.IsNullOrEmpty(ext) ? null : ext, contentType,
-                a.Contenido.LongLength, null, key, hash));
+            radicado.Archivos.Add(new RadicadoArchivo
+            {
+                TenantId = tenantId.Value,
+                Nombre = a.Nombre,
+                Extension = string.IsNullOrEmpty(ext) ? null : ext,
+                MimeType = contentType,
+                TamanoBytes = bytes.LongLength,
+                StorageKey = key,
+                Sha256 = hash,
+                FechaCarga = DateTime.UtcNow
+            });
+            agregados++;
         }
-
-        // Reutiliza el radicar base con los adjuntos ya subidos; folios totales si el request no los trae.
-        var conAdjuntos = request with { Adjuntos = adjuntos, Folios = request.Folios ?? totalFolios };
-        return await RadicarAsync(conAdjuntos, ct);
+        if (agregados > 0)
+        {
+            radicado.Trazas.Add(new RadicadoTrazabilidad
+            {
+                TenantId = tenantId.Value,
+                Accion = "ADJUNTAR",
+                Fecha = DateTime.UtcNow,
+                UsuarioId = _tenant.UserId,
+                Detalle = estampar
+                    ? $"{agregados} documento(s) electronico(s) aportado(s) y estampado(s) (RF02-5)."
+                    : $"{agregados} documento(s) electronico(s) aportado(s)."
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+        return res;
     }
 
     /// <summary>Cuenta paginas de un PDF por conteo de objetos /Type /Page (sin dependencia de PDF libs,

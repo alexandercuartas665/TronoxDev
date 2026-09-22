@@ -8,6 +8,7 @@
 @inject IRadicacionBandejaService BandejaSvc
 @inject IRadicacionDistribucionService DistSvc
 @inject IRadicadorService RadSvc
+@inject Tronox.Application.Archivistica.IDivipolaService DivSvc
 @inject IJSRuntime JS
 
 @* RQ09 - RF11 (Bandeja de radicados, port de rad_bandeja). Lista unificada E/S/I con 6 tabs,
@@ -390,7 +391,8 @@
                                 </div>
                                 <div class="wz-field">
                                     <label>Numero de documento</label>
-                                    <input class="wz-in" @bind="_wzRemDoc" placeholder="Ej: 79.456.231" />
+                                    <input class="wz-in" @bind="_wzRemDoc" @bind:after="WzAutocompletarTercero" placeholder="Ej: 79.456.231" />
+                                    @if (_wzTerceroSugerido) { <span class="hint" style="color:#0a7d6f;">&#10003; Destinatario encontrado en radicados previos.</span> }
                                 </div>
                             </div>
                             <div class="wz-field">
@@ -572,8 +574,8 @@
                                         </div>
                                         <div class="wz-field">
                                             <label>Numero de documento <span class="req">*</span></label>
-                                            <input class="wz-in" @bind="_wzRemDoc" maxlength="30" placeholder="Ej: 79.456.231" />
-                                            <span class="hint">Busqueda automatica en directorio RQ07</span>
+                                            <input class="wz-in" @bind="_wzRemDoc" @bind:after="WzAutocompletarTercero" maxlength="30" placeholder="Ej: 79.456.231" />
+                                            <span class="hint">@(_wzTerceroSugerido ? "✓ Remitente encontrado en radicados previos (autocompletado)." : "Busqueda automatica por documento")</span>
                                         </div>
                                     </div>
                                     <div class="wz-field">
@@ -585,12 +587,21 @@
                                         <div class="wz-field"><label>Correo electronico</label><input type="email" class="wz-in" @bind="_wzRemEmail" maxlength="150" placeholder="correo@@ejemplo.com" /></div>
                                         <div class="wz-field"><label>Telefono</label><input class="wz-in" @bind="_wzRemTel" maxlength="30" placeholder="Numero de contacto" /></div>
                                     </div>
-                                    <div class="wz-field">
-                                        <label>Departamento / Municipio</label>
-                                        <select class="wz-in" @bind="_wzRemMunicipio">
-                                            <option value="">&mdash; Seleccionar DIVIPOLA &mdash;</option>
-                                            @foreach (var m in WzMunicipios) { <option value="@m">@m</option> }
-                                        </select>
+                                    <div class="wz-grid2">
+                                        <div class="wz-field">
+                                            <label>Departamento (DIVIPOLA)</label>
+                                            <select class="wz-in" @bind="_wzDeptoSel" @bind:after="WzOnDeptoChanged">
+                                                <option value="">&mdash; Departamento &mdash;</option>
+                                                @foreach (var d in _wzDeptos) { <option value="@d.Id">@d.Nombre</option> }
+                                            </select>
+                                        </div>
+                                        <div class="wz-field">
+                                            <label>Municipio</label>
+                                            <select class="wz-in" @bind="_wzRemMunicipio" disabled="@(string.IsNullOrEmpty(_wzDeptoSel))">
+                                                <option value="">@(string.IsNullOrEmpty(_wzDeptoSel) ? "Primero seleccione departamento" : "— Municipio —")</option>
+                                                @foreach (var m in _wzMunis) { <option value="@m.Nombre">@m.Nombre</option> }
+                                            </select>
+                                        </div>
                                     </div>
                                 }
                                 <label class="wz-check"><input type="checkbox" @bind="_wzGuardarDir" /> Guardar/actualizar en directorio de terceros (RQ07)</label>
@@ -656,6 +667,24 @@
                                     }
                                     @if (_wzFileError is not null) { <span class="hint" style="color:#DC2626;">@_wzFileError</span> }
                                 </div>
+                                @if (WzPrimerPdf is { } pdf)
+                                {
+                                    <div class="wz-field">
+                                        <label class="wz-check"><input type="checkbox" @bind="_wzEstampar" /> Estampar radicado sobre el PDF (RF02-5)</label>
+                                        <span class="hint">@(_wzEstampar ? "Arrastre el sello sobre el documento para elegir donde quedara la estampa." : "El PDF se guardara sin estampa.")</span>
+                                        @if (_wzEstampar)
+                                        {
+                                            <div class="tx-est-stage" id="wzEstStage" data-estx="62" data-esty="6">
+                                                <object class="tx-est-frame" data="@WzPdfDataUrl(pdf)" type="application/pdf"></object>
+                                                <div class="tx-est-chip" style="left:62%;top:6%;" title="Arrastre para ubicar la estampa">
+                                                    <div class="t">TRONOX &middot; RADICADO</div>
+                                                    <div class="n">@WzNumeroPlaceholder()</div>
+                                                    <div class="f">@_wzFechaCtx</div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
                             }
                             <div class="wz-field">
                                 <label>Asunto <span class="req">*</span></label>
@@ -1007,6 +1036,14 @@
     .wz-busq-item:hover { background:#eef0f7; } .wz-busq-item:last-child { border-bottom:none; }
     .wz-tgl { display:flex; gap:10px; align-items:flex-start; margin-top:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px; font-size:12px; color:#566980; cursor:pointer; }
     .wz-tgl input { margin-top:2px; }
+    /* Estampa arrastrable (RF02-5): stage con el PDF y el chip absoluto que se arrastra encima. */
+    .tx-est-stage { position:relative; margin-top:8px; border:1px solid #E2E8F0; border-radius:8px; overflow:hidden; background:#1e2532; height:340px; }
+    .tx-est-frame { width:100%; height:100%; border:none; display:block; background:#fff; }
+    .tx-est-chip { position:absolute; z-index:6; background:#fffef5; border:1.5px dashed #405189; border-radius:6px; padding:5px 10px; cursor:grab; box-shadow:0 4px 14px rgba(0,0,0,.35); min-width:140px; touch-action:none; user-select:none; }
+    .tx-est-chip:active { cursor:grabbing; }
+    .tx-est-chip .t { font-size:7.5px; color:#94A3B8; letter-spacing:.06em; }
+    .tx-est-chip .n { font-size:11px; color:#405189; font-family:Consolas,monospace; font-weight:700; }
+    .tx-est-chip .f { font-size:8.5px; color:#94A3B8; }
     @@media (max-width:900px){ .wz-body { flex-direction:column; } .wz-left,.wz-right { flex:1 1 auto; border-right:none; } }
 </style>
 
@@ -1156,10 +1193,15 @@
     private RadicadoCanal _wzCanal = RadicadoCanal.Presencial;
     // Paso 2 - remitente (entrada) / origen (interna).
     private string _wzTerTipo = "natural", _wzRemTipoDoc = "CC", _wzRemMunicipio = "";
+    private bool _wzTerceroSugerido; // autocompletado por documento (RF01-3, interino desde radicados)
     private string _wzRemDoc = "", _wzRemNombre = "", _wzRemEmail = "", _wzRemTel = "";
     private bool _wzGuardarDir = true;
     private string _wzDepOrigenId = "", _wzFuncOrigenId = "";
-    private static readonly string[] WzMunicipios = ["Bogota D.C.", "Medellin", "Cali", "Barranquilla", "Bucaramanga", "Cartagena"];
+    // DIVIPOLA real (RQ01): cascada Departamento -> Municipio desde el catalogo DANE (DivipolaService).
+    private long? _wzPaisId;
+    private string _wzDeptoSel = "";
+    private IReadOnlyList<Tronox.Application.Archivistica.DepartamentoDto> _wzDeptos = Array.Empty<Tronox.Application.Archivistica.DepartamentoDto>();
+    private IReadOnlyList<Tronox.Application.Archivistica.MunicipioDto> _wzMunis = Array.Empty<Tronox.Application.Archivistica.MunicipioDto>();
     // Paso 3 - documento.
     private string _wzSoporte = "Fisico", _wzAsunto = "", _wzDescripcion = "", _wzObservaciones = "";
     private DateOnly? _wzFechaDoc;
@@ -1184,6 +1226,12 @@
     private sealed class WzArchivo { public byte[] Bytes = Array.Empty<byte>(); public string Nombre = ""; public long Tamano; public string Ext = ""; }
     private readonly List<WzArchivo> _wzArchivos = new();
     private string? _wzFileError;
+    // Estampa arrastrable (RF02-5): sello del radicado sobre el primer PDF electronico, posicion elegida por arrastre.
+    private bool _wzEstampar = true;
+    private const long WzPdfPreviewMaxBytes = 8L * 1024 * 1024; // no incrustar data-url de PDFs enormes
+    private WzArchivo? WzPrimerPdf => _wzArchivos.FirstOrDefault(a => a.Ext == "pdf" && a.Tamano <= WzPdfPreviewMaxBytes);
+    private static string WzPdfDataUrl(WzArchivo a) => $"data:application/pdf;base64,{Convert.ToBase64String(a.Bytes)}";
+    private sealed class WzEstPos { public double x { get; set; } = 62; public double y { get; set; } = 6; }
     // Paso Digitalizacion (post-radicado): archivos escaneados del soporte fisico, subidos al radicado existente.
     private sealed class WzDigItem { public string Nombre = ""; public long Tamano; public string Ext = ""; public string Estado = "Subiendo"; }
     private readonly List<WzDigItem> _wzDigItems = new();
@@ -1225,7 +1273,7 @@
         _wzRemMunicipio = ""; _wzGuardarDir = true; _wzFechaDoc = null; _wzObservaciones = ""; _wzRelacionado = "";
         _wzDepOrigenId = _wzFuncOrigenId = ""; _wzSoporte = "Fisico"; _wzAsunto = _wzDescripcion = "";
         _wzFolios = 1; _wzAnexos = 0; _wzDepDestId = _wzFuncDestId = ""; _wzPrio = RadicadoPrioridad.Normal;
-        _wzArchivos.Clear(); _wzFileError = null;
+        _wzArchivos.Clear(); _wzFileError = null; _wzEstampar = true;
         _wzDigItems.Clear(); _wzDigRadicadoId = null;
         _wzDestinos.Clear(); _wzDestDepSel = _wzDestFuncSel = _wzInstrucciones = "";
         _wzSalOrigen = "RESPUESTA"; _wzSalCanal = _wzSalBuscar = ""; _wzSalEntradaId = null;
@@ -1234,6 +1282,14 @@
         _wzTipos = await BandejaSvc.TiposAsistenteAsync();
         _wzNiveles = await BandejaSvc.NivelesReservaAsync();
         _wzEsq = await BandejaSvc.AsistenteEsquemaAsync();
+        // DIVIPOLA: carga los departamentos de Colombia (o el primer pais del catalogo) una sola vez.
+        _wzDeptoSel = ""; _wzMunis = Array.Empty<Tronox.Application.Archivistica.MunicipioDto>();
+        if (_wzPaisId is null)
+        {
+            var paises = await DivSvc.ListPaisesAsync();
+            _wzPaisId = (paises.FirstOrDefault(p => p.CodigoIso3 == "COL") ?? paises.FirstOrDefault())?.Id;
+        }
+        _wzDeptos = _wzPaisId is long pid ? await DivSvc.ListDepartamentosAsync(pid) : Array.Empty<Tronox.Application.Archivistica.DepartamentoDto>();
         _wzFechaCtx = DateTime.Now.ToString("ddd dd MMM yyyy HH:mm", new System.Globalization.CultureInfo("es-CO"));
         if (_authTask is not null)
         {
@@ -1386,6 +1442,41 @@
     {
         _wzFuncDestId = "";
         _wzFuncsDest = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDepDestId, out var d) ? d : null);
+    }
+
+    // Autocompletado del tercero por documento (RF01-3). No pisa lo que el operador ya escribio (solo rellena vacios).
+    private async Task WzAutocompletarTercero()
+    {
+        _wzTerceroSugerido = false;
+        var sug = await BandejaSvc.BuscarTerceroPorDocumentoAsync(_wzRemDoc ?? "");
+        if (sug is null) { return; }
+        if (string.IsNullOrWhiteSpace(_wzRemNombre) && !string.IsNullOrWhiteSpace(sug.Nombre)) { _wzRemNombre = sug.Nombre!; }
+        if (string.IsNullOrWhiteSpace(_wzRemEmail) && !string.IsNullOrWhiteSpace(sug.Email)) { _wzRemEmail = sug.Email!; }
+        if (string.IsNullOrWhiteSpace(_wzRemTel) && !string.IsNullOrWhiteSpace(sug.Telefono)) { _wzRemTel = sug.Telefono!; }
+        if (!string.IsNullOrWhiteSpace(sug.TipoDoc)) { _wzRemTipoDoc = sug.TipoDoc!; }
+        // El municipio se autocompleta buscando su departamento en el catalogo cargado (entrada).
+        if (string.IsNullOrWhiteSpace(_wzRemMunicipio) && !string.IsNullOrWhiteSpace(sug.Municipio))
+        {
+            foreach (var d in _wzDeptos)
+            {
+                var munis = await DivSvc.ListMunicipiosAsync(d.Id);
+                if (munis.Any(m => m.Nombre == sug.Municipio))
+                {
+                    _wzDeptoSel = d.Id.ToString(); _wzMunis = munis; _wzRemMunicipio = sug.Municipio!;
+                    break;
+                }
+            }
+        }
+        _wzTerceroSugerido = true;
+    }
+
+    // DIVIPOLA: al cambiar el departamento recarga sus municipios (capital primero) y limpia el municipio elegido.
+    private async Task WzOnDeptoChanged()
+    {
+        _wzRemMunicipio = "";
+        _wzMunis = long.TryParse(_wzDeptoSel, out var did)
+            ? await DivSvc.ListMunicipiosAsync(did)
+            : Array.Empty<Tronox.Application.Archivistica.MunicipioDto>();
     }
 
     // Multi-destinatario (circular interna): al cambiar la dependencia del formulario de entrada recarga sus funcionarios.
@@ -1562,10 +1653,30 @@
                 CanalEnvio: esSalida && !string.IsNullOrEmpty(_wzSalCanal) ? _wzSalCanal : null,
                 EsRespuestaDefinitiva: esSalida && _wzSalDefinitiva && _wzSalEntradaId is not null);
 
-            var res = usaArchivos
-                ? await RadSvc.RadicarConArchivosAsync(req,
-                    _wzArchivos.Select(a => new AdjuntoBytes(a.Nombre, a.Bytes)).ToList())
-                : await RadSvc.RadicarAsync(req);
+            RadicarResult res;
+            if (usaArchivos)
+            {
+                // Estampa (RF02-5): si hay un PDF y el operador dejo activo "Estampar", lee la posicion del
+                // arrastre y la pasa al servicio para sellar con el numero real.
+                var estampar = _wzEstampar && WzPrimerPdf is not null;
+                double estX = 62, estY = 6;
+                if (estampar)
+                {
+                    try
+                    {
+                        var pos = await JS.InvokeAsync<WzEstPos>("tronoxMenuConfig.estampaPos", "wzEstStage");
+                        estX = pos.x; estY = pos.y;
+                    }
+                    catch { /* sin JS: usa la posicion por defecto arriba a la derecha */ }
+                }
+                res = await RadSvc.RadicarConArchivosAsync(req,
+                    _wzArchivos.Select(a => new AdjuntoBytes(a.Nombre, a.Bytes)).ToList(),
+                    estampar, estX, estY);
+            }
+            else
+            {
+                res = await RadSvc.RadicarAsync(req);
+            }
             if (!res.Ok) { _wzError = res.Error ?? "No se pudo radicar."; return; }
 
             // Radicar + distribuir en un paso (calca el legacy).

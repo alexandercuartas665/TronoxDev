@@ -117,6 +117,18 @@ public sealed class RadicacionBandejaService : IRadicacionBandejaService
             .Where(o => o.Classifier == OrgUnitClassifier.Dependencia && !o.IsArchived)
             .OrderBy(o => o.Name).Select(o => new OpcionDto(o.Id, o.Name)).ToListAsync(ct);
 
+    public async Task<TerceroSugeridoDto?> BuscarTerceroPorDocumentoAsync(string documento, CancellationToken ct = default)
+    {
+        var doc = documento?.Trim();
+        if (string.IsNullOrEmpty(doc) || doc.Length < 4) { return null; }
+        // Interino (sin RQ07): ultimo radicado del tenant con ese documento y remitente no anonimo.
+        return await _db.Radicados.AsNoTracking()
+            .Where(r => !r.Anonimo && r.RemitenteDocumento == doc && r.RemitenteNombre != null)
+            .OrderByDescending(r => r.Id)
+            .Select(r => new TerceroSugeridoDto(r.RemitenteTipoDoc, r.RemitenteNombre, r.RemitenteEmail, r.RemitenteTelefono, r.RemitenteMunicipio))
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<IReadOnlyList<OpcionDto>> FuncionariosAsync(long? dependenciaId, CancellationToken ct = default)
         => await _db.TenantUsers.AsNoTracking()
             .Where(u => u.Status == Domain.Enums.PlatformUserStatus.Active)

@@ -15,7 +15,8 @@ public interface IRadicadorService
     /// asistente): calcula contentType/SHA-256/folios, sube cada archivo y los cuelga del radicado. Los
     /// folios totales se derivan de los archivos si el request no trae folios.</summary>
     Task<RadicarResult> RadicarConArchivosAsync(RadicarNuevoRequest request,
-        IReadOnlyList<AdjuntoBytes> archivos, CancellationToken ct = default);
+        IReadOnlyList<AdjuntoBytes> archivos, bool estampar = false, double estampaX = 62, double estampaY = 6,
+        CancellationToken ct = default);
 
     /// <summary>Adjunta documentos escaneados/electronicos a un radicado YA existente (paso Digitalizacion del
     /// asistente, RF06-3 / rad_op.ashx?action=adjuntar): sube cada archivo a object storage (invariante 9) y lo
