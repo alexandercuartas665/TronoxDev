@@ -1484,3 +1484,33 @@ Verificado e2e (dev): buzon creado (App Password cifrada); "Probar conexion" y "
 imap.gmail.com y manejan el error de credenciales con mensaje claro (con App Password real capturarian).
 585 tests en verde. Pendiente para uso real: configurar un proveedor de IA (Config IA) y una App Password de
 Gmail; toggle de IA por tenant (DAT-07) sigue diferido. En dev se otorgo el permiso del modulo a los roles.
+
+---
+
+## RQ16 - Capa de Agentes de IA (port de ECOREX) + Correos->PQR con agente editable (2026-09-22)
+
+Se porto de ECOREX.tareas la **capa de AGENTES** sobre el gateway de IA ya heredado, revirtiendo la nota
+"los agentes NO se heredan". Port fiel al nucleo; se omiten las piezas atadas a modulos podados
+(WhatsApp/lineas, Retell voz, Colmena RPA, agentes de nodo BPMN, reacciones/cierre/reactivacion); la
+invocacion se cablea al canal de Correos/Radicacion. Guid->long; todo ITenantScoped. Ver ADR-033.
+
+- **Domain**: `AiAgent` (proveedor/modelo/prompt/isActive/disabledTools/promptHistory), `AiAgentResource`,
+  `AiAgentPrompt` (prompts enrutados), `AiAgentCacheField`/`AiAgentCacheValue` (datos por sesion, sticky),
+  `AiAgentRunLog`. Migracion `AddAiAgents` (6 tablas snake_case).
+- **Application**: `AiAgentService` (CRUD + duplicar + historial de prompts), `AiAgentCacheService`,
+  `AiInferenceService` (prompt: ancla de fecha + regla de salida + base + enrutador + recursos + estado de
+  cache + ultimos eventos; bucle de function calling hasta 6 rondas; extraccion de cache), framework
+  `IAgentToolset`/`AgentToolResult`, y `RadicacionToolset` (buscar_tercero DAT-02, radicar_entrada via
+  IRadicadorService resolviendo el tipo PQRSD del tenant; en modo sugerencia no radica).
+- **Web**: pagina `/modulo/agentes` (grid + editor con prompt/enrutados/cache/herramientas + chat de prueba
+  con panel "PROMPTS enviados a la IA") e item de menu "Agentes de IA". Reusa `/servidores-ia` (Super Admin)
+  para la API key.
+- **Correos->PQR migrado a agente editable**: `BuzonCorreo.AgenteIaId` (FK opcional, migracion
+  `AddBuzonAgenteIa`); el clasificador usa el proveedor/modelo/comportamiento del agente si el buzon lo
+  apunta, y ANEXA SIEMPRE el contrato de salida JSON PQRS (fijo). Selector de agente en el editor del buzon;
+  la tarjeta muestra el agente asignado ("Clasificador por defecto" si es null).
+
+Verificado e2e (dev): crear agente persiste (ai_agents, provider como string), el editor lista las
+herramientas buscar_tercero/radicar_entrada, permiso `/modulo/agentes` aprovisionado a los roles. 585 tests
+en verde. Pendiente para uso real: proveedor de IA habilitado + (para Correos) App Password. Diferido:
+toggle maestro por tenant `tenants.ia_habilitada` (DAT-07); entrega multimedia end-to-end; WhatsApp/voz/BPMN.

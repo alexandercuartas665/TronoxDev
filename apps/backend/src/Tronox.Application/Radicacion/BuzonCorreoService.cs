@@ -183,6 +183,7 @@ public sealed class BuzonCorreoService : IBuzonCorreoService
         buzon.TiempoEsperaMinutos = request.TiempoEsperaMinutos;
         buzon.TipoComunicacionDefaultId = request.TipoComunicacionDefaultId;
         buzon.DependenciaDefaultId = request.DependenciaDefaultId;
+        buzon.AgenteIaId = request.AgenteIaId;
         buzon.Activo = request.Activo;
     }
 
@@ -202,17 +203,25 @@ public sealed class BuzonCorreoService : IBuzonCorreoService
                 .FirstOrDefaultAsync(o => o.Id == buzon.DependenciaDefaultId.Value, cancellationToken))?.Name;
         }
 
-        return Map(buzon, tipoNombre, depNombre);
+        string? agenteNombre = null;
+        if (buzon.AgenteIaId is not null)
+        {
+            agenteNombre = (await _db.AiAgents.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == buzon.AgenteIaId.Value, cancellationToken))?.Name;
+        }
+
+        return Map(buzon, tipoNombre, depNombre, agenteNombre);
     }
 
     private static string? Lookup(long? id, IReadOnlyDictionary<long, string> names) =>
         id.HasValue && names.TryGetValue(id.Value, out var name) ? name : null;
 
-    private static BuzonCorreoDto Map(BuzonCorreo b, string? tipoNombre, string? depNombre) => new(
+    private static BuzonCorreoDto Map(BuzonCorreo b, string? tipoNombre, string? depNombre, string? agenteNombre = null) => new(
         b.Id, b.NombreBuzon, b.DireccionEmail, b.Protocolo,
         b.Servidor, b.Puerto, b.Seguridad, b.Usuario,
         !string.IsNullOrEmpty(b.ContrasenaEncrypted),
         b.Carpeta, b.FrecuenciaRevision, b.ModoRadicacion,
         b.TiempoEsperaMinutos, b.TipoComunicacionDefaultId, tipoNombre,
-        b.DependenciaDefaultId, depNombre, b.Activo);
+        b.DependenciaDefaultId, depNombre, b.Activo,
+        b.AgenteIaId, agenteNombre);
 }

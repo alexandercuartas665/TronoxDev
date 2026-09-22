@@ -1473,6 +1473,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
                 .HasForeignKey(x => x.TipoComunicacionDefaultId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne(x => x.DependenciaDefault).WithMany()
                 .HasForeignKey(x => x.DependenciaDefaultId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.AgenteIa).WithMany()
+                .HasForeignKey(x => x.AgenteIaId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.TenantId, x.Activo });
         });
 

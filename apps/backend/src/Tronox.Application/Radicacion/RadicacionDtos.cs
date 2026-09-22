@@ -51,14 +51,16 @@ public sealed record BuzonCorreoDto(
     string? Servidor, int? Puerto, BuzonSeguridad Seguridad, string Usuario, bool TieneClave,
     string Carpeta, BuzonFrecuenciaRevision FrecuenciaRevision, BuzonModoRadicacion ModoRadicacion,
     int? TiempoEsperaMinutos, long? TipoComunicacionDefaultId, string? TipoComunicacionDefaultNombre,
-    long? DependenciaDefaultId, string? DependenciaDefaultNombre, bool Activo);
+    long? DependenciaDefaultId, string? DependenciaDefaultNombre, bool Activo,
+    long? AgenteIaId = null, string? AgenteIaNombre = null);
 
 /// <summary>Contrasena null = no cambiar (conserva la cifrada existente).</summary>
 public sealed record SaveBuzonCorreoRequest(
     string NombreBuzon, string DireccionEmail, BuzonProtocolo Protocolo,
     string? Servidor, int? Puerto, BuzonSeguridad Seguridad, string Usuario, string? Contrasena,
     string Carpeta, BuzonFrecuenciaRevision FrecuenciaRevision, BuzonModoRadicacion ModoRadicacion,
-    int? TiempoEsperaMinutos, long? TipoComunicacionDefaultId, long? DependenciaDefaultId, bool Activo);
+    int? TiempoEsperaMinutos, long? TipoComunicacionDefaultId, long? DependenciaDefaultId, bool Activo,
+    long? AgenteIaId = null);
 
 // ---- RF01-5 Notificaciones ----
 

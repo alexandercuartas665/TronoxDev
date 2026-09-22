@@ -46,5 +46,10 @@ public class BuzonCorreo : TenantEntity
     public long? DependenciaDefaultId { get; set; }
     public OrgUnit? DependenciaDefault { get; set; }
 
+    /// <summary>Agente de IA que clasifica los correos de este buzon (RQ16, FK AiAgent). NO ACTION. Si es
+    /// null, el clasificador cae al primer proveedor habilitado con el comportamiento por defecto.</summary>
+    public long? AgenteIaId { get; set; }
+    public AiAgent? AgenteIa { get; set; }
+
     public bool Activo { get; set; } = true;
 }

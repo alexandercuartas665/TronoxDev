@@ -134,8 +134,8 @@ public sealed class CorreoIngestaService : ICorreoIngestaService
                 adjuntosTot++;
             }
 
-            // Clasificacion con IA.
-            var cl = await _clasificador.ClasificarAsync(correo.Remitente, correo.Asunto, correo.CuerpoTratado ?? "", ct);
+            // Clasificacion con IA. Si el buzon apunta a un agente, se usa su proveedor/comportamiento editable.
+            var cl = await _clasificador.ClasificarAsync(correo.Remitente, correo.Asunto, correo.CuerpoTratado ?? "", b.AgenteIaId, ct);
             correo.ClasificacionJson = cl.Json;
             correo.TokensIa = cl.TokensTotal;
             tokensTot += cl.TokensTotal;

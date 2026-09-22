@@ -29,12 +29,16 @@ public sealed class CorreoClasificadorIa : ICorreoClasificadorIa
 
     private const int MaxBodyParaIa = 8000;
 
-    // System prompt del clasificador (fijo del sistema, calca PromptClasificador de VISAL).
-    private const string PromptClasificador = """
+    // Comportamiento POR DEFECTO del clasificador (editable via un agente de IA). Calca VISAL.
+    private const string PromptComportamientoDefault = """
 Eres un clasificador de PQRS-F (Peticiones, Quejas, Reclamos, Sugerencias, Felicitaciones) de una entidad
 publica colombiana. Recibes un correo electronico (remitente, asunto y cuerpo). Determina si el correo es
 una PQRS-F de un ciudadano y, si lo es, extrae sus datos.
+""";
 
+    // Contrato de SALIDA (FIJO del sistema): se anexa SIEMPRE al comportamiento del agente para que la
+    // respuesta sea parseable, sin importar como el tenant edite el prompt de su agente clasificador.
+    private const string ContratoJson = """
 Responde SOLO con un JSON puro (sin explicaciones, sin ```), con estas claves exactas:
 {
   "es_pqr": true|false,
@@ -55,20 +59,54 @@ Reglas:
 - "descripcion" es un resumen breve y neutral del asunto de la peticion.
 """;
 
-    public async Task<ClasificacionCorreoResult> ClasificarAsync(string? remitente, string? asunto, string cuerpo, CancellationToken ct = default)
+    public async Task<ClasificacionCorreoResult> ClasificarAsync(string? remitente, string? asunto, string cuerpo, long? agentId = null, CancellationToken ct = default)
     {
-        var cfg = await _db.AiProviderConfigs.AsNoTracking()
-            .Where(c => c.IsEnabled && c.ApiKeyEncrypted != null)
-            .OrderBy(c => c.Id)
-            .FirstOrDefaultAsync(ct);
-        if (cfg is null) { return ClasificacionCorreoResult.Fail("No hay un proveedor de IA habilitado."); }
+        // Resolucion del motor: si el buzon apunta a un agente, se usa SU proveedor/modelo/comportamiento;
+        // si no, se cae al primer proveedor habilitado con el comportamiento por defecto (compat. VISAL).
+        Domain.Enums.AiProvider provider;
+        string? cfgModel, cfgBaseUrl, cfgApiKeyEnc;
+        string comportamiento;
+        long? usageAgentId;
+
+        if (agentId is long aid)
+        {
+            var agent = await _db.AiAgents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == aid, ct);
+            if (agent is null) { return ClasificacionCorreoResult.Fail("El agente clasificador ya no existe."); }
+            if (!agent.IsActive) { return ClasificacionCorreoResult.Fail("El agente clasificador esta apagado."); }
+            var acfg = await _db.AiProviderConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.Provider == agent.Provider, ct);
+            if (acfg is null || !acfg.IsEnabled || acfg.ApiKeyEncrypted is null)
+            {
+                return ClasificacionCorreoResult.Fail($"El proveedor {agent.Provider} del agente no esta habilitado en la plataforma.");
+            }
+            provider = agent.Provider;
+            cfgModel = string.IsNullOrWhiteSpace(agent.Model) ? acfg.Model : agent.Model;
+            cfgBaseUrl = acfg.BaseUrl;
+            cfgApiKeyEnc = acfg.ApiKeyEncrypted;
+            comportamiento = string.IsNullOrWhiteSpace(agent.SystemPrompt) ? PromptComportamientoDefault : agent.SystemPrompt;
+            usageAgentId = agent.Id;
+        }
+        else
+        {
+            var cfg = await _db.AiProviderConfigs.AsNoTracking()
+                .Where(c => c.IsEnabled && c.ApiKeyEncrypted != null)
+                .OrderBy(c => c.Id)
+                .FirstOrDefaultAsync(ct);
+            if (cfg is null) { return ClasificacionCorreoResult.Fail("No hay un proveedor de IA habilitado."); }
+            provider = cfg.Provider;
+            cfgModel = cfg.Model;
+            cfgBaseUrl = cfg.BaseUrl;
+            cfgApiKeyEnc = cfg.ApiKeyEncrypted;
+            comportamiento = PromptComportamientoDefault;
+            usageAgentId = null;
+        }
 
         string apiKey;
-        try { apiKey = _secret.Unprotect(cfg.ApiKeyEncrypted!); }
+        try { apiKey = _secret.Unprotect(cfgApiKeyEnc!); }
         catch { return ClasificacionCorreoResult.Fail("La API key del proveedor no se pudo descifrar."); }
 
-        var meta = AiProviderCatalog.For(cfg.Provider);
-        var model = string.IsNullOrWhiteSpace(cfg.Model) ? meta.DefaultModel : cfg.Model!;
+        var meta = AiProviderCatalog.For(provider);
+        var model = string.IsNullOrWhiteSpace(cfgModel) ? meta.DefaultModel : cfgModel!;
+        var systemPrompt = comportamiento + "\n\n" + ContratoJson;
         var body = cuerpo.Length > MaxBodyParaIa ? cuerpo[..MaxBodyParaIa] : cuerpo;
         var userPrompt = $"De: {remitente}\nAsunto: {asunto}\n\nCuerpo:\n{body}";
 
@@ -76,13 +114,13 @@ Reglas:
         AiChatResult ia;
         try
         {
-            ia = await _ai.CompleteAsync(cfg.Provider, apiKey, cfg.BaseUrl ?? meta.DefaultBaseUrl,
-                model, PromptClasificador, turns, ct);
+            ia = await _ai.CompleteAsync(provider, apiKey, cfgBaseUrl ?? meta.DefaultBaseUrl,
+                model, systemPrompt, turns, ct);
         }
         catch (Exception ex) { return ClasificacionCorreoResult.Fail($"Fallo la IA: {ex.Message}"); }
 
-        // Registra el consumo (best-effort).
-        try { await _usage.RecordAsync(null, cfg.Provider, model, ia.InputTokens, ia.OutputTokens, "correos-pqr", ia.Ok, ct); }
+        // Registra el consumo (best-effort), atribuido al agente si lo hay.
+        try { await _usage.RecordAsync(usageAgentId, provider, model, ia.InputTokens, ia.OutputTokens, "correos-pqr", ia.Ok, ct); }
         catch { /* no romper por el registro de uso */ }
 
         if (!ia.Ok || string.IsNullOrWhiteSpace(ia.Text))
