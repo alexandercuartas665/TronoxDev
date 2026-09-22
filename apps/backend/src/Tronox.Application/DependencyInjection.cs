@@ -154,6 +154,13 @@ public static class DependencyInjection
         services.AddScoped<IAiServerConfigService, AiServerConfigService>();
         services.AddScoped<Tenancy.IAiUsageService, Tenancy.AiUsageService>();
 
+        // --- Capa de agentes de IA (RQ16, port de ECOREX) ---
+        services.AddScoped<Tenancy.IAiAgentService, Tenancy.AiAgentService>();
+        services.AddScoped<Tenancy.IAiAgentCacheService, Tenancy.AiAgentCacheService>();
+        services.AddScoped<Tenancy.IAiInferenceService, Tenancy.AiInferenceService>();
+        // Toolsets del agente (function calling). El primero es el de Radicacion documental.
+        services.AddScoped<Tenancy.IAgentToolset, Radicacion.Agentes.RadicacionToolset>();
+
         return services;
     }
 }
