@@ -1364,3 +1364,29 @@ validacion; con builds viejos podia caer al generico "Ha ocurrido un error.".
   `_modalError` (en vez de tumbar el circuito Blazor al generico). El Result tipado ya se propagaba.
 - Verificado e2e (dev-login, tenant 2): con los 4 niveles sembrados el boton de alta queda oculto;
   el mensaje tipado del orden invalido se ve en el modal. Compila y corre (dotnet watch).
+
+## 33. Asistente Nuevo Radicado: Digitalizacion, circular interna y Salida (2026-09-22)
+
+Port milimetrico de tres piezas del legacy (rad_radicar / rad_interna_wizard / rad_salida_wizard),
+sin migracion nueva (la entidad Radicado ya tenia los campos). Motor de pasos hecho dinamico
+(WzPasos por direccion; "Paso X de N"; Digitalizacion siempre como paso final post-radicado).
+
+- **Digitalizacion (RF06-3):** tras radicar, paso final con banner de exito + numero, dropzone para
+  escanear el soporte fisico, "Imprimir sticker" (printHtml), "Captura TWAIN" inerte (pendiente
+  igual que el legacy) y Finalizar. RadicadorService.AdjuntarAsync sube los escaneos a object
+  storage y los cuelga del radicado existente con traza.
+- **Circular interna multi-destinatario (RF06-2):** paso Destinatarios con "Agregar destinatario"
+  -> lista de tarjetas removibles, sin duplicar dependencia, banner de circular con N>1.
+  DistribuirCircularAsync crea UN radicado + N tareas; la cabecera toma el primer destino,
+  funcionario solo si es unico. Verificado: ALCPRU-I-2026-000001 = 1 radicado + 2 tareas.
+- **Salida / "Responder" (RF05):** 6 pasos (Origen, Clasificacion, Destinatario, Informacion,
+  Documento, Confirmacion). "Responder" desde el detalle abre el asistente en modo Salida con la
+  entrada precargada (origen RESPUESTA). El destinatario persiste en columnas remitente_*; canal de
+  envio nace Pendiente; la respuesta DEFINITIVA cierra el termino de la entrada (Estado -> Respondido
+  + traza RF05-5). Verificado: ALCPRU-S-2026-000001 (destinatario, canal PERSONAL, definitiva,
+  vinculo a la entrada) y la entrada padre paso a Respondido con su traza; documento en object storage.
+
+Pendientes fieles al legacy: TWAIN real, estampa arrastrable RF02-5 (paso 'documentos' electronico),
+selector de documentos RQ04 y autocomplete de terceros RQ07. Nota entorno (dev, tenant 2): se
+sembraron 2 tipos con direccion Salida para probar el flujo (Oficio de Respuesta, Comunicacion
+Oficial de Salida). Solo datos locales.

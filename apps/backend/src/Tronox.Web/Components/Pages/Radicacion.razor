@@ -205,30 +205,10 @@
     <div class="wz-page">
         <div class="wz-shell">
             <div class="wz-titlebar">
-                <h1>NUEVO RADICADO &mdash; @(_wzDir == RadicadoTipo.Interno ? "INTERNA" : "PRESENCIAL")</h1>
+                <h1>@(_wzDir == RadicadoTipo.Salida ? "NUEVO RADICADO DE SALIDA" : "NUEVO RADICADO — " + (_wzDir == RadicadoTipo.Interno ? "INTERNA" : "PRESENCIAL"))</h1>
                 <button type="button" class="x" @onclick="WzCerrar" title="Cerrar">&#10005;</button>
             </div>
 
-            @if (_wzNumero is not null)
-            {
-                <div class="wz-body">
-                    <div class="wz-left" style="flex:1 1 100%;border-right:none;display:flex;align-items:center;justify-content:center;">
-                        <div class="wz-ok">
-                            <div class="wz-ok-ico">&#10003;</div>
-                            <div class="wz-ok-num">@_wzNumero</div>
-                            <p>Radicado creado correctamente@(string.IsNullOrEmpty(_wzDepDestId) ? " (sin distribuir; puedes distribuirlo desde la bandeja)." : $" y distribuido a {WzDepNombre(_wzDepDestId)}.")</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="wz-foot">
-                    <div></div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <button type="button" class="wz-btn green" @onclick="WzCerrar">&#10003; Cerrar</button>
-                    </div>
-                </div>
-            }
-            else
-            {
                 <div class="wz-head">
                     <div class="wz-ctx">
                         <div><span class="l">Sede: </span><strong>@(_wzEsq?.EntidadNombre ?? "-")</strong></div>
@@ -256,14 +236,284 @@
                 <div class="wz-body">
                     @* ------- Panel izquierdo: formulario por paso ------- *@
                     <div class="wz-left">
-                        @if (_wzStep == 1)
+                        @if (WzEsDigital)
+                        {
+                            <h2 class="wz-h2">Paso @_wzStep &mdash; Documentos Digitalizados</h2>
+                            <div class="wz-ok2">
+                                <div>
+                                    <div class="t">&#10003; Radicado generado exitosamente</div>
+                                    <div class="n">@_wzNumero</div>
+                                </div>
+                                <button type="button" class="wz-btn" @onclick="WzImprimirSticker">&#128424; Imprimir sticker</button>
+                            </div>
+                            <label class="wz-drop">
+                                <InputFile OnChange="WzOnDigFiles" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" />
+                                <span class="ico" style="font-size:32px;">&#128193;</span>
+                                <span style="font-weight:600;color:#212529;">Arrastrar archivos aqui o hacer clic</span>
+                                <span class="hint">PDF, JPG, PNG, TIFF &mdash; Max. 50 MB por archivo</span>
+                                <div style="margin-top:12px;display:flex;justify-content:center;gap:8px;">
+                                    <span class="wz-btn navy" style="font-size:13px;">&#128194; Seleccionar archivos</span>
+                                    <span class="wz-btn" style="font-size:13px;" title="Integracion de escaner TWAIN pendiente">&#128424; Captura TWAIN</span>
+                                </div>
+                            </label>
+                            @if (_wzDigItems.Count > 0)
+                            {
+                                <div class="wz-files" style="margin-top:14px;">
+                                    @foreach (var it in _wzDigItems)
+                                    {
+                                        <div class="wz-file">
+                                            <span class="ext">@(string.IsNullOrEmpty(it.Ext) ? "?" : it.Ext.ToUpperInvariant())</span>
+                                            <span class="nom" title="@it.Nombre">@it.Nombre</span>
+                                            <span class="tam">@WzTam(it.Tamano)</span>
+                                            <span class="est" style="color:@(it.Estado == "Adjuntado" ? "#0a7d6f" : it.Estado == "Error" ? "#DC2626" : "#94A3B8");font-size:11px;font-weight:600;">
+                                                @(it.Estado == "Adjuntado" ? "✓ Adjuntado" : it.Estado == "Error" ? "✕ Error" : "Subiendo...")
+                                            </span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (_wzFileError is not null) { <span class="hint" style="color:#DC2626;">@_wzFileError</span> }
+                            <div class="wz-warn" style="margin-top:16px;">&#128161; El radicado puede quedar sin archivo adjunto. Podra adjuntar desde la bandeja o el detalle en cualquier momento posterior.</div>
+                        }
+                        else if (_wzDir == RadicadoTipo.Salida && _wzStep == 1)
+                        {
+                            <h2 class="wz-h2">Paso 1 &mdash; Origen del documento</h2>
+                            <div class="wz-field">
+                                <label>Comunicacion <span class="req">*</span></label>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    <button type="button" class="wz-chip lg" @onclick="@(() => WzSetDir(RadicadoTipo.Entrada))">&#128229; Externa (entrada)</button>
+                                    <button type="button" class="wz-chip lg on">&#128228; Salida</button>
+                                    <button type="button" class="wz-chip lg" @onclick="@(() => WzSetDir(RadicadoTipo.Interno))">&#128260; Interna</button>
+                                </div>
+                            </div>
+                            <div class="wz-sub">Seleccione de donde proviene el documento que va a radicar (RF05-2).</div>
+                            <button type="button" class="wz-card2 wide @(_wzSalOrigen == "RESPUESTA" ? "on" : "")" @onclick="@(() => _wzSalOrigen = "RESPUESTA")">
+                                <div class="t">Respuesta a radicado de entrada <span class="wz-badge">El mas comun</span></div>
+                                <div class="d">La entidad responde una peticion, queja, tutela u oficio. Al radicar, la entrada puede quedar Respondida.</div>
+                            </button>
+                            <button type="button" class="wz-card2 wide @(_wzSalOrigen == "RQ04" ? "on" : "")" @onclick="@(() => _wzSalOrigen = "RQ04")">
+                                <div class="t">Documento existente en TRONOX (RQ04)</div>
+                                <div class="d">Seleccione desde el buscador; el sistema precarga los metadatos y estampa al confirmar.</div>
+                            </button>
+                            <button type="button" class="wz-card2 wide @(_wzSalOrigen == "EXTERNO" ? "on" : "")" @onclick="@(() => _wzSalOrigen = "EXTERNO")">
+                                <div class="t">Documento externo cargado</div>
+                                <div class="d">PDF generado fuera de TRONOX; diligencie los metadatos manualmente.</div>
+                            </button>
+                            @if (_wzSalOrigen == "RESPUESTA")
+                            {
+                                <div class="wz-field" style="margin-top:12px;">
+                                    <label>Radicado de entrada que responde <span class="req">*</span></label>
+                                    @if (_wzSalEntradaId is not null)
+                                    {
+                                        <div class="wz-dest" style="background:#F0FDF4;border-color:#86EFAC;">
+                                            <div>
+                                                <div class="dep" style="font-family:Consolas,monospace;">@_wzSalEntradaNum</div>
+                                                <div class="fun">@(_wzSalEntradaAsunto)</div>
+                                            </div>
+                                            <button type="button" class="wz-btn" style="font-size:12px;" @onclick="WzSalQuitarEntrada">Cambiar</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <input class="wz-in" @bind="_wzSalBuscar" @bind:event="oninput" @bind:after="WzSalBuscarEntradas" placeholder="Buscar por numero, asunto o remitente..." />
+                                        @if (_wzSalResultados.Count > 0)
+                                        {
+                                            <div class="wz-busq">
+                                                @foreach (var r in _wzSalResultados)
+                                                {
+                                                    var rr = r;
+                                                    <button type="button" class="wz-busq-item" @onclick="@(() => WzSalElegirEntrada(rr))">
+                                                        <span style="font-family:Consolas,monospace;color:#405189;font-weight:700;">@rr.Numero</span>
+                                                        <span style="color:#94A3B8;"> &middot; @rr.Remitente</span>
+                                                        <div style="font-size:11px;color:#566980;">@rr.Asunto</div>
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+                            else if (_wzSalOrigen == "RQ04")
+                            {
+                                <div class="wz-info" style="margin-top:12px;">&#128193; El selector de documentos RQ04 se habilita al integrar ese modulo. Por ahora use "Documento externo cargado" o "Respuesta".</div>
+                            }
+                        }
+                        else if (_wzDir == RadicadoTipo.Salida && _wzStep == 2)
+                        {
+                            <h2 class="wz-h2">Paso 2 &mdash; Clasificacion</h2>
+                            <div class="wz-sub">Tipos de direccion Salida, nivel de clasificacion y prioridad.</div>
+                            <div class="wz-field">
+                                <label>Tipo de comunicacion <span class="req">*</span></label>
+                                <select class="wz-in" @bind="_wzTipoId" @bind:after="WzOnTipoChanged">
+                                    <option value="">&mdash; Seleccione el tipo &mdash;</option>
+                                    @foreach (var t in WzTiposFiltrados) { <option value="@t.Id">@t.Nombre</option> }
+                                </select>
+                                @if (!WzTiposFiltrados.Any()) { <span class="hint" style="color:#DC2626;">No hay tipos con direccion Salida activos en el catalogo (RF01-2).</span> }
+                            </div>
+                            <div class="wz-field">
+                                <label>Nivel de clasificacion</label>
+                                <select class="wz-in" @bind="_wzNivelId">
+                                    <option value="">(por defecto del tipo)</option>
+                                    @foreach (var n in _wzNiveles) { <option value="@n.Id">@n.Nombre</option> }
+                                </select>
+                            </div>
+                            <div class="wz-field">
+                                <label>Prioridad</label>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    @foreach (var p in Enum.GetValues<RadicadoPrioridad>())
+                                    {
+                                        var ico = p == RadicadoPrioridad.Urgente ? "\U0001F534" : p == RadicadoPrioridad.Alta ? "\U0001F7E0" : "\U0001F535";
+                                        <button type="button" class="wz-chip @(_wzPrio == p ? "on" : "")" @onclick="@(() => _wzPrio = p)">@ico @p</button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else if (_wzDir == RadicadoTipo.Salida && _wzStep == 3)
+                        {
+                            <h2 class="wz-h2">Paso 3 &mdash; Destinatario</h2>
+                            <div class="wz-sub">Datos del destinatario y canal de envio (RF05-4).</div>
+                            <div class="wz-field">
+                                <label>Tipo de tercero</label>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    @foreach (var (val, txt) in new[] { ("natural", "Persona Natural"), ("juridica", "Persona Juridica"), ("publica", "Entidad Publica") })
+                                    {
+                                        <button type="button" class="wz-chip @(_wzTerTipo == val ? "on" : "")" @onclick="@(() => _wzTerTipo = val)">@txt</button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="wz-grid2">
+                                <div class="wz-field">
+                                    <label>Tipo de documento</label>
+                                    <select class="wz-in" @bind="_wzRemTipoDoc">
+                                        @foreach (var td in new[] { "CC", "NIT", "CE", "Pasaporte", "TI", "PPT" }) { <option value="@td">@td</option> }
+                                    </select>
+                                </div>
+                                <div class="wz-field">
+                                    <label>Numero de documento</label>
+                                    <input class="wz-in" @bind="_wzRemDoc" placeholder="Ej: 79.456.231" />
+                                </div>
+                            </div>
+                            <div class="wz-field">
+                                <label>Nombre / Razon social <span class="req">*</span></label>
+                                <input class="wz-in" @bind="_wzRemNombre" placeholder="Nombre completo o razon social" />
+                            </div>
+                            <div class="wz-grid2">
+                                <div class="wz-field">
+                                    <label>Correo electronico @(_wzSalCanal == "EMAIL" ? "" : "")<span class="req" style="@(_wzSalCanal == "EMAIL" ? "" : "display:none")">*</span></label>
+                                    <input class="wz-in" @bind="_wzRemEmail" placeholder="correo@@ejemplo.com" />
+                                </div>
+                                <div class="wz-field">
+                                    <label>Telefono</label>
+                                    <input class="wz-in" @bind="_wzRemTel" placeholder="Numero de contacto" />
+                                </div>
+                            </div>
+                            <div class="wz-field">
+                                <label>Canal de envio <span class="req">*</span></label>
+                                <div class="wz-cards2" style="flex-wrap:wrap;">
+                                    @foreach (var (val, txt, desc) in WzCanalesSalida)
+                                    {
+                                        <button type="button" class="wz-card2 @(_wzSalCanal == val ? "on" : "")" @onclick="@(() => _wzSalCanal = val)">
+                                            <div class="t">@txt</div><div class="d">@desc</div>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else if (_wzDir == RadicadoTipo.Salida && _wzStep == 4)
+                        {
+                            <h2 class="wz-h2">Paso 4 &mdash; Informacion del documento</h2>
+                            <div class="wz-sub">Asunto, folios y vinculacion con el radicado de entrada (RF05-5).</div>
+                            <div class="wz-field">
+                                <label>Asunto <span class="req">*</span></label>
+                                <textarea class="wz-in" rows="2" maxlength="500" @bind="_wzAsunto" @bind:event="oninput" placeholder="Asunto del documento de salida"></textarea>
+                                <div class="wz-cnt">@(_wzAsunto.Length)/500</div>
+                            </div>
+                            <div class="wz-field">
+                                <label>Descripcion</label>
+                                <textarea class="wz-in" rows="2" @bind="_wzDescripcion" placeholder="Descripcion (opcional)"></textarea>
+                            </div>
+                            <div class="wz-field" style="max-width:200px;">
+                                <label>Folios</label>
+                                <input type="number" min="0" class="wz-in" @bind="_wzFolios" placeholder="0" />
+                            </div>
+                            <div class="wz-field">
+                                <label>Radicado de entrada vinculado</label>
+                                @if (_wzSalEntradaId is not null)
+                                {
+                                    <div class="wz-dest" style="background:#eef0f7;">
+                                        <div><div class="dep" style="font-family:Consolas,monospace;">@_wzSalEntradaNum</div><div class="fun">Vinculado por el origen "Respuesta"</div></div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="hint">La vinculacion es opcional. Un radicado de salida se vincula a maximo un radicado de entrada.</span>
+                                }
+                            </div>
+                            @if (_wzSalEntradaId is not null)
+                            {
+                                <label class="wz-tgl">
+                                    <input type="checkbox" @bind="_wzSalDefinitiva" />
+                                    <span><strong>Respuesta definitiva</strong> &mdash; solo la respuesta definitiva cierra el termino del radicado de entrada. Un radicado de entrada puede tener multiples salidas.</span>
+                                </label>
+                            }
+                        }
+                        else if (_wzDir == RadicadoTipo.Salida && _wzStep == 5)
+                        {
+                            <h2 class="wz-h2">Paso 5 &mdash; Documento</h2>
+                            <div class="wz-sub">El documento principal es <strong>obligatorio</strong> en radicacion de salida.</div>
+                            <div class="wz-field">
+                                <label>Documento principal <span class="req">*</span></label>
+                                <label class="wz-drop">
+                                    <InputFile OnChange="WzOnFiles" multiple accept=".pdf,.docx,.jpg,.jpeg,.png" />
+                                    <span class="ico">&#8681;</span>
+                                    <span>Clic para seleccionar el documento principal</span>
+                                    <span class="hint">PDF recomendado &mdash; Max. 50 MB</span>
+                                </label>
+                                @if (_wzArchivos.Count > 0)
+                                {
+                                    <div class="wz-files">
+                                        @for (var i = 0; i < _wzArchivos.Count; i++)
+                                        {
+                                            var idx = i; var f = _wzArchivos[i];
+                                            <div class="wz-file">
+                                                <span class="ext">@(string.IsNullOrEmpty(f.Ext) ? "?" : f.Ext.ToUpperInvariant())</span>
+                                                <span class="nom" title="@f.Nombre">@f.Nombre</span>
+                                                <span class="tam">@WzTam(f.Tamano)</span>
+                                                <button type="button" class="x" @onclick="@(() => _wzArchivos.RemoveAt(idx))">&times;</button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (_wzFileError is not null) { <span class="hint" style="color:#DC2626;">@_wzFileError</span> }
+                            </div>
+                            <div class="wz-info">&#128396; Estado de firma (RQ05): Sin flujo de firma asociado &mdash; la integracion con el modulo de firmas RQ05 aplica cuando el documento provenga de un flujo de aprobacion.</div>
+                        }
+                        else if (_wzDir == RadicadoTipo.Salida && _wzStep == 6)
+                        {
+                            <h2 class="wz-h2">Paso 6 &mdash; Confirmacion y radicacion</h2>
+                            <div class="wz-sub">Revise la informacion. Al radicar se asigna el consecutivo de salida.</div>
+                            @foreach (var (k, v) in WzSalidaResumen())
+                            {
+                                <div class="pv-row"><span class="k">@k</span><span class="v">@v</span></div>
+                            }
+                            @if (_wzSalCanal == "EMAIL")
+                            {
+                                <div class="wz-info" style="margin-top:12px;">&#9993; Al radicar, el sistema enviara el documento automaticamente a @(_wzRemEmail).</div>
+                            }
+                            else if (!string.IsNullOrEmpty(_wzSalCanal))
+                            {
+                                <div class="wz-warn" style="margin-top:12px;">El envio queda Pendiente: registrelo desde la bandeja (&#128233;) para generar la constancia@(_wzSalCanal == "JUDICIAL" ? " / acta judicial" : "").</div>
+                            }
+                            <div class="wz-ok-note">&#10003; <strong>Listo para radicar</strong> &mdash; al hacer clic en "Radicar salida" se asignara el consecutivo de salida.</div>
+                        }
+                        else if (_wzStep == 1)
                         {
                             <h2 class="wz-h2">Paso 1 &mdash; Clasificacion</h2>
                             <div class="wz-field">
                                 <label>Comunicacion <span class="req">*</span></label>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                                     <button type="button" class="wz-chip lg @(_wzDir == RadicadoTipo.Entrada ? "on" : "")" @onclick="@(() => WzSetDir(RadicadoTipo.Entrada))">&#128229; Externa (entrada)</button>
-                                    <button type="button" class="wz-chip lg" disabled title="Se habilita al portar rad_salida">&#128228; Salida</button>
+                                    <button type="button" class="wz-chip lg @(_wzDir == RadicadoTipo.Salida ? "on" : "")" @onclick="@(() => WzSetDir(RadicadoTipo.Salida))">&#128228; Salida</button>
                                     <button type="button" class="wz-chip lg @(_wzDir == RadicadoTipo.Interno ? "on" : "")" @onclick="@(() => WzSetDir(RadicadoTipo.Interno))">&#128260; Interna</button>
                                 </div>
                                 <span class="hint">Defina el sentido de la comunicacion antes de elegir el tipo</span>
@@ -297,72 +547,88 @@
                         }
                         else if (_wzStep == 2)
                         {
-                            <h2 class="wz-h2">Paso 2 &mdash; @(_wzDir == RadicadoTipo.Entrada ? "Remitente" : "Origen")</h2>
+                            <h2 class="wz-h2">Paso 2 &mdash; Remitente (@(_wzDir == RadicadoTipo.Entrada ? "tercero externo" : "dependencia interna"))</h2>
+                            <div class="wz-sub">Comunicacion @(_wzDir == RadicadoTipo.Entrada ? "Externa (entrada)" : "Interna"): el remitente es @(_wzDir == RadicadoTipo.Entrada ? "un tercero externo a la entidad." : "una dependencia interna de la entidad.")</div>
                             @if (_wzDir == RadicadoTipo.Entrada)
                             {
                                 <div class="wz-field">
                                     <label>Tipo de tercero <span class="req">*</span></label>
                                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                        @foreach (var tt in new[] { "Natural", "Juridica", "Publica", "Anonimo" })
+                                        @foreach (var (val, lbl) in new[] { ("natural", "Persona Natural"), ("juridica", "Persona Juridica"), ("publica", "Entidad Publica"), ("anonimo", "Anonimo") })
                                         {
-                                            var dis = tt == "Anonimo" && !(WzTipoSel?.PermiteAnonimo ?? false);
-                                            <button type="button" class="wz-chip @(_wzTerTipo == tt ? "on" : "")" disabled="@dis" @onclick="@(() => _wzTerTipo = tt)">@tt</button>
+                                            var dis = val == "anonimo" && !(WzTipoSel?.PermiteAnonimo ?? false);
+                                            <button type="button" class="wz-chip @(_wzTerTipo == val ? "on" : "")" disabled="@dis" title="@(dis ? "Este tipo de comunicacion no permite anonimo" : "")" @onclick="@(() => _wzTerTipo = val)">@lbl</button>
                                         }
                                     </div>
-                                    @if (WzTipoSel is { PermiteAnonimo: false }) { <span class="hint">Este tipo de comunicacion no permite radicacion anonima.</span> }
                                 </div>
-                                @if (_wzTerTipo != "Anonimo")
+                                @if (_wzTerTipo != "anonimo")
                                 {
                                     <div class="wz-grid12">
                                         <div class="wz-field">
-                                            <label>Tipo doc.</label>
+                                            <label>Tipo de documento <span class="req">*</span></label>
                                             <select class="wz-in" @bind="_wzRemTipoDoc">
                                                 @foreach (var td in new[] { "CC", "NIT", "CE", "Pasaporte", "TI", "NUIP", "PEP", "PPT" }) { <option value="@td">@td</option> }
                                             </select>
                                         </div>
                                         <div class="wz-field">
                                             <label>Numero de documento <span class="req">*</span></label>
-                                            <input class="wz-in" @bind="_wzRemDoc" maxlength="30" />
+                                            <input class="wz-in" @bind="_wzRemDoc" maxlength="30" placeholder="Ej: 79.456.231" />
+                                            <span class="hint">Busqueda automatica en directorio RQ07</span>
                                         </div>
                                     </div>
                                     <div class="wz-field">
                                         <label>Nombre / Razon social <span class="req">*</span></label>
-                                        <input class="wz-in" @bind="_wzRemNombre" maxlength="200" />
+                                        <input class="wz-in" @bind="_wzRemNombre" maxlength="200" placeholder="Nombre completo o razon social" />
+                                        <span class="hint">Autocompleta desde el directorio de terceros (RQ07)</span>
                                     </div>
                                     <div class="wz-grid2">
-                                        <div class="wz-field"><label>Correo electronico</label><input type="email" class="wz-in" @bind="_wzRemEmail" maxlength="150" /></div>
-                                        <div class="wz-field"><label>Telefono</label><input class="wz-in" @bind="_wzRemTel" maxlength="30" /></div>
+                                        <div class="wz-field"><label>Correo electronico</label><input type="email" class="wz-in" @bind="_wzRemEmail" maxlength="150" placeholder="correo@@ejemplo.com" /></div>
+                                        <div class="wz-field"><label>Telefono</label><input class="wz-in" @bind="_wzRemTel" maxlength="30" placeholder="Numero de contacto" /></div>
+                                    </div>
+                                    <div class="wz-field">
+                                        <label>Departamento / Municipio</label>
+                                        <select class="wz-in" @bind="_wzRemMunicipio">
+                                            <option value="">&mdash; Seleccionar DIVIPOLA &mdash;</option>
+                                            @foreach (var m in WzMunicipios) { <option value="@m">@m</option> }
+                                        </select>
                                     </div>
                                 }
-                                else { <div class="wz-info">Radicacion anonima: no se capturan datos del remitente.</div> }
+                                <label class="wz-check"><input type="checkbox" @bind="_wzGuardarDir" /> Guardar/actualizar en directorio de terceros (RQ07)</label>
                             }
                             else
                             {
+                                <div class="wz-info">&#127963; Dependencia y funcionario que envian la comunicacion (RF06-2 &mdash; ambos obligatorios).</div>
                                 <div class="wz-field">
-                                    <label>Dependencia de origen <span class="req">*</span></label>
+                                    <label>Dependencia <span class="req">*</span></label>
                                     <select class="wz-in" @bind="_wzDepOrigenId" @bind:after="WzOnDepOrigenChanged">
-                                        <option value="">&mdash; Seleccione &mdash;</option>
+                                        <option value="">&mdash; Seleccione la dependencia &mdash;</option>
                                         @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
                                     </select>
                                 </div>
                                 <div class="wz-field">
-                                    <label>Funcionario de origen</label>
-                                    <select class="wz-in" @bind="_wzFuncOrigenId">
-                                        <option value="">(sin especificar)</option>
+                                    <label>Funcionario <span class="req">*</span></label>
+                                    <select class="wz-in" @bind="_wzFuncOrigenId" disabled="@(string.IsNullOrEmpty(_wzDepOrigenId))">
+                                        <option value="">@(string.IsNullOrEmpty(_wzDepOrigenId) ? "Primero seleccione dependencia" : "— Seleccione el funcionario —")</option>
                                         @foreach (var f in _wzFuncsOrigen) { <option value="@f.Id">@f.Nombre</option> }
                                     </select>
+                                    <span class="hint">Obligatorio: quien envia la comunicacion (RF06-2)</span>
                                 </div>
                             }
                         }
                         else if (_wzStep == 3)
                         {
-                            <h2 class="wz-h2">Paso 3 &mdash; Documento</h2>
+                            <h2 class="wz-h2">Paso 3 &mdash; Informacion del Documento</h2>
                             <div class="wz-field">
-                                <label>Tipo de soporte <span class="req">*</span></label>
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                    <button type="button" class="wz-chip lg @(_wzSoporte == "Fisico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Fisico")">&#128196; Fisico</button>
-                                    <button type="button" class="wz-chip lg @(_wzSoporte == "Electronico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Electronico")">&#128187; Electronico</button>
+                                <label>Tipo de soporte del documento <span class="req">*</span></label>
+                                <div class="wz-cards2">
+                                    <button type="button" class="wz-card2 @(_wzSoporte == "Fisico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Fisico")">
+                                        <div class="t">&#128196; Fisico</div><div class="d">El documento se recibe en papel</div>
+                                    </button>
+                                    <button type="button" class="wz-card2 @(_wzSoporte == "Electronico" ? "on" : "")" @onclick="@(() => _wzSoporte = "Electronico")">
+                                        <div class="t">&#128187; Electronico</div><div class="d">El ciudadano aporta archivos digitales</div>
+                                    </button>
                                 </div>
+                                <span class="hint">Si es electronico, se habilitara la carga de documentos con visor.</span>
                             </div>
                             @if (_wzSoporte == "Electronico")
                             {
@@ -393,51 +659,139 @@
                             }
                             <div class="wz-field">
                                 <label>Asunto <span class="req">*</span></label>
-                                <textarea class="wz-in" rows="2" maxlength="500" @bind="_wzAsunto"></textarea>
+                                <textarea class="wz-in" rows="3" maxlength="500" @bind="_wzAsunto" @bind:event="oninput" placeholder="Descripcion concisa del asunto del documento (max. 500 caracteres)"></textarea>
+                                <div class="wz-cnt">@(_wzAsunto.Length)/500</div>
                             </div>
                             <div class="wz-field">
                                 <label>Descripcion</label>
-                                <textarea class="wz-in" rows="2" @bind="_wzDescripcion"></textarea>
+                                <textarea class="wz-in" rows="2" @bind="_wzDescripcion" placeholder="Descripcion detallada (opcional)"></textarea>
                             </div>
-                            <div class="wz-grid2">
+                            <div class="wz-grid3">
+                                <div class="wz-field">
+                                    <label>Fecha del documento</label>
+                                    <input type="date" class="wz-in" @bind="_wzFechaDoc" />
+                                    <span class="hint">Fecha de elaboracion (no de radicacion)</span>
+                                </div>
                                 <div class="wz-field">
                                     <label>Numero de folios</label>
                                     @if (_wzSoporte == "Electronico" && _wzArchivos.Count > 0)
                                     {
-                                        <div class="wz-ro">Automatico (se calcula de los documentos)</div>
+                                        <input type="text" class="wz-in" value="Automatico" readonly />
+                                        <span class="hint">Se calcula con los documentos cargados</span>
                                     }
                                     else
                                     {
-                                        <input type="number" min="0" class="wz-in" @bind="_wzFolios" />
+                                        <input type="number" min="0" class="wz-in" @bind="_wzFolios" placeholder="0" />
                                     }
                                 </div>
-                                <div class="wz-field"><label>Numero de anexos</label><input type="number" min="0" class="wz-in" @bind="_wzAnexos" /></div>
+                                <div class="wz-field">
+                                    <label>Numero de anexos</label>
+                                    <select class="wz-in" @bind="_wzAnexos">
+                                        @for (var an = 0; an <= 5; an++) { <option value="@an">@an</option> }
+                                        <option value="6">+5</option>
+                                    </select>
+                                </div>
                             </div>
+                            <div class="wz-field">
+                                <label>Observaciones del operador</label>
+                                <textarea class="wz-in" rows="2" @bind="_wzObservaciones" placeholder="Observaciones internas (campo privado)..."></textarea>
+                                <span class="hint">Nota interna &mdash; nunca visible al ciudadano</span>
+                            </div>
+                        }
+                        else if (_wzStep == 4 && _wzDir == RadicadoTipo.Interno)
+                        {
+                            <h2 class="wz-h2">Paso 4 &mdash; Destinatarios (dentro de la entidad)</h2>
+                            <div class="wz-sub">Dependencia y/o funcionario destinatario. Agregue varias dependencias para una circular interna.</div>
+                            <div class="wz-grid2">
+                                <div class="wz-field">
+                                    <label>Dependencia destino</label>
+                                    <select class="wz-in" @bind="_wzDestDepSel" @bind:after="WzOnDestDepChanged">
+                                        <option value="">&mdash; Seleccione la dependencia &mdash;</option>
+                                        @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
+                                    </select>
+                                </div>
+                                <div class="wz-field">
+                                    <label>Funcionario destinatario</label>
+                                    <select class="wz-in" @bind="_wzDestFuncSel" disabled="@(string.IsNullOrEmpty(_wzDestDepSel))">
+                                        <option value="">@(string.IsNullOrEmpty(_wzDestDepSel) ? "Primero seleccione dependencia" : "— Opcional: el jefe lo asigna despues (RF07) —")</option>
+                                        @foreach (var f in _wzDestFuncs) { <option value="@f.Id">@f.Nombre</option> }
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="button" class="wz-btn navy" style="font-size:13px;" @onclick="WzAgregarDestino">+ Agregar destinatario</button>
+                            @if (_wzDestinos.Count > 0)
+                            {
+                                <div class="wz-dests">
+                                    @for (var i = 0; i < _wzDestinos.Count; i++)
+                                    {
+                                        var idx = i; var d = _wzDestinos[i];
+                                        <div class="wz-dest">
+                                            <div>
+                                                <div class="dep">@d.DepNombre</div>
+                                                <div class="fun">@(string.IsNullOrEmpty(d.FuncNombre) ? "\U0001F464 Sin funcionario - lo asigna el jefe de la dependencia" : "\U0001F464 " + d.FuncNombre)</div>
+                                            </div>
+                                            <button type="button" class="qx" title="Quitar" @onclick="@(() => _wzDestinos.RemoveAt(idx))">&times;</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (_wzDestinos.Count > 1)
+                            {
+                                <div class="wz-circular">&#128226; Circular interna: el sistema genera UN numero de radicado y UNA tarea por cada una de las @_wzDestinos.Count dependencias destinatarias (RF06-2).</div>
+                            }
+                            <div class="wz-field" style="margin-top:12px;">
+                                <label>Instrucciones para el destinatario</label>
+                                <textarea class="wz-in" rows="2" @bind="_wzInstrucciones" placeholder="Instrucciones opcionales..."></textarea>
+                            </div>
+                            <div class="wz-field">
+                                <label>Prioridad</label>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    @foreach (var p in Enum.GetValues<RadicadoPrioridad>())
+                                    {
+                                        var ico = p == RadicadoPrioridad.Urgente ? "\U0001F534" : p == RadicadoPrioridad.Alta ? "\U0001F7E0" : "\U0001F535";
+                                        <button type="button" class="wz-chip @(_wzPrio == p ? "on" : "")" @onclick="@(() => _wzPrio = p)">@ico @p</button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="wz-ok-note">&#10003; <strong>Listo para radicar</strong> &mdash; al hacer clic en "Radicar" se asignara el numero consecutivo. La fecha y hora las impone el servidor.</div>
                         }
                         else if (_wzStep == 4)
                         {
-                            <h2 class="wz-h2">Paso 4 &mdash; Destinatario</h2>
-                            <div class="wz-info">Asigna la dependencia que tramitara el radicado. Es opcional: puedes distribuirlo despues desde la bandeja.</div>
+                            <h2 class="wz-h2">Paso 4 &mdash; Destinatario (dependencia interna)</h2>
+                            <div class="wz-sub">Comunicacion Externa (entrada): el destinatario es una dependencia interna de la entidad.</div>
+                            <div class="wz-info">&#127963; Seleccione la dependencia destino (y opcionalmente el funcionario responsable). Es opcional: puede distribuirlo despues desde la bandeja.</div>
                             <div class="wz-field">
-                                <label>Dependencia destino</label>
+                                <label>Dependencia</label>
                                 <select class="wz-in" @bind="_wzDepDestId" @bind:after="WzOnDepDestChanged">
                                     <option value="">Sin distribuir</option>
                                     @foreach (var d in _deps) { <option value="@d.Id">@d.Nombre</option> }
                                 </select>
                             </div>
                             <div class="wz-field">
-                                <label>Funcionario (opcional)</label>
-                                <select class="wz-in" @bind="_wzFuncDestId">
-                                    <option value="">Pendiente de asignar (jefe)</option>
+                                <label>Funcionario</label>
+                                <select class="wz-in" @bind="_wzFuncDestId" disabled="@(string.IsNullOrEmpty(_wzDepDestId))">
+                                    <option value="">@(string.IsNullOrEmpty(_wzDepDestId) ? "Primero seleccione dependencia" : "— Opcional: seleccionar funcionario —")</option>
                                     @foreach (var f in _wzFuncsDest) { <option value="@f.Id">@f.Nombre</option> }
                                 </select>
+                                <span class="hint">Opcional</span>
                             </div>
                             <div class="wz-field">
                                 <label>Prioridad</label>
-                                <select class="wz-in" @bind="_wzPrio">
-                                    @foreach (var p in Enum.GetValues<RadicadoPrioridad>()) { <option value="@p">@p</option> }
-                                </select>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    @foreach (var p in Enum.GetValues<RadicadoPrioridad>())
+                                    {
+                                        var ico = p == RadicadoPrioridad.Urgente ? "\U0001F534" : p == RadicadoPrioridad.Alta ? "\U0001F7E0" : "\U0001F535";
+                                        <button type="button" class="wz-chip @(_wzPrio == p ? "on" : "")" @onclick="@(() => _wzPrio = p)">@ico @p</button>
+                                    }
+                                </div>
+                                <span class="hint">Catalogo administrable en Configuracion &rarr; Prioridades (RF01-1)</span>
                             </div>
+                            <div class="wz-field">
+                                <label>Radicado relacionado</label>
+                                <input class="wz-in" @bind="_wzRelacionado" maxlength="60" placeholder="@("Ej: " + WzNumeroPlaceholder().Replace("X", "1"))" />
+                                <span class="hint">Si este documento responde o continua un radicado anterior</span>
+                            </div>
+                            <div class="wz-ok-note">&#10003; <strong>Listo para radicar</strong> &mdash; al hacer clic en "Radicar" se asignara el numero consecutivo. La fecha y hora las impone el servidor.</div>
                         }
                         @if (_wzError is not null) { <div class="wz-err">@_wzError</div> }
                     </div>
@@ -454,7 +808,7 @@
                                 <div class="pv-tag" style="@(WzTipoSel is { } tg && !string.IsNullOrEmpty(tg.Color) ? $"background:{tg.Color};color:#fff" : "")">@(WzTipoSel?.Nombre ?? "TIPO")</div>
                             </div>
                             <div class="pv-num">
-                                <div class="ph">Numero se asignara al radicar</div>
+                                <div class="ph" style="@(_wzNumero is not null ? "color:#0ab39c;font-weight:800;letter-spacing:.04em;" : "")">@(_wzNumero ?? "Numero se asignara al radicar")</div>
                                 <div class="f">@_wzFechaCtx</div>
                             </div>
                             @foreach (var (k, v) in WzPreviewRows())
@@ -467,10 +821,10 @@
                             <div style="display:flex;justify-content:space-between;align-items:center;">
                                 <span class="t">&#127991; Sticker adhesivo</span>
                             </div>
-                            <div class="num">@WzNumeroPlaceholder()</div>
+                            <div class="num">@(_wzNumero ?? WzNumeroPlaceholder())</div>
                             <div class="m">@_wzFechaCtx | @(WzTipoSel?.Nombre ?? "-")</div>
                             <div style="display:flex;justify-content:space-between;font-size:11px;color:#94A3B8;">
-                                <span>@(string.IsNullOrEmpty(_wzDepDestId) ? "Dependencia destino" : WzDepNombre(_wzDepDestId))</span>
+                                <span>@WzStickerDestino</span>
                                 <span>@WzFoliosPreview folio(s)</span>
                             </div>
                             <div class="qr"></div>
@@ -480,22 +834,31 @@
 
                 <div class="wz-foot">
                     <div style="display:flex;gap:8px;">
-                        <button type="button" class="wz-btn" @onclick="WzCerrar">&#10005; Cancelar</button>
+                        @if (!WzEsDigital)
+                        {
+                            <button type="button" class="wz-btn" @onclick="WzCerrar">&#10005; Cancelar</button>
+                        }
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;">
-                        <span class="paso">Paso @_wzStep de 4</span>
-                        @if (_wzStep > 1) { <button type="button" class="wz-btn" @onclick="WzAtras" disabled="@_wzBusy">&#8592; Anterior</button> }
-                        @if (_wzStep < 4)
+                        <span class="paso">Paso @_wzStep de @WzPasos.Length</span>
+                        @if (WzEsDigital)
                         {
-                            <button type="button" class="wz-btn navy" @onclick="WzSiguiente" disabled="@_wzBusy">Siguiente &#8594;</button>
+                            <button type="button" class="wz-btn green" @onclick="WzCerrar" disabled="@_wzBusy">&#10003; Finalizar</button>
                         }
                         else
                         {
-                            <button type="button" class="wz-btn green" @onclick="WzRadicarAsync" disabled="@_wzBusy">&#10003; Radicar</button>
+                            @if (_wzStep > 1) { <button type="button" class="wz-btn" @onclick="WzAtras" disabled="@_wzBusy">&#8592; Anterior</button> }
+                            @if (_wzStep < WzRadicarStep)
+                            {
+                                <button type="button" class="wz-btn navy" @onclick="WzSiguiente" disabled="@_wzBusy">Siguiente &#8594;</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="wz-btn green" @onclick="WzRadicarAsync" disabled="@_wzBusy">&#10003; @WzRadicarLabel</button>
+                            }
                         }
                     </div>
                 </div>
-            }
         </div>
     </div>
 }
@@ -582,6 +945,16 @@
     .wz-badge { display:inline-block; padding:2px 8px; border-radius:5px; font-size:10px; font-weight:700; }
     .wz-badge.pqrsd { background:#DBEAFE; color:#1E40AF; } .wz-badge.tutela { background:#FEE2E2; color:#991B1B; }
     .wz-err { background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; border-radius:7px; padding:8px 12px; font-size:12px; }
+    .wz-sub { font-size:12px; color:#878a99; margin:-8px 0 14px; }
+    .wz-cnt { font-size:11px; color:#94A3B8; text-align:right; margin-top:2px; }
+    .wz-grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+    .wz-cards2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .wz-card2 { text-align:left; border:1px solid #D5DDE9; background:#fff; border-radius:8px; padding:12px 14px; cursor:pointer; font-family:inherit; }
+    .wz-card2.on { border-color:#405189; background:#eef0f7; }
+    .wz-card2 .t { font-size:13px; font-weight:700; color:#212529; } .wz-card2 .d { font-size:11px; color:#566980; margin-top:2px; }
+    .wz-check { display:flex; align-items:center; gap:8px; font-size:12px; color:#334155; margin-top:4px; cursor:pointer; }
+    .wz-check input { width:15px; height:15px; }
+    .wz-ok-note { background:#F0FDF4; border:1px solid #86EFAC; color:#166534; border-radius:8px; padding:10px 12px; font-size:12px; margin-top:6px; }
     .wz-drop { display:flex; flex-direction:column; align-items:center; gap:4px; border:2px dashed #D5DDE9; border-radius:8px; padding:16px 12px; text-align:center; cursor:pointer; background:#F8FAFC; font-size:12px; color:#566980; }
     .wz-drop:hover { border-color:#405189; } .wz-drop .ico { font-size:22px; color:#405189; } .wz-drop input[type=file] { display:none; }
     .wz-files { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
@@ -616,6 +989,24 @@
     .wz-ok { text-align:center; }
     .wz-ok-ico { width:64px; height:64px; margin:0 auto 12px; border-radius:50%; background:#D1FAE5; color:#065F46; font-size:2rem; display:flex; align-items:center; justify-content:center; }
     .wz-ok-num { font-size:22px; font-weight:800; color:#405189; letter-spacing:.05em; font-family:Consolas,monospace; }
+    .wz-ok2 { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; background:#F0FDF4; border:1px solid #86EFAC; border-radius:8px; padding:12px 14px; }
+    .wz-ok2 .t { font-size:13px; font-weight:700; color:#166534; margin-bottom:2px; }
+    .wz-ok2 .n { font-size:16px; font-weight:800; color:#405189; letter-spacing:.04em; font-family:Consolas,monospace; }
+    .wz-warn { background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; border-radius:8px; padding:10px 12px; font-size:12px; }
+    .wz-file .est { margin-left:auto; }
+    .wz-dests { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+    .wz-dest { display:flex; justify-content:space-between; align-items:center; border:1px solid #E2E8F0; border-radius:8px; padding:9px 14px; background:#F8FAFC; }
+    .wz-dest .dep { font-size:13px; font-weight:700; color:#212529; }
+    .wz-dest .fun { font-size:11px; color:#566980; margin-top:2px; }
+    .wz-dest .qx { border:none; background:none; color:#DC2626; font-size:18px; line-height:1; cursor:pointer; }
+    .wz-circular { margin-top:12px; background:#eef4ff; border:1px solid #d9e5fb; color:#1d4ed8; border-radius:8px; padding:10px 12px; font-size:12px; }
+    .wz-card2.wide { width:100%; text-align:left; margin-bottom:10px; }
+    .wz-badge { display:inline-block; background:#D1FAE5; color:#0a7d6f; border-radius:10px; padding:1px 8px; font-size:10px; font-weight:700; margin-left:6px; }
+    .wz-busq { margin-top:6px; border:1px solid #E2E8F0; border-radius:8px; overflow:hidden; }
+    .wz-busq-item { display:block; width:100%; text-align:left; border:none; border-bottom:1px solid #F1F5F9; background:#fff; padding:8px 12px; font-size:12px; cursor:pointer; }
+    .wz-busq-item:hover { background:#eef0f7; } .wz-busq-item:last-child { border-bottom:none; }
+    .wz-tgl { display:flex; gap:10px; align-items:flex-start; margin-top:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px; font-size:12px; color:#566980; cursor:pointer; }
+    .wz-tgl input { margin-top:2px; }
     @@media (max-width:900px){ .wz-body { flex-direction:column; } .wz-left,.wz-right { flex:1 1 auto; border-right:none; } }
 </style>
 
@@ -731,8 +1122,25 @@
         finally { _busy = false; }
     }
 
-    private void Responder(string numero)
-        => Flash($"Responder {numero}: el asistente de salida (rad_radicar) se habilita al portar ese modulo.", true);
+    // Abre el asistente en modo SALIDA con origen "Respuesta" y la entrada padre precargada (rad_salida_wizard).
+    private async Task Responder(string numero)
+    {
+        await NuevoRadicado();
+        WzSetDir(RadicadoTipo.Salida);
+        _wzSalOrigen = "RESPUESTA";
+        var res = await BandejaSvc.ListarAsync(new BandejaFiltro { Buscar = numero, Direccion = RadicadoTipo.Entrada, Top = 20 });
+        var ent = res.Items.FirstOrDefault(x => x.Numero == numero) ?? res.Items.FirstOrDefault();
+        if (ent is not null)
+        {
+            _wzSalEntradaId = ent.Reg;
+            _wzSalEntradaNum = ent.Numero;
+            _wzSalEntradaAsunto = ent.Asunto ?? "";
+            _wzSalEntradaRem = ent.Remitente ?? "";
+            // Mejora sobre el legacy: sugiere el asunto de respuesta (editable en el paso 4).
+            _wzAsunto = string.IsNullOrWhiteSpace(ent.Asunto) ? "" : $"Respuesta a: {ent.Asunto}";
+        }
+        _detalleReg = null;
+    }
 
     // ===== Asistente Nuevo Radicado (rad_radicar, Fase 1: Entrada + Interna) =====
     private bool _wzOpen, _wzBusy;
@@ -747,34 +1155,65 @@
     private string _wzTipoId = "", _wzNivelId = "";
     private RadicadoCanal _wzCanal = RadicadoCanal.Presencial;
     // Paso 2 - remitente (entrada) / origen (interna).
-    private string _wzTerTipo = "Natural", _wzRemTipoDoc = "CC";
+    private string _wzTerTipo = "natural", _wzRemTipoDoc = "CC", _wzRemMunicipio = "";
     private string _wzRemDoc = "", _wzRemNombre = "", _wzRemEmail = "", _wzRemTel = "";
+    private bool _wzGuardarDir = true;
     private string _wzDepOrigenId = "", _wzFuncOrigenId = "";
+    private static readonly string[] WzMunicipios = ["Bogota D.C.", "Medellin", "Cali", "Barranquilla", "Bucaramanga", "Cartagena"];
     // Paso 3 - documento.
-    private string _wzSoporte = "Fisico", _wzAsunto = "", _wzDescripcion = "";
+    private string _wzSoporte = "Fisico", _wzAsunto = "", _wzDescripcion = "", _wzObservaciones = "";
+    private DateOnly? _wzFechaDoc;
     private int _wzFolios = 1, _wzAnexos;
-    // Paso 4 - destino.
-    private string _wzDepDestId = "", _wzFuncDestId = "";
+    // Paso 4 - destino (entrada: un solo destino).
+    private string _wzDepDestId = "", _wzFuncDestId = "", _wzRelacionado = "";
     private RadicadoPrioridad _wzPrio = RadicadoPrioridad.Normal;
+    // Paso 4 - destinatarios (interna: circular, N destinos). Se agregan uno por uno a una lista.
+    private sealed class WzDestino { public long DepId; public long? FuncId; public string DepNombre = ""; public string FuncNombre = ""; }
+    private readonly List<WzDestino> _wzDestinos = new();
+    private string _wzDestDepSel = "", _wzDestFuncSel = "", _wzInstrucciones = "";
+    private IReadOnlyList<OpcionDto> _wzDestFuncs = Array.Empty<OpcionDto>();
+    // Salida (rad_salida_wizard): origen, vinculo a la entrada padre, canal de envio y respuesta definitiva.
+    private string _wzSalOrigen = "RESPUESTA", _wzSalCanal = "", _wzSalBuscar = "";
+    private long? _wzSalEntradaId;
+    private string _wzSalEntradaNum = "", _wzSalEntradaAsunto = "", _wzSalEntradaRem = "";
+    private bool _wzSalDefinitiva;
+    private List<BandejaItemDto> _wzSalResultados = new();
     // Adjuntos (Fase 2): documentos electronicos subidos al radicar.
     private const long WzMaxBytes = 50L * 1024 * 1024;
     private static readonly string[] WzExts = ["pdf", "docx", "xlsx", "pptx", "jpg", "jpeg", "png", "tif", "tiff", "gif", "bmp", "xml", "txt"];
     private sealed class WzArchivo { public byte[] Bytes = Array.Empty<byte>(); public string Nombre = ""; public long Tamano; public string Ext = ""; }
     private readonly List<WzArchivo> _wzArchivos = new();
     private string? _wzFileError;
+    // Paso Digitalizacion (post-radicado): archivos escaneados del soporte fisico, subidos al radicado existente.
+    private sealed class WzDigItem { public string Nombre = ""; public long Tamano; public string Ext = ""; public string Estado = "Subiendo"; }
+    private readonly List<WzDigItem> _wzDigItems = new();
+    private long? _wzDigRadicadoId;
     // Contexto para la vista previa / sticker (calca el boot del legacy).
     [CascadingParameter] private Task<AuthenticationState>? _authTask { get; set; }
     private EsquemaRadicacionDto? _wzEsq;
     private string _wzUsuario = "Operador";
     private string _wzFechaCtx = "";
 
-    private (int n, string lbl)[] WzPasos => new[]
+    private (int n, string lbl)[] WzPasos => _wzDir switch
     {
-        (1, "Clasificacion"), (2, _wzDir == RadicadoTipo.Entrada ? "Remitente" : "Origen"), (3, "Documento"), (4, "Destinatario")
+        RadicadoTipo.Interno => new[] { (1, "Clasificacion"), (2, "Origen"), (3, "Documento"), (4, "Destinatarios"), (5, "Digitalizacion") },
+        RadicadoTipo.Salida => new[] { (1, "Origen"), (2, "Clasificacion"), (3, "Destinatario"), (4, "Informacion"), (5, "Documento"), (6, "Confirmacion"), (7, "Digitalizacion") },
+        _ => new[] { (1, "Clasificacion"), (2, "Remitente"), (3, "Documento"), (4, "Destinatario"), (5, "Digitalizacion") }
     };
 
-    private RadicacionDireccion WzDireccionSel => _wzDir == RadicadoTipo.Entrada
-        ? RadicacionDireccion.Entrada : RadicacionDireccion.Interno;
+    // El ultimo paso de datos (donde el boton es "Radicar") es el previo a Digitalizacion; Digitalizacion
+    // es siempre el ultimo paso (post-radicado, calca flow() del legacy que empuja 'digital' al final).
+    private int WzDigitalStep => WzPasos.Length;
+    private int WzRadicarStep => WzPasos.Length - 1;
+    private bool WzEsDigital => _wzNumero is not null && _wzStep == WzDigitalStep;
+    private string WzRadicarLabel => _wzDir == RadicadoTipo.Salida ? "Radicar salida" : "Radicar";
+
+    private RadicacionDireccion WzDireccionSel => _wzDir switch
+    {
+        RadicadoTipo.Entrada => RadicacionDireccion.Entrada,
+        RadicadoTipo.Salida => RadicacionDireccion.Salida,
+        _ => RadicacionDireccion.Interno
+    };
     private IEnumerable<TipoRadicacionDto> WzTiposFiltrados => _wzTipos.Where(t => t.Direccion == WzDireccionSel);
     private TipoRadicacionDto? WzTipoSel => _wzTipos.FirstOrDefault(t => t.Id.ToString() == _wzTipoId);
 
@@ -782,11 +1221,16 @@
     {
         _wzOpen = true; _wzStep = 1; _wzError = null; _wzNumero = null; _wzBusy = false;
         _wzDir = RadicadoTipo.Entrada; _wzTipoId = ""; _wzNivelId = ""; _wzCanal = RadicadoCanal.Presencial;
-        _wzTerTipo = "Natural"; _wzRemTipoDoc = "CC"; _wzRemDoc = _wzRemNombre = _wzRemEmail = _wzRemTel = "";
+        _wzTerTipo = "natural"; _wzRemTipoDoc = "CC"; _wzRemDoc = _wzRemNombre = _wzRemEmail = _wzRemTel = "";
+        _wzRemMunicipio = ""; _wzGuardarDir = true; _wzFechaDoc = null; _wzObservaciones = ""; _wzRelacionado = "";
         _wzDepOrigenId = _wzFuncOrigenId = ""; _wzSoporte = "Fisico"; _wzAsunto = _wzDescripcion = "";
         _wzFolios = 1; _wzAnexos = 0; _wzDepDestId = _wzFuncDestId = ""; _wzPrio = RadicadoPrioridad.Normal;
         _wzArchivos.Clear(); _wzFileError = null;
-        _wzFuncsOrigen = _wzFuncsDest = Array.Empty<OpcionDto>();
+        _wzDigItems.Clear(); _wzDigRadicadoId = null;
+        _wzDestinos.Clear(); _wzDestDepSel = _wzDestFuncSel = _wzInstrucciones = "";
+        _wzSalOrigen = "RESPUESTA"; _wzSalCanal = _wzSalBuscar = ""; _wzSalEntradaId = null;
+        _wzSalEntradaNum = _wzSalEntradaAsunto = _wzSalEntradaRem = ""; _wzSalDefinitiva = false; _wzSalResultados = new();
+        _wzFuncsOrigen = _wzFuncsDest = _wzDestFuncs = Array.Empty<OpcionDto>();
         _wzTipos = await BandejaSvc.TiposAsistenteAsync();
         _wzNiveles = await BandejaSvc.NivelesReservaAsync();
         _wzEsq = await BandejaSvc.AsistenteEsquemaAsync();
@@ -802,7 +1246,12 @@
     }
 
     // ---- Helpers de la vista previa en tiempo real (calca renderRight / renderCtx del legacy) ----
-    private string WzTipoCtx => _wzDir == RadicadoTipo.Interno ? "INTERNA — PRESENCIAL" : "ENTRADA — PRESENCIAL";
+    private string WzTipoCtx => _wzDir switch
+    {
+        RadicadoTipo.Interno => "INTERNA — PRESENCIAL",
+        RadicadoTipo.Salida => "SALIDA",
+        _ => "ENTRADA — PRESENCIAL"
+    };
 
     private string WzVenceTxt => WzTipoSel is { } t
         ? (t.RequiereRespuesta && t.DiasRespuesta is int d && d > 0
@@ -811,6 +1260,11 @@
         : "";
 
     private string WzDepNombre(string id) => _deps.FirstOrDefault(x => x.Id.ToString() == id)?.Nombre ?? "—";
+
+    private string WzStickerDestino => _wzDir == RadicadoTipo.Interno
+        ? (_wzDestinos.Count == 0 ? "Dependencia destino"
+            : _wzDestinos.Count == 1 ? _wzDestinos[0].DepNombre : $"{_wzDestinos.Count} dependencias")
+        : (string.IsNullOrEmpty(_wzDepDestId) ? "Dependencia destino" : WzDepNombre(_wzDepDestId));
 
     private string WzFoliosPreview => _wzSoporte == "Electronico" && _wzArchivos.Count > 0 ? "auto" : _wzFolios.ToString();
 
@@ -828,7 +1282,7 @@
     private IEnumerable<(string k, string v)> WzPreviewRows()
     {
         var esEntrada = _wzDir == RadicadoTipo.Entrada;
-        var anon = esEntrada && _wzTerTipo == "Anonimo";
+        var anon = esEntrada && _wzTerTipo == "anonimo";
         var em = "—";
         var canal = $"{(_wzDir == RadicadoTipo.Interno ? "Interno" : "Presencial")} — {_wzEsq?.EntidadNombre ?? "-"}";
         var remLabel = esEntrada ? "Remitente" : "Origen";
@@ -837,17 +1291,22 @@
             : (string.IsNullOrWhiteSpace(_wzDepOrigenId) ? em : WzDepNombre(_wzDepOrigenId));
         var doc = esEntrada && !anon && !string.IsNullOrWhiteSpace(_wzRemDoc) ? $"{_wzRemTipoDoc} {_wzRemDoc}" : em;
         var asunto = string.IsNullOrWhiteSpace(_wzAsunto) ? em : (_wzAsunto.Length > 45 ? _wzAsunto[..45] + "…" : _wzAsunto);
-        var dep = string.IsNullOrWhiteSpace(_wzDepDestId) ? em : WzDepNombre(_wzDepDestId);
-        var func = string.IsNullOrWhiteSpace(_wzFuncDestId)
-            ? "(sin asignar)"
-            : (_wzFuncsDest.FirstOrDefault(f => f.Id.ToString() == _wzFuncDestId)?.Nombre ?? "(sin asignar)");
+        var esInterna = _wzDir == RadicadoTipo.Interno;
+        var dep = esInterna
+            ? (_wzDestinos.Count == 0 ? em : (_wzDestinos.Count == 1 ? _wzDestinos[0].DepNombre : $"{_wzDestinos.Count} dependencias (circular)"))
+            : (string.IsNullOrWhiteSpace(_wzDepDestId) ? em : WzDepNombre(_wzDepDestId));
+        var func = esInterna
+            ? (_wzDestinos.Count == 1 && !string.IsNullOrEmpty(_wzDestinos[0].FuncNombre) ? _wzDestinos[0].FuncNombre : "(sin asignar)")
+            : (string.IsNullOrWhiteSpace(_wzFuncDestId)
+                ? "(sin asignar)"
+                : (_wzFuncsDest.FirstOrDefault(f => f.Id.ToString() == _wzFuncDestId)?.Nombre ?? "(sin asignar)"));
         yield return ("Canal", canal);
         yield return ("Tipo comunicacion", WzTipoSel?.Nombre ?? em);
         yield return (remLabel, remValor);
         yield return ("Documento", doc);
         yield return ("Asunto", asunto);
         yield return ("Folios", WzFoliosPreview);
-        yield return ("Dependencia", dep);
+        yield return (esInterna ? "Destinatarios" : "Dependencia", dep);
         yield return ("Funcionario", func);
         yield return ("Fecha vencimiento", string.IsNullOrEmpty(WzVenceTxt) ? em : WzVenceTxt);
     }
@@ -856,7 +1315,58 @@
 
     private void WzSetDir(RadicadoTipo dir)
     {
-        _wzDir = dir; _wzTipoId = ""; _wzNivelId = ""; _wzTerTipo = "Natural"; _wzError = null;
+        _wzDir = dir; _wzTipoId = ""; _wzNivelId = ""; _wzTerTipo = "natural"; _wzError = null;
+        _wzStep = 1;
+        // La salida es siempre electronica (documento principal obligatorio); entrada/interna vuelven a fisico.
+        _wzSoporte = dir == RadicadoTipo.Salida ? "Electronico" : "Fisico";
+    }
+
+    // Canales de envio de la salida (calca CANALES del legacy rad_salida_wizard).
+    private static readonly (string val, string txt, string desc)[] WzCanalesSalida =
+    {
+        ("EMAIL", "✉ Email", "El sistema envia el PDF automaticamente"),
+        ("FISICO", "\U0001F4E6 Correo fisico", "Constancia + numero de guia"),
+        ("PERSONAL", "\U0001F91D Entrega personal", "Constancia + quien recibe"),
+        ("JUDICIAL", "⚖ Notificacion judicial", "Acta: juzgado, expediente, fecha")
+    };
+
+    // Busca radicados de ENTRADA para vincular la salida (reusa la bandeja: filtro Buscar + Direccion=Entrada).
+    private async Task WzSalBuscarEntradas()
+    {
+        var q = _wzSalBuscar?.Trim() ?? "";
+        if (q.Length < 2) { _wzSalResultados = new(); return; }
+        var res = await BandejaSvc.ListarAsync(new BandejaFiltro { Buscar = q, Direccion = RadicadoTipo.Entrada, Top = 20 });
+        _wzSalResultados = res.Items.ToList();
+    }
+
+    private void WzSalElegirEntrada(BandejaItemDto e)
+    {
+        _wzSalEntradaId = e.Reg;
+        _wzSalEntradaNum = e.Numero;
+        _wzSalEntradaAsunto = e.Asunto ?? "";
+        _wzSalEntradaRem = e.Remitente ?? "";
+        _wzSalResultados = new();
+        _wzSalBuscar = "";
+    }
+
+    private void WzSalQuitarEntrada()
+    {
+        _wzSalEntradaId = null; _wzSalEntradaNum = _wzSalEntradaAsunto = _wzSalEntradaRem = "";
+        _wzSalDefinitiva = false;
+    }
+
+    private IEnumerable<(string, string)> WzSalidaResumen()
+    {
+        var em = "—";
+        yield return ("Origen", _wzSalOrigen switch { "RESPUESTA" => "Respuesta a entrada", "RQ04" => "Documento RQ04", _ => "Documento externo" });
+        yield return ("Tipo", WzTipoSel?.Nombre ?? em);
+        yield return ("Prioridad", _wzPrio.ToString());
+        yield return ("Nivel", string.IsNullOrEmpty(_wzNivelId) ? "(por defecto)" : (_wzNiveles.FirstOrDefault(n => n.Id.ToString() == _wzNivelId)?.Nombre ?? em));
+        yield return ("Destinatario", string.IsNullOrWhiteSpace(_wzRemNombre) ? em : _wzRemNombre);
+        yield return ("Canal de envio", WzCanalesSalida.FirstOrDefault(c => c.val == _wzSalCanal).txt ?? em);
+        yield return ("Asunto", string.IsNullOrWhiteSpace(_wzAsunto) ? em : _wzAsunto);
+        yield return ("Vinculado a entrada", _wzSalEntradaId is null ? "No" : $"{_wzSalEntradaNum}{(_wzSalDefinitiva ? " - RESPUESTA DEFINITIVA (cierra termino)" : " - salida parcial")}");
+        yield return ("Documento principal", _wzArchivos.Count > 0 ? _wzArchivos[0].Nombre : em);
     }
 
     private void WzOnTipoChanged()
@@ -866,7 +1376,7 @@
         // Autollenar el nivel de reserva por defecto del tipo (calca onTipo del legacy).
         if (t.NivelReservaDefaultId is long nv) { _wzNivelId = nv.ToString(); }
         // Si el tipo no permite anonimo y estaba seleccionado, revertir.
-        if (!t.PermiteAnonimo && _wzTerTipo == "Anonimo") { _wzTerTipo = "Natural"; }
+        if (!t.PermiteAnonimo && _wzTerTipo == "anonimo") { _wzTerTipo = "natural"; }
     }
 
     private async Task WzOnDepOrigenChanged()
@@ -876,6 +1386,30 @@
     {
         _wzFuncDestId = "";
         _wzFuncsDest = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDepDestId, out var d) ? d : null);
+    }
+
+    // Multi-destinatario (circular interna): al cambiar la dependencia del formulario de entrada recarga sus funcionarios.
+    private async Task WzOnDestDepChanged()
+    {
+        _wzDestFuncSel = "";
+        _wzDestFuncs = await BandejaSvc.FuncionariosAsync(long.TryParse(_wzDestDepSel, out var d) ? d : null);
+    }
+
+    // Agrega el destino del formulario a la lista, sin duplicar dependencia (fiel al legacy addDestino).
+    private void WzAgregarDestino()
+    {
+        _wzError = null;
+        if (!long.TryParse(_wzDestDepSel, out var depId)) { _wzError = "Seleccione la dependencia destino."; return; }
+        if (_wzDestinos.Any(x => x.DepId == depId)) { _wzError = "Esa dependencia ya esta en la lista."; return; }
+        long? funcId = long.TryParse(_wzDestFuncSel, out var fid) ? fid : null;
+        _wzDestinos.Add(new WzDestino
+        {
+            DepId = depId,
+            FuncId = funcId,
+            DepNombre = WzDepNombre(_wzDestDepSel),
+            FuncNombre = funcId is null ? "" : (_wzDestFuncs.FirstOrDefault(f => f.Id == funcId)?.Nombre ?? "")
+        });
+        _wzDestDepSel = ""; _wzDestFuncSel = ""; _wzDestFuncs = Array.Empty<OpcionDto>();
     }
 
     private async Task WzOnFiles(InputFileChangeEventArgs e)
@@ -898,14 +1432,69 @@
 
     private static string WzTam(long b) => b < 1024 ? $"{b} B" : b < 1048576 ? $"{b / 1024.0:0.#} KB" : $"{b / 1048576.0:0.#} MB";
 
+    // Paso Digitalizacion: sube cada archivo escaneado al radicado ya creado (AdjuntarAsync), con estado por item.
+    private async Task WzOnDigFiles(InputFileChangeEventArgs e)
+    {
+        _wzFileError = null;
+        if (_wzDigRadicadoId is not long rid) { _wzFileError = "El radicado aun no esta disponible."; return; }
+        var nuevos = new List<AdjuntoBytes>();
+        var items = new List<WzDigItem>();
+        foreach (var f in e.GetMultipleFiles(20))
+        {
+            var ext = System.IO.Path.GetExtension(f.Name).TrimStart('.').ToLowerInvariant();
+            if (!WzExts.Contains(ext)) { _wzFileError = $"'{f.Name}': extension no permitida."; continue; }
+            if (f.Size <= 0 || f.Size > WzMaxBytes) { _wzFileError = $"'{f.Name}': tamano invalido (max 50 MB)."; continue; }
+            byte[] bytes;
+            using (var ms = new MemoryStream())
+            {
+                await f.OpenReadStream(WzMaxBytes).CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+            var item = new WzDigItem { Nombre = f.Name, Tamano = bytes.LongLength, Ext = ext, Estado = "Subiendo" };
+            _wzDigItems.Add(item);
+            items.Add(item);
+            nuevos.Add(new AdjuntoBytes(f.Name, bytes));
+        }
+        if (nuevos.Count == 0) { return; }
+        StateHasChanged();
+        var res = await RadSvc.AdjuntarAsync(rid, nuevos);
+        var estado = res.Ok ? "Adjuntado" : "Error";
+        foreach (var it in items) { it.Estado = estado; }
+        if (!res.Ok) { _wzFileError = res.Error; }
+    }
+
+    // Sticker imprimible del radicado (calca wzImprimirSticker del legacy: ventana propia + window.print).
+    private async Task WzImprimirSticker()
+    {
+        var html = "<div style=\"font-family:Poppins,sans-serif;border:2px dashed #405189;border-radius:8px;"
+            + "padding:14px 18px;width:260px;\">"
+            + "<div style=\"font-size:10px;color:#94A3B8;letter-spacing:.08em;\">TRONOX &middot; RADICADO</div>"
+            + $"<div style=\"font-size:18px;font-weight:800;color:#405189;font-family:Consolas,monospace;margin:4px 0;\">{_wzNumero}</div>"
+            + $"<div style=\"font-size:11px;color:#566980;\">{_wzFechaCtx} | {WzTipoSel?.Nombre}</div>"
+            + $"<div style=\"font-size:11px;color:#94A3B8;margin-top:4px;\">{WzFoliosPreview} folio(s)</div></div>";
+        await JS.InvokeVoidAsync("tronoxMenuConfig.printHtml", "Sticker de radicado", html);
+    }
+
     private string? WzValidarPaso(int step) => step switch
     {
+        // ---- Salida (rad_salida_wizard): 6 pasos de datos. ----
+        1 when _wzDir == RadicadoTipo.Salida =>
+            _wzSalOrigen == "RESPUESTA" && _wzSalEntradaId is null ? "Seleccione el radicado de entrada que responde." : null,
+        2 when _wzDir == RadicadoTipo.Salida => WzTipoSel is null ? "Selecciona el tipo de comunicacion." : null,
+        3 when _wzDir == RadicadoTipo.Salida =>
+            string.IsNullOrWhiteSpace(_wzRemNombre) ? "El nombre o razon social del destinatario es obligatorio."
+                : (string.IsNullOrEmpty(_wzSalCanal) ? "Seleccione el canal de envio."
+                    : (_wzSalCanal == "EMAIL" && string.IsNullOrWhiteSpace(_wzRemEmail) ? "El correo del destinatario es obligatorio para envio por Email." : null)),
+        4 when _wzDir == RadicadoTipo.Salida => string.IsNullOrWhiteSpace(_wzAsunto) ? "El asunto es obligatorio." : null,
+        5 when _wzDir == RadicadoTipo.Salida => _wzArchivos.Count == 0 ? "El documento principal es obligatorio en radicacion de salida." : null,
+        // ---- Entrada / Interna. ----
         1 => WzTipoSel is null ? "Selecciona el tipo de comunicacion." : null,
-        2 when _wzDir == RadicadoTipo.Entrada && _wzTerTipo != "Anonimo" =>
+        2 when _wzDir == RadicadoTipo.Entrada && _wzTerTipo != "anonimo" =>
             string.IsNullOrWhiteSpace(_wzRemNombre) || string.IsNullOrWhiteSpace(_wzRemDoc)
                 ? "Nombre y numero de documento del remitente son obligatorios." : null,
         2 when _wzDir == RadicadoTipo.Interno =>
-            string.IsNullOrWhiteSpace(_wzDepOrigenId) ? "La dependencia de origen es obligatoria." : null,
+            string.IsNullOrWhiteSpace(_wzDepOrigenId) ? "La dependencia de origen es obligatoria."
+                : (string.IsNullOrWhiteSpace(_wzFuncOrigenId) ? "El funcionario de origen es obligatorio (RF06-2)." : null),
         3 => string.IsNullOrWhiteSpace(_wzAsunto) ? "El asunto es obligatorio." : null,
         _ => null
     };
@@ -913,22 +1502,34 @@
     private void WzSiguiente()
     {
         _wzError = WzValidarPaso(_wzStep);
-        if (_wzError is null && _wzStep < 4) { _wzStep++; }
+        if (_wzError is null && _wzStep < WzRadicarStep) { _wzStep++; }
     }
 
-    private void WzAtras() { _wzError = null; if (_wzStep > 1) { _wzStep--; } }
+    private void WzAtras() { _wzError = null; if (_wzStep > 1 && _wzNumero is null) { _wzStep--; } }
 
     private async Task WzRadicarAsync()
     {
-        // Revalidar todos los pasos por si se salto con navegacion.
-        for (var s = 1; s <= 3; s++)
+        // Revalidar todos los pasos de datos por si se salto con navegacion.
+        for (var s = 1; s <= WzRadicarStep; s++)
         {
             var err = WzValidarPaso(s);
             if (err is not null) { _wzError = err; _wzStep = s; return; }
         }
+        // Interna: auto-agrega el destino pendiente del formulario (fiel al legacy) y exige al menos uno.
+        if (_wzDir == RadicadoTipo.Interno)
+        {
+            if (!string.IsNullOrEmpty(_wzDestDepSel) && !_wzDestinos.Any(x => x.DepId.ToString() == _wzDestDepSel))
+            {
+                WzAgregarDestino();
+            }
+            if (_wzDestinos.Count == 0) { _wzError = "Agregue al menos una dependencia destinataria."; _wzStep = 4; return; }
+        }
         var tipo = WzTipoSel!;
-        var anonimo = _wzDir == RadicadoTipo.Entrada && _wzTerTipo == "Anonimo";
+        var anonimo = _wzDir == RadicadoTipo.Entrada && _wzTerTipo == "anonimo";
         var esEntrada = _wzDir == RadicadoTipo.Entrada;
+        var esSalida = _wzDir == RadicadoTipo.Salida;
+        // En salida el "remitente" persiste el DESTINATARIO (mismas columnas, fiel al legacy AccRadicar).
+        var conTercero = (esEntrada && !anonimo) || esSalida;
         var usaArchivos = _wzSoporte == "Electronico" && _wzArchivos.Count > 0;
         _wzBusy = true; _wzError = null;
         try
@@ -940,21 +1541,26 @@
                 Descripcion: string.IsNullOrWhiteSpace(_wzDescripcion) ? null : _wzDescripcion.Trim(),
                 Canal: _wzCanal,
                 Anonimo: anonimo,
-                RemitenteNombre: esEntrada && !anonimo ? _wzRemNombre.Trim() : null,
-                RemitenteEmail: esEntrada && !anonimo && !string.IsNullOrWhiteSpace(_wzRemEmail) ? _wzRemEmail.Trim() : null,
-                RemitenteTipoDoc: esEntrada && !anonimo ? _wzRemTipoDoc : null,
-                RemitenteDocumento: esEntrada && !anonimo ? _wzRemDoc.Trim() : null,
-                RemitenteTelefono: esEntrada && !anonimo && !string.IsNullOrWhiteSpace(_wzRemTel) ? _wzRemTel.Trim() : null,
+                RemitenteNombre: conTercero && !string.IsNullOrWhiteSpace(_wzRemNombre) ? _wzRemNombre.Trim() : null,
+                RemitenteEmail: conTercero && !string.IsNullOrWhiteSpace(_wzRemEmail) ? _wzRemEmail.Trim() : null,
+                RemitenteTipoDoc: conTercero ? _wzRemTipoDoc : null,
+                RemitenteDocumento: conTercero && !string.IsNullOrWhiteSpace(_wzRemDoc) ? _wzRemDoc.Trim() : null,
+                RemitenteTelefono: conTercero && !string.IsNullOrWhiteSpace(_wzRemTel) ? _wzRemTel.Trim() : null,
                 NivelReservaId: long.TryParse(_wzNivelId, out var nvId) ? nvId : null,
-                RadicadoRelacionadoId: null,
+                RadicadoRelacionadoId: esSalida ? _wzSalEntradaId : null,
                 Soporte: _wzSoporte,
                 Prioridad: _wzPrio,
                 Adjuntos: null,
                 // En electronico con archivos los folios los calcula el servicio (suma de paginas).
                 Folios: usaArchivos ? null : _wzFolios,
                 NumAnexos: _wzAnexos,
-                DependenciaOrigenId: !esEntrada && long.TryParse(_wzDepOrigenId, out var doId) ? doId : null,
-                FuncionarioOrigenId: !esEntrada && long.TryParse(_wzFuncOrigenId, out var foId) ? foId : null);
+                DependenciaOrigenId: _wzDir == RadicadoTipo.Interno && long.TryParse(_wzDepOrigenId, out var doId) ? doId : null,
+                FuncionarioOrigenId: _wzDir == RadicadoTipo.Interno && long.TryParse(_wzFuncOrigenId, out var foId) ? foId : null,
+                FechaDocumento: _wzFechaDoc,
+                Observaciones: string.IsNullOrWhiteSpace(_wzObservaciones) ? null : _wzObservaciones.Trim(),
+                RemitenteMunicipio: esEntrada && !anonimo && !string.IsNullOrWhiteSpace(_wzRemMunicipio) ? _wzRemMunicipio : null,
+                CanalEnvio: esSalida && !string.IsNullOrEmpty(_wzSalCanal) ? _wzSalCanal : null,
+                EsRespuestaDefinitiva: esSalida && _wzSalDefinitiva && _wzSalEntradaId is not null);
 
             var res = usaArchivos
                 ? await RadSvc.RadicarConArchivosAsync(req,
@@ -962,16 +1568,29 @@
                 : await RadSvc.RadicarAsync(req);
             if (!res.Ok) { _wzError = res.Error ?? "No se pudo radicar."; return; }
 
-            // Radicar + distribuir en un paso (calca el legacy): si se eligio dependencia destino, distribuir.
-            if (long.TryParse(_wzDepDestId, out var depDest) && res.RadicadoId is long rid)
+            // Radicar + distribuir en un paso (calca el legacy).
+            if (res.RadicadoId is long rid)
             {
-                var dreq = new DistribuirRequest(rid, depDest,
-                    long.TryParse(_wzFuncDestId, out var fd) ? fd : null,
-                    "", _wzPrio, "");
-                await DistSvc.DistribuirAsync(dreq);
+                if (_wzDir == RadicadoTipo.Interno && _wzDestinos.Count > 0)
+                {
+                    // Circular interna: UN radicado, N tareas (una por dependencia destinataria).
+                    var creq = new DistribuirCircularRequest(rid,
+                        _wzDestinos.Select(x => new DestinoCircular(x.DepId, x.FuncId)).ToList(),
+                        _wzPrio, string.IsNullOrWhiteSpace(_wzInstrucciones) ? null : _wzInstrucciones.Trim());
+                    await DistSvc.DistribuirCircularAsync(creq);
+                }
+                else if (long.TryParse(_wzDepDestId, out var depDest))
+                {
+                    var dreq = new DistribuirRequest(rid, depDest,
+                        long.TryParse(_wzFuncDestId, out var fd) ? fd : null,
+                        "", _wzPrio, "");
+                    await DistSvc.DistribuirAsync(dreq);
+                }
             }
 
             _wzNumero = res.Numero;
+            _wzDigRadicadoId = res.RadicadoId;
+            _wzStep = WzDigitalStep; // avanza al paso final de Digitalizacion (adjuntar el soporte fisico).
             Flash($"Radicado {res.Numero} creado.", true);
             await LoadAsync();
         }

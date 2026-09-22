@@ -38,6 +38,13 @@ public class Radicado : TenantEntity
     public int? NumAnexos { get; set; }
     public string? Soporte { get; set; }
 
+    /// <summary>Fecha de elaboracion del documento (distinta de la fecha de radicacion). Espejo de
+    /// RAD_RADICADOS.FECHA_DOCUMENTO.</summary>
+    public DateOnly? FechaDocumento { get; set; }
+
+    /// <summary>Observaciones internas del operador de ventanilla (RAD_RADICADOS.OBSERVACIONES).</summary>
+    public string? Observaciones { get; set; }
+
     /// <summary>Nivel de clasificacion/reserva (FK NivelClasificacion, RF06 de RQ02). NO ACTION.</summary>
     public long? NivelReservaId { get; set; }
     public NivelClasificacion? NivelReserva { get; set; }
@@ -50,6 +57,9 @@ public class Radicado : TenantEntity
     public string? RemitenteDocumento { get; set; }
     public string? RemitenteEmail { get; set; }
     public string? RemitenteTelefono { get; set; }
+    /// <summary>Departamento/Municipio del remitente (DIVIPOLA). Espejo de RAD_RADICADOS.MUNICIPIO; el
+    /// catalogo DIVIPOLA real queda pendiente (el legacy usa un placeholder hardcoded).</summary>
+    public string? RemitenteMunicipio { get; set; }
 
     // ---- Ruteo organico (FK a OrgUnit clasificador Dependencia; el legacy guardaba codigos). NO ACTION. ----
     public long? DependenciaDestinoId { get; set; }

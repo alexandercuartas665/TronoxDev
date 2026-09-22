@@ -8,4 +8,9 @@ namespace Tronox.Application.Radicacion;
 public interface IRadicacionDistribucionService
 {
     Task<DistribuirResult> DistribuirAsync(DistribuirRequest request, CancellationToken ct = default);
+
+    /// <summary>Distribucion circular interna (rad_interna_wizard): crea N tareas (una por dependencia) sobre
+    /// un radicado recien creado, en una sola transaccion. La cabecera toma el primer destino; el funcionario
+    /// de cabecera solo se fija con un unico destino. Estado EnTramite si hay funcionario directo, si no Distribuido.</summary>
+    Task<DistribuirResult> DistribuirCircularAsync(DistribuirCircularRequest request, CancellationToken ct = default);
 }

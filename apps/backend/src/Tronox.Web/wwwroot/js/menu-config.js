@@ -16,5 +16,19 @@ window.tronoxMenuConfig = {
     } catch (e) {
       return false;
     }
+  },
+  // Abre una ventana emergente con el HTML dado y lanza el dialogo de impresion (sticker de radicado).
+  printHtml: function (title, html) {
+    try {
+      var w = window.open("", "_blank", "width=420,height=300");
+      if (!w) { return false; }
+      w.document.write("<html><head><title>" + (title || "Impresion") + "</title></head><body style=\"margin:16px;\">" + html + "</body></html>");
+      w.document.close();
+      w.focus();
+      w.print();
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 };
