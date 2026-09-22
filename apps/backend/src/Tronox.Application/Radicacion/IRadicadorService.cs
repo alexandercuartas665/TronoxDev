@@ -43,7 +43,10 @@ public sealed record RadicarNuevoRequest(
     int? Folios = null,
     int? NumAnexos = null,
     long? DependenciaOrigenId = null,
-    long? FuncionarioOrigenId = null);
+    long? FuncionarioOrigenId = null,
+    DateOnly? FechaDocumento = null,
+    string? Observaciones = null,
+    string? RemitenteMunicipio = null);
 
 /// <summary>Referencia a un adjunto ya subido a object storage, para colgarlo del radicado.</summary>
 public sealed record RadicarAdjunto(string Nombre, string? Extension, string? MimeType, long TamanoBytes,
