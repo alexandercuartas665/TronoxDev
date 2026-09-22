@@ -10,6 +10,12 @@ public interface IRadicacionBandejaService
     Task<BandejaResultDto> ListarAsync(BandejaFiltro filtro, CancellationToken ct = default);
     Task<BandejaContadoresDto> ContadoresAsync(BandejaFiltro filtro, CancellationToken ct = default);
     Task<IReadOnlyList<OpcionDto>> TiposAsync(CancellationToken ct = default);
+    /// <summary>Tipos con banderas para el asistente rad_radicar (direccion, PQRSD/Tutela, anonimo, nivel default).</summary>
+    Task<IReadOnlyList<TipoRadicacionDto>> TiposAsistenteAsync(CancellationToken ct = default);
+    /// <summary>Niveles de clasificacion activos para el selector de reserva del asistente.</summary>
+    Task<IReadOnlyList<OpcionDto>> NivelesReservaAsync(CancellationToken ct = default);
+    /// <summary>Esquema del consecutivo + datos de la entidad para la vista previa/sticker del asistente.</summary>
+    Task<EsquemaRadicacionDto> AsistenteEsquemaAsync(CancellationToken ct = default);
     Task<IReadOnlyList<OpcionDto>> DependenciasAsync(CancellationToken ct = default);
     Task<IReadOnlyList<OpcionDto>> FuncionariosAsync(long? dependenciaId, CancellationToken ct = default);
 }

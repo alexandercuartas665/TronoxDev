@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Tronox.Application.Common;
+using Tronox.Application.Documentos;
 using Tronox.Application.Tenancy;
 using Tronox.Domain.Entities;
 using Tronox.Domain.Enums;
@@ -17,13 +18,16 @@ public sealed class RadicadorService : IRadicadorService
     private readonly ITenantContext _tenant;
     private readonly ISequenceService _sequences;
     private readonly ICalendarioHabilService _calendario;
+    private readonly IObjectStorage _storage;
 
-    public RadicadorService(IApplicationDbContext db, ITenantContext tenant, ISequenceService sequences, ICalendarioHabilService calendario)
+    public RadicadorService(IApplicationDbContext db, ITenantContext tenant, ISequenceService sequences,
+        ICalendarioHabilService calendario, IObjectStorage storage)
     {
         _db = db;
         _tenant = tenant;
         _sequences = sequences;
         _calendario = calendario;
+        _storage = storage;
     }
 
     public async Task<RadicarResult> RadicarAsync(RadicarNuevoRequest req, CancellationToken ct = default)
@@ -91,6 +95,10 @@ public sealed class RadicadorService : IRadicadorService
             NivelReservaId = req.NivelReservaId ?? tipo.NivelReservaDefaultId,
             RadicadoRelacionadoId = req.RadicadoRelacionadoId,
             Soporte = req.Soporte,
+            Folios = req.Folios,
+            NumAnexos = req.NumAnexos,
+            DependenciaOrigenId = req.DependenciaOrigenId,
+            FuncionarioOrigenId = req.FuncionarioOrigenId,
             FechaRadicacion = DateTime.UtcNow,
             FechaVencimiento = vencimiento,
             UsuarioRadicaId = _tenant.UserId
@@ -127,5 +135,51 @@ public sealed class RadicadorService : IRadicadorService
         _db.Radicados.Add(radicado);
         await _db.SaveChangesAsync(ct);
         return RadicarResult.Success(radicado.Id, numero);
+    }
+
+    public async Task<RadicarResult> RadicarConArchivosAsync(RadicarNuevoRequest request,
+        IReadOnlyList<AdjuntoBytes> archivos, CancellationToken ct = default)
+    {
+        var tenantId = _tenant.TenantId;
+        if (tenantId is null) { return RadicarResult.Fail("Sesion no valida."); }
+        if (archivos is not { Count: > 0 }) { return await RadicarAsync(request, ct); }
+
+        // Sube cada documento electronico a object storage (invariante 9: nunca BLOB en BD). La key es
+        // opaca y tenant-scoped, igual que en Documentos: "{tenant}/{guid}.{ext}".
+        var adjuntos = new List<RadicarAdjunto>(archivos.Count);
+        var totalFolios = 0;
+        foreach (var a in archivos)
+        {
+            if (a.Contenido is not { Length: > 0 }) { continue; }
+            var ext = System.IO.Path.GetExtension(a.Nombre).TrimStart('.').ToLowerInvariant();
+            var contentType = a.MimeType ?? DocumentoRules.ContentType(a.Nombre);
+            var hash = DocumentoRules.HashSha256(a.Contenido);
+            var folios = ext == "pdf" ? ContarPaginasPdf(a.Contenido) : 1;
+            totalFolios += folios;
+            var key = $"{tenantId.Value}/{Guid.NewGuid():N}" + (string.IsNullOrEmpty(ext) ? "" : $".{ext}");
+            using (var ms = new MemoryStream(a.Contenido, writable: false))
+            {
+                await _storage.PutAsync(key, ms, contentType, ct);
+            }
+            adjuntos.Add(new RadicarAdjunto(a.Nombre, string.IsNullOrEmpty(ext) ? null : ext, contentType,
+                a.Contenido.LongLength, null, key, hash));
+        }
+
+        // Reutiliza el radicar base con los adjuntos ya subidos; folios totales si el request no los trae.
+        var conAdjuntos = request with { Adjuntos = adjuntos, Folios = request.Folios ?? totalFolios };
+        return await RadicarAsync(conAdjuntos, ct);
+    }
+
+    /// <summary>Cuenta paginas de un PDF por conteo de objetos /Type /Page (sin dependencia de PDF libs,
+    /// calca ContarPaginasPdf de Documentos). Fallback 1.</summary>
+    private static int ContarPaginasPdf(byte[] contenido)
+    {
+        try
+        {
+            var txt = System.Text.Encoding.Latin1.GetString(contenido);
+            var count = System.Text.RegularExpressions.Regex.Matches(txt, @"/Type\s*/Page[^s]").Count;
+            return count > 0 ? count : 1;
+        }
+        catch { return 1; }
     }
 }
