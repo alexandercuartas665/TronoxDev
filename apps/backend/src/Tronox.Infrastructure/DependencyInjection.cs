@@ -100,6 +100,7 @@ public static class DependencyInjection
         // Estampado de la copia de impresion (RF05) con PdfSharpCore (cross-platform, ver ADR-016).
         services.AddSingleton<Application.Common.IPdfPrintStamper, Pdf.PdfSharpPrintStamper>();
         services.AddSingleton<Application.Common.IRadicadoEstampador, Pdf.PdfSharpRadicadoEstampador>();
+        services.AddSingleton<Application.Radicacion.Correos.IImapCorreoReader, Email.MailKitImapCorreoReader>();
 
         // Cajita visual de firma (RQ05 - RF03-B) con PdfSharpCore (ver ADR-017).
         services.AddSingleton<Application.Common.IPdfSignatureStamper, Pdf.PdfSharpSignatureStamper>();

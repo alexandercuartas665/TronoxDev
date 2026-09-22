@@ -1,0 +1,281 @@
+@page "/modulo/correos-pqr"
+@attribute [Authorize(Policy = "Perm:modulo/correos-pqr:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Radicacion
+@using Tronox.Application.Radicacion.Correos
+@using Tronox.Domain.Enums
+@inject IBuzonCorreoService BuzonSvc
+@inject ICorreoIngestaService IngestaSvc
+@inject Tronox.Application.Common.ITenantContext Tenant
+@inject NavigationManager Nav
+
+@* RQ16 - Correos -> PQR con IA: conecta buzones IMAP (Gmail + App Password), un agente de IA lee cada
+   correo, decide si es una PQRS-F y, segun el modo del buzon, radica automaticamente o lo deja para
+   revision. Port del modulo EmailIngest de VISAL, recableado a radicacion (RadicadorService + Tercero DAT-02). *@
+
+<PageTitle>Correos -> PQR - TRONOX</PageTitle>
+
+<div class="cp-wrap">
+    <div class="cp-head">
+        <div>
+            <h1>Correos &rarr; PQR</h1>
+            <p>Conecta buzones de Gmail (IMAP + App Password). Un agente de IA lee cada correo, decide si es una PQRS-F y la radica con los datos del caso.</p>
+        </div>
+        <button class="btn btn-primary" @onclick="@(() => AbrirEditor(null))">+ Nuevo buzon</button>
+    </div>
+
+    @if (_flash is not null) { <div class="cp-alert @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+    @if (_buzones.Count == 0)
+    {
+        <div class="cp-empty">Aun no hay buzones configurados. Crea uno con "+ Nuevo buzon".</div>
+    }
+    else
+    {
+        <div class="cp-grid">
+            @foreach (var b in _buzones)
+            {
+                <div class="cp-card">
+                    <div class="cp-card-top">
+                        <div class="cp-title">@b.NombreBuzon</div>
+                        <span class="cp-badge @(b.Activo ? "on" : "off")">@(b.Activo ? "Encendido" : "Apagado")</span>
+                    </div>
+                    <div class="cp-mail">@b.DireccionEmail</div>
+                    <div class="cp-meta">
+                        <div><span class="k">Agente</span> CLASIFICADOR PQRS (IA)</div>
+                        <div><span class="k">Modo</span> @ModoTxt(b.ModoRadicacion)</div>
+                        <div><span class="k">Servidor</span> @(b.Servidor ?? "imap.gmail.com"):@(b.Puerto ?? 993)</div>
+                        <div><span class="k">App Password</span> @(b.TieneClave ? "guardada" : "falta")</div>
+                    </div>
+                    @if (_resumen.TryGetValue(b.Id, out var r))
+                    {
+                        <div class="cp-run">Ultima corrida: @r.Texto</div>
+                    }
+                    @if (_error.TryGetValue(b.Id, out var e))
+                    {
+                        <div class="cp-run err">&#9888; @e</div>
+                    }
+                    <div class="cp-acts">
+                        <button class="cp-btn" @onclick="@(() => AbrirEditor(b))">Editar</button>
+                        <button class="cp-btn" @onclick="@(() => ProbarAsync(b.Id))" disabled="@(_busyId == b.Id)">Probar conexion</button>
+                        <button class="cp-btn navy" @onclick="@(() => ProcesarAsync(b.Id))" disabled="@(_busyId == b.Id)">
+                            @(_busyId == b.Id ? "Procesando..." : "Procesar ahora")
+                        </button>
+                        <button class="cp-btn" @onclick="@(() => Nav.NavigateTo("modulo/radicacion-correos"))">Ver correos</button>
+                        <button class="cp-btn @(b.Activo ? "" : "green")" @onclick="@(() => ToggleAsync(b))">@(b.Activo ? "Apagar" : "Encender")</button>
+                        <button class="cp-btn red" @onclick="@(() => EliminarAsync(b))">Eliminar</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    <div class="cp-note">&#128161; Requiere un proveedor de IA habilitado (Configuracion &rarr; IA) y, en Gmail, verificacion en dos pasos + una <b>App Password</b> (la clave normal no sirve para IMAP).</div>
+</div>
+
+@if (_editor is not null)
+{
+    <div class="modal-overlay" @onclick="Cerrar">
+        <div class="cp-modal" @onclick:stopPropagation="true">
+            <div class="cp-modal-head">
+                <h3>@(_editorId > 0 ? "Editar buzon" : "Nuevo buzon")</h3>
+                <button class="x" @onclick="Cerrar">&#10005;</button>
+            </div>
+            <div class="cp-modal-body">
+                <div class="cp-field"><label>Nombre <span class="req">*</span></label><input class="cp-in" @bind="_fNombre" maxlength="150" placeholder="Ej: PQR Alcaldia" /></div>
+                <div class="cp-field"><label>Correo (Gmail) <span class="req">*</span></label><input class="cp-in" @bind="_fEmail" maxlength="256" placeholder="correo@@gmail.com" /></div>
+                <div class="cp-field">
+                    <label>App Password @(_editorId > 0 ? "(vacio = conservar)" : "")<span class="req" style="@(_editorId > 0 ? "display:none" : "")">*</span></label>
+                    <input type="password" class="cp-in" @bind="_fPass" maxlength="200" placeholder="16 caracteres de Google" />
+                </div>
+                <div class="cp-grid2">
+                    <div class="cp-field"><label>Servidor IMAP</label><input class="cp-in" @bind="_fServidor" placeholder="imap.gmail.com" /></div>
+                    <div class="cp-field"><label>Puerto</label><input type="number" class="cp-in" @bind="_fPuerto" /></div>
+                </div>
+                <div class="cp-grid2">
+                    <div class="cp-field"><label>Carpeta</label><input class="cp-in" @bind="_fCarpeta" placeholder="INBOX" /></div>
+                    <div class="cp-field">
+                        <label>Modo de radicacion</label>
+                        <select class="cp-in" @bind="_fModo">
+                            <option value="@BuzonModoRadicacion.Manual">Manual (dejar para revision)</option>
+                            <option value="@BuzonModoRadicacion.SemiAutomatico">Semiautomatico (radicar PQR)</option>
+                            <option value="@BuzonModoRadicacion.Automatico">Automatico (radicar PQR)</option>
+                        </select>
+                    </div>
+                </div>
+                <label class="cp-check"><input type="checkbox" @bind="_fActivo" /> Encendido (el worker lo revisa por cadencia)</label>
+                @if (_editorError is not null) { <div class="cp-alert err">@_editorError</div> }
+            </div>
+            <div class="cp-modal-foot">
+                <button class="btn btn-light" @onclick="Cerrar">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarAsync" disabled="@_saving">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .cp-wrap { padding:20px 24px; }
+    .cp-head { display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:14px; }
+    .cp-head h1 { font-size:20px; font-weight:800; color:#0F172A; margin:0; }
+    .cp-head p { font-size:12px; color:#94A3B8; margin:2px 0 0; max-width:640px; }
+    .cp-alert { border-radius:8px; padding:9px 12px; font-size:13px; margin-bottom:12px; }
+    .cp-alert.ok { background:#D1FAE5; color:#065F46; } .cp-alert.err { background:#FEE2E2; color:#991B1B; }
+    .cp-empty { padding:40px; text-align:center; color:#94A3B8; border:1px dashed #E2E8F0; border-radius:12px; }
+    .cp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:14px; }
+    .cp-card { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:16px; }
+    .cp-card-top { display:flex; justify-content:space-between; align-items:center; }
+    .cp-title { font-size:15px; font-weight:800; color:#212529; }
+    .cp-badge { font-size:11px; font-weight:700; border-radius:20px; padding:2px 10px; }
+    .cp-badge.on { background:#D1FAE5; color:#065F46; } .cp-badge.off { background:#F1F5F9; color:#64748B; }
+    .cp-mail { font-size:12px; color:#566980; margin:2px 0 10px; }
+    .cp-meta { display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; font-size:12px; color:#334155; margin-bottom:10px; }
+    .cp-meta .k { color:#94A3B8; display:block; font-size:10.5px; }
+    .cp-run { font-size:11.5px; color:#405189; background:#eef0f7; border-radius:8px; padding:7px 10px; margin-bottom:10px; }
+    .cp-run.err { color:#92400E; background:#FEF3C7; }
+    .cp-acts { display:flex; flex-wrap:wrap; gap:6px; }
+    .cp-btn { border:1px solid #E2E8F0; background:#fff; color:#405189; border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; }
+    .cp-btn.navy { background:#405189; border-color:#405189; color:#fff; font-weight:600; }
+    .cp-btn.green { background:#0ab39c; border-color:#0ab39c; color:#fff; }
+    .cp-btn.red { color:#DC2626; }
+    .cp-note { margin-top:16px; font-size:12px; color:#566980; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px; }
+    .cp-modal { background:#fff; width:min(560px,96vw); border-radius:12px; overflow:hidden; box-shadow:0 20px 60px rgba(2,6,23,.3); }
+    .cp-modal-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #E2E8F0; }
+    .cp-modal-head h3 { margin:0; font-size:15px; }
+    .cp-modal-head .x { border:none; background:none; font-size:18px; color:#878a99; cursor:pointer; }
+    .cp-modal-body { padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+    .cp-modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid #E2E8F0; background:#F8FAFC; }
+    .cp-field { display:flex; flex-direction:column; gap:4px; }
+    .cp-field label { font-size:12px; font-weight:600; color:#1A2B3C; } .cp-field .req { color:#EF4444; }
+    .cp-in { padding:9px 12px; border:1px solid #D5DDE9; border-radius:7px; font-size:13px; width:100%; }
+    .cp-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .cp-check { display:flex; gap:8px; align-items:center; font-size:13px; color:#334155; }
+</style>
+
+@code {
+    private IReadOnlyList<BuzonCorreoDto> _buzones = Array.Empty<BuzonCorreoDto>();
+    private readonly Dictionary<long, CorreoIngestaResumen> _resumen = new();
+    private readonly Dictionary<long, string> _error = new();
+    private string? _flash; private bool _flashOk;
+    private long? _busyId;
+
+    // Editor.
+    private object? _editor;
+    private long _editorId;
+    private string _fNombre = "", _fEmail = "", _fPass = "", _fServidor = "imap.gmail.com", _fCarpeta = "INBOX";
+    private int _fPuerto = 993;
+    private BuzonModoRadicacion _fModo = BuzonModoRadicacion.SemiAutomatico;
+    private bool _fActivo = true, _saving;
+    private string? _editorError;
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync() => await RecargarAsync();
+
+    private async Task RecargarAsync() => _buzones = await BuzonSvc.ListAsync();
+
+    private static string ModoTxt(BuzonModoRadicacion m) => m switch
+    {
+        BuzonModoRadicacion.Manual => "Manual",
+        BuzonModoRadicacion.SemiAutomatico => "Semiautomatico",
+        BuzonModoRadicacion.Automatico => "Automatico",
+        _ => m.ToString()
+    };
+
+    private async Task ProbarAsync(long id)
+    {
+        _busyId = id; _error.Remove(id); _flash = null;
+        try
+        {
+            var r = await IngestaSvc.ProbarConexionAsync(id);
+            if (r.Ok) { Flash($"Conexion OK. {r.Count} correo(s) en la carpeta.", true); }
+            else { _error[id] = r.Error ?? "No se pudo conectar."; }
+        }
+        finally { _busyId = null; }
+    }
+
+    private async Task ProcesarAsync(long id)
+    {
+        _busyId = id; _error.Remove(id); _flash = null;
+        try
+        {
+            var r = await IngestaSvc.ProcesarBuzonAsync(id);
+            if (r.Ok) { _resumen[id] = r; Flash($"Corrida lista: {r.Pqr} PQR, {r.Radicados} radicados.", true); }
+            else { _error[id] = r.Error ?? "Fallo la corrida."; }
+        }
+        finally { _busyId = null; }
+    }
+
+    private async Task ToggleAsync(BuzonCorreoDto b)
+    {
+        await BuzonSvc.SetActivoAsync(b.Id, !b.Activo, Actor);
+        await RecargarAsync();
+    }
+
+    private async Task EliminarAsync(BuzonCorreoDto b)
+    {
+        var res = await BuzonSvc.DeleteAsync(b.Id, Actor);
+        if (res.IsOk) { Flash("Buzon eliminado.", true); await RecargarAsync(); }
+        else { Flash(res.Error ?? "No se pudo eliminar.", false); }
+    }
+
+    private void AbrirEditor(BuzonCorreoDto? b)
+    {
+        _editor = new object();
+        _editorError = null;
+        if (b is null)
+        {
+            _editorId = 0; _fNombre = _fEmail = _fPass = ""; _fServidor = "imap.gmail.com"; _fCarpeta = "INBOX";
+            _fPuerto = 993; _fModo = BuzonModoRadicacion.SemiAutomatico; _fActivo = true;
+        }
+        else
+        {
+            _editorId = b.Id; _fNombre = b.NombreBuzon; _fEmail = b.DireccionEmail; _fPass = "";
+            _fServidor = b.Servidor ?? "imap.gmail.com"; _fCarpeta = b.Carpeta; _fPuerto = b.Puerto ?? 993;
+            _fModo = b.ModoRadicacion; _fActivo = b.Activo;
+        }
+    }
+
+    private void Cerrar() => _editor = null;
+
+    private async Task GuardarAsync()
+    {
+        _saving = true; _editorError = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_fNombre) || string.IsNullOrWhiteSpace(_fEmail))
+            {
+                _editorError = "Nombre y correo son obligatorios."; return;
+            }
+            if (_editorId == 0 && string.IsNullOrWhiteSpace(_fPass))
+            {
+                _editorError = "La App Password es obligatoria para un buzon nuevo."; return;
+            }
+            var req = new SaveBuzonCorreoRequest(
+                NombreBuzon: _fNombre.Trim(),
+                DireccionEmail: _fEmail.Trim(),
+                Protocolo: BuzonProtocolo.Imap,
+                Servidor: string.IsNullOrWhiteSpace(_fServidor) ? "imap.gmail.com" : _fServidor.Trim(),
+                Puerto: _fPuerto <= 0 ? 993 : _fPuerto,
+                Seguridad: BuzonSeguridad.SslTls,
+                Usuario: _fEmail.Trim(),
+                Contrasena: string.IsNullOrWhiteSpace(_fPass) ? null : _fPass.Trim(),
+                Carpeta: string.IsNullOrWhiteSpace(_fCarpeta) ? "INBOX" : _fCarpeta.Trim(),
+                FrecuenciaRevision: BuzonFrecuenciaRevision.Cinco,
+                ModoRadicacion: _fModo,
+                TiempoEsperaMinutos: null,
+                TipoComunicacionDefaultId: null,
+                DependenciaDefaultId: null,
+                Activo: _fActivo);
+            var res = _editorId > 0
+                ? await BuzonSvc.UpdateAsync(_editorId, req, Actor)
+                : await BuzonSvc.CreateAsync(req, Actor);
+            if (!res.IsOk) { _editorError = res.Error ?? "No se pudo guardar."; return; }
+            _editor = null;
+            Flash("Buzon guardado.", true);
+            await RecargarAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    private void Flash(string m, bool ok) { _flash = m; _flashOk = ok; }
+}

@@ -1455,3 +1455,32 @@ guiado por la spec del vault (REQ007). Migraciones 48 (terceros) y 49 (radicados
 Verificado e2e (dev): tercero manual (Pedro Ramirez CN-1001, Completo); radicar con doc nuevo CN-2002 crea el
 tercero (Incompleto, origen Radicacion) y el radicado ALCPRU-E-2026-000006 enlaza remitente_tercero_id=2.
 585 tests en verde. Diferido: RF02 import/export, RF03 vista 360 completa, etiquetas/contactos multiples, RUES/DIAN.
+
+## 37. Correos -> PQR con IA (port de VISAL EmailIngest, recableado a radicar) (2026-09-22)
+
+Se trajo el "cerebro" del modulo Correos->PQR de VISAL (EmailIngest) a TRONOX, recableado para RADICAR en
+vez de crear tarjetas de tablero. TRONOX ya tenia el andamiaje (BuzonCorreo, CorreoRecibido, ISecretProtector,
+IAiProviderClient, IAiUsageService, RadicadorService, IObjectStorage); faltaba el cerebro. Migracion 50.
+
+- **MailKit** agregado a Infrastructure. `IImapCorreoReader` + `MailKitImapCorreoReader`: conecta IMAP
+  (SSL/StartTls) con la App Password descifrada, lee no-leidos, extrae remitente/asunto/cuerpo (HTML->texto)
+  /adjuntos (limite 15MB x10), marca \Seen y prueba conexion. Errores de auth con mensaje util (App Password).
+- **`ICorreoClasificadorIa` + `CorreoClasificadorIa`**: primer orquestador que consume el gateway de IA de
+  TRONOX. Toma el proveedor global habilitado, descifra la key (ISecretProtector), llama IAiProviderClient
+  .CompleteAsync con el system prompt PQRS (fijo), parsea el JSON {es_pqr, tipo, servicio, descripcion,
+  nombres, identificacion, celular, email, atributo_calidad} y registra tokens (IAiUsageService, source
+  "correos-pqr").
+- **`ICorreoIngestaService` + `CorreoIngestaService`**: por buzon lee IMAP -> dedup Message-ID -> sube
+  adjuntos a object storage -> guarda CorreoRecibido -> clasifica con IA (setea tipo/datos del peticionario)
+  -> segun ModoRadicacion: Manual deja pendiente; Semi/Automatico radica ya (RadicacionCorreosService, que
+  ahora pasa documento/telefono -> enlaza el Tercero DAT-02). Marca leidos. Devuelve resumen de corrida.
+- **Worker** `CorreoIngestaHostedService` (BackgroundService en Tronox.Web, cadencia 5 min, cross-tenant).
+- **UI** `/modulo/correos-pqr` (calca las tarjetas de VISAL): buzones con Procesar ahora / Probar conexion /
+  Ver correos / Encender-Apagar / Editar / Eliminar + modal de buzon + resumen de "Ultima corrida".
+- Menu: item "Correos -> PQR (IA)" en Ventanilla Unica. `CorreoRecibido` extendido (remitente_documento,
+  remitente_telefono, clasificacion_json, tokens_ia).
+
+Verificado e2e (dev): buzon creado (App Password cifrada); "Probar conexion" y "Procesar ahora" conectan a
+imap.gmail.com y manejan el error de credenciales con mensaje claro (con App Password real capturarian).
+585 tests en verde. Pendiente para uso real: configurar un proveedor de IA (Config IA) y una App Password de
+Gmail; toggle de IA por tenant (DAT-07) sigue diferido. En dev se otorgo el permiso del modulo a los roles.

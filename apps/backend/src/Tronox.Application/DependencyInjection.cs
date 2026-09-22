@@ -136,6 +136,8 @@ public static class DependencyInjection
         services.AddScoped<Radicacion.IRadicadorService, Radicacion.RadicadorService>();
         services.AddScoped<Radicacion.IRadicacionEnvioService, Radicacion.RadicacionEnvioService>();
         services.AddScoped<Terceros.ITerceroService, Terceros.TerceroService>();
+        services.AddScoped<Radicacion.Correos.ICorreoClasificadorIa, Radicacion.Correos.CorreoClasificadorIa>();
+        services.AddScoped<Radicacion.Correos.ICorreoIngestaService, Radicacion.Correos.CorreoIngestaService>();
         // Correos por Revisar (RQ09 RF04), port de rad_correos.
         services.AddScoped<Radicacion.IRadicacionCorreosService, Radicacion.RadicacionCorreosService>();
         // Configuracion PQR (RQ09 RF01): Prioridades + Portal Web (port de rad_config).

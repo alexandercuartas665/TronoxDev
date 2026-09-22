@@ -26,6 +26,14 @@ public class CorreoRecibido : TenantEntity
     public string? Asunto { get; set; }
     public DateTime? FechaRecepcion { get; set; }
 
+    // ---- Datos del peticionario extraidos por la IA (RQ16, clasificador PQRS). Alimentan el tercero al radicar. ----
+    public string? RemitenteDocumento { get; set; }
+    public string? RemitenteTelefono { get; set; }
+    /// <summary>JSON crudo de la clasificacion IA (auditoria): es_pqr, tipo, servicio, descripcion, atributo_calidad...</summary>
+    public string? ClasificacionJson { get; set; }
+    /// <summary>Tokens (input+output) consumidos al clasificar este correo con IA.</summary>
+    public int TokensIa { get; set; }
+
     // ---- Deduplicacion de captura (IMAP/Graph, worker diferido). ----
     public string? MessageId { get; set; }
     public string? InReplyTo { get; set; }

@@ -163,6 +163,8 @@ builder.Services.AddScoped<Tronox.Web.Services.CircuitFormGate>();
 builder.Services.AddHostedService<Tronox.Web.Services.FirmaAlertasHostedService>();
 // OCR automatico al incorporar (RQ04 - RF04): procesa los documentos Pendiente por tenant configurado.
 builder.Services.AddHostedService<Tronox.Web.Services.OcrAutoHostedService>();
+// Ingesta de correos con IA (RQ16, Correos->PQR): lee buzones IMAP, clasifica y radica por cadencia.
+builder.Services.AddHostedService<Tronox.Web.Services.CorreoIngestaHostedService>();
 
 var app = builder.Build();
 

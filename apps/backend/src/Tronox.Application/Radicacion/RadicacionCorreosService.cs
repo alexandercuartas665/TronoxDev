@@ -126,6 +126,10 @@ public sealed class RadicacionCorreosService : IRadicacionCorreosService
             Anonimo: false,
             RemitenteNombre: correo.Remitente,
             RemitenteEmail: correo.RemitenteEmail,
+            // Datos extraidos por la IA: enlazan el tercero (DAT-02) al radicar.
+            RemitenteTipoDoc: string.IsNullOrWhiteSpace(correo.RemitenteDocumento) ? null : "CC",
+            RemitenteDocumento: string.IsNullOrWhiteSpace(correo.RemitenteDocumento) ? null : correo.RemitenteDocumento,
+            RemitenteTelefono: correo.RemitenteTelefono,
             RadicadoRelacionadoId: null,
             Soporte: "Electronico",
             Adjuntos: adjuntos), ct);
