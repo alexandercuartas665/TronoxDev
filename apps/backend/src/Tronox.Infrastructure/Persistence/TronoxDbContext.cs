@@ -57,6 +57,14 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
     // Flujos de extraccion por navegador (modulo 000730, capitulo "Extraccion de Datos").
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
 
+    // Capa de agentes de IA (RQ16, port de ECOREX).
+    public DbSet<AiAgent> AiAgents => Set<AiAgent>();
+    public DbSet<AiAgentResource> AiAgentResources => Set<AiAgentResource>();
+    public DbSet<AiAgentPrompt> AiAgentPrompts => Set<AiAgentPrompt>();
+    public DbSet<AiAgentCacheField> AiAgentCacheFields => Set<AiAgentCacheField>();
+    public DbSet<AiAgentCacheValue> AiAgentCacheValues => Set<AiAgentCacheValue>();
+    public DbSet<AiAgentRunLog> AiAgentRunLogs => Set<AiAgentRunLog>();
+
     // Modulo Tableros (Kanban de tareas/proyectos por agencia).
 
     // Nucleo de tareas/proyectos (FASE 3, ADR-0013): TaskItem de primera clase con
@@ -750,6 +758,57 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.EstimatedCostUsd).HasPrecision(12, 6);
             b.HasIndex(x => new { x.TenantId, x.AgentId });
             b.HasIndex(x => new { x.TenantId, x.CreatedAt });
+        });
+
+        // ===== Capa de agentes de IA (RQ16, port de ECOREX) =====
+        modelBuilder.Entity<AiAgent>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            b.Property(x => x.Role).HasMaxLength(120);
+            b.Property(x => x.Model).HasMaxLength(120);
+            b.Property(x => x.DisabledToolsJson).HasColumnType("jsonb");
+            b.Property(x => x.PromptHistoryJson).HasColumnType("jsonb");
+            b.HasIndex(x => new { x.TenantId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<AiAgentResource>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            b.Property(x => x.FileName).HasMaxLength(260);
+            b.Property(x => x.FileUrl).HasMaxLength(500);
+            b.HasIndex(x => new { x.TenantId, x.AgentId, x.SortOrder });
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiAgentPrompt>(b =>
+        {
+            b.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            b.Property(x => x.Rule).HasMaxLength(1000);
+            b.HasIndex(x => new { x.TenantId, x.AgentId, x.SortOrder });
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiAgentCacheField>(b =>
+        {
+            b.Property(x => x.FieldKey).HasMaxLength(80).IsRequired();
+            b.Property(x => x.Label).HasMaxLength(160).IsRequired();
+            b.Property(x => x.Description).HasMaxLength(1000);
+            b.HasIndex(x => new { x.TenantId, x.AgentId, x.FieldKey }).IsUnique();
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiAgentCacheValue>(b =>
+        {
+            b.Property(x => x.FieldKey).HasMaxLength(80).IsRequired();
+            b.Property(x => x.Source).HasMaxLength(40);
+            b.HasIndex(x => new { x.TenantId, x.AgentId, x.SessionId, x.FieldKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<AiAgentRunLog>(b =>
+        {
+            b.Property(x => x.Title).HasMaxLength(200).IsRequired();
+            b.HasIndex(x => new { x.TenantId, x.ConversationId, x.OccurredAt });
+            b.HasIndex(x => new { x.TenantId, x.AgentId, x.OccurredAt });
         });
 
 

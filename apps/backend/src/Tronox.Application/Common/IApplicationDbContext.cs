@@ -161,6 +161,15 @@ public interface IApplicationDbContext
     DbSet<AiProviderConfig> AiProviderConfigs { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }
 
+    // Capa de agentes de IA (RQ16, port de ECOREX): agente configurable + recursos, prompts
+    // enrutados, datos cache (definicion + valor por sesion) y bitacora de atencion.
+    DbSet<AiAgent> AiAgents { get; }
+    DbSet<AiAgentResource> AiAgentResources { get; }
+    DbSet<AiAgentPrompt> AiAgentPrompts { get; }
+    DbSet<AiAgentCacheField> AiAgentCacheFields { get; }
+    DbSet<AiAgentCacheValue> AiAgentCacheValues { get; }
+    DbSet<AiAgentRunLog> AiAgentRunLogs { get; }
+
     // Correo saliente por tenant (base de RQ01 - RF01-P.2).
     DbSet<EmailConfig> EmailConfigs { get; }
 
