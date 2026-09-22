@@ -1,0 +1,482 @@
+@page "/modulo/agentes"
+@attribute [Authorize(Policy = "Perm:modulo/agentes:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Tenancy
+@using Tronox.Application.Admin
+@using Tronox.Domain.Enums
+@inject IAiAgentService AgentSvc
+@inject IAiAgentCacheService CacheSvc
+@inject IAiInferenceService Inferencia
+@inject IAiServerConfigService ServersSvc
+@inject IEnumerable<IAgentToolset> Toolsets
+@inject Tronox.Application.Common.ITenantContext Tenant
+
+@* RQ16 - Agentes de IA (port de ECOREX): agente configurable por tenant (proveedor, modelo, prompt
+   editable, prompts enrutados, datos cache, herramientas) con chat de prueba y bitacora. La cuenta del
+   proveedor (API key) la define el Super Admin en Servidores de IA. *@
+
+<PageTitle>Agentes de IA - TRONOX</PageTitle>
+
+<div class="ag-wrap">
+    <div class="ag-head">
+        <div>
+            <h1>Agentes de IA</h1>
+            <p>Configura agentes con su proveedor, modelo, prompt y herramientas. Pruebalos aqui antes de conectarlos a un proceso (ej. Correos &rarr; PQR).</p>
+        </div>
+        <button class="btn btn-primary" @onclick="@(() => AbrirEditorNuevo())">+ Nuevo agente</button>
+    </div>
+
+    @if (_flash is not null) { <div class="ag-alert @(_flashOk ? "ok" : "err")">@_flash</div> }
+
+    @if (_enabledProviders.Count == 0)
+    {
+        <div class="ag-warn">&#9888; No hay proveedores de IA habilitados en la plataforma. Un administrador debe configurarlos en <strong>Servidores de IA</strong> antes de que los agentes puedan responder.</div>
+    }
+
+    @if (_agents.Count == 0)
+    {
+        <div class="ag-empty">Aun no hay agentes. Crea uno con "+ Nuevo agente".</div>
+    }
+    else
+    {
+        <div class="ag-grid">
+            @foreach (var a in _agents)
+            {
+                <div class="ag-card">
+                    <div class="ag-card-top">
+                        <div class="ag-title">@a.Name</div>
+                        <span class="ag-badge @(a.IsActive ? "on" : "off")">@(a.IsActive ? "Activo" : "Apagado")</span>
+                    </div>
+                    <div class="ag-role">@(string.IsNullOrWhiteSpace(a.Role) ? "(sin rol)" : a.Role)</div>
+                    <div class="ag-meta">
+                        <div><span class="k">Proveedor</span> @ProviderName(a.Provider)</div>
+                        <div><span class="k">Modelo</span> @(string.IsNullOrWhiteSpace(a.Model) ? "(por defecto)" : a.Model)</div>
+                        <div><span class="k">Recursos</span> @a.ResourceCount</div>
+                    </div>
+                    <div class="ag-acts">
+                        <button class="ag-btn" @onclick="@(() => AbrirChat(a))">Probar</button>
+                        <button class="ag-btn" @onclick="@(() => AbrirEditor(a.Id))">Editar</button>
+                        <button class="ag-btn" @onclick="@(() => ToggleActivoAsync(a))">@(a.IsActive ? "Apagar" : "Encender")</button>
+                        <button class="ag-btn" @onclick="@(() => DuplicarAsync(a.Id))">Duplicar</button>
+                        <button class="ag-btn danger" @onclick="@(() => EliminarAsync(a))">Eliminar</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* ===== Editor ===== *@
+@if (_showEditor)
+{
+    <div class="ag-modal-back" @onclick="CerrarEditor">
+        <div class="ag-modal" @onclick:stopPropagation="true">
+            <div class="ag-modal-head">
+                <h2>@(_editId is null ? "Nuevo agente" : "Editar agente")</h2>
+                <button class="ag-x" @onclick="CerrarEditor">&times;</button>
+            </div>
+            <div class="ag-modal-body">
+                <div class="ag-row">
+                    <label>Nombre</label>
+                    <input class="form-control" @bind="_fName" placeholder="Ej. Clasificador PQRS" />
+                </div>
+                <div class="ag-row">
+                    <label>Rol (descriptivo)</label>
+                    <input class="form-control" @bind="_fRole" placeholder="Ej. clasificador, copiloto, seguimiento" />
+                </div>
+                <div class="ag-row2">
+                    <div>
+                        <label>Proveedor</label>
+                        <select class="form-select" @bind="_fProvider">
+                            @foreach (var p in _enabledProviders)
+                            {
+                                <option value="@p.Provider">@p.DisplayName</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label>Modelo (opcional)</label>
+                        <input class="form-control" @bind="_fModel" placeholder="Vacio = por defecto del proveedor" />
+                    </div>
+                </div>
+                <div class="ag-row">
+                    <label>Prompt de sistema</label>
+                    <textarea class="form-control" rows="8" @bind="_fPrompt" placeholder="Instrucciones base del agente..."></textarea>
+                </div>
+
+                @if (_toolNames.Count > 0)
+                {
+                    <div class="ag-row">
+                        <label>Herramientas habilitadas</label>
+                        <div class="ag-tools">
+                            @foreach (var t in _toolNames)
+                            {
+                                <label class="ag-tool"><input type="checkbox" checked="@(!_disabledTools.Contains(t.Name))" @onchange="e => ToggleTool(t.Name, (bool)e.Value!)" /> <span>@t.Name</span> <em>@t.Group</em></label>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_editId is not null)
+                {
+                    <div class="ag-sub">
+                        <div class="ag-sub-head"><h3>Prompts enrutados</h3><button class="ag-btn" @onclick="AgregarPrompt">+ Agregar</button></div>
+                        @if (_prompts.Count == 0) { <div class="ag-hint">Sin prompts enrutados. El agente usa solo el prompt base.</div> }
+                        @foreach (var p in _prompts)
+                        {
+                            <div class="ag-prompt">
+                                <input class="form-control" @bind="p.Name" placeholder="Nombre" />
+                                <input class="form-control" @bind="p.Rule" placeholder="Regla: cuando usarlo" />
+                                <textarea class="form-control" rows="2" @bind="p.Body" placeholder="Instrucciones"></textarea>
+                                <div class="ag-prompt-acts">
+                                    <button class="ag-btn" @onclick="@(() => GuardarPromptAsync(p))">Guardar</button>
+                                    <button class="ag-btn danger" @onclick="@(() => EliminarPromptAsync(p))">Quitar</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="ag-sub">
+                        <div class="ag-sub-head"><h3>Datos que captura (cache)</h3><button class="ag-btn" @onclick="AgregarCampo">+ Agregar</button></div>
+                        @if (_fields.Count == 0) { <div class="ag-hint">Sin campos. El agente no extrae datos estructurados.</div> }
+                        @foreach (var f in _fields)
+                        {
+                            <div class="ag-field">
+                                <span class="ag-key">@f.FieldKey</span>
+                                <input class="form-control" @bind="f.Label" placeholder="Etiqueta" />
+                                <input class="form-control" @bind="f.Description" placeholder="Descripcion (ayuda a la extraccion)" />
+                                <label class="ag-sticky" title="Si se desmarca, no se sobrescribe una vez capturado"><input type="checkbox" @bind="f.IsUpdatable" /> actualizable</label>
+                                <button class="ag-btn" @onclick="@(() => GuardarCampoAsync(f))">Guardar</button>
+                                <button class="ag-btn danger" @onclick="@(() => EliminarCampoAsync(f))">Quitar</button>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="ag-hint">Guarda el agente para configurar prompts enrutados y datos de cache.</div>
+                }
+            </div>
+            <div class="ag-modal-foot">
+                <button class="btn btn-light" @onclick="CerrarEditor">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarAgenteAsync" disabled="@_busy">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Chat de prueba ===== *@
+@if (_showChat && _chatAgent is not null)
+{
+    <div class="ag-modal-back" @onclick="CerrarChat">
+        <div class="ag-modal ag-chatmodal" @onclick:stopPropagation="true">
+            <div class="ag-modal-head">
+                <h2>Probar: @_chatAgent.Name</h2>
+                <button class="ag-x" @onclick="CerrarChat">&times;</button>
+            </div>
+            <div class="ag-chat-body">
+                <div class="ag-chat-col">
+                    <div class="ag-chat-log">
+                        @foreach (var m in _turns)
+                        {
+                            <div class="ag-msg @(m.Role == "user" ? "u" : "m")"><span>@m.Text</span></div>
+                        }
+                        @if (_chatBusy) { <div class="ag-msg m"><span class="ag-typing">...</span></div> }
+                    </div>
+                    <div class="ag-chat-input">
+                        <input class="form-control" @bind="_chatInput" @bind:event="oninput" @onkeydown="ChatKeyDown" placeholder="Escribe un mensaje de prueba..." />
+                        <button class="btn btn-primary" @onclick="EnviarChatAsync" disabled="@_chatBusy">Enviar</button>
+                    </div>
+                    @if (_chatError is not null) { <div class="ag-alert err">@_chatError</div> }
+                </div>
+                <div class="ag-debug-col">
+                    <div class="ag-debug-head">Prompts enviados a la IA</div>
+                    @if (_debug.Count == 0) { <div class="ag-hint">Aqui apareceran los prompts y herramientas de la ultima respuesta.</div> }
+                    @foreach (var d in _debug)
+                    {
+                        <details class="ag-debug">
+                            <summary>@d.Title</summary>
+                            <pre>@d.Content</pre>
+                            @if (!string.IsNullOrWhiteSpace(d.Response)) { <div class="ag-debug-resp">Respuesta:</div> <pre>@d.Response</pre> }
+                        </details>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .ag-wrap { padding: 8px 4px 40px; }
+    .ag-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; }
+    .ag-head h1 { font-size:22px; margin:0 0 4px; }
+    .ag-head p { color:var(--tx-muted,#878a99); margin:0; max-width:640px; font-size:13px; }
+    .ag-alert { padding:10px 14px; border-radius:6px; margin-bottom:12px; font-size:13px; }
+    .ag-alert.ok { background:#d1f5e6; color:#0a6b45; }
+    .ag-alert.err { background:#f9d7d7; color:#a12626; }
+    .ag-warn { background:#fef4d9; color:#8a5a00; padding:10px 14px; border-radius:6px; margin-bottom:12px; font-size:13px; }
+    .ag-empty { color:#878a99; padding:40px; text-align:center; border:1px dashed #ccc; border-radius:8px; }
+    .ag-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+    .ag-card { border:1px solid #e0e0e0; border-radius:10px; padding:14px; background:#fff; }
+    .ag-card-top { display:flex; justify-content:space-between; align-items:center; }
+    .ag-title { font-weight:600; font-size:15px; }
+    .ag-badge { font-size:11px; padding:2px 8px; border-radius:10px; }
+    .ag-badge.on { background:#d1f5e6; color:#0a6b45; }
+    .ag-badge.off { background:#eceef1; color:#878a99; }
+    .ag-role { color:#878a99; font-size:12px; margin:4px 0 10px; }
+    .ag-meta { font-size:12px; display:grid; gap:3px; margin-bottom:12px; }
+    .ag-meta .k { color:#878a99; display:inline-block; width:74px; }
+    .ag-acts { display:flex; flex-wrap:wrap; gap:6px; }
+    .ag-btn { border:1px solid #d0d3d9; background:#f6f7f9; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+    .ag-btn:hover { background:#eceef1; }
+    .ag-btn.danger { color:#a12626; border-color:#eec4c4; }
+    .ag-modal-back { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:1200; padding:20px; }
+    .ag-modal { background:#fff; border-radius:12px; width:100%; max-width:720px; max-height:90vh; display:flex; flex-direction:column; }
+    .ag-chatmodal { max-width:960px; }
+    .ag-modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #eee; }
+    .ag-modal-head h2 { font-size:17px; margin:0; }
+    .ag-x { border:none; background:none; font-size:24px; line-height:1; cursor:pointer; color:#878a99; }
+    .ag-modal-body { padding:16px 20px; overflow:auto; }
+    .ag-modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #eee; }
+    .ag-row { margin-bottom:12px; }
+    .ag-row label, .ag-row2 label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; }
+    .ag-row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+    .ag-tools { display:flex; flex-wrap:wrap; gap:8px; }
+    .ag-tool { display:flex; align-items:center; gap:5px; font-size:12px; border:1px solid #e0e0e0; border-radius:6px; padding:4px 8px; }
+    .ag-tool em { color:#878a99; font-style:normal; font-size:11px; }
+    .ag-sub { border-top:1px solid #eee; margin-top:14px; padding-top:12px; }
+    .ag-sub-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .ag-sub-head h3 { font-size:14px; margin:0; }
+    .ag-hint { color:#878a99; font-size:12px; }
+    .ag-prompt { border:1px solid #eee; border-radius:8px; padding:10px; margin-bottom:8px; display:grid; gap:6px; }
+    .ag-prompt-acts { display:flex; gap:6px; }
+    .ag-field { display:grid; grid-template-columns:auto 1fr 1.4fr auto auto auto; gap:6px; align-items:center; margin-bottom:6px; }
+    .ag-key { font-family:monospace; font-size:11px; background:#eceef1; padding:2px 6px; border-radius:4px; }
+    .ag-sticky { font-size:11px; color:#878a99; display:flex; align-items:center; gap:3px; }
+    .ag-chat-body { display:grid; grid-template-columns:1fr 1fr; gap:0; overflow:hidden; height:70vh; }
+    .ag-chat-col { display:flex; flex-direction:column; border-right:1px solid #eee; }
+    .ag-chat-log { flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:8px; }
+    .ag-msg { max-width:85%; padding:8px 12px; border-radius:10px; font-size:13px; }
+    .ag-msg.u { align-self:flex-end; background:#405189; color:#fff; }
+    .ag-msg.m { align-self:flex-start; background:#f1f3f5; color:#222; }
+    .ag-chat-input { display:flex; gap:8px; padding:12px 16px; border-top:1px solid #eee; }
+    .ag-debug-col { overflow:auto; padding:16px; background:#fafbfc; }
+    .ag-debug-head { font-size:12px; font-weight:600; text-transform:uppercase; color:#878a99; margin-bottom:8px; }
+    .ag-debug { border:1px solid #e6e8eb; border-radius:6px; margin-bottom:6px; background:#fff; }
+    .ag-debug summary { cursor:pointer; padding:6px 10px; font-size:12px; font-weight:600; }
+    .ag-debug pre { margin:0; padding:8px 10px; font-size:11px; white-space:pre-wrap; word-break:break-word; background:#f6f7f9; max-height:280px; overflow:auto; }
+    .ag-debug-resp { font-size:11px; font-weight:600; padding:4px 10px 0; color:#0a6b45; }
+</style>
+
+@code {
+    private sealed class ProviderOpt { public AiProvider Provider { get; set; } public string DisplayName { get; set; } = ""; }
+    private sealed class ToolName { public string Name { get; set; } = ""; public string Group { get; set; } = ""; }
+    private sealed class PromptEdit { public long Id { get; set; } public string Name { get; set; } = ""; public string? Rule { get; set; } public string Body { get; set; } = ""; }
+    private sealed class FieldEdit { public long Id { get; set; } public string FieldKey { get; set; } = ""; public string Label { get; set; } = ""; public string? Description { get; set; } public bool IsUpdatable { get; set; } = true; }
+
+    private List<AiAgentDto> _agents = new();
+    private List<ProviderOpt> _enabledProviders = new();
+    private List<ToolName> _toolNames = new();
+    private string? _flash; private bool _flashOk; private bool _busy;
+
+    // Editor
+    private bool _showEditor; private long? _editId;
+    private string _fName = ""; private string? _fRole; private AiProvider _fProvider = AiProvider.Claude;
+    private string? _fModel; private string _fPrompt = "";
+    private HashSet<string> _disabledTools = new(StringComparer.OrdinalIgnoreCase);
+    private List<PromptEdit> _prompts = new();
+    private List<FieldEdit> _fields = new();
+
+    // Chat
+    private bool _showChat; private AiAgentDto? _chatAgent;
+    private List<AiChatTurn> _turns = new(); private string _chatInput = "";
+    private bool _chatBusy; private string? _chatError;
+    private List<AiDebugPrompt> _debug = new();
+
+    private long Actor => Tenant.UserId ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _toolNames = Toolsets.SelectMany(t => t.GetSpecs().Select(s => new ToolName { Name = s.Name, Group = t.GroupLabel }))
+            .GroupBy(t => t.Name).Select(g => g.First()).ToList();
+        await CargarProveedores();
+        await Cargar();
+    }
+
+    private async Task CargarProveedores()
+    {
+        try
+        {
+            var list = await ServersSvc.ListEnabledAsync();
+            _enabledProviders = list.Select(p => new ProviderOpt { Provider = p.Provider, DisplayName = p.DisplayName }).ToList();
+        }
+        catch { _enabledProviders = new(); }
+        if (_enabledProviders.Count > 0) { _fProvider = _enabledProviders[0].Provider; }
+    }
+
+    private async Task Cargar() => _agents = (await AgentSvc.ListAsync()).ToList();
+
+    private static string ProviderName(AiProvider p) => AiProviderCatalog.For(p).DisplayName;
+
+    private void Flash(string msg, bool ok) { _flash = msg; _flashOk = ok; }
+
+    // ===== Editor =====
+    private void AbrirEditorNuevo()
+    {
+        _editId = null; _fName = ""; _fRole = null; _fModel = null; _fPrompt = "";
+        _fProvider = _enabledProviders.Count > 0 ? _enabledProviders[0].Provider : AiProvider.Claude;
+        _disabledTools = new(StringComparer.OrdinalIgnoreCase);
+        _prompts = new(); _fields = new();
+        _showEditor = true;
+    }
+
+    private async Task AbrirEditor(long id)
+    {
+        var d = await AgentSvc.GetAsync(id);
+        if (d is null) { Flash("El agente ya no existe.", false); await Cargar(); return; }
+        _editId = id;
+        _fName = d.Agent.Name; _fRole = d.Agent.Role; _fProvider = d.Agent.Provider;
+        _fModel = d.Agent.Model; _fPrompt = d.Agent.SystemPrompt;
+        _disabledTools = new HashSet<string>(d.Agent.DisabledTools ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        _prompts = d.Prompts.Select(p => new PromptEdit { Id = p.Id, Name = p.Name, Rule = p.Rule, Body = p.Body }).ToList();
+        var fields = await CacheSvc.ListFieldsAsync(id);
+        _fields = fields.Select(f => new FieldEdit { Id = f.Id, FieldKey = f.FieldKey, Label = f.Label, Description = f.Description, IsUpdatable = f.IsUpdatable }).ToList();
+        _showEditor = true;
+    }
+
+    private void CerrarEditor() { _showEditor = false; }
+
+    private void ToggleTool(string name, bool enabled)
+    {
+        if (enabled) { _disabledTools.Remove(name); } else { _disabledTools.Add(name); }
+    }
+
+    private async Task GuardarAgenteAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_fName)) { Flash("El nombre es obligatorio.", false); return; }
+        _busy = true;
+        try
+        {
+            var tools = _disabledTools.ToList();
+            if (_editId is null)
+            {
+                var created = await AgentSvc.CreateAsync(new CreateAiAgentRequest(_fName, _fRole, _fProvider, _fModel, _fPrompt, tools), Actor);
+                if (created is null) { Flash("No se pudo crear el agente.", false); return; }
+                _editId = created.Id; // permite configurar prompts/cache sin cerrar
+                Flash("Agente creado. Ahora puedes configurar prompts y datos.", true);
+            }
+            else
+            {
+                await AgentSvc.UpdateAsync(_editId.Value, new UpdateAiAgentRequest(_fName, _fRole, _fProvider, _fModel, _fPrompt, tools), Actor);
+                Flash("Agente actualizado.", true);
+            }
+            await Cargar();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleActivoAsync(AiAgentDto a)
+    {
+        await AgentSvc.SetActiveAsync(a.Id, !a.IsActive, Actor);
+        await Cargar();
+        Flash(a.IsActive ? "Agente apagado." : "Agente encendido.", true);
+    }
+
+    private async Task DuplicarAsync(long id)
+    {
+        await AgentSvc.DuplicateAsync(id, Actor);
+        await Cargar();
+        Flash("Agente duplicado.", true);
+    }
+
+    private async Task EliminarAsync(AiAgentDto a)
+    {
+        await AgentSvc.DeleteAsync(a.Id, Actor);
+        await Cargar();
+        Flash($"Agente \"{a.Name}\" eliminado.", true);
+    }
+
+    // ===== Prompts enrutados =====
+    private void AgregarPrompt() => _prompts.Add(new PromptEdit { Name = "Nuevo prompt", Body = "" });
+
+    private async Task GuardarPromptAsync(PromptEdit p)
+    {
+        if (_editId is null) { return; }
+        if (p.Id == 0)
+        {
+            var created = await AgentSvc.AddPromptAsync(new CreateAgentPromptRequest(_editId.Value, p.Name, p.Rule, p.Body), Actor);
+            if (created is not null) { p.Id = created.Id; }
+        }
+        else
+        {
+            await AgentSvc.UpdatePromptAsync(p.Id, new UpdateAgentPromptRequest(p.Name, p.Rule, p.Body), Actor);
+        }
+        Flash("Prompt guardado.", true);
+    }
+
+    private async Task EliminarPromptAsync(PromptEdit p)
+    {
+        if (p.Id != 0) { await AgentSvc.DeletePromptAsync(p.Id, Actor); }
+        _prompts.Remove(p);
+    }
+
+    // ===== Datos cache =====
+    private async Task AgregarCampo()
+    {
+        if (_editId is null) { return; }
+        var created = await CacheSvc.CreateFieldAsync(new CreateAgentCacheFieldRequest(_editId.Value, "Nuevo dato", null), Actor);
+        if (created is not null)
+        {
+            _fields.Add(new FieldEdit { Id = created.Id, FieldKey = created.FieldKey, Label = created.Label, Description = created.Description, IsUpdatable = created.IsUpdatable });
+        }
+    }
+
+    private async Task GuardarCampoAsync(FieldEdit f)
+    {
+        await CacheSvc.UpdateFieldAsync(f.Id, new UpdateAgentCacheFieldRequest(f.Label, f.Description, f.IsUpdatable), Actor);
+        Flash("Dato guardado.", true);
+    }
+
+    private async Task EliminarCampoAsync(FieldEdit f)
+    {
+        await CacheSvc.DeleteFieldAsync(f.Id, Actor);
+        _fields.Remove(f);
+    }
+
+    // ===== Chat de prueba =====
+    private void AbrirChat(AiAgentDto a)
+    {
+        _chatAgent = a; _turns = new(); _debug = new(); _chatInput = ""; _chatError = null;
+        _showChat = true;
+    }
+
+    private void CerrarChat() { _showChat = false; }
+
+    private async Task ChatKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_chatBusy) { await EnviarChatAsync(); }
+    }
+
+    private async Task EnviarChatAsync()
+    {
+        if (_chatAgent is null || string.IsNullOrWhiteSpace(_chatInput)) { return; }
+        var texto = _chatInput.Trim();
+        _turns.Add(new AiChatTurn("user", texto));
+        _chatInput = ""; _chatError = null; _chatBusy = true;
+        try
+        {
+            var res = await Inferencia.TestChatAsync(_chatAgent.Id, _turns.ToList(), actorUserId: Actor);
+            if (res.Ok)
+            {
+                _turns.Add(new AiChatTurn("model", res.Text ?? "(sin respuesta)"));
+            }
+            else
+            {
+                _chatError = res.Error ?? "La IA no respondio.";
+            }
+            _debug = (res.DebugPrompts ?? Array.Empty<AiDebugPrompt>()).ToList();
+        }
+        catch (Exception ex) { _chatError = ex.Message; }
+        finally { _chatBusy = false; }
+    }
+}
