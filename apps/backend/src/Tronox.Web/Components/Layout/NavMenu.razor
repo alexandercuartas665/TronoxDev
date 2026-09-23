@@ -98,7 +98,7 @@ else
     <div class="tronox-agency">
         <div class="lbl">Plataforma</div>
         <div class="name">TRONOX SGDEA</div>
-        <div class="meta">Consola de gobierno &middot; v@(Tronox.Web.AppVersion.Current)</div>
+        <div class="meta" title="@(Tronox.Web.AppVersion.Build is null ? "" : "Build " + Tronox.Web.AppVersion.Build)">Consola de gobierno &middot; v@(Tronox.Web.AppVersion.Current)</div>
     </div>
 }
 
@@ -299,7 +299,7 @@ else
                 <div class="tx-tenant-plan">@(_planName ?? "Plan Institucional")</div>
             </div>
         </div>
-        <div class="tx-sb-version" title="Version del sistema desplegada">v@(Tronox.Web.AppVersion.Current)</div>
+        <div class="tx-sb-version" title="@(Tronox.Web.AppVersion.Build is null ? "Version del sistema" : "Build " + Tronox.Web.AppVersion.Build)">v@(Tronox.Web.AppVersion.Current)</div>
     </div>
 }
 

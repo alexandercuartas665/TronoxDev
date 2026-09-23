@@ -17,6 +17,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Version semantica del sistema (fuente unica). Se muestra en la UI como v0.1.0. Subir por
+         release. El build id exacto (commit-fecha) va aparte, en la env var TRONOX_VERSION. -->
+    <Version>0.1.0</Version>
     <!-- Desactiva la compresion al build de static assets: MapStaticAssets sirve 0 bytes para
          los .gz alternativos en este entorno, asi que mejor servir CSS/JS sin precomprimir. -->
     <CompressionEnabled>false</CompressionEnabled>
