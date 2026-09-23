@@ -1158,6 +1158,11 @@ body { background-color: var(--tx-app-bg); color: var(--tx-text-700); }
   font-size: 10.5px; color: var(--tx-text-500);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Version del sistema (pie del sidebar): discreta, para confirmar el build desplegado. */
+.tronox-sidebar .tx-sb-version {
+  margin-top: 6px; text-align: center; font-size: 10px; letter-spacing: .3px;
+  color: var(--tx-text-500); opacity: .75; font-family: var(--bs-font-monospace, monospace);
+}
 
 /* =========================================================================
    PANEL DE CONTROL (/inicio) - portado del prototipo (Prototipo/index.html

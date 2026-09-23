@@ -44,6 +44,12 @@ COPY --from=build /app/publish ./
 # El Caddy externo termina TLS y reenvia HTTP a este puerto (igual que los stacks hermanos).
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
+
+# Version estampada en el build (ej. "1a2b3c4-20260922"). La UI la muestra para saber que build
+# esta desplegado. Se pasa con --build-arg TRONOX_VERSION=... ; por defecto "dev" en builds sueltos.
+ARG TRONOX_VERSION=dev
+ENV TRONOX_VERSION=$TRONOX_VERSION
+
 EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "Tronox.Web.dll"]
