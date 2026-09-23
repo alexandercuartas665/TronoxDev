@@ -29,6 +29,7 @@
     </div>
     <div style="display:flex;gap:10px;">
         <button class="btn btn-outline-secondary" @onclick="OpenAssignAsync">Asignar usuarios</button>
+        <button class="btn btn-outline-secondary" @onclick="OpenImport">Importar vista</button>
         <button class="btn btn-primary" @onclick="@(() => OpenCreateView())">+ Nueva vista</button>
     </div>
 </div>
@@ -117,6 +118,36 @@ else
     </div>
 }
 
+@* ================= Modal: importar vista ================= *@
+@if (_showImport)
+{
+    <div class="modal-overlay" @onclick="@(() => _showImport = false)">
+        <div class="modal-dialog" style="max-width:480px;" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>Importar vista del sistema</h3>
+                <button class="modal-close" @onclick="@(() => _showImport = false)">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="page-sub" style="margin-top:0;">Sube un archivo JSON exportado (el menu del sistema). Se creara una vista nueva con toda su estructura.</p>
+                <div class="field">
+                    <label class="form-label">Archivo (.json) *</label>
+                    <InputFile OnChange="OnImportFileAsync" accept=".json" class="form-control" />
+                    @if (_importFileName is not null) { <div class="page-sub" style="margin-top:4px;">Cargado: @_importFileName</div> }
+                </div>
+                <div class="field">
+                    <label class="form-label">Nombre de la vista nueva *</label>
+                    <input class="form-control" @bind="_importName" maxlength="150" placeholder="Ej. Menu importado" />
+                </div>
+                @if (_importError is not null) { <div class="tk-field-error">@_importError</div> }
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline-secondary" @onclick="@(() => _showImport = false)">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ImportAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_importJson))">Importar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @* ================= Editor (panel grande) ================= *@
 @if (_showEditor && _tree is not null)
 {
@@ -128,6 +159,7 @@ else
                     <h2>@_tree.ViewName</h2>
                 </div>
                 <div class="mc-editor-head-actions">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="SyncCatalogAsync" disabled="@_busy" title="Agrega los modulos del sistema que falten en esta vista">Sincronizar catalogo</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="ExportAsync" disabled="@_busy">Exportar</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => ReloadTreeAsync())" disabled="@_busy">Restablecer</button>
                     <button class="btn btn-sm btn-primary" @onclick="SaveEditorAsync" disabled="@_busy">Guardar</button>
@@ -908,6 +940,68 @@ else
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
         var file = $"vista-menu-{Slug(res.Value.Name)}.json";
         await JS.InvokeVoidAsync("tronoxMenuConfig.downloadText", file, json, "application/json");
+    }
+
+    // ---- Sincronizar con el catalogo del sistema (agrega modulos nuevos que falten en la vista) ----
+    private async Task SyncCatalogAsync()
+    {
+        _busy = true;
+        try
+        {
+            var res = await MenuSvc.AddMissingCatalogItemsAsync(_editingViewId);
+            if (!res.IsOk) { Flash(res.Error ?? "No se pudo sincronizar.", false); return; }
+            await ReloadTreeAsync();
+            Flash(res.Value == 0 ? "La vista ya tiene todos los modulos del catalogo." : $"Se agregaron {res.Value} modulo(s) del catalogo.", true);
+        }
+        finally { _busy = false; }
+    }
+
+    // ---- Importar vista desde un JSON ----
+    private bool _showImport;
+    private string? _importJson;
+    private string? _importFileName;
+    private string _importName = "";
+    private string? _importError;
+
+    private void OpenImport()
+    {
+        _showImport = true;
+        _importJson = null; _importFileName = null; _importName = ""; _importError = null;
+    }
+
+    private async Task OnImportFileAsync(InputFileChangeEventArgs e)
+    {
+        _importError = null;
+        try
+        {
+            var file = e.File;
+            if (file.Size > 4 * 1024 * 1024) { _importError = "El archivo supera 4 MB."; return; }
+            using var stream = file.OpenReadStream(4 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            _importJson = await reader.ReadToEndAsync();
+            _importFileName = file.Name;
+            if (string.IsNullOrWhiteSpace(_importName))
+            {
+                _importName = System.IO.Path.GetFileNameWithoutExtension(file.Name);
+            }
+        }
+        catch (Exception ex) { _importError = $"No se pudo leer el archivo: {ex.Message}"; _importJson = null; }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_importJson)) { _importError = "Selecciona un archivo JSON."; return; }
+        if (string.IsNullOrWhiteSpace(_importName)) { _importError = "El nombre de la vista es obligatorio."; return; }
+        _busy = true; _importError = null;
+        try
+        {
+            var res = await MenuSvc.ImportViewAsync(_importJson!, _importName.Trim());
+            if (!res.IsOk) { _importError = res.Error ?? "No se pudo importar."; return; }
+            _showImport = false;
+            await LoadIndexAsync();
+            Flash($"Vista \"{res.Value!.Name}\" importada.", true);
+        }
+        finally { _busy = false; }
     }
 
     // ================= Asignacion =================

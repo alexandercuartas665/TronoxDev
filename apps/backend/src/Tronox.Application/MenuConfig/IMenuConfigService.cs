@@ -99,4 +99,14 @@ public interface IMenuConfigService
     /// </summary>
     Task<MenuConfigResult<MenuViewDto>> ImportViewAsync(
         string json, string newName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Agrega a una vista los ITEMS del catalogo del sistema (MenuCatalogo) que aun no esten en ella,
+    /// colgando cada uno del nodo padre (seccion/modulo) que YA exista en la vista. No toca ni reordena
+    /// lo existente; los modulos cuyo padre no este en la vista se omiten. Sirve para que los modulos
+    /// nuevos del sistema aparezcan en una vista ya personalizada, sin re-sembrarla. Devuelve cuantos
+    /// items se agregaron.
+    /// </summary>
+    Task<MenuConfigResult<int>> AddMissingCatalogItemsAsync(
+        long viewId, CancellationToken cancellationToken = default);
 }

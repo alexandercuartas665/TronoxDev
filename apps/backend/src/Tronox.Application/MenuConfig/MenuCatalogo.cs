@@ -342,6 +342,15 @@ public static class MenuCatalogo
     public static IReadOnlyList<string> RutasDeItem { get; } =
         TodosLosItems().Select(i => i.Ruta).ToList();
 
+    /// <summary>
+    /// Cada item con el SLUG de su padre inmediato (seccion o grupo/modulo). Lo usa la sincronizacion
+    /// del editor de menu para insertar los items del catalogo que falten en una vista, colgandolos del
+    /// nodo padre que ya exista en ella (asi un modulo nuevo aparece sin re-sembrar toda la vista).
+    /// </summary>
+    public static IEnumerable<(string PadreSlug, ItemSemilla Item)> ItemsConPadre() =>
+        Secciones.SelectMany(s => s.Items.Select(i => (s.Slug, i)))
+            .Concat(TodosLosGrupos().SelectMany(g => g.Items.Select(i => (g.Slug, i))));
+
     /// <summary>Numero total de grupos (modulos + sub-secciones anidadas).</summary>
     public static int TotalSubgrupos { get; } = TodosLosGrupos().Count();
 

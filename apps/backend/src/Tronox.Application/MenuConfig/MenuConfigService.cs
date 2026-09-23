@@ -798,4 +798,41 @@ public sealed class MenuConfigService : IMenuConfigService
         }
         return false;
     }
+
+    public async Task<MenuConfigResult<int>> AddMissingCatalogItemsAsync(long viewId, CancellationToken cancellationToken = default)
+    {
+        var treeRes = await GetViewTreeAsync(viewId, cancellationToken);
+        if (!treeRes.IsOk || treeRes.Value is null)
+        {
+            return MenuConfigResult<int>.NotFound(treeRes.Error ?? "La vista no existe.");
+        }
+
+        // Indice ruta/slug -> id de nodo, aplanando el arbol de la vista.
+        var byKey = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        void Index(IReadOnlyList<MenuEditorNodeDto> nodes)
+        {
+            foreach (var n in nodes)
+            {
+                if (!string.IsNullOrWhiteSpace(n.Route)) { byKey[n.Route!] = n.Id; }
+                Index(n.Children);
+            }
+        }
+        Index(treeRes.Value.Roots);
+
+        // Por cada item del catalogo que falte y cuyo padre YA este en la vista, se crea como hoja.
+        var added = 0;
+        foreach (var (padreSlug, item) in MenuCatalogo.ItemsConPadre())
+        {
+            if (byKey.ContainsKey(item.Ruta)) { continue; }
+            if (!byKey.TryGetValue(padreSlug, out var parentId)) { continue; }
+            var created = await CreateNodeAsync(viewId, parentId, MenuNodeKind.Item, item.Nombre,
+                item.Icono, legacyCode: null, route: item.Ruta, cancellationToken: cancellationToken);
+            if (created.IsOk && created.Value is not null)
+            {
+                byKey[item.Ruta] = created.Value.Id;
+                added++;
+            }
+        }
+        return MenuConfigResult<int>.Ok(added);
+    }
 }
