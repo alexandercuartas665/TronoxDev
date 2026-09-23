@@ -51,3 +51,8 @@ public sealed record UpdateAgentCacheFieldRequest(string Label, string? Descript
 
 public sealed record AiAgentCacheValueDto(string FieldKey, string Label, string? Description, string? Value, string? Source, DateTimeOffset? UpdatedAt);
 public sealed record SetAgentCacheValueRequest(long AgentId, long SessionId, string FieldKey, string? Value, string? Source);
+
+// --- Bitacora de atencion del agente ---
+public sealed record AiAgentRunLogDto(
+    long Id, long AgentId, string AgentName, long ConversationId,
+    DateTimeOffset OccurredAt, AiAgentRunLogKind Kind, string Title, string? Content, string? Response);

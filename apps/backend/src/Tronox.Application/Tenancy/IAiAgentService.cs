@@ -24,4 +24,7 @@ public interface IAiAgentService
 
     Task<IReadOnlyList<AiAgentPromptVersionDto>> GetPromptHistoryAsync(long agentId, CancellationToken cancellationToken = default);
     Task<AiAgentDetailDto?> RestorePromptVersionAsync(long agentId, int versionIndex, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Bitacora de atencion: ultimos eventos (opcionalmente de un agente), mas recientes primero.</summary>
+    Task<IReadOnlyList<AiAgentRunLogDto>> ListRunLogsAsync(long? agentId = null, int take = 200, CancellationToken cancellationToken = default);
 }

@@ -192,6 +192,8 @@ public static class MenuCatalogo
                 new("Correos por Revisar", "modulo/radicacion-correos", "bi-envelope", "RF04"),
                 new("Correos -> PQR (IA)", "modulo/correos-pqr", "bi-robot", "RF04"),
                 new("Agentes de IA", "modulo/agentes", "bi-robot", "RF04"),
+                new("Bitacora del agente", "modulo/bitacora-agente", "bi-journal-text", "RF04"),
+                new("Consumo de IA", "modulo/consumo-ia", "bi-graph-up", "RF05"),
                 new("Portal Ciudadano", "modulo/portal-abrir", "bi-globe", "RF03")
             ]),
 

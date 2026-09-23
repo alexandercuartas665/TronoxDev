@@ -140,6 +140,23 @@ public sealed class CorreoIngestaService : ICorreoIngestaService
             correo.TokensIa = cl.TokensTotal;
             tokensTot += cl.TokensTotal;
 
+            // Bitacora del agente: si el buzon usa un agente, deja el rastro de la clasificacion.
+            if (b.AgenteIaId is long agLog)
+            {
+                _db.AiAgentRunLogs.Add(new Domain.Entities.AiAgentRunLog
+                {
+                    TenantId = tenantId.Value, AgentId = agLog, ConversationId = 0,
+                    OccurredAt = DateTimeOffset.UtcNow, Kind = AiAgentRunLogKind.Inbound,
+                    Title = "Correo recibido", Content = $"De: {correo.Remitente}\nAsunto: {correo.Asunto}"
+                });
+                _db.AiAgentRunLogs.Add(new Domain.Entities.AiAgentRunLog
+                {
+                    TenantId = tenantId.Value, AgentId = agLog, ConversationId = 0,
+                    OccurredAt = DateTimeOffset.UtcNow, Kind = cl.Ok ? AiAgentRunLogKind.Reply : AiAgentRunLogKind.Error,
+                    Title = "Clasificacion IA", Content = cl.Ok ? $"es_pqr={cl.EsPqr}; tipo={cl.Tipo}" : $"error: {cl.Error}", Response = cl.Json
+                });
+            }
+
             if (!cl.Ok)
             {
                 errores++;

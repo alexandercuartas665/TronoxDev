@@ -1,0 +1,116 @@
+@page "/modulo/bitacora-agente"
+@attribute [Authorize(Policy = "Perm:modulo/bitacora-agente:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Tenancy
+@using Tronox.Domain.Enums
+@inject IAiAgentService AgentSvc
+
+@* RQ16 - Bitacora de atencion del agente de IA: rastro de cada corrida (entradas, prompts enviados a la
+   IA, herramientas ejecutadas y respuestas). Se alimenta del chat de prueba y del flujo Correos -> PQR. *@
+
+<PageTitle>Bitacora del agente - TRONOX</PageTitle>
+
+<div class="bt-wrap">
+    <div class="bt-head">
+        <div>
+            <h1>Bitacora del agente</h1>
+            <p>Rastro de la atencion: entradas recibidas, prompts a la IA, herramientas ejecutadas y respuestas.</p>
+        </div>
+        <div class="bt-filters">
+            <select class="form-select" @bind="_agentFilter" @bind:after="CargarAsync">
+                <option value="">Todos los agentes</option>
+                @foreach (var a in _agents)
+                {
+                    <option value="@a.Id">@a.Name</option>
+                }
+            </select>
+            <button class="btn btn-outline-secondary" @onclick="CargarAsync">Actualizar</button>
+        </div>
+    </div>
+
+    @if (_loading) { <p><em>Cargando...</em></p> }
+    else if (_logs.Count == 0)
+    {
+        <div class="bt-empty">Aun no hay eventos en la bitacora. Prueba un agente en <a href="modulo/agentes">Agentes de IA</a> o procesa un buzon en <a href="modulo/correos-pqr">Correos &rarr; PQR</a>.</div>
+    }
+    else
+    {
+        <div class="bt-list">
+            @foreach (var l in _logs)
+            {
+                <div class="bt-row bt-@l.Kind.ToString().ToLowerInvariant()">
+                    <div class="bt-row-top">
+                        <span class="bt-kind">@KindLabel(l.Kind)</span>
+                        <span class="bt-title">@l.Title</span>
+                        <span class="bt-agent">@l.AgentName</span>
+                        <span class="bt-time">@l.OccurredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(l.Content) || !string.IsNullOrWhiteSpace(l.Response))
+                    {
+                        <details class="bt-detail">
+                            <summary>Ver detalle</summary>
+                            @if (!string.IsNullOrWhiteSpace(l.Content)) { <pre>@l.Content</pre> }
+                            @if (!string.IsNullOrWhiteSpace(l.Response)) { <div class="bt-resp">Respuesta:</div> <pre>@l.Response</pre> }
+                        </details>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .bt-wrap { padding:20px 24px 48px; }
+    .bt-head { display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+    .bt-head h1 { font-size:20px; font-weight:800; margin:0; }
+    .bt-head p { font-size:12px; color:#94A3B8; margin:2px 0 0; }
+    .bt-filters { display:flex; gap:8px; align-items:center; }
+    .bt-empty { padding:40px; text-align:center; color:#94A3B8; border:1px dashed #E2E8F0; border-radius:12px; }
+    .bt-list { display:flex; flex-direction:column; gap:6px; }
+    .bt-row { border:1px solid #E2E8F0; border-left-width:4px; border-radius:8px; padding:8px 12px; background:#fff; }
+    .bt-row.bt-inbound { border-left-color:#3B82F6; }
+    .bt-row.bt-prompt { border-left-color:#8B5CF6; }
+    .bt-row.bt-tool { border-left-color:#F59E0B; }
+    .bt-row.bt-reply { border-left-color:#10B981; }
+    .bt-row.bt-error { border-left-color:#EF4444; }
+    .bt-row.bt-info { border-left-color:#94A3B8; }
+    .bt-row-top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:13px; }
+    .bt-kind { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:#64748B; min-width:78px; }
+    .bt-title { font-weight:600; }
+    .bt-agent { color:#64748B; font-size:12px; }
+    .bt-time { margin-left:auto; color:#94A3B8; font-size:11px; font-family:var(--bs-font-monospace,monospace); }
+    .bt-detail summary { cursor:pointer; font-size:12px; color:#405189; margin-top:4px; }
+    .bt-detail pre { margin:4px 0 0; padding:8px 10px; background:#F6F7F9; border-radius:6px; font-size:11px; white-space:pre-wrap; word-break:break-word; max-height:280px; overflow:auto; }
+    .bt-resp { font-size:11px; font-weight:600; color:#0a6b45; margin-top:6px; }
+</style>
+
+@code {
+    private IReadOnlyList<AiAgentDto> _agents = Array.Empty<AiAgentDto>();
+    private IReadOnlyList<AiAgentRunLogDto> _logs = Array.Empty<AiAgentRunLogDto>();
+    private string _agentFilter = "";
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _agents = await AgentSvc.ListAsync();
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _loading = true;
+        long? aid = long.TryParse(_agentFilter, out var v) ? v : null;
+        _logs = await AgentSvc.ListRunLogsAsync(aid, 300);
+        _loading = false;
+    }
+
+    private static string KindLabel(AiAgentRunLogKind k) => k switch
+    {
+        AiAgentRunLogKind.Inbound => "Entrada",
+        AiAgentRunLogKind.Prompt => "Prompt",
+        AiAgentRunLogKind.Tool => "Herramienta",
+        AiAgentRunLogKind.Reply => "Respuesta",
+        AiAgentRunLogKind.Error => "Error",
+        _ => "Info"
+    };
+}

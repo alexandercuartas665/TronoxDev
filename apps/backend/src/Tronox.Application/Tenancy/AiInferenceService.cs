@@ -129,6 +129,10 @@ public sealed class AiInferenceService : IAiInferenceService
             catch { /* limpiar la cache no debe romper la respuesta */ }
         }
 
+        // Bitacora de atencion: persiste el rastro (entrada, prompts, herramientas, respuesta). Best-effort.
+        try { await PersistRunLogsAsync(agent.TenantId, agentId, sessionId, turns, debugPrompts, result, cancellationToken); }
+        catch { /* la bitacora nunca debe romper la respuesta */ }
+
         if (result.Ok && !string.IsNullOrEmpty(result.Text))
         {
             var (cleanText, attachments) = ExtractAttachments(result.Text!, resources);
@@ -479,6 +483,36 @@ public sealed class AiInferenceService : IAiInferenceService
             if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) { sb.Append(c); }
         }
         return sb.ToString();
+    }
+
+    // Persiste el rastro de una corrida del agente en la bitacora (ai_agent_run_logs).
+    private async Task PersistRunLogsAsync(long tenantId, long agentId, long sessionId, IReadOnlyList<AiChatTurn> turns,
+        List<AiDebugPrompt> debugPrompts, AiChatResult result, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var rows = new List<Domain.Entities.AiAgentRunLog>();
+        void Add(AiAgentRunLogKind kind, string title, string? content, string? response = null) =>
+            rows.Add(new Domain.Entities.AiAgentRunLog
+            {
+                TenantId = tenantId, AgentId = agentId, ConversationId = sessionId,
+                OccurredAt = now, Kind = kind, Title = title, Content = content, Response = response
+            });
+
+        var lastUser = turns.LastOrDefault(t => string.Equals(t.Role, "user", StringComparison.OrdinalIgnoreCase))?.Text;
+        if (!string.IsNullOrWhiteSpace(lastUser)) { Add(AiAgentRunLogKind.Inbound, "Entrada recibida", lastUser); }
+
+        foreach (var d in debugPrompts)
+        {
+            var kind = d.Title.StartsWith("Herramienta ejecutada", StringComparison.OrdinalIgnoreCase)
+                ? AiAgentRunLogKind.Tool : AiAgentRunLogKind.Prompt;
+            Add(kind, d.Title, d.Content, d.Response);
+        }
+
+        if (result.Ok) { Add(AiAgentRunLogKind.Reply, "Respuesta del agente", result.Text); }
+        else { Add(AiAgentRunLogKind.Error, "Error de atencion", result.Error); }
+
+        _db.AiAgentRunLogs.AddRange(rows);
+        await _db.SaveChangesAsync(ct);
     }
 
     // Herramientas que el agente tiene DESHABILITADAS (AiAgent.DisabledToolsJson). Vacio = todas habilitadas.

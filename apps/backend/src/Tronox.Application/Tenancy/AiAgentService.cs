@@ -331,6 +331,19 @@ public sealed class AiAgentService : IAiAgentService
         catch { return Array.Empty<string>(); }
     }
 
+    public async Task<IReadOnlyList<AiAgentRunLogDto>> ListRunLogsAsync(long? agentId = null, int take = 200, CancellationToken cancellationToken = default)
+    {
+        var nombres = await _db.AiAgents.AsNoTracking().ToDictionaryAsync(a => a.Id, a => a.Name, cancellationToken);
+        var q = _db.AiAgentRunLogs.AsNoTracking();
+        if (agentId is long aid) { q = q.Where(l => l.AgentId == aid); }
+        var rows = await q.OrderByDescending(l => l.OccurredAt).ThenByDescending(l => l.Id)
+            .Take(Math.Clamp(take, 1, 1000))
+            .ToListAsync(cancellationToken);
+        return rows.Select(l => new AiAgentRunLogDto(
+            l.Id, l.AgentId, nombres.TryGetValue(l.AgentId, out var n) ? n : $"Agente {l.AgentId}",
+            l.ConversationId, l.OccurredAt, l.Kind, l.Title, l.Content, l.Response)).ToList();
+    }
+
     private static AiAgentResourceDto MapResource(AiAgentResource r) =>
         new(r.Id, r.AgentId, r.Name, r.ResourceType, r.Detail, r.FileUrl, r.FileName, r.SortOrder);
 

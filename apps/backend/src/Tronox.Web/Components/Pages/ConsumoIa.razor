@@ -1,0 +1,117 @@
+@page "/modulo/consumo-ia"
+@attribute [Authorize(Policy = "Perm:modulo/consumo-ia:View")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Tronox.Application.Tenancy
+@inject IAiUsageService UsageSvc
+@inject IAiAgentService AgentSvc
+
+@* RQ16 - Consumo de IA: tokens y costo estimado, global y por agente, mas el cupo mensual del plan.
+   Todo el uso de IA del tenant pasa por IAiUsageService (chat de prueba, cache, Correos -> PQR). *@
+
+<PageTitle>Consumo de IA - TRONOX</PageTitle>
+
+<div class="ci-wrap">
+    <div class="ci-head">
+        <div>
+            <h1>Consumo de IA</h1>
+            <p>Tokens y costo estimado del tenant. Incluye agentes, extraccion de datos y clasificacion de correos.</p>
+        </div>
+        <button class="btn btn-outline-secondary" @onclick="CargarAsync">Actualizar</button>
+    </div>
+
+    @if (_loading) { <p><em>Cargando...</em></p> }
+    else
+    {
+        <div class="ci-kpis">
+            <div class="ci-kpi"><span>Llamadas</span><b>@_summary.TotalCalls.ToString("N0")</b></div>
+            <div class="ci-kpi"><span>Tokens totales</span><b>@_summary.TotalTokens.ToString("N0")</b></div>
+            <div class="ci-kpi"><span>Entrada / Salida</span><b>@_summary.InputTokens.ToString("N0") / @_summary.OutputTokens.ToString("N0")</b></div>
+            <div class="ci-kpi"><span>Costo estimado</span><b>US$ @_summary.EstimatedCostUsd.ToString("N4")</b></div>
+        </div>
+
+        @if (_quota.HasLimit)
+        {
+            <div class="ci-quota">
+                <div class="ci-quota-top">
+                    <span>Cupo mensual del plan (@(_quota.Hard ? "limite duro" : "limite blando"))</span>
+                    <span>@_quota.MonthlyUsedTokens.ToString("N0") / @_quota.MonthlyLimitTokens.ToString("N0") tokens (@_quota.UsedPct%)</span>
+                </div>
+                <div class="ci-bar"><div class="ci-bar-fill @(_quota.Exceeded ? "over" : "")" style="width:@(Math.Min(100,_quota.UsedPct))%"></div></div>
+                @if (_quota.Exceeded && _quota.Hard) { <div class="ci-quota-warn">&#9888; Cupo agotado: los agentes no responderan hasta el proximo mes o hasta ampliar el plan.</div> }
+            </div>
+        }
+
+        <h2 class="ci-sub">Por agente</h2>
+        @if (_summary.ByAgent.Count == 0)
+        {
+            <div class="ci-empty">Aun no hay consumo registrado.</div>
+        }
+        else
+        {
+            <table class="ci-table">
+                <thead><tr><th>Agente</th><th class="r">Llamadas</th><th class="r">Entrada</th><th class="r">Salida</th><th class="r">Total</th><th class="r">Costo (US$)</th></tr></thead>
+                <tbody>
+                    @foreach (var a in _summary.ByAgent.OrderByDescending(x => x.TotalTokens))
+                    {
+                        <tr>
+                            <td>@NombreAgente(a.AgentId)</td>
+                            <td class="r">@a.Calls.ToString("N0")</td>
+                            <td class="r">@a.InputTokens.ToString("N0")</td>
+                            <td class="r">@a.OutputTokens.ToString("N0")</td>
+                            <td class="r">@a.TotalTokens.ToString("N0")</td>
+                            <td class="r">@a.EstimatedCostUsd.ToString("N4")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+</div>
+
+<style>
+    .ci-wrap { padding:20px 24px 48px; }
+    .ci-head { display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+    .ci-head h1 { font-size:20px; font-weight:800; margin:0; }
+    .ci-head p { font-size:12px; color:#94A3B8; margin:2px 0 0; }
+    .ci-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:16px; }
+    .ci-kpi { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:14px 16px; }
+    .ci-kpi span { display:block; font-size:11px; color:#94A3B8; text-transform:uppercase; letter-spacing:.4px; }
+    .ci-kpi b { font-size:20px; }
+    .ci-quota { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:14px 16px; margin-bottom:20px; }
+    .ci-quota-top { display:flex; justify-content:space-between; font-size:12px; color:#475569; margin-bottom:8px; }
+    .ci-bar { height:10px; background:#EEF2F7; border-radius:6px; overflow:hidden; }
+    .ci-bar-fill { height:100%; background:#10B981; }
+    .ci-bar-fill.over { background:#EF4444; }
+    .ci-quota-warn { color:#991B1B; font-size:12px; margin-top:8px; }
+    .ci-sub { font-size:15px; font-weight:700; margin:8px 0 10px; }
+    .ci-empty { padding:24px; text-align:center; color:#94A3B8; border:1px dashed #E2E8F0; border-radius:12px; }
+    .ci-table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; border:1px solid #E2E8F0; border-radius:8px; overflow:hidden; }
+    .ci-table th, .ci-table td { padding:8px 12px; border-bottom:1px solid #EEF2F7; text-align:left; }
+    .ci-table th.r, .ci-table td.r { text-align:right; font-variant-numeric:tabular-nums; }
+    .ci-table thead th { background:#F8FAFC; font-size:11px; text-transform:uppercase; letter-spacing:.3px; color:#64748B; }
+</style>
+
+@code {
+    private AiUsageSummaryDto _summary = new(0, 0, 0, 0, 0m, Array.Empty<AgentUsageDto>());
+    private AiQuotaDto _quota = new(0, 0, true);
+    private Dictionary<long, string> _agentes = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var list = await AgentSvc.ListAsync();
+        _agentes = list.ToDictionary(a => a.Id, a => a.Name);
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _loading = true;
+        _summary = await UsageSvc.GetSummaryAsync();
+        _quota = await UsageSvc.GetQuotaAsync();
+        _loading = false;
+    }
+
+    private string NombreAgente(long? id) =>
+        id is long a && _agentes.TryGetValue(a, out var n) ? n : (id is null ? "Sistema / sin agente" : $"Agente {id}");
+}
