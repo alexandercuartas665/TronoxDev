@@ -345,6 +345,18 @@ public static class MenuCatalogo
         TodosLosItems().Select(i => i.Ruta).ToList();
 
     /// <summary>
+    /// Rutas/slugs de nodos que SON de IA (DAT-07, invariante 7). Cuando el tenant tiene la IA apagada
+    /// (Tenant.IaHabilitada=false), estos nodos NO se renderizan en el menu (ni el modulo "Capa IA
+    /// Transversal" ni sus pantallas, ni Agentes/Bitacora/Consumo/Correos->PQR). Fuente unica del gateado.
+    /// </summary>
+    public static readonly IReadOnlySet<string> RutasDeIa = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "req016",                    // modulo "Capa IA Transversal" (Subgroup)
+        "modulo/ia-plumita", "modulo/ia-chat", "modulo/ia-config", "modulo/ia-consumo",
+        "modulo/agentes", "modulo/bitacora-agente", "modulo/consumo-ia", "modulo/correos-pqr"
+    };
+
+    /// <summary>
     /// Cada item con el SLUG de su padre inmediato (seccion o grupo/modulo). Lo usa la sincronizacion
     /// del editor de menu para insertar los items del catalogo que falten en una vista, colgandolos del
     /// nodo padre que ya exista en ella (asi un modulo nuevo aparece sin re-sembrar toda la vista).

@@ -33,8 +33,12 @@ public sealed class MenuConfigService : IMenuConfigService
                 .FirstOrDefaultAsync(v => v.Id == viewId, cancellationToken);
         }
 
+        // DAT-07: interruptor maestro de IA de la entidad. Si esta apagado, se podan los nodos de IA.
+        var iaHabilitada = await _db.Tenants.AsNoTracking()
+            .Where(t => t.Id == tenantId).Select(t => (bool?)t.IaHabilitada).FirstOrDefaultAsync(cancellationToken) ?? true;
+
         var resolved = view is not null
-            ? await BuildResolvedAsync(view, cancellationToken)
+            ? await BuildResolvedAsync(view, iaHabilitada, cancellationToken)
             : null;
 
         if (resolved is null)
@@ -53,14 +57,14 @@ public sealed class MenuConfigService : IMenuConfigService
                     .FirstOrDefaultAsync(cancellationToken);
             if (defaultView is not null)
             {
-                resolved = await BuildResolvedAsync(defaultView, cancellationToken);
+                resolved = await BuildResolvedAsync(defaultView, iaHabilitada, cancellationToken);
             }
         }
 
         return resolved;
     }
 
-    private async Task<ResolvedMenuDto?> BuildResolvedAsync(MenuView view, CancellationToken cancellationToken)
+    private async Task<ResolvedMenuDto?> BuildResolvedAsync(MenuView view, bool iaHabilitada, CancellationToken cancellationToken)
     {
         var flat = await _db.MenuNodes.AsNoTracking()
             .Where(n => n.MenuViewId == view.Id)
@@ -68,6 +72,13 @@ public sealed class MenuConfigService : IMenuConfigService
                 n.Id, n.ParentId, n.Kind, n.Name, n.IconKey, n.LegacyCode,
                 n.Route, n.State, n.IsVisible, n.SortOrder, n.IsProcessGroup))
             .ToListAsync(cancellationToken);
+
+        // DAT-07: con la IA apagada para la entidad, se quitan los nodos de IA antes de armar el arbol
+        // (no se renderiza ningun elemento de IA, ni el icono).
+        if (!iaHabilitada)
+        {
+            flat = flat.Where(n => n.Route is null || !MenuCatalogo.RutasDeIa.Contains(n.Route)).ToList();
+        }
 
         var roots = MenuTreeBuilder.Build(flat);
         if (roots.Count == 0)

@@ -41,6 +41,14 @@ public class Tenant : BaseEntity
     public TenantStatus Status { get; set; } = TenantStatus.Trial;
     public TenantKind Kind { get; set; } = TenantKind.Standard;
 
+    /// <summary>
+    /// Interruptor MAESTRO de IA de la entidad (DAT-07, invariante 7). Manda sobre todo lo demas de IA
+    /// (proveedor habilitado, agentes activos, cuota). En false, NINGUN elemento de IA se renderiza (ni el
+    /// icono) y el backend rechaza toda inferencia (fail-closed). Default true para no alterar tenants
+    /// existentes; una entidad con datos reservados/clasificados puede apagarla.
+    /// </summary>
+    public bool IaHabilitada { get; set; } = true;
+
     /// <summary>Reservas online por link publico habilitadas (columna legado del backbone; sin uso en TRONOX Tareas).</summary>
     public bool OnlineBookingEnabled { get; set; }
 

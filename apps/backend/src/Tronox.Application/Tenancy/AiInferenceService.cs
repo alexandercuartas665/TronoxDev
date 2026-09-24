@@ -59,6 +59,11 @@ public sealed class AiInferenceService : IAiInferenceService
         var agent = await _db.AiAgents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == agentId, cancellationToken);
         if (agent is null) { return new AiChatResult(false, null, "El agente no existe."); }
 
+        // DAT-07 (fail-closed): si la entidad tiene la IA apagada, ninguna inferencia se ejecuta.
+        var iaHabilitada = await _db.Tenants.AsNoTracking()
+            .Where(t => t.Id == agent.TenantId).Select(t => (bool?)t.IaHabilitada).FirstOrDefaultAsync(cancellationToken) ?? true;
+        if (!iaHabilitada) { return new AiChatResult(false, null, "La IA esta deshabilitada para esta entidad."); }
+
         var providerCfg = await _db.AiProviderConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.Provider == agent.Provider, cancellationToken);
         if (providerCfg is null || !providerCfg.IsEnabled || string.IsNullOrWhiteSpace(providerCfg.ApiKeyEncrypted))
         {

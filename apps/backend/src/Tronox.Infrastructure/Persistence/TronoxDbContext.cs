@@ -547,6 +547,8 @@ public class TronoxDbContext : DbContext, IApplicationDbContext, IDataProtection
             b.Property(x => x.Phone).HasMaxLength(80);
             b.Property(x => x.Email).HasMaxLength(200);
             b.Property(x => x.LogoUrl).HasMaxLength(500);
+            // DAT-07: interruptor maestro de IA. Default true para no alterar tenants existentes.
+            b.Property(x => x.IaHabilitada).HasDefaultValue(true);
             b.Property(x => x.PublicBookingToken).HasMaxLength(64);
             b.Property(x => x.PublicBookingBaseUrl).HasMaxLength(300);
             b.HasIndex(x => x.PublicBookingToken).IsUnique()

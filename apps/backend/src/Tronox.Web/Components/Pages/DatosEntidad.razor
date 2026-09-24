@@ -612,6 +612,25 @@
         </div>
     </div>
 
+    @* ===== Inteligencia Artificial (DAT-07): interruptor maestro de IA de la entidad ===== *@
+    <div class="tx-ent-card">
+        <div class="tx-ent-card-head">
+            <div class="tx-ent-card-icon tone-primary"><i class="bi bi-robot"></i></div>
+            <div>
+                <div class="tx-ent-card-title">Inteligencia Artificial de la entidad</div>
+                <div class="tx-ent-card-sub">Interruptor maestro (DAT-07). Con la IA apagada NO se muestra ningún elemento de IA en la entidad (agentes, bitácora, consumo, clasificador de Correos → PQR, asistentes) y el sistema rechaza cualquier inferencia. Manda sobre la configuración de proveedores.</div>
+            </div>
+            <button class="tx-ent-btn primary" style="margin-left:auto;" @onclick="GuardarIaAsync" disabled="@_busy">Guardar</button>
+        </div>
+        <div class="tx-ent-card-body">
+            <label class="dc-req" style="display:inline-flex;gap:8px;align-items:center;">
+                <input type="checkbox" @bind="_iaHabilitada" /> Habilitar la capa de Inteligencia Artificial para esta entidad
+            </label>
+            @if (!_iaHabilitada) { <div class="tx-ent-hint" style="margin-top:8px;">Apagada: los módulos de IA desaparecen del menú tras recargar.</div> }
+            @if (_iaMsg is not null) { <div class="tx-ent-alert @(_iaOk ? "ok" : "")" style="margin-top:10px;"><i class="bi @(_iaOk ? "bi-check-circle" : "bi-x-circle")"></i><span>@_iaMsg</span></div> }
+        </div>
+    </div>
+
     @* ===== Calendario Habil (legacy ctrlCalendarioHabil) - siempre visible, sin gateo por seleccion ===== *@
     <CalendarioHabilPanel />
 </div>
@@ -712,7 +731,26 @@
         _fir = await ConfigExtra.GetFirmaAsync();
         _alm = await ConfigExtra.GetAlmacenamientoAsync();
         _ocr = await ConfigExtra.GetOcrAsync();
+        _iaHabilitada = await EntidadSvc.GetIaHabilitadaAsync();
         _loading = false;
+    }
+
+    // ---- DAT-07: interruptor maestro de IA ----
+    private bool _iaHabilitada = true;
+    private string? _iaMsg; private bool _iaOk;
+
+    private async Task GuardarIaAsync()
+    {
+        _busy = true; _iaMsg = null;
+        try
+        {
+            var res = await EntidadSvc.SetIaHabilitadaAsync(_iaHabilitada, Tenant.UserId ?? 0);
+            _iaOk = res.IsOk;
+            _iaMsg = res.IsOk
+                ? (_iaHabilitada ? "IA habilitada para la entidad." : "IA deshabilitada. Recarga para que los modulos de IA desaparezcan del menu.")
+                : (res.Error ?? "No se pudo guardar.");
+        }
+        finally { _busy = false; }
     }
 
     private async Task GuardarSeguridadAsync()

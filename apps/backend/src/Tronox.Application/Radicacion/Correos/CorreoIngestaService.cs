@@ -53,6 +53,11 @@ public sealed class CorreoIngestaService : ICorreoIngestaService
         var tenantId = _tenant.TenantId;
         if (tenantId is null) { return CorreoIngestaResumen.Fail("Sesion no valida."); }
 
+        // DAT-07 (fail-closed): Correos -> PQR es una funcion de IA; si la entidad la tiene apagada, no se procesa.
+        var iaHabilitada = await _db.Tenants.AsNoTracking()
+            .Where(t => t.Id == tenantId.Value).Select(t => (bool?)t.IaHabilitada).FirstOrDefaultAsync(ct) ?? true;
+        if (!iaHabilitada) { return CorreoIngestaResumen.Fail("La IA esta deshabilitada para esta entidad."); }
+
         var b = await _db.BuzonesCorreo.FirstOrDefaultAsync(x => x.Id == buzonId, ct);
         if (b is null) { return CorreoIngestaResumen.Fail("Buzon no encontrado."); }
         if (b.Protocolo != BuzonProtocolo.Imap) { return CorreoIngestaResumen.Fail("Solo se soporta IMAP."); }

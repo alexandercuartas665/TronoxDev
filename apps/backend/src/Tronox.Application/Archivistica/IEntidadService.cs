@@ -24,6 +24,12 @@ public interface IEntidadService
     /// </summary>
     Task<ArchivisticaResult<EntidadDto>> CambiarEstadoAsync(
         EntidadEstado estado, string? motivo, long actorUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Interruptor maestro de IA de la entidad (DAT-07, tenants.ia_habilitada). Lectura.</summary>
+    Task<bool> GetIaHabilitadaAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Prende/apaga la IA de la entidad (DAT-07). Con auditoria. En false, ningun elemento de IA se muestra.</summary>
+    Task<ArchivisticaResult<bool>> SetIaHabilitadaAsync(bool habilitada, long actorUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

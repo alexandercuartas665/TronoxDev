@@ -133,6 +133,28 @@ public sealed class EntidadService : IEntidadService
         return ArchivisticaResult<EntidadDto>.Ok((await GetAsync(cancellationToken))!);
     }
 
+    public async Task<bool> GetIaHabilitadaAsync(CancellationToken cancellationToken = default)
+    {
+        if (_tenant.TenantId is not long tenantId) { return true; }
+        return await _db.Tenants.AsNoTracking()
+            .Where(t => t.Id == tenantId).Select(t => (bool?)t.IaHabilitada).FirstOrDefaultAsync(cancellationToken) ?? true;
+    }
+
+    public async Task<ArchivisticaResult<bool>> SetIaHabilitadaAsync(bool habilitada, long actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (_tenant.TenantId is not long tenantId) { return ArchivisticaResult<bool>.Invalid("No hay tenant activo."); }
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, cancellationToken);
+        if (tenant is null) { return ArchivisticaResult<bool>.NotFound("El tenant no existe."); }
+        if (tenant.IaHabilitada == habilitada) { return ArchivisticaResult<bool>.Ok(habilitada); }
+
+        var anterior = tenant.IaHabilitada;
+        tenant.IaHabilitada = habilitada;
+        _audit.Write(actorUserId, habilitada ? "entidad.ia.habilitar" : "entidad.ia.deshabilitar", nameof(Tenant), tenant,
+            previousValue: new { IaHabilitada = anterior }, newValue: new { tenant.IaHabilitada }, tenantId: tenantId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ArchivisticaResult<bool>.Ok(habilitada);
+    }
+
     // ---- Internos ----
 
     private async Task<string?> ValidarUbicacionAsync(
