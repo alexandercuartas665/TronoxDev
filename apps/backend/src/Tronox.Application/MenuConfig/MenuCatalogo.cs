@@ -191,9 +191,6 @@ public static class MenuCatalogo
                 new("Radicacion", "modulo/radicacion", "bi-inboxes", "RF11"),
                 new("Correos por Revisar", "modulo/radicacion-correos", "bi-envelope", "RF04"),
                 new("Correos -> PQR (IA)", "modulo/correos-pqr", "bi-robot", "RF04"),
-                new("Agentes de IA", "modulo/agentes", "bi-robot", "RF04"),
-                new("Bitacora del agente", "modulo/bitacora-agente", "bi-journal-text", "RF04"),
-                new("Consumo de IA", "modulo/consumo-ia", "bi-graph-up", "RF05"),
                 new("Portal Ciudadano", "modulo/portal-abrir", "bi-globe", "RF03")
             ]),
 
@@ -295,13 +292,17 @@ public static class MenuCatalogo
             ], MenuNodeState.Disabled),
 
             // RQ16: el prototipo lo trae como modulo propio de esta seccion (Capa IA Transversal).
+            // Hogar unico de la capa de IA: agentes, bitacora y consumo son features reales; Plumita y
+            // Chat Documental quedan como placeholders (RQ16 futuro). La config del proveedor vive en
+            // Servidores de IA (Super Admin), por eso aqui no va "Configuracion IA".
             new("Capa IA Transversal", "req016", "bi-stars", "RQ16",
             [
+                new("Agentes de IA", "modulo/agentes", "bi-robot", "RF03"),
+                new("Bitacora del agente", "modulo/bitacora-agente", "bi-journal-text", "RF03"),
+                new("Consumo de IA", "modulo/consumo-ia", "bi-graph-up", "RF05"),
                 new("Plumita (asistente inline)", "modulo/ia-plumita", "bi-stars", "RF03"),
-                new("Chat Documental", "modulo/ia-chat", "bi-chat-dots", "RF04"),
-                new("Configuracion IA", "modulo/ia-config", "bi-gear", "RF01"),
-                new("Consumo IA", "modulo/ia-consumo", "bi-graph-up", "RF05")
-            ], MenuNodeState.Disabled)
+                new("Chat Documental", "modulo/ia-chat", "bi-chat-dots", "RF04")
+            ])
         ], []),
 
         // ================================================================ PLATAFORMA
